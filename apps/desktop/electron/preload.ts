@@ -74,6 +74,22 @@ const desktopApi = {
 	setMenuState: (state) => ipcRenderer.invoke("desktop:set-menu-state", state),
 	getUpdateState: () => ipcRenderer.invoke("desktop:get-update-state"),
 	getFullScreen: () => ipcRenderer.invoke("desktop:get-fullscreen"),
+	getNotionConnectionStatus: (account) =>
+		ipcRenderer.invoke("desktop:notion-connection-status", { account }),
+	setNotionAccount: (account) =>
+		ipcRenderer.invoke("desktop:notion-set-account", { account }),
+	searchNotion: (query, account) =>
+		ipcRenderer.invoke("desktop:notion-search", { query, account }),
+	getNotionPageMarkdown: (pageId, account) =>
+		ipcRenderer.invoke("desktop:notion-page-markdown", { pageId, account }),
+	updateNotionPageMarkdown: (pageId, markdown, account) =>
+		ipcRenderer.invoke("desktop:notion-update-page-markdown", {
+			pageId,
+			markdown,
+			account,
+		}),
+	queryNotionDatabase: (input) =>
+		ipcRenderer.invoke("desktop:notion-query-database", input),
 	checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),
 	installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
 	onOpenFile: (callback) =>

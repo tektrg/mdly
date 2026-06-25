@@ -5,6 +5,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 import { toast } from "sonner";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
+import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
@@ -32,9 +33,17 @@ function useIsFullScreen() {
 export function Toolbar({
 	scrollContainer,
 	showSidebarBadge = false,
+	onOpenNotionPage,
+	onPushNotionPage,
+	onRefreshNotionPage,
+	showNotionSyncActions,
 }: {
 	scrollContainer: HTMLDivElement | null;
 	showSidebarBadge?: boolean;
+	onOpenNotionPage: () => void;
+	onPushNotionPage: () => void;
+	onRefreshNotionPage: () => void;
+	showNotionSyncActions: boolean;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
@@ -54,16 +63,35 @@ export function Toolbar({
 				void renameCurrentMarkdownFile(nextName)
 			}
 			rightSlot={
-				workspacePath && currentPath ? (
-					<NoteActionsMenu path={currentPath} />
+				workspacePath ? (
+					<NoteActionsMenu
+						path={currentPath ?? null}
+						onOpenNotionPage={onOpenNotionPage}
+						onPushNotionPage={onPushNotionPage}
+						onRefreshNotionPage={onRefreshNotionPage}
+						showNotionSyncActions={showNotionSyncActions}
+					/>
 				) : undefined
 			}
 		/>
 	);
 }
 
-function NoteActionsMenu({ path }: { path: string }) {
+function NoteActionsMenu({
+	path,
+	onOpenNotionPage,
+	onPushNotionPage,
+	onRefreshNotionPage,
+	showNotionSyncActions,
+}: {
+	path: string | null;
+	onOpenNotionPage: () => void;
+	onPushNotionPage: () => void;
+	onRefreshNotionPage: () => void;
+	showNotionSyncActions: boolean;
+}) {
 	async function revealFile() {
+		if (!path) return;
 		try {
 			await desktopApi.revealFile(path);
 		} catch {
@@ -72,6 +100,7 @@ function NoteActionsMenu({ path }: { path: string }) {
 	}
 
 	async function copyFilePath() {
+		if (!path) return;
 		try {
 			await navigator.clipboard.writeText(path);
 			toast.success("File path copied");
@@ -99,22 +128,53 @@ function NoteActionsMenu({ path }: { path: string }) {
 					<Menu.Popup className="z-50 w-44 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						<Menu.Item
 							className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-							onClick={() => void revealFile()}
+							onClick={onOpenNotionPage}
 						>
-							<MingcuteFolderOpenLine className="size-3 shrink-0" />
-							<span className="min-w-0 flex-1">
-								{revealFileLabel(desktopApi.platform)}
-							</span>
-							<ShortcutHint>⌘⌥R</ShortcutHint>
+							<MingcuteLinkLine className="size-3 shrink-0" />
+							<span className="min-w-0 flex-1">Open Notion page</span>
 						</Menu.Item>
-						<Menu.Item
-							className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-							onClick={() => void copyFilePath()}
-						>
-							<MingcuteCopy2Line className="size-3 shrink-0" />
-							<span className="min-w-0 flex-1">Copy file path</span>
-							<ShortcutHint>⌘⇧C</ShortcutHint>
-						</Menu.Item>
+						{showNotionSyncActions ? (
+							<>
+								<Menu.Separator className="my-1 h-px bg-border" />
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onPushNotionPage}
+								>
+									<MingcuteLinkLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Push to Notion</span>
+								</Menu.Item>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onRefreshNotionPage}
+								>
+									<MingcuteLinkLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Refresh from Notion</span>
+								</Menu.Item>
+							</>
+						) : null}
+						{path ? <Menu.Separator className="my-1 h-px bg-border" /> : null}
+						{path ? (
+							<>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={() => void revealFile()}
+								>
+									<MingcuteFolderOpenLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">
+										{revealFileLabel(desktopApi.platform)}
+									</span>
+									<ShortcutHint>⌘⌥R</ShortcutHint>
+								</Menu.Item>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={() => void copyFilePath()}
+								>
+									<MingcuteCopy2Line className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Copy file path</span>
+									<ShortcutHint>⌘⇧C</ShortcutHint>
+								</Menu.Item>
+							</>
+						) : null}
 					</Menu.Popup>
 				</Menu.Positioner>
 			</Menu.Portal>

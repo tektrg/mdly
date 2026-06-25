@@ -58,6 +58,63 @@ export type DesktopUpdateState = {
 
 export type DesktopPlatform = NodeJS.Platform;
 
+export type NotionObjectType = "page" | "database" | "data_source";
+
+export type NotionSearchResult = {
+	id: string;
+	object: NotionObjectType;
+	account: string | null;
+	title: string;
+	url: string | null;
+	lastEditedTime: string | null;
+};
+
+export type NotionPageMarkdown = {
+	pageId: string;
+	account: string | null;
+	markdown: string;
+	contentHash: string;
+};
+
+export type NotionPageUpdate = {
+	pageId: string;
+	account: string | null;
+	contentHash: string;
+};
+
+export type NotionDatabaseQueryInput = {
+	sourceId: string;
+	sourceObject: Extract<NotionObjectType, "database" | "data_source">;
+	account?: string | null;
+	startCursor?: string | null;
+	pageSize?: number;
+};
+
+export type NotionDatabaseRow = {
+	pageId: string;
+	title: string;
+	url: string | null;
+	lastEditedTime: string | null;
+	properties: Record<string, string>;
+};
+
+export type NotionDatabaseQueryResult = {
+	sourceId: string;
+	columns: string[];
+	rows: NotionDatabaseRow[];
+	hasMore: boolean;
+	nextCursor: string | null;
+};
+
+export type NotionConnectionStatus = {
+	account: string;
+	availableAccounts: string[];
+	tokenKind: "oauth" | "api_key" | "missing";
+	connected: boolean;
+	botName: string | null;
+	error: string | null;
+};
+
 export type WorkspaceConfig = {
 	version: 1;
 	pinnedNotes: string[];
@@ -107,6 +164,26 @@ export type DesktopApi = {
 	setMenuState(state: MenuState): Promise<void>;
 	getUpdateState(): Promise<DesktopUpdateState>;
 	getFullScreen(): Promise<boolean>;
+	getNotionConnectionStatus(
+		account?: string | null,
+	): Promise<NotionConnectionStatus>;
+	setNotionAccount(account: string): Promise<NotionConnectionStatus>;
+	searchNotion(
+		query: string,
+		account?: string | null,
+	): Promise<NotionSearchResult[]>;
+	getNotionPageMarkdown(
+		pageId: string,
+		account?: string | null,
+	): Promise<NotionPageMarkdown>;
+	updateNotionPageMarkdown(
+		pageId: string,
+		markdown: string,
+		account?: string | null,
+	): Promise<NotionPageUpdate>;
+	queryNotionDatabase(
+		input: NotionDatabaseQueryInput,
+	): Promise<NotionDatabaseQueryResult>;
 	checkForUpdates(): Promise<void>;
 	installUpdate(): Promise<void>;
 	onOpenFile(callback: (path: string) => void): Unsubscribe;

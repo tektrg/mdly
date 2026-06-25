@@ -1,13 +1,14 @@
-import { wikiDisplayNameForTarget } from "@hubble.md/editor";
-import { Button, EditorView, type WikiTarget } from "@hubble.md/ui";
+import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { DocumentViewer } from "./components/DocumentViewer";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
+import { NotionOpenDialog } from "./components/NotionOpenDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
@@ -18,14 +19,16 @@ import {
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { desktopApi } from "./desktopApi";
 import type { DesktopUpdateState } from "./desktopApi/types";
-import { createEmbedExtension } from "./editor/EmbedExtension";
-import { handleImageDrop, handleImagePaste } from "./editor/handleImagePaste";
-import { IframeView, toAssetUrl } from "./editor/IframeView";
-import { createImageExtension } from "./editor/ImageExtension";
-import { createMarkdownFile } from "./fileActions";
-import { hasHtmlExtension, relativeWorkspacePath } from "./lib/filePath";
+import {
+	createMarkdownFile,
+	currentNotionLinkStatus,
+	hasLocalChangesSinceLastNotionSync,
+	importNotionDatabase,
+	openOrImportNotionPage,
+	pushCurrentNotionPage,
+	refreshCurrentNotionPage,
+} from "./fileActions";
 import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
-import { resolveWikiPath } from "./lib/wikiPath";
 import { SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
 	createWorkspaceWithSidebar,
@@ -38,10 +41,8 @@ import {
 	refreshFiles,
 	refreshFilesDebounced,
 	reloadFromDiskConflict,
-	savePathContent,
 	setSidebarOpen,
 	setWorkspaceSwitcherOpen,
-	updateEditorContent,
 } from "./store/actions";
 import {
 	sidebarOpenStore,
@@ -50,14 +51,6 @@ import {
 	workspacePathStore,
 	workspaceStore,
 } from "./store/state";
-
-// Forces editor refresh when underlying TipTap extensions change
-const HMR_REV = (() => {
-	if (!import.meta.hot) return 0;
-	const hotData = import.meta.hot.data as { __editorRev?: number };
-	hotData.__editorRev = (hotData.__editorRev ?? 0) + 1;
-	return hotData.__editorRev;
-})();
 
 const HTML_APPS_CALLOUT_DISMISSED_PREFIX =
 	"hubble:html-apps-callout-dismissed:";
@@ -110,6 +103,8 @@ function App() {
 	const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
 	const [htmlAppsDialogOpen, setHtmlAppsDialogOpen] = useState(false);
 	const [htmlAppsCalloutVisible, setHtmlAppsCalloutVisible] = useState(false);
+	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
+	const notionOpenRefreshPathRef = useRef<string | null>(null);
 
 	const dismissHtmlAppsCallout = useCallback(() => {
 		if (workspacePath) {
@@ -141,10 +136,91 @@ function App() {
 			? (updateState.availableVersion ?? "__unknown__")
 			: null;
 	const showUpdateCallout = readyVersion !== dismissedVersion;
+	const notionLink = currentNotionLinkStatus();
 
 	const openSettings = useCallback(() => {
 		setSettingsOpen(true);
 	}, []);
+
+	const pushNotionPage = useCallback(async () => {
+		try {
+			const result = await pushCurrentNotionPage();
+			if (result.kind === "remote-changed") {
+				const overwrite = window.confirm(
+					"Notion changed since the last sync. Overwrite the Notion page with this local file?",
+				);
+				if (!overwrite) return;
+				const forced = await pushCurrentNotionPage({
+					forceRemoteOverwrite: true,
+				});
+				if (forced.kind !== "pushed") return;
+			} else if (result.kind !== "pushed") {
+				return;
+			}
+			toast.success("Pushed to Notion");
+		} catch (error) {
+			toast.error("Failed to push to Notion", {
+				description: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}, []);
+
+	const refreshNotionPage = useCallback(async () => {
+		try {
+			const hasLocalChanges = hasLocalChangesSinceLastNotionSync();
+			if (hasLocalChanges) {
+				const overwrite = window.confirm(
+					"This local file has changes that are not pushed to Notion. Replace it with the latest Notion page?",
+				);
+				if (!overwrite) return;
+			}
+			const refreshed = await refreshCurrentNotionPage({
+				forceLocalOverwrite: hasLocalChanges,
+			});
+			if (refreshed) toast.success("Refreshed from Notion");
+		} catch (error) {
+			toast.error("Failed to refresh from Notion", {
+				description: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}, []);
+
+	useEffect(() => {
+		const path = state.currentPath;
+		if (!path) {
+			notionOpenRefreshPathRef.current = null;
+			return;
+		}
+		if (state.status !== "ready") return;
+		if (notionOpenRefreshPathRef.current === path) return;
+		notionOpenRefreshPathRef.current = path;
+
+		if (!currentNotionLinkStatus()) return;
+		let disposed = false;
+		const refreshFromOpen = async () => {
+			try {
+				const hasLocalChanges = hasLocalChangesSinceLastNotionSync();
+				if (hasLocalChanges) {
+					const overwrite = window.confirm(
+						"This linked Notion file has local changes that are not pushed. Replace it with the latest Notion page?",
+					);
+					if (!overwrite || disposed) return;
+				}
+				await refreshCurrentNotionPage({
+					forceLocalOverwrite: hasLocalChanges,
+				});
+			} catch (error) {
+				if (disposed) return;
+				toast.error("Failed to refresh from Notion", {
+					description: error instanceof Error ? error.message : String(error),
+				});
+			}
+		};
+		void refreshFromOpen();
+		return () => {
+			disposed = true;
+		};
+	}, [state.currentPath, state.status]);
 
 	const installUpdate = useCallback(async () => {
 		try {
@@ -356,6 +432,10 @@ function App() {
 			<Toolbar
 				scrollContainer={scrollContainerEl}
 				showSidebarBadge={!sidebarOpen && showUpdateCallout}
+				onOpenNotionPage={() => setNotionDialogOpen(true)}
+				onPushNotionPage={pushNotionPage}
+				onRefreshNotionPage={refreshNotionPage}
+				showNotionSyncActions={notionLink !== null}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<Sidebar
@@ -427,68 +507,23 @@ function App() {
 				onOpenChange={setHtmlAppsDialogOpen}
 				workspacePath={workspacePath ?? null}
 			/>
-		</main>
-	);
-}
-
-function DocumentViewer({
-	path,
-	content,
-	onScrollContainerChange,
-}: {
-	path: string;
-	content: string;
-	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
-}) {
-	if (hasHtmlExtension(path)) {
-		return (
-			<HtmlDocumentViewer
-				key={`${path}:${content}`}
-				path={path}
-				onScrollContainerChange={onScrollContainerChange}
+			<NotionOpenDialog
+				open={notionDialogOpen}
+				onOpenChange={setNotionDialogOpen}
+				onImportDatabase={async (result) => {
+					await importNotionDatabase(result, {
+						folderPath: focusedSidebarPath,
+					});
+					toast.success("Notion table imported");
+				}}
+				onImportPage={async (result) => {
+					await openOrImportNotionPage(result, {
+						folderPath: focusedSidebarPath,
+					});
+					toast.success("Notion page opened");
+				}}
 			/>
-		);
-	}
-
-	return (
-		<MarkdownEditor
-			key={`${path}:${HMR_REV}`}
-			path={path}
-			initialMarkdown={content}
-			onScrollContainerChange={onScrollContainerChange}
-		/>
-	);
-}
-
-function HtmlDocumentViewer({
-	path,
-	onScrollContainerChange,
-}: {
-	path: string;
-	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
-}) {
-	const workspace = useStoreValue(workspaceStore);
-	const [error, setError] = useState<string | null>(null);
-
-	useEffect(() => {
-		onScrollContainerChange?.(null);
-	}, [onScrollContainerChange]);
-
-	return (
-		<div className="flex h-full min-h-0 flex-1 overflow-hidden bg-background">
-			{error ? (
-				<p className="m-0 p-4 text-sm text-destructive">{error}</p>
-			) : (
-				<IframeView
-					className="block min-h-0 flex-1 border-0 bg-card"
-					onError={setError}
-					src={toAssetUrl(path)}
-					style={{ blockSize: "100%", inlineSize: "100%" }}
-					title={relativeWorkspacePath(path, workspace.workspacePath)}
-					workspacePath={workspace.workspacePath}
-				/>
-			)}
-		</div>
+		</main>
 	);
 }
 
@@ -515,58 +550,6 @@ function ExternalChangeBanner({
 				</div>
 			</div>
 		</div>
-	);
-}
-
-function MarkdownEditor({
-	path,
-	initialMarkdown,
-	onScrollContainerChange,
-}: {
-	path: string;
-	initialMarkdown: string;
-	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
-}) {
-	const workspace = useStoreValue(workspaceStore);
-	const wikiTargets: WikiTarget[] = workspace.files.map((file) => {
-		const target = relativeWorkspacePath(file.path, workspace.workspacePath);
-		return {
-			path: file.path,
-			target,
-			title: wikiDisplayNameForTarget(target),
-		};
-	});
-	return (
-		<EditorView
-			path={path}
-			initialMarkdown={initialMarkdown}
-			wikiTargets={wikiTargets}
-			extensions={[
-				createImageExtension(path),
-				createEmbedExtension({
-					workspacePath: workspace.workspacePath,
-					filePath: path,
-				}),
-			]}
-			onPaste={(editor, event) => handleImagePaste({ editor, event })}
-			onDrop={(editor, event) => handleImageDrop({ editor, event })}
-			onLocalChange={updateEditorContent}
-			onSave={savePathContent}
-			onScrollContainerChange={onScrollContainerChange}
-			onOpenExternalLink={desktopApi.openExternalUrl}
-			onOpenWikiLink={(target) =>
-				void loadPath(
-					resolveWikiPath({
-						target,
-						files: workspace.files,
-						workspacePath: workspace.workspacePath,
-					}),
-				)
-			}
-			onMessage={(message, kind) =>
-				kind === "success" ? toast.success(message) : toast.error(message)
-			}
-		/>
 	);
 }
 
