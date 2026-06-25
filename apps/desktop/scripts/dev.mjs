@@ -19,7 +19,7 @@ const devExecPath = path.join(devAppPath, "Contents", "MacOS", devAppName);
 const markerPath = path.join(devAppDir, "metadata.json");
 const fixturePath = path.join(appDir, "fixtures", "playground");
 const playgroundPath = path.join(devAppDir, "playground");
-const wrapperVersion = 1;
+const wrapperVersion = 2;
 const currentPlaygroundHtmlMarkers = ["bg-card", "text-foreground"];
 const stalePlaygroundHtmlMarkers = ["./vendor/", "px-6"];
 
@@ -127,6 +127,21 @@ async function patchMainBundle() {
 	setPlistValue(plistPath, "CFBundleDisplayName", devAppName);
 	setPlistValue(plistPath, "CFBundleExecutable", devAppName);
 	setPlistValue(plistPath, "CFBundleIconFile", "hubble-dev.icns");
+
+	// Embed a shim app so Electron loads our dev main.js when launched via
+	// 'open -n -a App.app'. Without this, macOS injects -psn_XXXXXX before
+	// any --args, so Electron falls back to default_app.asar.
+	const devAppResourcesAppDir = path.join(resourcesDir, "app");
+	await fs.mkdir(devAppResourcesAppDir, { recursive: true });
+	const devMainPath = path.join(appDir, "out", "main", "main.js");
+	await fs.writeFile(
+		path.join(devAppResourcesAppDir, "package.json"),
+		JSON.stringify({ name: "hubble-dev", version: "0.0.1", main: "shim.js" }),
+	);
+	await fs.writeFile(
+		path.join(devAppResourcesAppDir, "shim.js"),
+		`// Dev shim — loads the electron-vite build output.\nrequire(${JSON.stringify(devMainPath)});\n`,
+	);
 }
 
 async function patchHelperBundle(helperAppPath, suffix) {
@@ -257,7 +272,8 @@ function startElectronVite(env) {
 	);
 	const child = spawn(
 		process.execPath,
-		[electronViteCli, "dev", ...process.argv.slice(2)],
+		// --watch enables main-process rebuild + electron restart on file changes.
+		[electronViteCli, "dev", "--watch", ...process.argv.slice(2)],
 		{
 			cwd: appDir,
 			env,
@@ -283,7 +299,24 @@ function startElectronVite(env) {
 const env = { ...process.env };
 
 if (process.platform === "darwin") {
-	env.ELECTRON_EXEC_PATH = await ensureDevApp();
+	await ensureDevApp();
+	// On macOS 26+ (Darwin 25+), directly spawning the Electron binary via
+	// spawn() does not initialize the browser process (process.type stays
+	// undefined, require("electron") returns the npm path string). Launching via
+	// 'open -n -a Bundle.app' triggers the full Electron browser init.
+	//
+	// We set ELECTRON_EXEC_PATH to a wrapper shell script that calls
+	// 'open -n -W -a App.app --args <entry>' and propagates env vars via
+	// launchctl setenv so they're visible to the launched app.
+	env.ELECTRON_EXEC_PATH = path.join(
+		appDir,
+		"scripts",
+		"electron-launcher-mac.sh",
+	);
+	env.HUBBLE_DEV_APP_BUNDLE = devAppPath;
+	// The launcher script rewrites the shim before each launch with current
+	// env vars embedded, so the app receives them without launchctl setenv.
+	env.HUBBLE_DEV_MAIN_PATH = path.join(appDir, "out", "main", "main.js");
 	env.HUBBLE_DESKTOP_FORCE_DEV = "1";
 	env.HUBBLE_DESKTOP_DEV_APP_NAME = devAppName;
 	await ensurePlayground();

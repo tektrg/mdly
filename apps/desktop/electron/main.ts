@@ -930,7 +930,7 @@ async function createWindow() {
 		webPreferences: {
 			contextIsolation: true,
 			nodeIntegration: false,
-			preload: path.join(__dirname, "../preload/preload.mjs"),
+			preload: path.join(__dirname, "../preload/preload.js"),
 			sandbox: false,
 		},
 	});
