@@ -1,0 +1,181 @@
+[data-hubble-editor] .editorTableOfContents {
+	position: fixed;
+	z-index: 20;
+	inset-block: clamp(5rem, 18vh, 9rem) clamp(5rem, 16vh, 8rem);
+	inset-inline-end: clamp(0.65rem, 1.6vw, 1.25rem);
+	inline-size: 2.75rem;
+	pointer-events: auto;
+}
+
+[data-hubble-editor] .editorTableOfContentsTrigger {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 0;
+	inline-size: 2.75rem;
+	border: 0;
+	padding: 0;
+	background: transparent;
+	cursor: pointer;
+}
+
+[data-hubble-editor] .editorTableOfContentsRail {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 0.5rem;
+	inline-size: 1.75rem;
+}
+
+[data-hubble-editor] .editorTableOfContentsDash {
+	position: absolute;
+	inset-inline-end: 0;
+	display: block;
+	inline-size: 0.9rem;
+	block-size: 2px;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--muted-foreground) 28%, transparent);
+	opacity: 0.75;
+	transform: translateY(-50%);
+	transition:
+		inline-size 160ms var(--ease-snappy),
+		background-color 160ms var(--ease-snappy),
+		opacity 160ms var(--ease-snappy);
+}
+
+[data-hubble-editor] .editorTableOfContentsDash[data-level="1"],
+[data-hubble-editor] .editorTableOfContentsDash[data-level="2"] {
+	inline-size: 1.25rem;
+}
+
+[data-hubble-editor] .editorTableOfContentsDash[data-active="true"] {
+	inline-size: 1.55rem;
+	background: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	opacity: 1;
+}
+
+[data-hubble-editor] .editorTableOfContentsPanel {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-end: 2.25rem;
+	inline-size: min(24rem, calc(100vw - 5rem));
+	max-block-size: min(42rem, calc(100dvh - 8rem));
+	overflow: auto;
+	padding-block: 1rem;
+	padding-inline: 1.15rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-popover);
+	background: color-mix(in oklab, var(--popover) 96%, transparent);
+	box-shadow: var(--shadow-overlay);
+	opacity: 0;
+	pointer-events: none;
+	transform: translateY(-50%) translateX(0.35rem) scale(0.98);
+	transform-origin: center right;
+	transition:
+		opacity 140ms var(--ease-snappy),
+		transform 140ms var(--ease-snappy);
+}
+
+[data-hubble-editor]
+	.editorTableOfContents[data-expanded="true"]
+	.editorTableOfContentsPanel,
+[data-hubble-editor] .editorTableOfContents:hover .editorTableOfContentsPanel,
+[data-hubble-editor]
+	.editorTableOfContents:focus-within
+	.editorTableOfContentsPanel {
+	opacity: 1;
+	pointer-events: auto;
+	transform: translateY(-50%) translateX(0) scale(1);
+}
+
+[data-hubble-editor]
+	.editorTableOfContentsTrigger:focus-visible
+	.editorTableOfContentsRail {
+	outline: 2px solid var(--ring);
+	outline-offset: 0.35rem;
+	border-radius: var(--radius-inner);
+}
+
+[data-hubble-editor] .editorTableOfContentsList {
+	display: flex;
+	flex-direction: column;
+	gap: 0.1rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem {
+	display: block;
+	inline-size: 100%;
+	border: 0;
+	border-radius: var(--radius-inner);
+	background: transparent;
+	color: var(--muted-foreground);
+	font: inherit;
+	font-size: 0.875rem;
+	line-height: 1.22;
+	text-align: start;
+	overflow-wrap: anywhere;
+	padding-block: 0.22rem;
+	padding-inline: calc((var(--toc-level, 1) - 1) * 1.1rem) 0.4rem;
+	cursor: pointer;
+	transition:
+		background-color 140ms var(--ease-snappy),
+		color 140ms var(--ease-snappy);
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="1"] {
+	--toc-level: 1;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="2"] {
+	--toc-level: 2;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="3"] {
+	--toc-level: 3;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="4"] {
+	--toc-level: 4;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="5"] {
+	--toc-level: 5;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem[data-level="6"] {
+	--toc-level: 6;
+}
+
+[data-hubble-editor] .editorTableOfContentsItem:hover,
+[data-hubble-editor] .editorTableOfContentsItem:focus-visible,
+[data-hubble-editor] .editorTableOfContentsItem[data-active="true"] {
+	background: color-mix(in oklab, var(--accent) 46%, transparent);
+	color: var(--foreground);
+}
+
+[data-hubble-editor] .editorTableOfContentsItem:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 1px;
+}
+
+@media (max-width: 860px) {
+	[data-hubble-editor] .editorTableOfContents {
+		inset-block: clamp(4rem, 16vh, 7rem) clamp(4rem, 14vh, 6rem);
+		inset-inline-end: 0.35rem;
+		inline-size: 2.25rem;
+	}
+
+	[data-hubble-editor] .editorTableOfContentsTrigger {
+		inline-size: 2.25rem;
+	}
+
+	[data-hubble-editor] .editorTableOfContentsRail {
+		inset-inline-end: 0.25rem;
+	}
+
+	[data-hubble-editor] .editorTableOfContentsPanel {
+		inline-size: min(20rem, calc(100vw - 3.5rem));
+		inset-inline-end: 1.8rem;
+	}
+}

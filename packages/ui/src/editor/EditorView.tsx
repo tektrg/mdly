@@ -26,6 +26,7 @@ import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { SmartLinkExtension } from "./SmartLinkExtension";
+import { TableOfContents } from "./TableOfContents";
 import { VirtualCursor } from "./VirtualCursor";
 import "./EditorView.css";
 import {
@@ -280,6 +281,7 @@ export function EditorView({
 				/>
 				<SlashCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
+				<TableOfContents editor={editor} scrollContainer={editorViewportEl} />
 			</div>
 			<FormattingStatusBar editor={editor} scrollContainer={editorViewportEl} />
 		</div>
