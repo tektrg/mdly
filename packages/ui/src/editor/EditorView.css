@@ -238,6 +238,50 @@
 	color: color-mix(in oklab, var(--foreground) 78%, white);
 }
 
+[data-hubble-editor] .ProseMirror table {
+	inline-size: 100%;
+	border-collapse: separate;
+	border-spacing: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	font-size: 0.95em;
+	overflow: hidden;
+	white-space: normal;
+}
+
+[data-hubble-editor] .ProseMirror :is(th, td) {
+	border-block-start: 1px solid var(--border);
+	border-inline-start: 1px solid var(--border);
+	padding-block: 0.45rem;
+	padding-inline: 0.65rem;
+	vertical-align: top;
+}
+
+[data-hubble-editor] .ProseMirror tr:first-child > :is(th, td) {
+	border-block-start: 0;
+}
+
+[data-hubble-editor] .ProseMirror :is(th, td):first-child {
+	border-inline-start: 0;
+}
+
+[data-hubble-editor] .ProseMirror th {
+	background: var(--muted);
+	font-weight: 600;
+}
+
+[data-hubble-editor] .ProseMirror :is(th, td) > * {
+	margin-block: 0;
+}
+
+[data-hubble-editor] .ProseMirror :is(th, td)[align="center"] {
+	text-align: center;
+}
+
+[data-hubble-editor] .ProseMirror :is(th, td)[align="right"] {
+	text-align: right;
+}
+
 [data-hubble-editor] .pm-fake-selection {
 	background: color-mix(in oklab, var(--selected) 70%, transparent);
 	border-radius: 2px;

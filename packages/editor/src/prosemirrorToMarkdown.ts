@@ -81,6 +81,10 @@ function blockToMarkdown(node: JSONContent): string {
 			return `![${alt}](${src})`;
 		}
 
+		case "table": {
+			return tableToMarkdown(node);
+		}
+
 		case "embed": {
 			const src = String(node.attrs?.src ?? "");
 			if (!isValidIframeEmbedSrc(src)) return "";
@@ -90,6 +94,73 @@ function blockToMarkdown(node: JSONContent): string {
 		default:
 			return "";
 	}
+}
+
+function tableToMarkdown(table: JSONContent): string {
+	const rows = (table.content ?? []).filter((row) => row.type === "tableRow");
+	if (rows.length === 0) return "";
+
+	const columnCount = Math.max(...rows.map((row) => row.content?.length ?? 0));
+	if (columnCount === 0) return "";
+
+	const headerCells = cellsForRow(rows[0], columnCount);
+	const bodyRows = rows.slice(1).map((row) => cellsForRow(row, columnCount));
+	const alignments = headerCells.map((cell) => tableCellAlignment(cell));
+
+	return [
+		serializeTableRow(headerCells),
+		serializeDelimiterRow(alignments),
+		...bodyRows.map(serializeTableRow),
+	].join("\n");
+}
+
+function cellsForRow(row: JSONContent | undefined, columnCount: number) {
+	const cells = row?.content ?? [];
+	return Array.from({ length: columnCount }, (_, index) => cells[index]);
+}
+
+function tableCellAlignment(cell: JSONContent | undefined): string | null {
+	const align = cell?.attrs?.align;
+	return align === "left" || align === "right" || align === "center"
+		? align
+		: null;
+}
+
+function serializeTableRow(cells: (JSONContent | undefined)[]): string {
+	return `| ${cells.map(tableCellToMarkdown).join(" | ")} |`;
+}
+
+function serializeDelimiterRow(alignments: (string | null)[]): string {
+	return `| ${alignments.map(alignmentDelimiter).join(" | ")} |`;
+}
+
+function alignmentDelimiter(alignment: string | null): string {
+	switch (alignment) {
+		case "left":
+			return ":---";
+		case "center":
+			return ":---:";
+		case "right":
+			return "---:";
+		default:
+			return "---";
+	}
+}
+
+function tableCellToMarkdown(cell: JSONContent | undefined): string {
+	if (!cell) return "";
+	const content = (cell.content ?? [])
+		.map(tableBlockToMarkdown)
+		.filter(Boolean)
+		.join("<br>");
+	return content.replace(/\r?\n/g, "<br>");
+}
+
+function tableBlockToMarkdown(node: JSONContent): string {
+	if (node.type === "paragraph") {
+		return inlineToTableMarkdown(node.content ?? []);
+	}
+	return blockToMarkdown(node).split("|").join("\\|");
 }
 
 const BLOCKED_IFRAME_SCHEME = /^(file:|data:|javascript:|hubble-asset:)/i;
@@ -209,6 +280,39 @@ function inlineToMarkdown(nodes: JSONContent[]): string {
 	return result;
 }
 
+function inlineToTableMarkdown(nodes: JSONContent[]): string {
+	let result = "";
+	for (let i = 0; i < nodes.length; ) {
+		const attrs = getLinkAttrs(nodes[i]);
+		const key = linkKey(attrs);
+		if (!attrs || !key) {
+			result += nodeToTableMarkdown(nodes[i]);
+			i += 1;
+			continue;
+		}
+
+		let j = i;
+		const grouped: JSONContent[] = [];
+		while (j < nodes.length && linkKey(getLinkAttrs(nodes[j])) === key) {
+			grouped.push(removeLinkMark(nodes[j]));
+			j += 1;
+		}
+		const text = grouped.map(nodeToTableMarkdown).join("");
+		if (attrs.kind === "wiki") {
+			const target = attrs.target || attrs.href;
+			const defaultText = wikiDisplayNameForTarget(target);
+			result +=
+				text === defaultText
+					? `[[${target}]]`
+					: `[[${target}|${escapeWikiAlias(text)}]]`;
+		} else {
+			result += `[${text}](${attrs.href})`;
+		}
+		i = j;
+	}
+	return result;
+}
+
 function escapeWikiAlias(alias: string) {
 	return alias.split("|").join("\\|");
 }
@@ -247,6 +351,46 @@ function nodeToMarkdown(node: JSONContent): string {
 
 		case "hardBreak": {
 			return "  \n"; // Two spaces + newline creates a line break in Markdown
+		}
+
+		default:
+			return "";
+	}
+}
+
+function nodeToTableMarkdown(node: JSONContent): string {
+	if (!node.type) return "";
+
+	switch (node.type) {
+		case "text": {
+			const marks = node.marks ?? [];
+			if (marks.some((mark) => mark.type === "code")) {
+				return `\`${(node.text ?? "").split("|").join("\\|")}\``;
+			}
+
+			let text = (node.text ?? "").split("|").join("\\|");
+			for (const mark of marks) {
+				switch (mark.type) {
+					case "bold":
+						text = `**${text}**`;
+						break;
+					case "italic":
+						text = `*${text}*`;
+						break;
+					case "strike":
+						text = `~~${text}~~`;
+						break;
+					case "code":
+					case "link":
+						break;
+				}
+			}
+
+			return text;
+		}
+
+		case "hardBreak": {
+			return "<br>";
 		}
 
 		default:

@@ -7,6 +7,7 @@ import {
 	markdownToTiptapDoc,
 	parseMarkdownFrontMatter,
 	StrikethroughShortcutExtension,
+	tableExtensions,
 	tiptapDocToMarkdown,
 } from "@hubble.md/editor";
 import type { Editor } from "@tiptap/core";
@@ -139,6 +140,7 @@ export function EditorView({
 			MarkdownRolloverExtension,
 			StrikethroughShortcutExtension,
 			...listExtensions,
+			...tableExtensions,
 			...extensions,
 			TaskItem.configure({ nested: true }),
 		],
