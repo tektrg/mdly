@@ -243,6 +243,16 @@
 	border-radius: 2px;
 }
 
+[data-hubble-editor] .pm-find-match {
+	background: color-mix(in oklab, var(--brand) 22%, transparent);
+	border-radius: 2px;
+}
+
+[data-hubble-editor] .pm-find-match-current {
+	background: color-mix(in oklab, var(--brand) 38%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in oklab, var(--brand) 45%, transparent);
+}
+
 [data-hubble-editor]
 	:is(.pm-md-delimiter, .ProseMirror code, .ProseMirror pre) {
 	font-family:

@@ -1,5 +1,13 @@
 export { FakeSelectionExtension } from "./FakeSelectionExtension";
 export {
+	FindExtension,
+	findMatches,
+	getFindState,
+	selectFindMatch,
+	type FindMatch,
+	type FindState,
+} from "./FindExtension";
+export {
 	combineMarkdownFrontMatter,
 	detectFilePropertyType,
 	type FileProperty,
