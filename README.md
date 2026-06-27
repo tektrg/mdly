@@ -1,5 +1,9 @@
 # mdly
 
+<p align="center">
+  <img src="./apps/desktop/assets/logo.png" alt="mdly" width="360" />
+</p>
+
 **A lightweight Markdown-first document editor.** Free, open source, and designed for fast local document workflows.
 
 <p align="center">

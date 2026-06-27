@@ -12,8 +12,8 @@ const worktreeId = createHash("sha1")
 	.update(path.resolve(appDir, "../.."))
 	.digest("hex")
 	.slice(0, 8);
-const devAppName = `Hubble Dev ${worktreeId}`;
-const devBundleId = `com.benholmes.hubblemd.desktop.dev.${worktreeId}`;
+const devAppName = `mdly Dev ${worktreeId}`;
+const devBundleId = `com.tektrg.mdly.desktop.dev.${worktreeId}`;
 const devAppPath = path.join(devAppDir, `${devAppName}.app`);
 const devExecPath = path.join(devAppPath, "Contents", "MacOS", devAppName);
 const markerPath = path.join(devAppDir, "metadata.json");
@@ -115,7 +115,7 @@ async function patchMainBundle() {
 	const resourcesDir = path.join(devAppPath, "Contents", "Resources");
 	const macosDir = path.join(devAppPath, "Contents", "MacOS");
 	const sourceExecutable = path.join(macosDir, "Electron");
-	const iconPath = path.join(resourcesDir, "hubble-dev.icns");
+	const iconPath = path.join(resourcesDir, "mdly-dev.icns");
 
 	if (await pathExists(sourceExecutable)) {
 		await fs.rename(sourceExecutable, devExecPath);
@@ -126,7 +126,7 @@ async function patchMainBundle() {
 	setPlistValue(plistPath, "CFBundleName", devAppName);
 	setPlistValue(plistPath, "CFBundleDisplayName", devAppName);
 	setPlistValue(plistPath, "CFBundleExecutable", devAppName);
-	setPlistValue(plistPath, "CFBundleIconFile", "hubble-dev.icns");
+	setPlistValue(plistPath, "CFBundleIconFile", "mdly-dev.icns");
 
 	// Embed a shim app so Electron loads our dev main.js when launched via
 	// 'open -n -a App.app'. Without this, macOS injects -psn_XXXXXX before
@@ -136,7 +136,7 @@ async function patchMainBundle() {
 	const devMainPath = path.join(appDir, "out", "main", "main.js");
 	await fs.writeFile(
 		path.join(devAppResourcesAppDir, "package.json"),
-		JSON.stringify({ name: "hubble-dev", version: "0.0.1", main: "shim.js" }),
+		JSON.stringify({ name: "mdly-dev", version: "0.0.1", main: "shim.js" }),
 	);
 	await fs.writeFile(
 		path.join(devAppResourcesAppDir, "shim.js"),
