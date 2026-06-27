@@ -21,7 +21,10 @@ function findLinkAtEvent(
 		if (mark.type.name === "link" && typeof mark.attrs.href === "string") {
 			return {
 				href: mark.attrs.href,
-				kind: mark.attrs.kind === "wiki" ? "wiki" : "url",
+				kind:
+					mark.attrs.kind === "wiki" || mark.attrs.kind === "notionMention"
+						? mark.attrs.kind
+						: "url",
 				target:
 					typeof mark.attrs.target === "string" ? mark.attrs.target : null,
 			};
@@ -39,6 +42,7 @@ function setModHeld(el: HTMLElement, held: boolean) {
 export const LinkClickExtension = Extension.create<{
 	onOpenExternalLink?: (href: string) => void | Promise<void>;
 	onOpenWikiLink?: (target: string) => void | Promise<void>;
+	onOpenNotionMentionLink?: (href: string) => void | Promise<void>;
 }>({
 	name: "linkClick",
 	addProseMirrorPlugins() {
@@ -63,6 +67,10 @@ export const LinkClickExtension = Extension.create<{
 							event.preventDefault();
 							if (link.kind === "wiki") {
 								void this.options.onOpenWikiLink?.(link.target ?? link.href);
+								return true;
+							}
+							if (link.kind === "notionMention") {
+								void this.options.onOpenNotionMentionLink?.(link.href);
 								return true;
 							}
 							void this.options.onOpenExternalLink?.(link.href);

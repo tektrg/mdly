@@ -5,12 +5,47 @@
 	padding-block-end: clamp(4rem, 16vh, 8rem);
 }
 
+[data-hubble-editor] .findReplaceBar {
+	position: absolute;
+	z-index: 30;
+	inset-block-start: 0.75rem;
+	inset-inline-end: 0.75rem;
+	display: flex;
+	max-inline-size: min(calc(100% - 1.5rem), 48rem);
+	align-items: center;
+	gap: 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-md);
+	background: color-mix(in oklab, var(--popover) 96%, transparent);
+	padding-block: 0.4rem;
+	padding-inline: 0.5rem;
+	color: var(--popover-foreground);
+	box-shadow: var(--shadow-lg);
+	backdrop-filter: blur(12px);
+}
+
+[data-hubble-editor] .pm-find-match {
+	border-radius: 2px;
+	background: color-mix(in oklab, var(--brand) 20%, transparent);
+}
+
+[data-hubble-editor] .pm-find-match-active {
+	background: color-mix(in oklab, var(--brand) 38%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in oklab, var(--brand) 60%, transparent);
+}
+
 [data-hubble-editor] .editorPropertiesPanel {
 	inline-size: 100%;
 	max-inline-size: var(--editor-content-max-inline-size);
 	margin-inline: auto;
 	padding-block: 0.75rem;
 	padding-inline: var(--editor-content-padding-inline);
+}
+
+[data-hubble-editor] .editorPropertiesPanel[data-find-active="true"] {
+	border-radius: var(--radius-md);
+	background: color-mix(in oklab, var(--brand) 8%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--brand) 35%, transparent);
 }
 
 [data-hubble-editor] .ProseMirror {
@@ -75,25 +110,25 @@
 }
 
 [data-hubble-editor] .ProseMirror h1 {
-	font-size: 1.75rem;
+	font-size: 1.75em;
 	font-weight: 600;
 	line-height: 1.2;
 }
 
 [data-hubble-editor] .ProseMirror h2 {
-	font-size: 1.4rem;
+	font-size: 1.4em;
 	font-weight: 600;
 	line-height: 1.25;
 }
 
 [data-hubble-editor] .ProseMirror h3 {
-	font-size: 1.15rem;
+	font-size: 1.15em;
 	font-weight: 600;
 	line-height: 1.3;
 }
 
 [data-hubble-editor] .ProseMirror h4 {
-	font-size: 1.05rem;
+	font-size: 1.05em;
 	font-weight: 600;
 	line-height: 1.35;
 	color: color-mix(in oklab, var(--foreground) 75%, var(--muted-foreground));
@@ -145,7 +180,7 @@
 	display: none;
 }
 
-/* Custom forest-green task checkbox. The native input is kept for
+/* Custom neutral task checkbox. The native input is kept for
  * interaction/accessibility but visually replaced by .pm-task-checkbox-box. */
 [data-hubble-editor] .pm-task-checkbox > input {
 	position: absolute;
@@ -187,7 +222,7 @@
 		opacity 100ms var(--ease-snappy);
 }
 
-/* Hover: hint the forest green before commit. */
+/* Hover: hint the chrome tone before commit. */
 [data-hubble-editor] .pm-task-checkbox:hover .pm-task-checkbox-box {
 	border-color: color-mix(in oklab, var(--brand) 70%, var(--border));
 }
@@ -196,7 +231,7 @@
 	transform: scale(0.88);
 }
 
-/* Checked: fill with forest green and pop in the checkmark. */
+/* Checked: fill with brand chrome and pop in the checkmark. */
 [data-hubble-editor] .pm-task-checkbox > input:checked + .pm-task-checkbox-box {
 	background: var(--brand);
 	border-color: var(--brand);
@@ -235,7 +270,55 @@
 	border-inline-start: 2px solid var(--border);
 	border-radius: 1px;
 	padding-inline-start: 1rem;
-	color: color-mix(in oklab, var(--foreground) 78%, white);
+	color: color-mix(in oklab, var(--foreground) 78%, var(--muted-foreground));
+}
+
+[data-hubble-editor] .ProseMirror [data-notion-callout] {
+	display: grid;
+	grid-template-columns: 1.25rem minmax(0, 1fr);
+	gap: 0.7rem;
+	margin-block: 0.85rem;
+	border: 1px solid var(--border);
+	border-inline-start: 3px solid var(--brand);
+	border-radius: var(--radius-md);
+	background: color-mix(in oklab, var(--muted) 78%, transparent);
+	padding-block: 0.75rem;
+	padding-inline: 0.85rem;
+	color: var(--foreground);
+}
+
+[data-hubble-editor] .ProseMirror [data-notion-callout]::before {
+	content: "!";
+	display: grid;
+	place-items: center;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--brand) 16%, transparent);
+	color: var(--brand);
+	font-size: 0.8rem;
+	font-weight: 700;
+	line-height: 1;
+}
+
+[data-hubble-editor] .ProseMirror [data-notion-callout] > :first-child {
+	margin-block-start: 0;
+}
+
+[data-hubble-editor] .ProseMirror [data-notion-callout] > :last-child {
+	margin-block-end: 0;
+}
+
+[data-hubble-editor] .ProseMirror [data-notion-empty-block] {
+	min-block-size: 1.35rem;
+	margin-block: 0.35rem;
+}
+
+[data-hubble-editor]
+	.ProseMirror
+	[data-notion-empty-block].ProseMirror-selectednode {
+	border-radius: var(--radius-sm);
+	background: color-mix(in oklab, var(--muted) 72%, transparent);
 }
 
 [data-hubble-editor] .ProseMirror table {
@@ -374,17 +457,17 @@
 
 [data-hubble-editor] .ProseMirror pre code {
 	background: transparent;
-	color: #000;
+	color: var(--syntax-foreground);
 	padding: 0;
 }
 
 [data-hubble-editor] .ProseMirror .xml .hljs-meta {
-	color: #c0c0c0;
+	color: var(--syntax-muted);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-comment,
 [data-hubble-editor] .ProseMirror .hljs-quote {
-	color: #007400;
+	color: var(--syntax-comment);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-tag,
@@ -393,35 +476,35 @@
 [data-hubble-editor] .ProseMirror .hljs-selector-tag,
 [data-hubble-editor] .ProseMirror .hljs-literal,
 [data-hubble-editor] .ProseMirror .hljs-name {
-	color: #aa0d91;
+	color: var(--syntax-keyword);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-variable,
 [data-hubble-editor] .ProseMirror .hljs-template-variable {
-	color: #3f6e74;
+	color: var(--syntax-variable);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-code,
 [data-hubble-editor] .ProseMirror .hljs-string,
 [data-hubble-editor] .ProseMirror .hljs-meta .hljs-string {
-	color: #c41a16;
+	color: var(--syntax-string);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-regexp,
 [data-hubble-editor] .ProseMirror .hljs-link {
-	color: #0e0eff;
+	color: var(--syntax-link);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-title,
 [data-hubble-editor] .ProseMirror .hljs-symbol,
 [data-hubble-editor] .ProseMirror .hljs-bullet,
 [data-hubble-editor] .ProseMirror .hljs-number {
-	color: #1c00cf;
+	color: var(--syntax-number);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-section,
 [data-hubble-editor] .ProseMirror .hljs-meta {
-	color: #643820;
+	color: var(--syntax-meta);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-title.class_,
@@ -429,20 +512,20 @@
 [data-hubble-editor] .ProseMirror .hljs-type,
 [data-hubble-editor] .ProseMirror .hljs-built_in,
 [data-hubble-editor] .ProseMirror .hljs-params {
-	color: #5c2699;
+	color: var(--syntax-type);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-attr {
-	color: #836c28;
+	color: var(--syntax-attr);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-subst {
-	color: #000;
+	color: var(--syntax-foreground);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-selector-id,
 [data-hubble-editor] .ProseMirror .hljs-selector-class {
-	color: #9b703f;
+	color: var(--syntax-selector);
 }
 
 [data-hubble-editor] .ProseMirror .hljs-doctag,

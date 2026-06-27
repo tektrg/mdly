@@ -49,10 +49,12 @@ export function frontMatterStateFromMarkdown(
 export function FilePropertiesPanel({
 	path,
 	state,
+	searchActive = false,
 	onChange,
 }: {
 	path: string;
 	state: FrontMatterState;
+	searchActive?: boolean;
 	onChange: (state: FrontMatterState, frontMatter: string) => void;
 }) {
 	const addButtonRef = useRef<HTMLButtonElement>(null);
@@ -60,11 +62,17 @@ export function FilePropertiesPanel({
 	const properties = state.type === "invalid" ? [] : state.properties;
 
 	if (state.type === "invalid") {
-		return <InvalidFrontMatter state={state} onChange={onChange} />;
+		return (
+			<InvalidFrontMatter
+				state={state}
+				searchActive={searchActive}
+				onChange={onChange}
+			/>
+		);
 	}
 
 	return (
-		<div className="editorPropertiesPanel">
+		<div className="editorPropertiesPanel" data-find-active={searchActive}>
 			<div className="flex flex-col gap-1.5">
 				{properties.map((property, index) => (
 					<PropertyRow
@@ -128,17 +136,29 @@ export function FilePropertiesPanel({
 
 function InvalidFrontMatter({
 	state,
+	searchActive,
 	onChange,
 }: {
 	state: Extract<FrontMatterState, { type: "invalid" }>;
+	searchActive: boolean;
 	onChange: (state: FrontMatterState, frontMatter: string) => void;
 }) {
 	const [raw, setRaw] = useState(state.raw);
+	const detailsRef = useRef<HTMLDetailsElement>(null);
+	useEffect(() => {
+		if (searchActive) detailsRef.current?.setAttribute("open", "");
+	}, [searchActive]);
 	return (
-		<div className="editorPropertiesPanel border-b border-border/70">
+		<div
+			className="editorPropertiesPanel border-b border-border/70"
+			data-find-active={searchActive}
+		>
 			<div className="flex flex-col gap-2 text-[12px]">
 				<p className="m-0 text-muted-foreground">Properties unavailable</p>
-				<details className="rounded-sm border border-border bg-muted/30">
+				<details
+					ref={detailsRef}
+					className="rounded-sm border border-border bg-muted/30"
+				>
 					<summary className="cursor-pointer px-2 py-1 text-[11px] text-muted-foreground">
 						Raw front matter
 					</summary>

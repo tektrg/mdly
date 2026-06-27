@@ -7,6 +7,7 @@ import {
 } from "@floating-ui/dom";
 import {
 	getActiveLinkRange,
+	type LinkKind,
 	wikiDisplayNameForTarget,
 	withMarkdownExtension,
 } from "@hubble.md/editor";
@@ -61,7 +62,7 @@ type ActiveLink = {
 	from: number;
 	to: number;
 	href: string;
-	kind: "url" | "wiki";
+	kind: LinkKind;
 	target: string | null;
 };
 export type WikiTarget = {
@@ -349,9 +350,10 @@ function updateLinkMark(editor: Editor, link: ActiveLink, href: string) {
 }
 
 async function visitActiveLink(
-	link: { href: string; kind: "url" | "wiki"; target: string | null },
+	link: { href: string; kind: LinkKind; target: string | null },
 	onOpenExternalLink: (href: string) => void | Promise<void>,
 	onOpenWikiLink: (target: string) => void | Promise<void>,
+	onOpenNotionMentionLink: ((href: string) => void | Promise<void>) | undefined,
 	onMessage?: (message: string, kind: "success" | "error") => void,
 ) {
 	if (link.kind === "wiki") {
@@ -361,6 +363,10 @@ async function visitActiveLink(
 			return;
 		}
 		await onOpenWikiLink(withMarkdownExtension(link.target));
+		return;
+	}
+	if (link.kind === "notionMention" && onOpenNotionMentionLink) {
+		await onOpenNotionMentionLink(link.href);
 		return;
 	}
 	await visitLink(link.href, onOpenExternalLink, onMessage);
@@ -616,6 +622,7 @@ export function LinkPopover({
 	wikiTargets,
 	onOpenExternalLink,
 	onOpenWikiLink,
+	onOpenNotionMentionLink,
 	onMessage,
 	onCursorModeChange,
 }: {
@@ -625,6 +632,7 @@ export function LinkPopover({
 	wikiTargets: WikiTarget[];
 	onOpenExternalLink: (href: string) => void | Promise<void>;
 	onOpenWikiLink: (target: string) => void | Promise<void>;
+	onOpenNotionMentionLink?: (href: string) => void | Promise<void>;
 	onMessage?: (message: string, kind: "success" | "error") => void;
 	onCursorModeChange?: (mode: VirtualCursorMode | null) => void;
 }) {
@@ -1371,6 +1379,7 @@ export function LinkPopover({
 									activeLink,
 									onOpenExternalLink,
 									onOpenWikiLink,
+									onOpenNotionMentionLink,
 									onMessage,
 								);
 							}}

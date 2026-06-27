@@ -1,10 +1,13 @@
 import {
 	combineMarkdownFrontMatter,
 	HeadingExtension,
+	hasLinkedNotionFrontMatter,
 	LinkExtension,
 	listExtensions,
 	MarkdownRolloverExtension,
 	markdownToTiptapDoc,
+	normalizeNotionMarkdownBody,
+	notionBlockExtensions,
 	parseMarkdownFrontMatter,
 	StrikethroughShortcutExtension,
 	tableExtensions,
@@ -21,6 +24,8 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CODE_BLOCK_COPY_EVENT, HubbleCodeBlock } from "./CodeBlockExtension";
+import { FindReplaceBar } from "./FindReplaceBar";
+import { FindReplaceExtension } from "./FindReplaceExtension";
 import { LinkClickExtension } from "./LinkClickExtension";
 import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
@@ -38,6 +43,14 @@ import { FormattingStatusBar } from "./FormattingStatusBar";
 import type { VirtualCursorMode } from "./virtualCursorMode";
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 120;
+const USER_EDIT_INTENT_WINDOW_MS = 1000;
+
+export function hasRecentEditorUserIntent(
+	lastUserEditIntentAt: number,
+	now = Date.now(),
+): boolean {
+	return now - lastUserEditIntentAt < USER_EDIT_INTENT_WINDOW_MS;
+}
 
 export type { WikiTarget };
 
@@ -55,6 +68,7 @@ export type EditorViewProps = {
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 	onOpenExternalLink: (href: string) => void | Promise<void>;
 	onOpenWikiLink: (target: string) => void | Promise<void>;
+	onOpenNotionMentionLink?: (href: string) => void | Promise<void>;
 	onMessage?: (message: string, type: "success" | "error") => void;
 };
 
@@ -72,14 +86,16 @@ export function EditorView({
 	onScrollContainerChange,
 	onOpenExternalLink,
 	onOpenWikiLink,
+	onOpenNotionMentionLink,
 	onMessage,
 }: EditorViewProps) {
 	const initialFrontMatter = useMemo(
 		() => parseMarkdownFrontMatter(initialMarkdown),
 		[initialMarkdown],
 	);
+	const initialBody = bodyForEditor(initialFrontMatter);
 	const partsRef = useRef({
-		body: initialFrontMatter.body,
+		body: initialBody,
 		frontMatter:
 			initialFrontMatter.type === "none" ? "" : initialFrontMatter.raw,
 	});
@@ -90,6 +106,7 @@ export function EditorView({
 		),
 	);
 	const saveTimerRef = useRef<number | null>(null);
+	const lastUserEditIntentAtRef = useRef(Number.NEGATIVE_INFINITY);
 	const editorRootRef = useRef<HTMLDivElement | null>(null);
 	const editorViewportRef = useRef<HTMLDivElement | null>(null);
 	const [editorViewportEl, setEditorViewportEl] =
@@ -99,6 +116,8 @@ export function EditorView({
 	const [frontMatterState, setFrontMatterState] = useState(() =>
 		frontMatterStateFromMarkdown(initialMarkdown),
 	);
+	const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+	const [frontMatterSearchActive, setFrontMatterSearchActive] = useState(false);
 	const pathRef = useRef(path);
 	const editorRef = useRef<Editor | null>(null);
 	pathRef.current = path;
@@ -112,12 +131,18 @@ export function EditorView({
 		[onScrollContainerChange],
 	);
 
-	// Only used at editor creation. Later file loads sync through setContent.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: editor instance persists across file switches.
-	const initialDoc = useMemo(
-		() => markdownToTiptapDoc(initialFrontMatter.body),
+	const markUserEditIntent = useCallback(() => {
+		lastUserEditIntentAtRef.current = Date.now();
+	}, []);
+
+	const hasRecentUserEditIntent = useCallback(
+		() => hasRecentEditorUserIntent(lastUserEditIntentAtRef.current),
 		[],
 	);
+
+	// Only used at editor creation. Later file loads sync through setContent.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: editor instance persists across file switches.
+	const initialDoc = useMemo(() => markdownToTiptapDoc(initialBody), []);
 
 	const scheduleSave = useCallback(() => {
 		const savePath = pathRef.current;
@@ -129,17 +154,52 @@ export function EditorView({
 		}, saveDebounceMs);
 	}, [onSave, saveDebounceMs]);
 
+	const updateFrontMatter = useCallback(
+		(
+			frontMatter: string,
+			nextState = frontMatterStateFromMarkdown(
+				combineMarkdownFrontMatter(frontMatter, partsRef.current.body),
+			),
+		) => {
+			partsRef.current = { ...partsRef.current, frontMatter };
+			const markdown = combineMarkdownFrontMatter(
+				frontMatter,
+				partsRef.current.body,
+			);
+			latestMarkdownRef.current = markdown;
+			setFrontMatterState(nextState);
+			onLocalChange(pathRef.current, markdown);
+			scheduleSave();
+		},
+		[onLocalChange, scheduleSave],
+	);
+
+	const setFrontMatterSearchReveal = useCallback((active: boolean) => {
+		setFrontMatterSearchActive(active);
+		if (!active) return;
+		editorViewportRef.current?.scrollTo({
+			top: 0,
+			behavior: "smooth",
+		});
+	}, []);
+
 	const editor = useEditor({
 		extensions: [
 			StarterKit.configure({ codeBlock: false, listItem: false }),
 			HubbleCodeBlock,
+			FindReplaceExtension,
 			LinkExtension,
 			SmartLinkExtension,
-			LinkClickExtension.configure({ onOpenExternalLink, onOpenWikiLink }),
+			LinkClickExtension.configure({
+				onOpenExternalLink,
+				onOpenWikiLink,
+				onOpenNotionMentionLink,
+			}),
 			LinkCreationGhostExtension,
 			HeadingExtension,
 			MarkdownRolloverExtension,
 			StrikethroughShortcutExtension,
+			...notionBlockExtensions,
 			...listExtensions,
 			...tableExtensions,
 			...extensions,
@@ -156,6 +216,7 @@ export function EditorView({
 				body,
 			);
 			latestMarkdownRef.current = markdown;
+			if (!hasRecentUserEditIntent()) return;
 			onLocalChange(pathRef.current, markdown);
 			scheduleSave();
 		},
@@ -199,15 +260,13 @@ export function EditorView({
 		}
 		const parsed = parseMarkdownFrontMatter(initialMarkdown);
 		const frontMatter = parsed.type === "none" ? "" : parsed.raw;
-		partsRef.current = { body: parsed.body, frontMatter };
-		latestMarkdownRef.current = combineMarkdownFrontMatter(
-			frontMatter,
-			parsed.body,
-		);
+		const body = bodyForEditor(parsed);
+		partsRef.current = { body, frontMatter };
+		latestMarkdownRef.current = combineMarkdownFrontMatter(frontMatter, body);
 		setFrontMatterState(frontMatterStateFromMarkdown(initialMarkdown));
 		const currentBody = tiptapDocToMarkdown(editor.getJSON() as JSONContent);
-		if (currentBody !== parsed.body) {
-			editor.commands.setContent(markdownToTiptapDoc(parsed.body), {
+		if (currentBody !== body) {
+			editor.commands.setContent(markdownToTiptapDoc(body), {
 				emitUpdate: false,
 			});
 		}
@@ -237,11 +296,28 @@ export function EditorView({
 			window.removeEventListener(CODE_BLOCK_COPY_EVENT, handleCopyMessage);
 	}, [onMessage]);
 
+	useEffect(() => {
+		const handleFindShortcut = (event: KeyboardEvent) => {
+			if (event.key.toLocaleLowerCase() !== "f") return;
+			if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+			event.preventDefault();
+			setFindReplaceOpen(true);
+		};
+		window.addEventListener("keydown", handleFindShortcut, true);
+		return () =>
+			window.removeEventListener("keydown", handleFindShortcut, true);
+	}, []);
+
 	return (
 		<div
 			className="relative flex h-full min-h-0 flex-col"
 			ref={editorRootRef}
 			data-hubble-editor
+			onBeforeInputCapture={markUserEditIntent}
+			onDropCapture={markUserEditIntent}
+			onKeyDownCapture={markUserEditIntent}
+			onPasteCapture={markUserEditIntent}
+			onPointerDownCapture={markUserEditIntent}
 		>
 			<div
 				className="editorViewport relative min-h-0 flex-1 overflow-auto overscroll-contain"
@@ -250,16 +326,9 @@ export function EditorView({
 				<FilePropertiesPanel
 					path={path}
 					state={frontMatterState}
+					searchActive={frontMatterSearchActive}
 					onChange={(nextState, frontMatter) => {
-						setFrontMatterState(nextState);
-						partsRef.current = { ...partsRef.current, frontMatter };
-						const markdown = combineMarkdownFrontMatter(
-							frontMatter,
-							partsRef.current.body,
-						);
-						latestMarkdownRef.current = markdown;
-						onLocalChange(pathRef.current, markdown);
-						scheduleSave();
+						updateFrontMatter(frontMatter, nextState);
 					}}
 				/>
 				<EditorContent editor={editor} />
@@ -276,6 +345,7 @@ export function EditorView({
 					wikiTargets={wikiTargets}
 					onOpenExternalLink={onOpenExternalLink}
 					onOpenWikiLink={onOpenWikiLink}
+					onOpenNotionMentionLink={onOpenNotionMentionLink}
 					onMessage={onMessage}
 					onCursorModeChange={setCursorModeOverride}
 				/>
@@ -283,9 +353,28 @@ export function EditorView({
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<TableOfContents editor={editor} scrollContainer={editorViewportEl} />
 			</div>
+			<FindReplaceBar
+				editor={editor}
+				open={findReplaceOpen}
+				frontMatter={{
+					text: partsRef.current.frontMatter,
+					onReplace: updateFrontMatter,
+				}}
+				onOpenChange={setFindReplaceOpen}
+				onFrontMatterActiveChange={setFrontMatterSearchReveal}
+			/>
 			<FormattingStatusBar editor={editor} scrollContainer={editorViewportEl} />
 		</div>
 	);
+}
+
+function bodyForEditor(
+	parsed: ReturnType<typeof parseMarkdownFrontMatter>,
+): string {
+	if (parsed.type === "none") return parsed.body;
+	return hasLinkedNotionFrontMatter(parsed.raw)
+		? normalizeNotionMarkdownBody(parsed.body)
+		: parsed.body;
 }
 
 function hasUploadImage(node: JSONContent): boolean {
