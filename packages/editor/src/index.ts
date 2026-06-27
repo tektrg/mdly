@@ -1,4 +1,4 @@
-export { FakeSelectionExtension } from "./FakeSelectionExtension";
+export { FakeSelectionExtension } from "./FakeSelectionExtension.js";
 export {
 	combineMarkdownFrontMatter,
 	detectFilePropertyType,
@@ -11,47 +11,57 @@ export {
 	parseMarkdownFrontMatter,
 	serializeFrontMatter,
 	setMarkdownFrontMatter,
-} from "./frontMatter";
-export { HeadingExtension } from "./Heading";
+} from "./frontMatter.js";
+export { HeadingExtension } from "./Heading.js";
 export {
 	createLinkMark,
 	getActiveLinkRange,
 	getLinkHrefFromAttrs,
 	LinkExtension,
 	type LinkKind,
-} from "./Link";
+} from "./Link.js";
 export {
 	ListAutoJoinExtension,
 	ListItemExtension,
 	ListToggleExtension,
 	listExtensions,
-} from "./List";
+} from "./List.js";
 export {
 	type CaretFormattingState,
 	getCaretFormattingState,
 	MarkdownRolloverExtension,
-} from "./MarkdownRolloverExtension";
+} from "./MarkdownRolloverExtension.js";
 export {
 	hasMarkdownExtension,
 	stripMarkdownExtension,
 	wikiDisplayNameForTarget,
 	withMarkdownExtension,
-} from "./markdownPath";
-export { markdownToTiptapDoc } from "./markdownToProsemirror";
-export { tiptapDocToMarkdown } from "./prosemirrorToMarkdown";
-export { StoredMarksDecorationExtension } from "./StoredMarksDecorationExtension";
-export { StrikethroughShortcutExtension } from "./StrikethroughShortcutExtension";
+} from "./markdownPath.js";
+export { markdownToTiptapDoc } from "./markdownToProsemirror.js";
+export {
+	NotionCalloutExtension,
+	NotionEmptyBlockExtension,
+	NotionHtmlBlockExtension,
+	notionBlockExtensions,
+} from "./NotionBlocks.js";
+export {
+	hasLinkedNotionFrontMatter,
+	normalizeNotionMarkdownBody,
+} from "./notionMarkdownNormalization.js";
+export { tiptapDocToMarkdown } from "./prosemirrorToMarkdown.js";
+export { StoredMarksDecorationExtension } from "./StoredMarksDecorationExtension.js";
+export { StrikethroughShortcutExtension } from "./StrikethroughShortcutExtension.js";
 export {
 	TableCellExtension,
 	TableExtension,
 	TableHeaderExtension,
 	TableRowExtension,
 	tableExtensions,
-} from "./Table";
+} from "./Table.js";
 export {
 	isSelectionAtStartOfNode,
 	nearestSharedParentOfType,
 	parentsOfType,
 	textEndPos,
 	textStartPos,
-} from "./utils";
+} from "./utils.js";

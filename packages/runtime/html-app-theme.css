@@ -1,8 +1,8 @@
 :root {
 	color-scheme: light;
-	--brand: oklch(0.426 0.08 159.6);
-	--brand-accent: oklch(0.847 0.168 84.7);
-	--brand-accent-foreground: oklch(0.327 0.051 164.9);
+	--brand: oklch(0.45 0.008 95);
+	--brand-accent: oklch(0.72 0.012 95);
+	--brand-accent-foreground: oklch(0.24 0.008 95);
 	--background: oklch(0.995 0.001 95);
 	--foreground: oklch(0.27 0.008 150);
 	--card: oklch(0.998 0.001 95);
@@ -13,9 +13,9 @@
 	--secondary-foreground: var(--foreground);
 	--muted: oklch(0.96 0.003 95);
 	--muted-foreground: oklch(0.55 0.01 95);
-	--accent: oklch(0.965 0.05 90);
+	--accent: oklch(0.965 0.02 95);
 	--accent-foreground: var(--foreground);
-	--selected: oklch(0.9 0.12 90);
+	--selected: oklch(0.9 0.02 95);
 	--selected-foreground: var(--foreground);
 	--destructive: oklch(0.577 0.245 27.325);
 	--border: oklch(0.9 0.004 95);

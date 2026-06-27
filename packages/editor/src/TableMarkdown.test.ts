@@ -3,6 +3,26 @@ import { markdownToTiptapDoc } from "./markdownToProsemirror";
 import { tiptapDocToMarkdown } from "./prosemirrorToMarkdown";
 
 describe("table markdown conversion", () => {
+	const notionHtmlTable = `<table header-row="true">
+<tr>
+<td>Item</td>
+<td>Status</td>
+<td>Action</td>
+</tr>
+
+<tr>
+<td>Guest 3-free-coach + banner (\`coach-guest-trial-banner\`)</td>
+<td>Exists</td>
+<td>Confirm disclaimer copy = "30-day free trial / sign up"; verify it shows on every entry, not just home</td>
+</tr>
+
+<tr>
+<td>Trial days-left badge (\`coach-trial-days-badge\`)</td>
+<td>Exists</td>
+<td>Add inline **"i {{count}} days trial left. Click to upgrade."** CTA under chips -> opens wall (NEW)</td>
+</tr>
+</table>`;
+
 	it("parses GFM tables into table nodes", () => {
 		const doc = markdownToTiptapDoc(
 			"| Column A | Column B |\n| --- | --- |\n| Cell 1 | Cell 2 |",
@@ -73,6 +93,34 @@ describe("table markdown conversion", () => {
 		expect(tiptapDocToMarkdown(doc)).toBe(input);
 	});
 
+	it("parses pipe tables adjacent to prose as table blocks", () => {
+		const input = [
+			"Reference mapping from Plan Builder 14A.5.3:",
+			"| goal_current | Primary | Secondary |",
+			"| --- | --- | --- |",
+			"| Build Muscle | 6-8 | 8-10 |",
+			"Progression implication:",
+		].join("\n");
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.map((node) => node.type)).toEqual([
+			"paragraph",
+			"table",
+			"paragraph",
+		]);
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			[
+				"Reference mapping from Plan Builder 14A.5.3:",
+				"",
+				"| goal_current | Primary | Secondary |",
+				"| --- | --- | --- |",
+				"| Build Muscle | 6-8 | 8-10 |",
+				"",
+				"Progression implication:",
+			].join("\n"),
+		);
+	});
+
 	it("escapes pipes when serializing cell content", () => {
 		const markdown = tiptapDocToMarkdown({
 			type: "doc",
@@ -123,5 +171,38 @@ describe("table markdown conversion", () => {
 		const doc = markdownToTiptapDoc(input);
 
 		expect(tiptapDocToMarkdown(doc)).toBe(input);
+	});
+
+	it("parses Notion HTML tables with header-row into table nodes", () => {
+		const doc = markdownToTiptapDoc(notionHtmlTable);
+		const table = doc.content?.[0];
+
+		expect(table?.type).toBe("table");
+		expect(table?.content?.[0]?.content?.map((cell) => cell.type)).toEqual([
+			"tableHeader",
+			"tableHeader",
+			"tableHeader",
+		]);
+		expect(table?.content?.slice(1).map((row) => row.content?.length)).toEqual([
+			3, 3,
+		]);
+		expect(table?.content?.[1]?.content?.map((cell) => cell.type)).toEqual([
+			"tableCell",
+			"tableCell",
+			"tableCell",
+		]);
+	});
+
+	it("serializes supported Notion HTML tables to stable GFM markdown", () => {
+		const doc = markdownToTiptapDoc(notionHtmlTable);
+
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			[
+				"| Item | Status | Action |",
+				"| --- | --- | --- |",
+				'| Guest 3-free-coach + banner (`coach-guest-trial-banner`) | Exists | Confirm disclaimer copy = "30-day free trial / sign up"; verify it shows on every entry, not just home |',
+				'| Trial days-left badge (`coach-trial-days-badge`) | Exists | Add inline **"i {{count}} days trial left. Click to upgrade."** CTA under chips -> opens wall (NEW) |',
+			].join("\n"),
+		);
 	});
 });

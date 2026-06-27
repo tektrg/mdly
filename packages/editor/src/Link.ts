@@ -30,7 +30,7 @@ export const LinkExtension = Mark.create({
 					const target = (element as HTMLElement).getAttribute("data-target");
 					return {
 						href: href ?? "",
-						kind: kind === "wiki" ? "wiki" : "url",
+						kind: normalizeLinkKind(kind),
 						target,
 					};
 				},
@@ -52,7 +52,7 @@ export const LinkExtension = Mark.create({
 			"span",
 			mergeAttributes(HTMLAttributes, {
 				"data-href": href,
-				"data-link-kind": HTMLAttributes.kind === "wiki" ? "wiki" : "url",
+				"data-link-kind": normalizeLinkKind(HTMLAttributes.kind),
 				"data-target":
 					typeof HTMLAttributes.target === "string"
 						? HTMLAttributes.target
@@ -64,7 +64,7 @@ export const LinkExtension = Mark.create({
 	},
 });
 
-export type LinkKind = "url" | "wiki";
+export type LinkKind = "url" | "wiki" | "notionMention";
 export type LinkAttrs = {
 	href: string;
 	kind: LinkKind;
@@ -89,9 +89,13 @@ export function getLinkAttrs(attrs: unknown): LinkAttrs | null {
 	const rawTarget = (attrs as Record<string, unknown>).target;
 	return {
 		href,
-		kind: rawKind === "wiki" ? "wiki" : "url",
+		kind: normalizeLinkKind(rawKind),
 		target: typeof rawTarget === "string" ? rawTarget : null,
 	};
+}
+
+function normalizeLinkKind(value: unknown): LinkKind {
+	return value === "wiki" || value === "notionMention" ? value : "url";
 }
 
 export function getLinkHrefFromAttrs(attrs: unknown): string | null {

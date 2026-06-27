@@ -33,6 +33,70 @@ tags:
 		});
 	});
 
+	it("ignores repeated leading front matter blocks from Notion markdown exports", () => {
+		const parsed = parseMarkdownFrontMatter(`---
+AI Summary: First copy
+PIC: []
+---
+
+---
+AI Summary: Escaped duplicate copy
+PIC: \\[\\]
+---
+# Body`);
+
+		expect(parsed).toMatchObject({
+			type: "valid",
+			raw: "AI Summary: First copy\nPIC: []",
+			body: "# Body",
+			properties: [
+				{ key: "AI Summary", type: "unsupported" },
+				{ key: "PIC", type: "tags", value: [] },
+			],
+		});
+	});
+
+	it("keeps a second leading YAML block in the body when keys are not repeated", () => {
+		const parsed = parseMarkdownFrontMatter(`---
+title: Page title
+---
+
+---
+example: body block
+---
+Content`);
+
+		expect(parsed).toMatchObject({
+			type: "valid",
+			raw: "title: Page title",
+			body: "\n---\nexample: body block\n---\nContent",
+			properties: [{ key: "title", type: "text", value: "Page title" }],
+		});
+	});
+
+	it("keeps a second leading YAML block in the body when keys only partially overlap", () => {
+		const parsed = parseMarkdownFrontMatter(`---
+Status: Draft
+Name: Page title
+---
+
+---
+Status: example
+Description: body block
+---
+Content`);
+
+		expect(parsed).toMatchObject({
+			type: "valid",
+			raw: "Status: Draft\nName: Page title",
+			body: "\n---\nStatus: example\nDescription: body block\n---\nContent",
+			properties: [
+				{ key: "Status", type: "text", value: "Draft" },
+				{ key: "Name", type: "text", value: "Page title" },
+			],
+		});
+	});
+
 	it("uses YAML 1.2 scalar behavior", () => {
 		const parsed = parseMarkdownFrontMatter(`---
 yes_value: yes

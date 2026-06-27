@@ -21,11 +21,20 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
 import { visit } from "unist-util-visit";
-import { wikiDisplayNameForTarget } from "./markdownPath";
+import { wikiDisplayNameForTarget } from "./markdownPath.js";
+import { normalizeMarkdownTableBoundaries } from "./markdownTableBoundaries.js";
+import {
+	normalizeNotionHtmlTables,
+	notionHtmlTableToMarkdown,
+} from "./notionHtmlTable.js";
 
 // Convert Markdown (string) -> TipTap JSONContent (ProseMirror document)
 export function markdownToTiptapDoc(markdown: string): JSONContent {
-	const input = rawMarkdownAddEmptyMarkers(markdown);
+	const input = rawMarkdownAddEmptyMarkers(
+		separateHtmlBlocksFromFollowingMarkdown(
+			normalizeMarkdownTableBoundaries(normalizeNotionHtmlTables(markdown)),
+		),
+	);
 	const processor = unified()
 		.use(remarkParse)
 		.use(remarkGfm)
@@ -43,29 +52,52 @@ function normalizeBlockContent(children: Content[]): Content[] {
 	return children;
 }
 
+function separateHtmlBlocksFromFollowingMarkdown(markdown: string): string {
+	const lines = markdown.split("\n");
+	const output: string[] = [];
+
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const nextLine = lines[index + 1];
+		const isStandaloneEmptyBlock = line.match(/^<empty-block\s*\/>\s*$/i);
+		if (
+			isStandaloneEmptyBlock &&
+			output.length > 0 &&
+			output[output.length - 1]?.trim() !== ""
+		) {
+			output.push("");
+		}
+
+		output.push(line);
+
+		if (
+			nextLine !== undefined &&
+			(line.match(/^<\/[A-Za-z][\w:-]*>\s*$/) || isStandaloneEmptyBlock) &&
+			nextLine.trim() !== ""
+		) {
+			output.push("");
+		}
+	}
+
+	return output.join("\n");
+}
+
 function blockToPM(node: Content): JSONContent[] {
 	switch (node.type) {
 		case "paragraph": {
-			const [maybeImage] = node.children;
-			if (maybeImage?.type === "image") {
-				return imageToPM(maybeImage);
-			}
 			const paragraphHtml = node.children.every(
 				(child) => child.type === "html",
 			)
 				? node.children.map((child) => child.value).join("")
 				: null;
 			if (paragraphHtml) {
+				const notionBlock = htmlToNotionBlock(paragraphHtml);
+				if (notionBlock) return [notionBlock];
 				const embed = htmlToEmbed(paragraphHtml);
 				if (embed) return [embed];
 			}
 
-			return [
-				{
-					type: "paragraph",
-					content: inlineToPM(node.children ?? []),
-				},
-			];
+			return paragraphToPM(node);
 		}
 		case "heading":
 			return [
@@ -126,6 +158,14 @@ function blockToPM(node: Content): JSONContent[] {
 
 			try {
 				const hastTree = fromHtml(raw, { fragment: true });
+				const notionBlock = hastToNotionBlock(hastTree, raw);
+				if (notionBlock) {
+					return [notionBlock];
+				}
+				const notionTable = notionHtmlTableToPM(raw);
+				if (notionTable) {
+					return notionTable;
+				}
 				const embed = hastToEmbed(hastTree);
 				if (embed) {
 					return [embed];
@@ -159,6 +199,63 @@ function blockToPM(node: Content): JSONContent[] {
 			// For safety, don’t throw; produce nothing.
 			return [];
 		}
+	}
+}
+
+function paragraphToPM(node: Paragraph): JSONContent[] {
+	const blocks: JSONContent[] = [];
+	const inlineBuffer: Paragraph["children"] = [];
+	let trimLeadingText = false;
+
+	function flushParagraph() {
+		if (inlineBuffer.length === 0) return;
+		blocks.push({
+			type: "paragraph",
+			content: inlineToPM(inlineBuffer),
+		});
+		inlineBuffer.length = 0;
+	}
+
+	for (const child of node.children ?? []) {
+		if (child.type === "image") {
+			trimTrailingText(inlineBuffer);
+			flushParagraph();
+			blocks.push(...imageToPM(child));
+			trimLeadingText = true;
+			continue;
+		}
+		if (trimLeadingText && child.type === "text") {
+			const value = child.value.replace(/^\s+/, "");
+			trimLeadingText = false;
+			if (!value) continue;
+			inlineBuffer.push({ ...child, value });
+			continue;
+		}
+		trimLeadingText = false;
+		inlineBuffer.push(child);
+	}
+	flushParagraph();
+
+	return blocks.length > 0
+		? blocks
+		: [
+				{
+					type: "paragraph",
+					content: [],
+				},
+			];
+}
+
+function trimTrailingText(children: Paragraph["children"]) {
+	for (let index = children.length - 1; index >= 0; index -= 1) {
+		const child = children[index];
+		if (!child || child.type !== "text") return;
+		const value = child.value.replace(/\s+$/, "");
+		if (value) {
+			children[index] = { ...child, value };
+			return;
+		}
+		children.pop();
 	}
 }
 
@@ -208,6 +305,12 @@ function tableCellToPM(
 	};
 }
 
+function notionHtmlTableToPM(raw: string): JSONContent[] | null {
+	const markdownTable = notionHtmlTableToMarkdown(raw);
+	if (!markdownTable) return null;
+	return markdownToTiptapDoc(markdownTable).content ?? [];
+}
+
 function hastToEmbed(root: HastRoot): JSONContent | null {
 	const children = root.children.filter(hasMeaningfulHtml);
 	if (children.length !== 1) return null;
@@ -230,6 +333,97 @@ function hastToEmbed(root: HastRoot): JSONContent | null {
 	}
 
 	return null;
+}
+
+function htmlToNotionBlock(raw: string | undefined): JSONContent | null {
+	if (!raw?.trim()) return null;
+	try {
+		return hastToNotionBlock(fromHtml(raw, { fragment: true }), raw);
+	} catch {
+		return null;
+	}
+}
+
+function hastToNotionBlock(root: HastRoot, raw: string): JSONContent | null {
+	const children = root.children.filter(hasMeaningfulHtml);
+	if (children.length !== 1) return null;
+	const [node] = children;
+	if (!isHastElement(node)) return null;
+
+	const tagName = node.tagName.toLowerCase();
+	if (tagName === "empty-block") {
+		return { type: "notionEmptyBlock" };
+	}
+
+	if (isRawNotionHtmlBlock(tagName)) {
+		return {
+			type: "notionHtmlBlock",
+			attrs: { raw: raw.trim() },
+		};
+	}
+
+	if (tagName !== "callout") return null;
+
+	const icon = getStringProperty(node.properties?.icon);
+	const calloutContent = markdownToTiptapDoc(
+		extractCalloutMarkdown(raw),
+	).content;
+	return {
+		type: "notionCallout",
+		attrs: {
+			icon: icon || null,
+			rawAttributes: extractOpeningTagAttributes(raw, "callout"),
+		},
+		content:
+			calloutContent && calloutContent.length > 0
+				? calloutContent
+				: [{ type: "paragraph" }],
+	};
+}
+
+function isRawNotionHtmlBlock(tagName: string): boolean {
+	return tagName === "bookmark" || tagName === "link-preview";
+}
+
+function extractOpeningTagAttributes(raw: string, tagName: string): string {
+	const match = raw.trim().match(new RegExp(`^<${tagName}\\b([^>]*)>`, "i"));
+	return match?.[1]?.trim() ?? "";
+}
+
+function extractCalloutMarkdown(raw: string): string {
+	const match = raw
+		.trim()
+		.match(/^<callout\b[^>]*>\n?([\s\S]*?)\n?<\/callout>\s*$/i);
+	return dedentNotionBlockMarkdown(match?.[1] ?? "");
+}
+
+function dedentNotionBlockMarkdown(markdown: string): string {
+	const lines = markdown.split("\n");
+	const nonEmptyIndents = lines.flatMap((line) => {
+		if (line.trim().length === 0) return [];
+		return [line.match(/^[\t ]*/)?.[0] ?? ""];
+	});
+	const commonIndent = nonEmptyIndents.reduce(
+		(common, indent) => {
+			if (common === null) return indent;
+			let index = 0;
+			while (
+				index < common.length &&
+				index < indent.length &&
+				common[index] === indent[index]
+			) {
+				index += 1;
+			}
+			return common.slice(0, index);
+		},
+		null as string | null,
+	);
+	if (!commonIndent) return markdown;
+	return lines
+		.map((line) =>
+			line.startsWith(commonIndent) ? line.slice(commonIndent.length) : line,
+		)
+		.join("\n");
 }
 
 const BLOCKED_IFRAME_SCHEME = /^(file:|data:|javascript:|hubble-asset:)/i;
@@ -352,7 +546,13 @@ function inlineToPM(children: Content[]): JSONContent[] {
 				if (child.alt) out.push({ type: "text", text: child.alt });
 				break;
 			case "html":
-				if (child.value) out.push({ type: "text", text: child.value });
+				if (child.value) {
+					out.push(
+						...(notionMentionToPM(child.value) ?? [
+							{ type: "text", text: child.value },
+						]),
+					);
+				}
 				break;
 			default:
 				// Unknown inline; ignore.
@@ -360,6 +560,60 @@ function inlineToPM(children: Content[]): JSONContent[] {
 		}
 	}
 	return out;
+}
+
+function notionMentionToPM(raw: string): JSONContent[] | null {
+	try {
+		const root = fromHtml(raw, { fragment: true });
+		const children = root.children.filter(hasMeaningfulHtml);
+		if (children.length !== 1) return null;
+		const [node] = children;
+		if (!isHastElement(node)) return null;
+		if (node.tagName.toLowerCase() !== "mention-page") return null;
+		if (node.children.some(hasMeaningfulHtml)) return null;
+
+		const href = getStringProperty(node.properties?.url).trim();
+		if (!href) return null;
+		return [
+			{
+				type: "text",
+				text: notionMentionDisplayText(href),
+				marks: [
+					{
+						type: "link",
+						attrs: { href, kind: "notionMention", target: null },
+					},
+				],
+			},
+		];
+	} catch {
+		return null;
+	}
+}
+
+function notionMentionDisplayText(href: string): string {
+	const id = notionPageIdFromUrl(href);
+	return id ? `Notion page ${id.slice(0, 8)}` : "Notion page";
+}
+
+function notionPageIdFromUrl(href: string): string | null {
+	try {
+		const url = new URL(href);
+		const segments = url.pathname.split("/").filter(Boolean);
+		for (let index = segments.length - 1; index >= 0; index -= 1) {
+			const id = normalizedNotionPageId(segments[index] ?? "");
+			if (id) return id;
+		}
+	} catch {
+		return normalizedNotionPageId(href);
+	}
+	return null;
+}
+
+function normalizedNotionPageId(value: string): string | null {
+	const decoded = decodeURIComponent(value);
+	const match = decoded.replace(/-/g, "").match(/([0-9a-f]{32})(?:[?#].*)?$/i);
+	return match?.[1]?.toLowerCase() ?? null;
 }
 
 function textToPM(text: string): JSONContent[] {

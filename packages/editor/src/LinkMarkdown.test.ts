@@ -117,3 +117,29 @@ describe("wikilink markdown conversion", () => {
 		expect(markdown).toBe("[[Notes/File 2.md]]");
 	});
 });
+
+describe("Notion mention page markdown conversion", () => {
+	it("renders mention-page tags as compact Notion page links", () => {
+		const url = "https://app.notion.com/p/f90eb74d673647d8b034ac9919ea3ff5";
+		const doc = markdownToTiptapDoc(`See <mention-page url="${url}"/>`);
+		const paragraph = doc.content?.[0];
+		expect(paragraph?.type).toBe("paragraph");
+		const mentionNode = paragraph?.content?.[1];
+		expect(mentionNode?.type).toBe("text");
+		expect(mentionNode?.text).toBe("Notion page f90eb74d");
+		expect(mentionNode?.marks).toEqual([
+			{
+				type: "link",
+				attrs: { href: url, kind: "notionMention", target: null },
+			},
+		]);
+	});
+
+	it("preserves mention-page syntax when serializing", () => {
+		const input =
+			'See <mention-page url="https://app.notion.com/p/f90eb74d673647d8b034ac9919ea3ff5"/>, then summarize';
+		const doc = markdownToTiptapDoc(input);
+		const output = tiptapDocToMarkdown(doc);
+		expect(output).toBe(input);
+	});
+});

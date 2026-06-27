@@ -1,6 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
-import type { LinkAttrs } from "./Link";
-import { wikiDisplayNameForTarget } from "./markdownPath";
+import type { LinkAttrs } from "./Link.js";
+import { wikiDisplayNameForTarget } from "./markdownPath.js";
 
 /**
  * Convert TipTap JSONContent (ProseMirror document) -> Markdown string
@@ -91,9 +91,39 @@ function blockToMarkdown(node: JSONContent): string {
 			return `<iframe src="${escapeHtmlAttr(src)}"></iframe>`;
 		}
 
+		case "notionCallout": {
+			const attributes = notionCalloutAttributes(node);
+			const blockContent = (node.content ?? [])
+				.map(blockToMarkdown)
+				.filter(Boolean)
+				.join("\n\n");
+			return `<callout${attributes}>\n${blockContent}\n</callout>`;
+		}
+
+		case "notionEmptyBlock": {
+			return "<empty-block/>";
+		}
+
+		case "notionHtmlBlock": {
+			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
+		}
+
 		default:
 			return "";
 	}
+}
+
+function notionCalloutAttributes(node: JSONContent): string {
+	if (
+		typeof node.attrs?.rawAttributes === "string" &&
+		node.attrs.rawAttributes.trim().length > 0
+	) {
+		return ` ${node.attrs.rawAttributes.trim()}`;
+	}
+	if (typeof node.attrs?.icon === "string" && node.attrs.icon.length > 0) {
+		return ` icon="${escapeHtmlAttr(node.attrs.icon)}"`;
+	}
+	return "";
 }
 
 function tableToMarkdown(table: JSONContent): string {
@@ -197,7 +227,10 @@ function getLinkAttrs(node: JSONContent | undefined): LinkAttrs | null {
 	if (typeof attrs?.href !== "string") return null;
 	return {
 		href: attrs.href,
-		kind: attrs.kind === "wiki" ? "wiki" : "url",
+		kind:
+			attrs.kind === "wiki" || attrs.kind === "notionMention"
+				? attrs.kind
+				: "url",
 		target: typeof attrs.target === "string" ? attrs.target : null,
 	};
 }
@@ -265,7 +298,9 @@ function inlineToMarkdown(nodes: JSONContent[]): string {
 			j += 1;
 		}
 		const text = grouped.map(nodeToMarkdown).join("");
-		if (attrs.kind === "wiki") {
+		if (attrs.kind === "notionMention") {
+			result += `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
+		} else if (attrs.kind === "wiki") {
 			const target = attrs.target || attrs.href;
 			const defaultText = wikiDisplayNameForTarget(target);
 			result +=
@@ -298,7 +333,9 @@ function inlineToTableMarkdown(nodes: JSONContent[]): string {
 			j += 1;
 		}
 		const text = grouped.map(nodeToTableMarkdown).join("");
-		if (attrs.kind === "wiki") {
+		if (attrs.kind === "notionMention") {
+			result += `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
+		} else if (attrs.kind === "wiki") {
 			const target = attrs.target || attrs.href;
 			const defaultText = wikiDisplayNameForTarget(target);
 			result +=

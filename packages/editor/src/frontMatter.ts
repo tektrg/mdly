@@ -152,16 +152,70 @@ export function isSimplePropertyKey(key: string): boolean {
 function splitFrontMatter(markdown: string) {
 	const start = markdown.match(/^(?:\uFEFF)?---[ \t]*(?:\r?\n|$)/);
 	if (!start) return null;
+	const firstBlock = consumeFrontMatterBlock(markdown, 0);
+	if (!firstBlock) return null;
+
+	const firstKeys = frontMatterMapKeys(firstBlock.raw);
+	let bodyStart = firstBlock.end;
+	while (true) {
+		const nextStart = leadingWhitespaceEnd(markdown, bodyStart);
+		const nextBlock = consumeFrontMatterBlock(markdown, nextStart);
+		if (!nextBlock || !hasRepeatedFrontMatterKeys(firstKeys, nextBlock.raw)) {
+			break;
+		}
+		bodyStart = nextBlock.end;
+	}
+
+	return { raw: firstBlock.raw, body: markdown.slice(bodyStart) };
+}
+
+function consumeFrontMatterBlock(markdown: string, startIndex: number) {
+	const start = markdown
+		.slice(startIndex)
+		.match(/^(?:\uFEFF)?---[ \t]*(?:\r?\n|$)/);
+	if (!start) return null;
 	const startLength = start[0].length;
-	const rest = markdown.slice(startLength);
+	const restStart = startIndex + startLength;
+	const rest = markdown.slice(restStart);
 	const closing = rest.match(/(?:^|\r?\n)---[ \t]*(?:\r?\n|$)/);
 	if (!closing || closing.index === undefined) {
-		return { raw: rest, body: "" };
+		return { raw: rest, end: markdown.length };
 	}
 	const raw = rest.slice(0, closing.index);
 	const closingText = closing[0];
-	const bodyStart = startLength + closing.index + closingText.length;
-	return { raw, body: markdown.slice(bodyStart) };
+	return {
+		raw,
+		end: restStart + closing.index + closingText.length,
+	};
+}
+
+function leadingWhitespaceEnd(markdown: string, startIndex: number): number {
+	const whitespace = markdown.slice(startIndex).match(/^(?:[ \t]*\r?\n)*/);
+	return startIndex + (whitespace?.[0].length ?? 0);
+}
+
+function frontMatterMapKeys(raw: string): Set<string> {
+	const doc = parseDocument(raw, { schema: "core", uniqueKeys: true });
+	if (doc.errors.length > 0 || !isMap(doc.contents)) return new Set();
+	return new Set(
+		doc.contents.items.flatMap((item) => {
+			const key = scalarValue(item.key);
+			return typeof key === "string" ? [key] : [];
+		}),
+	);
+}
+
+function hasRepeatedFrontMatterKeys(
+	firstKeys: Set<string>,
+	raw: string,
+): boolean {
+	if (firstKeys.size === 0) return false;
+	const nextKeys = frontMatterMapKeys(raw);
+	if (nextKeys.size !== firstKeys.size) return false;
+	for (const key of firstKeys) {
+		if (!nextKeys.has(key)) return false;
+	}
+	return true;
 }
 
 function mapToProperties(map: YAMLMap): FileProperty[] {
