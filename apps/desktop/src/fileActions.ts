@@ -1,3 +1,9 @@
+import {
+	combineMarkdownFrontMatter,
+	markdownToTiptapDoc,
+	parseMarkdownFrontMatter,
+	tiptapDocToMarkdown,
+} from "@hubble.md/editor";
 import { desktopApi } from "./desktopApi";
 import type { NotionSearchResult } from "./desktopApi/types";
 import { dirname } from "./lib/filePath";
@@ -6,6 +12,7 @@ import { buildNotionDatabaseMarkdown } from "./notion/notionDatabase";
 import {
 	buildNotionLinkedMarkdown,
 	buildNotionLinkedMarkdownFromMetadata,
+	notionMarkdownBodyForUpdate,
 	parseNotionLinkMetadata,
 	stripNotionLinkMetadata,
 	uniqueNotionMarkdownPath,
@@ -16,11 +23,16 @@ import {
 	refreshFiles,
 	savePathContent,
 } from "./store/actions";
-import { viewerStore, workspaceStore } from "./store/state";
+import { getBaseline, viewerStore, workspaceStore } from "./store/state";
 
 export type NotionPushResult =
 	| { kind: "pushed" }
 	| { kind: "remote-changed" }
+	| { kind: "not-linked" };
+
+export type NotionRefreshResult =
+	| { kind: "refreshed" }
+	| { kind: "local-changes" }
 	| { kind: "not-linked" };
 
 export async function createMarkdownFile() {
@@ -48,6 +60,28 @@ export async function openOrImportNotionPage(
 		return existingPath;
 	}
 	return createNotionPageFile(result, options);
+}
+
+export async function openOrImportNotionMentionPage(
+	url: string,
+	options?: { account?: string | null; folderPath?: string | null },
+) {
+	const pageId = notionPageIdFromUrl(url);
+	if (!pageId) {
+		await desktopApi.openExternalUrl(url);
+		return null;
+	}
+	return openOrImportNotionPage(
+		{
+			id: pageId,
+			object: "page",
+			account: options?.account ?? null,
+			title: notionMentionTitle(pageId),
+			url,
+			lastEditedTime: null,
+		},
+		{ folderPath: options?.folderPath ?? null },
+	);
 }
 
 export async function importNotionDatabase(
@@ -168,26 +202,41 @@ export async function pushCurrentNotionPage(options?: {
 		latest.currentPath === current.currentPath
 			? latest.content
 			: current.content;
-	if (options?.forceRemoteOverwrite !== true) {
-		const remote = await desktopApi.getNotionPageMarkdown(
-			metadata.pageId,
-			metadata.account,
-		);
-		if (remote.contentHash !== metadata.contentHash) {
-			return { kind: "remote-changed" };
-		}
+	const remoteBeforeUpdate = await desktopApi.getNotionPageMarkdown(
+		metadata.pageId,
+		metadata.account,
+	);
+	if (
+		options?.forceRemoteOverwrite !== true &&
+		remoteBeforeUpdate.contentHash !== metadata.contentHash
+	) {
+		return { kind: "remote-changed" };
 	}
 
-	const markdownForNotion = stripNotionLinkMetadata(latestContent);
+	const markdownForNotion = notionMarkdownBodyForUpdate(latestContent);
+	const previousMarkdownForNotion = notionMarkdownBodyForUpdate(
+		getBaseline(current),
+	);
+	const currentMarkdownForNotion = notionMarkdownBodyForUpdate(
+		remoteBeforeUpdate.markdown,
+	);
 	const update = await desktopApi.updateNotionPageMarkdown(
 		metadata.pageId,
 		markdownForNotion,
 		metadata.account,
+		{
+			previousMarkdown: previousMarkdownForNotion,
+			currentMarkdown: currentMarkdownForNotion,
+		},
 	);
-	const nextMarkdown = buildNotionLinkedMarkdownFromMetadata(latestContent, {
+	const remote = await desktopApi.getNotionPageMarkdown(
+		metadata.pageId,
+		metadata.account ?? update.account,
+	);
+	const nextMarkdown = buildNotionLinkedMarkdownFromMetadata(remote.markdown, {
 		...metadata,
-		account: metadata.account ?? update.account,
-		contentHash: update.contentHash,
+		account: metadata.account ?? update.account ?? remote.account,
+		contentHash: remote.contentHash,
 	});
 	await desktopApi.writeFileText(current.currentPath, nextMarkdown);
 	await loadPath(current.currentPath);
@@ -196,31 +245,116 @@ export async function pushCurrentNotionPage(options?: {
 
 export async function refreshCurrentNotionPage(options?: {
 	forceLocalOverwrite?: boolean;
-}) {
+}): Promise<NotionRefreshResult> {
 	const current = viewerStore.get();
-	if (!current.currentPath) return false;
+	if (!current.currentPath) return { kind: "not-linked" };
 	const metadata = parseNotionLinkMetadata(current.content);
-	if (!metadata) return false;
-	if (
-		options?.forceLocalOverwrite !== true &&
-		hasLocalChangesSinceLastNotionSync()
-	) {
-		return false;
-	}
+	if (!metadata) return { kind: "not-linked" };
 
 	const remote = await desktopApi.getNotionPageMarkdown(
 		metadata.pageId,
 		metadata.account,
 	);
+	const currentMarkdown = stripNotionLinkMetadata(current.content);
+	const localMarkdownForRefresh = localMarkdownForRefreshCheck(current.content);
+	const localContentHash = notionMarkdownContentHash(localMarkdownForRefresh);
+	const localMatchesFetchedRemote =
+		metadata.contentHash === remote.contentHash &&
+		isEditorOnlyNotionNormalization({
+			baselineMarkdown: remote.markdown,
+			currentMarkdown,
+			requireSameImageReferences: false,
+		});
+	if (
+		options?.forceLocalOverwrite !== true &&
+		localContentHash !== metadata.contentHash &&
+		localContentHash !== remote.contentHash &&
+		!localMatchesFetchedRemote
+	) {
+		return { kind: "local-changes" };
+	}
 	const nextMarkdown = buildNotionLinkedMarkdownFromMetadata(remote.markdown, {
 		...metadata,
 		account: metadata.account ?? remote.account,
 		contentHash: remote.contentHash,
 	});
+	if (
+		nextMarkdown === current.content &&
+		nextMarkdown === getBaseline(current)
+	) {
+		return { kind: "refreshed" };
+	}
 	await desktopApi.writeFileText(current.currentPath, nextMarkdown);
 	await loadPath(current.currentPath);
 	await refreshFiles();
-	return true;
+	return { kind: "refreshed" };
+}
+
+function localMarkdownForRefreshCheck(currentContent: string): string {
+	const current = viewerStore.get();
+	const currentMarkdown = stripNotionLinkMetadata(currentContent);
+	const baseline = getBaseline(current);
+	const baselineMarkdown = stripNotionLinkMetadata(baseline);
+	if (
+		currentContent !== baseline &&
+		isEditorOnlyNotionNormalization({
+			baselineMarkdown,
+			currentMarkdown,
+		})
+	) {
+		return baselineMarkdown;
+	}
+	return currentMarkdown;
+}
+
+function isEditorOnlyNotionNormalization({
+	baselineMarkdown,
+	currentMarkdown,
+	requireSameImageReferences = true,
+}: {
+	baselineMarkdown: string;
+	currentMarkdown: string;
+	requireSameImageReferences?: boolean;
+}): boolean {
+	if (
+		requireSameImageReferences &&
+		!sameMarkdownImageReferences(baselineMarkdown, currentMarkdown)
+	) {
+		return false;
+	}
+	return editorCanonicalMarkdownVariants(baselineMarkdown).includes(
+		currentMarkdown,
+	);
+}
+
+function editorCanonicalMarkdownVariants(markdown: string): string[] {
+	let current = markdown;
+	const variants: string[] = [];
+	for (let index = 0; index < 4; index += 1) {
+		const parsed = parseMarkdownFrontMatter(current);
+		const body = tiptapDocToMarkdown(markdownToTiptapDoc(parsed.body));
+		const next =
+			parsed.type === "none"
+				? body
+				: combineMarkdownFrontMatter(parsed.raw, body);
+		variants.push(next);
+		if (next === current) return variants;
+		current = next;
+	}
+	return variants;
+}
+
+function sameMarkdownImageReferences(left: string, right: string): boolean {
+	return (
+		markdownImageReferences(left).join("\u0000") ===
+		markdownImageReferences(right).join("\u0000")
+	);
+}
+
+function markdownImageReferences(markdown: string): string[] {
+	return [...markdown.matchAll(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(
+		(match) => match[1] ?? "",
+	);
 }
 
 function activeFolderPath(
@@ -235,4 +369,28 @@ function activeFolderPath(
 		return targetPath;
 	}
 	return dirname(targetPath) ?? workspacePath;
+}
+
+export function notionPageIdFromUrl(url: string): string | null {
+	try {
+		const parsedUrl = new URL(url);
+		const segments = parsedUrl.pathname.split("/").filter(Boolean);
+		for (let index = segments.length - 1; index >= 0; index -= 1) {
+			const pageId = normalizedNotionPageId(segments[index] ?? "");
+			if (pageId) return pageId;
+		}
+	} catch {
+		return normalizedNotionPageId(url);
+	}
+	return null;
+}
+
+function normalizedNotionPageId(value: string): string | null {
+	const decoded = decodeURIComponent(value);
+	const match = decoded.replace(/-/g, "").match(/([0-9a-f]{32})(?:[?#].*)?$/i);
+	return match?.[1]?.toLowerCase() ?? null;
+}
+
+function notionMentionTitle(pageId: string): string {
+	return `Notion page ${pageId.slice(0, 8)}`;
 }

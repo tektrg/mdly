@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import type {
 	NotionConnectionStatus,
 	NotionDatabaseQueryInput,
@@ -10,11 +10,14 @@ import type {
 	NotionObjectType,
 	NotionPageMarkdown,
 	NotionPageUpdate,
+	NotionPageUpdateOptions,
 	NotionSearchResult,
 } from "../src/desktopApi/types";
 import { notionMarkdownContentHash } from "../src/notion/contentHash";
 
 const notionCommand = "ntn-acct";
+const notionCommandOverrideEnv = "HUBBLE_NOTION_COMMAND";
+const commonNotionCommandDirs = ["/usr/local/bin", "/opt/homebrew/bin"];
 const notionRequestTimeoutMs = 30_000;
 const defaultNotionAccount = "7lab";
 let selectedNotionAccount: string | null = null;
@@ -23,6 +26,47 @@ type CommandResult = {
 	stdout: string;
 	stderr: string;
 };
+
+type ResolveNotionCommandPathOptions = {
+	pathEnv?: string;
+	configuredCommand?: string | null;
+	isExecutable?: (filePath: string) => boolean;
+};
+
+export function resolveNotionCommandPath({
+	pathEnv = process.env.PATH,
+	configuredCommand = process.env[notionCommandOverrideEnv],
+	isExecutable = isExecutableFile,
+}: ResolveNotionCommandPathOptions = {}): string | null {
+	const configured = configuredCommand?.trim();
+	if (configured) {
+		if (configured.includes("/")) return configured;
+		return (
+			findExecutableCommand(configured, pathEnv, [], isExecutable) ?? configured
+		);
+	}
+
+	return findExecutableCommand(
+		notionCommand,
+		pathEnv,
+		commonNotionCommandDirs,
+		isExecutable,
+	);
+}
+
+export function notionCommandPathEnv(
+	commandPath: string,
+	pathEnv = process.env.PATH,
+): string {
+	const helperDirs = [
+		...(commandPath.includes("/") ? [dirname(commandPath)] : []),
+		...commonNotionCommandDirs,
+	];
+	return uniquePathDirs([
+		...helperDirs,
+		...(pathEnv?.split(delimiter).filter(Boolean) ?? []),
+	]).join(delimiter);
+}
 
 export async function getNotionConnectionStatus(
 	accountInput?: string | null,
@@ -120,20 +164,289 @@ export async function updateNotionPageMarkdown(
 	pageId: string,
 	markdown: string,
 	accountInput?: string | null,
+	options: NotionPageUpdateOptions = {},
 ): Promise<NotionPageUpdate> {
 	const trimmedPageId = pageId.trim();
 	if (!trimmedPageId) throw new Error("Notion page id is required.");
 	const account = notionAccount(accountInput);
-
-	await runNotionCommand(["pages", "update", trimmedPageId], {
-		account,
-		stdin: markdown,
+	const updatePayload = notionMarkdownUpdatePayload({
+		previousMarkdown: options.previousMarkdown,
+		currentMarkdown: options.currentMarkdown,
+		nextMarkdown: markdown,
 	});
+
+	if (updatePayload.kind === "noop") {
+		return {
+			pageId: trimmedPageId,
+			account,
+			contentHash: notionMarkdownContentHash(updatePayload.markdown),
+		};
+	}
+
+	if (updatePayload.kind === "targeted") {
+		await runNotionCommand(
+			[
+				"api",
+				`v1/pages/${trimmedPageId}/markdown`,
+				"-X",
+				"PATCH",
+				"-d",
+				JSON.stringify(notionMarkdownPatchBody(updatePayload)),
+			],
+			{ account },
+		);
+	} else {
+		await runNotionCommand(["pages", "update", trimmedPageId], {
+			account,
+			stdin: markdown,
+		});
+	}
 	return {
 		pageId: trimmedPageId,
 		account,
 		contentHash: notionMarkdownContentHash(markdown),
 	};
+}
+
+type NotionMarkdownUpdatePayload =
+	| { kind: "noop"; markdown: string }
+	| { kind: "targeted"; oldStr: string; newStr: string }
+	| { kind: "replace" };
+
+export function notionMarkdownPatchBody(
+	updatePayload: Extract<NotionMarkdownUpdatePayload, { kind: "targeted" }>,
+) {
+	return {
+		type: "update_content",
+		update_content: {
+			content_updates: [
+				{
+					old_str: updatePayload.oldStr,
+					new_str: updatePayload.newStr,
+				},
+			],
+		},
+	};
+}
+
+export function notionMarkdownUpdatePayload({
+	previousMarkdown,
+	currentMarkdown,
+	nextMarkdown,
+}: {
+	previousMarkdown?: string;
+	currentMarkdown?: string;
+	nextMarkdown: string;
+}): NotionMarkdownUpdatePayload {
+	if (!previousMarkdown || !currentMarkdown) return { kind: "replace" };
+
+	const nextWithCurrentFileUrls = replaceUnchangedVolatileNotionImageUrls({
+		sourceMarkdown: nextMarkdown,
+		previousMarkdown,
+		currentMarkdown,
+	});
+	if (nextWithCurrentFileUrls === currentMarkdown) {
+		return { kind: "noop", markdown: currentMarkdown };
+	}
+
+	const diff = uniqueReplacement(currentMarkdown, nextWithCurrentFileUrls);
+	if (diff) {
+		return { kind: "targeted", ...diff };
+	}
+
+	if (
+		hasVolatileNotionImageUrl(previousMarkdown) ||
+		hasVolatileNotionImageUrl(currentMarkdown) ||
+		hasVolatileNotionImageUrl(nextMarkdown)
+	) {
+		throw new Error(
+			"Cannot safely write back this Notion page because it contains Notion-hosted images with expiring URLs and a minimal targeted update could not be built.",
+		);
+	}
+
+	return { kind: "replace" };
+}
+
+function replaceUnchangedVolatileNotionImageUrls({
+	sourceMarkdown,
+	previousMarkdown,
+	currentMarkdown,
+}: {
+	sourceMarkdown: string;
+	previousMarkdown: string;
+	currentMarkdown: string;
+}): string {
+	const previousImages = markdownImageReferences(previousMarkdown);
+	const currentImages = markdownImageReferences(currentMarkdown);
+	let next = sourceMarkdown;
+	for (let index = 0; index < previousImages.length; index += 1) {
+		const previous = previousImages[index];
+		const current = currentImages[index];
+		if (!previous || !current || previous.url === current.url) continue;
+		const previousKey = volatileNotionImageUrlKey(previous.url);
+		const currentKey = volatileNotionImageUrlKey(current.url);
+		if (!previousKey || previousKey !== currentKey) continue;
+		next = next.split(previous.url).join(current.url);
+	}
+	return next;
+}
+
+function uniqueReplacement(
+	currentMarkdown: string,
+	nextMarkdown: string,
+): { oldStr: string; newStr: string } | null {
+	const diff = changedRange(currentMarkdown, nextMarkdown);
+	if (!diff) return null;
+
+	for (const range of replacementRanges(currentMarkdown, nextMarkdown, diff)) {
+		const oldStr = currentMarkdown.slice(range.currentStart, range.currentEnd);
+		if (countOccurrences(currentMarkdown, oldStr) !== 1) continue;
+		return {
+			oldStr,
+			newStr: nextMarkdown.slice(range.nextStart, range.nextEnd),
+		};
+	}
+
+	return null;
+}
+
+function changedRange(
+	currentMarkdown: string,
+	nextMarkdown: string,
+): {
+	currentStart: number;
+	currentEnd: number;
+	nextStart: number;
+	nextEnd: number;
+} | null {
+	let prefixLength = 0;
+	while (
+		prefixLength < currentMarkdown.length &&
+		prefixLength < nextMarkdown.length &&
+		currentMarkdown[prefixLength] === nextMarkdown[prefixLength]
+	) {
+		prefixLength += 1;
+	}
+
+	let suffixLength = 0;
+	while (
+		suffixLength < currentMarkdown.length - prefixLength &&
+		suffixLength < nextMarkdown.length - prefixLength &&
+		currentMarkdown[currentMarkdown.length - 1 - suffixLength] ===
+			nextMarkdown[nextMarkdown.length - 1 - suffixLength]
+	) {
+		suffixLength += 1;
+	}
+
+	const currentEnd = currentMarkdown.length - suffixLength;
+	if (prefixLength === currentEnd) return null;
+	return {
+		currentStart: prefixLength,
+		currentEnd,
+		nextStart: prefixLength,
+		nextEnd: nextMarkdown.length - suffixLength,
+	};
+}
+
+function replacementRanges(
+	currentMarkdown: string,
+	nextMarkdown: string,
+	diff: {
+		currentStart: number;
+		currentEnd: number;
+		nextStart: number;
+		nextEnd: number;
+	},
+) {
+	const ranges = [
+		diff,
+		lineBoundedRange(currentMarkdown, nextMarkdown, diff),
+		{
+			currentStart: 0,
+			currentEnd: currentMarkdown.length,
+			nextStart: 0,
+			nextEnd: nextMarkdown.length,
+		},
+	];
+	return ranges.filter(
+		(range, index) =>
+			ranges.findIndex(
+				(candidate) =>
+					candidate.currentStart === range.currentStart &&
+					candidate.currentEnd === range.currentEnd &&
+					candidate.nextStart === range.nextStart &&
+					candidate.nextEnd === range.nextEnd,
+			) === index,
+	);
+}
+
+function lineBoundedRange(
+	currentMarkdown: string,
+	nextMarkdown: string,
+	diff: {
+		currentStart: number;
+		currentEnd: number;
+		nextStart: number;
+		nextEnd: number;
+	},
+) {
+	return {
+		currentStart: lineStart(currentMarkdown, diff.currentStart),
+		currentEnd: lineEnd(currentMarkdown, diff.currentEnd),
+		nextStart: lineStart(nextMarkdown, diff.nextStart),
+		nextEnd: lineEnd(nextMarkdown, diff.nextEnd),
+	};
+}
+
+function lineStart(value: string, index: number): number {
+	const previousLineBreak = value.lastIndexOf("\n", Math.max(0, index - 1));
+	return previousLineBreak === -1 ? 0 : previousLineBreak + 1;
+}
+
+function lineEnd(value: string, index: number): number {
+	const nextLineBreak = value.indexOf("\n", index);
+	return nextLineBreak === -1 ? value.length : nextLineBreak;
+}
+
+function countOccurrences(value: string, needle: string): number {
+	if (!needle) return 0;
+	let count = 0;
+	let index = 0;
+	while (true) {
+		const nextIndex = value.indexOf(needle, index);
+		if (nextIndex === -1) return count;
+		count += 1;
+		index = nextIndex + needle.length;
+	}
+}
+
+function markdownImageReferences(markdown: string): { url: string }[] {
+	return [...markdown.matchAll(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(
+		(match) => ({ url: match[1] ?? "" }),
+	);
+}
+
+function hasVolatileNotionImageUrl(markdown: string): boolean {
+	return markdownImageReferences(markdown).some((image) =>
+		Boolean(volatileNotionImageUrlKey(image.url)),
+	);
+}
+
+function volatileNotionImageUrlKey(rawUrl: string): string | null {
+	try {
+		const url = new URL(rawUrl);
+		const host = url.hostname.toLowerCase();
+		if (
+			host === "prod-files-secure.s3.us-west-2.amazonaws.com" ||
+			host.endsWith(".notion-static.com") ||
+			host.endsWith(".notion.site")
+		) {
+			return `${url.origin}${url.pathname}`;
+		}
+	} catch {
+		return null;
+	}
+	return null;
 }
 
 export async function queryNotionDatabase({
@@ -261,10 +574,20 @@ function runNotionCommand(
 ): Promise<CommandResult> {
 	return new Promise((resolve, reject) => {
 		const account = notionAccount(options.account);
-		const child = spawn(notionCommand, args, {
+		const commandPath = resolveNotionCommandPath();
+		if (!commandPath) {
+			reject(
+				new Error(
+					`Could not find ${notionCommand}. Install it or set ${notionCommandOverrideEnv} to its full path.`,
+				),
+			);
+			return;
+		}
+		const child = spawn(commandPath, args, {
 			env: {
 				...process.env,
 				NOTION_ACCOUNT: account,
+				PATH: notionCommandPathEnv(commandPath),
 			},
 			stdio:
 				options.stdin === undefined
@@ -307,6 +630,46 @@ function runNotionCommand(
 			);
 		});
 	});
+}
+
+function findExecutableCommand(
+	command: string,
+	pathEnv: string | undefined,
+	extraDirs: string[],
+	isExecutable: (filePath: string) => boolean,
+): string | null {
+	const searchDirs = [
+		...(pathEnv?.split(delimiter).filter(Boolean) ?? []),
+		...extraDirs,
+	];
+	const seenDirs = new Set<string>();
+	for (const dir of searchDirs) {
+		if (seenDirs.has(dir)) continue;
+		seenDirs.add(dir);
+		const candidate = join(dir, command);
+		if (isExecutable(candidate)) return candidate;
+	}
+	return null;
+}
+
+function uniquePathDirs(dirs: string[]): string[] {
+	const seenDirs = new Set<string>();
+	const uniqueDirs: string[] = [];
+	for (const dir of dirs) {
+		if (seenDirs.has(dir)) continue;
+		seenDirs.add(dir);
+		uniqueDirs.push(dir);
+	}
+	return uniqueDirs;
+}
+
+function isExecutableFile(filePath: string): boolean {
+	try {
+		accessSync(filePath, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function parseSearchResults(

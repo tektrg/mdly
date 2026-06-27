@@ -20,6 +20,8 @@ const dragRegionStyle = {
 	WebkitAppRegion: "drag",
 } as CSSProperties;
 
+type NotionSyncMode = "none" | "page" | "database";
+
 // Traffic lights are hidden in fullscreen, so drop their reserved inset.
 function useIsFullScreen() {
 	const [isFullScreen, setIsFullScreen] = useState(false);
@@ -36,14 +38,14 @@ export function Toolbar({
 	onOpenNotionPage,
 	onPushNotionPage,
 	onRefreshNotionPage,
-	showNotionSyncActions,
+	notionSyncMode,
 }: {
 	scrollContainer: HTMLDivElement | null;
 	showSidebarBadge?: boolean;
 	onOpenNotionPage: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
-	showNotionSyncActions: boolean;
+	notionSyncMode: NotionSyncMode;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
@@ -69,7 +71,7 @@ export function Toolbar({
 						onOpenNotionPage={onOpenNotionPage}
 						onPushNotionPage={onPushNotionPage}
 						onRefreshNotionPage={onRefreshNotionPage}
-						showNotionSyncActions={showNotionSyncActions}
+						notionSyncMode={notionSyncMode}
 					/>
 				) : undefined
 			}
@@ -82,13 +84,13 @@ function NoteActionsMenu({
 	onOpenNotionPage,
 	onPushNotionPage,
 	onRefreshNotionPage,
-	showNotionSyncActions,
+	notionSyncMode,
 }: {
 	path: string | null;
 	onOpenNotionPage: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
-	showNotionSyncActions: boolean;
+	notionSyncMode: NotionSyncMode;
 }) {
 	async function revealFile() {
 		if (!path) return;
@@ -133,16 +135,18 @@ function NoteActionsMenu({
 							<MingcuteLinkLine className="size-3 shrink-0" />
 							<span className="min-w-0 flex-1">Open Notion page</span>
 						</Menu.Item>
-						{showNotionSyncActions ? (
+						{notionSyncMode !== "none" ? (
 							<>
 								<Menu.Separator className="my-1 h-px bg-border" />
-								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-									onClick={onPushNotionPage}
-								>
-									<MingcuteLinkLine className="size-3 shrink-0" />
-									<span className="min-w-0 flex-1">Push to Notion</span>
-								</Menu.Item>
+								{notionSyncMode === "page" ? (
+									<Menu.Item
+										className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+										onClick={onPushNotionPage}
+									>
+										<MingcuteLinkLine className="size-3 shrink-0" />
+										<span className="min-w-0 flex-1">Push to Notion</span>
+									</Menu.Item>
+								) : null}
 								<Menu.Item
 									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={onRefreshNotionPage}

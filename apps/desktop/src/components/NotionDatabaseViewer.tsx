@@ -10,6 +10,7 @@ import type { NotionDatabaseMetadata } from "../notion/notionDatabase";
 type NotionDatabaseViewerProps = {
 	path: string;
 	metadata: NotionDatabaseMetadata;
+	refreshToken?: number;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 };
 
@@ -18,6 +19,7 @@ type QueryStatus = "loading" | "ready" | "error";
 export function NotionDatabaseViewer({
 	path,
 	metadata,
+	refreshToken = 0,
 	onScrollContainerChange,
 }: NotionDatabaseViewerProps) {
 	const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -35,6 +37,8 @@ export function NotionDatabaseViewer({
 	}, [onScrollContainerChange]);
 
 	useEffect(() => {
+		// Participates in dependencies as an explicit user refresh signal.
+		void refreshToken;
 		let disposed = false;
 		const loadRows = async () => {
 			setStatus("loading");
@@ -60,7 +64,14 @@ export function NotionDatabaseViewer({
 		return () => {
 			disposed = true;
 		};
-	}, [currentCursor, metadata]);
+	}, [
+		currentCursor,
+		metadata.account,
+		metadata.object,
+		metadata.pageSize,
+		metadata.sourceId,
+		refreshToken,
+	]);
 
 	async function openRow(row: NotionDatabaseQueryResult["rows"][number]) {
 		try {

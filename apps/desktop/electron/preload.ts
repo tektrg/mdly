@@ -82,11 +82,12 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:notion-search", { query, account }),
 	getNotionPageMarkdown: (pageId, account) =>
 		ipcRenderer.invoke("desktop:notion-page-markdown", { pageId, account }),
-	updateNotionPageMarkdown: (pageId, markdown, account) =>
+	updateNotionPageMarkdown: (pageId, markdown, account, options) =>
 		ipcRenderer.invoke("desktop:notion-update-page-markdown", {
 			pageId,
 			markdown,
 			account,
+			options,
 		}),
 	queryNotionDatabase: (input) =>
 		ipcRenderer.invoke("desktop:notion-query-database", input),

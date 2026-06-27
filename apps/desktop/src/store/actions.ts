@@ -23,10 +23,12 @@ import {
 	pathAfterMove,
 	rewriteMovedLinks,
 } from "../lib/markdownLinkRewrite";
+import type { ContrastPreference, ThemePreference } from "../lib/theme";
 import {
 	applyFileAction,
 	appStore,
 	cleanFileState,
+	contrastPreferenceStore,
 	emptyDoc,
 	type FileEntry,
 	type FolderEntry,
@@ -37,6 +39,7 @@ import {
 	type SortMode,
 	sidebarOpenStore,
 	switcherOpenStore,
+	themePreferenceStore,
 	viewerStore,
 	withOpenedDoc,
 	workspaceStore,
@@ -295,6 +298,14 @@ export function setSidebarOpen(isOpen: boolean) {
 	sidebarOpenStore.set(isOpen);
 }
 
+export function setThemePreference(themePreference: ThemePreference) {
+	themePreferenceStore.set(themePreference);
+}
+
+export function setContrastPreference(contrastPreference: ContrastPreference) {
+	contrastPreferenceStore.set(contrastPreference);
+}
+
 export function toggleSidebar() {
 	sidebarOpenStore.set((open) => !open);
 }
@@ -322,11 +333,11 @@ export async function createWorkspaceWithSidebar() {
 }
 
 /** Opens a workspace by path. If no path given, shows a folder picker first. */
-export async function openWorkspace(path?: string) {
+export async function openWorkspace(path?: string): Promise<boolean> {
 	let nextPath = path;
 	if (!nextPath) {
 		const selected = await desktopApi.openFolderPicker();
-		if (typeof selected !== "string") return;
+		if (typeof selected !== "string") return false;
 		nextPath = selected;
 	}
 
@@ -346,10 +357,11 @@ export async function openWorkspace(path?: string) {
 	const lastFile = workspaceStore.get().lastOpenedPaths[nextPath];
 	if (lastFile) {
 		await loadPath(lastFile);
-		return;
+		return true;
 	}
 
 	clearViewer();
+	return true;
 }
 
 export function updateEditorContent(path: string, content: string) {

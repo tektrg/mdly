@@ -8,6 +8,7 @@ type MockDesktopApi = {
 	writeWorkspaceConfig: ReturnType<typeof vi.fn>;
 	renameFile: ReturnType<typeof vi.fn>;
 	pathExists: ReturnType<typeof vi.fn>;
+	openFolderPicker: ReturnType<typeof vi.fn>;
 };
 
 function createDesktopApi(): MockDesktopApi {
@@ -19,6 +20,7 @@ function createDesktopApi(): MockDesktopApi {
 		writeWorkspaceConfig: vi.fn(async () => {}),
 		renameFile: vi.fn(async () => {}),
 		pathExists: vi.fn(async () => false),
+		openFolderPicker: vi.fn(async () => undefined),
 	};
 }
 
@@ -767,6 +769,38 @@ describe("desktop loadPath", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+});
+
+describe("desktop workspace switching", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("returns false and leaves workspace unchanged when the folder picker is canceled", async () => {
+		const api = createDesktopApi();
+		api.openFolderPicker.mockResolvedValue(undefined);
+		const { openWorkspace, workspaceStore } = await loadStoreActions(api);
+
+		const opened = await openWorkspace();
+
+		expect(opened).toBe(false);
+		expect(api.openFolderPicker).toHaveBeenCalledOnce();
+		expect(api.listDirectory).not.toHaveBeenCalled();
+		expect(api.readWorkspaceConfig).not.toHaveBeenCalled();
+		expect(workspaceStore.get().workspacePath).toBe(null);
+	});
+
+	it("returns true after opening a picked workspace", async () => {
+		const api = createDesktopApi();
+		api.openFolderPicker.mockResolvedValue("/workspace");
+		const { openWorkspace, workspaceStore } = await loadStoreActions(api);
+
+		const opened = await openWorkspace();
+
+		expect(opened).toBe(true);
+		expect(workspaceStore.get().workspacePath).toBe("/workspace");
+		expect(workspaceStore.get().recentWorkspaces[0]).toBe("/workspace");
 	});
 });
 

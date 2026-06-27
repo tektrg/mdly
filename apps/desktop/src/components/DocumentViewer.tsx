@@ -8,9 +8,11 @@ import { createEmbedExtension } from "../editor/EmbedExtension";
 import { handleImageDrop, handleImagePaste } from "../editor/handleImagePaste";
 import { IframeView, toAssetUrl } from "../editor/IframeView";
 import { createImageExtension } from "../editor/ImageExtension";
+import { openOrImportNotionMentionPage } from "../fileActions";
 import { hasHtmlExtension, relativeWorkspacePath } from "../lib/filePath";
 import { resolveWikiPath } from "../lib/wikiPath";
 import { parseNotionDatabaseMetadata } from "../notion/notionDatabase";
+import { parseNotionLinkMetadata } from "../notion/notionMarkdown";
 import {
 	loadPath,
 	savePathContent,
@@ -29,10 +31,12 @@ const HMR_REV = (() => {
 export function DocumentViewer({
 	path,
 	content,
+	notionDatabaseRefreshToken = 0,
 	onScrollContainerChange,
 }: {
 	path: string;
 	content: string;
+	notionDatabaseRefreshToken?: number;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 }) {
 	if (hasHtmlExtension(path)) {
@@ -52,6 +56,7 @@ export function DocumentViewer({
 				key={`${path}:${notionDatabase.sourceId}`}
 				path={path}
 				metadata={notionDatabase}
+				refreshToken={notionDatabaseRefreshToken}
 				onScrollContainerChange={onScrollContainerChange}
 			/>
 		);
@@ -109,6 +114,8 @@ function MarkdownEditor({
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 }) {
 	const workspace = useStoreValue(workspaceStore);
+	const notionAccount =
+		parseNotionLinkMetadata(initialMarkdown)?.account ?? null;
 	const wikiTargets: WikiTarget[] = workspace.files.map((file) => {
 		const target = relativeWorkspacePath(file.path, workspace.workspacePath);
 		return {
@@ -135,6 +142,12 @@ function MarkdownEditor({
 			onSave={savePathContent}
 			onScrollContainerChange={onScrollContainerChange}
 			onOpenExternalLink={desktopApi.openExternalUrl}
+			onOpenNotionMentionLink={(href) =>
+				void openOrImportNotionMentionPage(href, {
+					account: notionAccount,
+					folderPath: path,
+				})
+			}
 			onOpenWikiLink={(target) =>
 				void loadPath(
 					resolveWikiPath({

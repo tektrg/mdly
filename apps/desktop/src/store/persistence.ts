@@ -1,4 +1,11 @@
+import {
+	type ContrastPreference,
+	isContrastPreference,
+	isThemePreference,
+	type ThemePreference,
+} from "../lib/theme";
 import { emptyDoc, type SortMode } from "./state";
+import { STORAGE_KEY } from "./storage";
 
 type WorkspaceState = {
 	workspacePath: string | null;
@@ -15,6 +22,8 @@ type DocumentState = ReturnType<typeof emptyDoc>;
 type UiState = {
 	sidebarOpen: boolean;
 	isSwitcherOpen: boolean;
+	themePreference: ThemePreference;
+	contrastPreference: ContrastPreference;
 };
 
 export type DesktopState = {
@@ -31,10 +40,12 @@ type Persisted = {
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
-	ui?: { sidebarOpen?: boolean };
+	ui?: {
+		sidebarOpen?: boolean;
+		themePreference?: unknown;
+		contrastPreference?: unknown;
+	};
 };
-
-export const STORAGE_KEY = "hubble-desktop-app";
 
 function readStorage<T>(key: string): T | null {
 	if (typeof localStorage === "undefined") return null;
@@ -67,12 +78,25 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 	};
 }
 
+function hydrateUi(ui: Persisted["ui"]): UiState {
+	return {
+		sidebarOpen: ui?.sidebarOpen ?? false,
+		isSwitcherOpen: false,
+		themePreference: isThemePreference(ui?.themePreference)
+			? ui.themePreference
+			: "system",
+		contrastPreference: isContrastPreference(ui?.contrastPreference)
+			? ui.contrastPreference
+			: "standard",
+	};
+}
+
 export function getInitialState(): DesktopState {
 	const p = readStorage<Persisted>(STORAGE_KEY);
 	return {
 		workspace: hydrateWorkspace(p?.workspace),
 		document: emptyDoc(p?.document?.lastOpenedPath ?? null),
-		ui: { sidebarOpen: p?.ui?.sidebarOpen ?? false, isSwitcherOpen: false },
+		ui: hydrateUi(p?.ui),
 	};
 }
 
@@ -89,6 +113,8 @@ export function serialize(state: DesktopState): Persisted {
 		},
 		ui: {
 			sidebarOpen: state.ui.sidebarOpen,
+			themePreference: state.ui.themePreference,
+			contrastPreference: state.ui.contrastPreference,
 		},
 	};
 }

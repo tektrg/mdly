@@ -17,7 +17,7 @@
 	font-display: swap;
 }
 
-/* Desktop-only shadcn token extensions; shared light tokens live in theme.css. */
+/* Desktop-only shadcn token extensions; shared tokens live in theme.css. */
 :root {
 	--destructive-foreground: oklch(0.985 0 0);
 	--sidebar-primary: var(--primary);
@@ -46,35 +46,9 @@
 }
 
 .dark {
-	--background: oklch(0.236 0.006 106);
-	--foreground: oklch(0.962 0.003 106);
-	--card: oklch(0.274 0.006 106);
-	--card-foreground: var(--foreground);
-	--popover: oklch(0.274 0.006 106);
-	--popover-foreground: var(--foreground);
-	--primary: color-mix(in oklab, var(--brand) 88%, white);
-	--primary-foreground: oklch(0.18 0.005 106);
-	--secondary: oklch(0.315 0.006 106);
-	--secondary-foreground: var(--foreground);
-	--muted: oklch(0.302 0.006 106);
-	--muted-foreground: oklch(0.754 0.005 106);
-	--accent: oklch(0.312 0.006 106);
-	--accent-foreground: var(--foreground);
-	/* Dark keeps neutral state colors for now (light mode is the brand focus) */
-	--selected: oklch(0.36 0.008 106);
-	--selected-foreground: var(--foreground);
-	--destructive: oklch(0.704 0.191 22.216);
 	--destructive-foreground: oklch(0.985 0 0);
-	--border: oklch(1 0 0 / 10%);
-	--input: oklch(1 0 0 / 14%);
-	--ring: color-mix(in oklab, var(--brand) 68%, white);
-	--sidebar: var(--card);
-	--sidebar-foreground: var(--foreground);
 	--sidebar-primary: var(--primary);
 	--sidebar-primary-foreground: var(--primary-foreground);
-	--sidebar-accent: var(--accent);
-	--sidebar-accent-foreground: var(--accent-foreground);
-	--sidebar-border: var(--border);
 	--sidebar-ring: var(--ring);
 }
 

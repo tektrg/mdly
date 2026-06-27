@@ -1,12 +1,8 @@
 import { store } from "@simplestack/store";
 import type { FileAction } from "../externalFileChange";
 import { localStoragePersist } from "../lib/localStoragePersist";
-import {
-	type DesktopState,
-	getInitialState,
-	STORAGE_KEY,
-	serialize,
-} from "./persistence";
+import { type DesktopState, getInitialState, serialize } from "./persistence";
+import { STORAGE_KEY } from "./storage";
 
 export type SortMode = "alpha" | "recent";
 
@@ -148,3 +144,5 @@ export const recentWorkspacesStore = workspaceStore.select("recentWorkspaces");
 export const currentPathStore = viewerStore.select("currentPath");
 export const sidebarOpenStore = uiStore.select("sidebarOpen");
 export const switcherOpenStore = uiStore.select("isSwitcherOpen");
+export const themePreferenceStore = uiStore.select("themePreference");
+export const contrastPreferenceStore = uiStore.select("contrastPreference");

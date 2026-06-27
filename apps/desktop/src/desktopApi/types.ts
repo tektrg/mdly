@@ -82,6 +82,11 @@ export type NotionPageUpdate = {
 	contentHash: string;
 };
 
+export type NotionPageUpdateOptions = {
+	previousMarkdown?: string;
+	currentMarkdown?: string;
+};
+
 export type NotionDatabaseQueryInput = {
 	sourceId: string;
 	sourceObject: Extract<NotionObjectType, "database" | "data_source">;
@@ -180,6 +185,7 @@ export type DesktopApi = {
 		pageId: string,
 		markdown: string,
 		account?: string | null,
+		options?: NotionPageUpdateOptions,
 	): Promise<NotionPageUpdate>;
 	queryNotionDatabase(
 		input: NotionDatabaseQueryInput,

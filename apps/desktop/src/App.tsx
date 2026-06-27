@@ -3,13 +3,18 @@ import { useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
+import { CommandBar } from "./components/CommandBar";
 import { DocumentViewer } from "./components/DocumentViewer";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
 import { NotionOpenDialog } from "./components/NotionOpenDialog";
-import { SettingsDialog } from "./components/SettingsDialog";
+import {
+	AppearanceSettings,
+	SettingsDialog,
+} from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
 import {
@@ -22,13 +27,14 @@ import type { DesktopUpdateState } from "./desktopApi/types";
 import {
 	createMarkdownFile,
 	currentNotionLinkStatus,
-	hasLocalChangesSinceLastNotionSync,
 	importNotionDatabase,
 	openOrImportNotionPage,
 	pushCurrentNotionPage,
 	refreshCurrentNotionPage,
 } from "./fileActions";
 import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
+import { applyContrastPreference, syncThemePreference } from "./lib/theme";
+import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
 import { SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
 	createWorkspaceWithSidebar,
@@ -45,7 +51,9 @@ import {
 	setWorkspaceSwitcherOpen,
 } from "./store/actions";
 import {
+	contrastPreferenceStore,
 	sidebarOpenStore,
+	themePreferenceStore,
 	uiStore,
 	viewerStore,
 	workspacePathStore,
@@ -86,10 +94,20 @@ async function revealPath(path: string | null) {
 	}
 }
 
+function alertNotionRefreshBlockedByLocalChanges() {
+	toast.error("Notion refresh paused", {
+		description:
+			"This file has local changes since the last Notion fetch. Push them to Notion before fetching again.",
+	});
+}
+
 function App() {
 	const state = useStoreValue(viewerStore);
+	const workspace = useStoreValue(workspaceStore);
 	const workspacePath = useStoreValue(workspacePathStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
+	const themePreference = useStoreValue(themePreferenceStore);
+	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const hasWorkspace = workspacePath !== null;
 	const [scrollContainerEl, setScrollContainerEl] =
 		useState<HTMLDivElement | null>(null);
@@ -104,6 +122,12 @@ function App() {
 	const [htmlAppsDialogOpen, setHtmlAppsDialogOpen] = useState(false);
 	const [htmlAppsCalloutVisible, setHtmlAppsCalloutVisible] = useState(false);
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
+	const [commandBarOpen, setCommandBarOpen] = useState(false);
+	const [notionLoadingLabel, setNotionLoadingLabel] = useState<string | null>(
+		null,
+	);
+	const [notionDatabaseRefreshToken, setNotionDatabaseRefreshToken] =
+		useState(0);
 	const notionOpenRefreshPathRef = useRef<string | null>(null);
 
 	const dismissHtmlAppsCallout = useCallback(() => {
@@ -137,6 +161,23 @@ function App() {
 			: null;
 	const showUpdateCallout = readyVersion !== dismissedVersion;
 	const notionLink = currentNotionLinkStatus();
+	const notionDatabase =
+		state.status === "ready"
+			? parseNotionDatabaseMetadata(state.content)
+			: null;
+	const notionSyncMode = notionLink
+		? "page"
+		: notionDatabase
+			? "database"
+			: "none";
+
+	useEffect(() => {
+		return syncThemePreference(themePreference);
+	}, [themePreference]);
+
+	useEffect(() => {
+		applyContrastPreference(contrastPreference);
+	}, [contrastPreference]);
 
 	const openSettings = useCallback(() => {
 		setSettingsOpen(true);
@@ -166,18 +207,18 @@ function App() {
 	}, []);
 
 	const refreshNotionPage = useCallback(async () => {
+		if (parseNotionDatabaseMetadata(viewerStore.get().content)) {
+			setNotionDatabaseRefreshToken((token) => token + 1);
+			return;
+		}
+
 		try {
-			const hasLocalChanges = hasLocalChangesSinceLastNotionSync();
-			if (hasLocalChanges) {
-				const overwrite = window.confirm(
-					"This local file has changes that are not pushed to Notion. Replace it with the latest Notion page?",
-				);
-				if (!overwrite) return;
+			const result = await refreshCurrentNotionPage();
+			if (result.kind === "local-changes") {
+				alertNotionRefreshBlockedByLocalChanges();
+				return;
 			}
-			const refreshed = await refreshCurrentNotionPage({
-				forceLocalOverwrite: hasLocalChanges,
-			});
-			if (refreshed) toast.success("Refreshed from Notion");
+			if (result.kind === "refreshed") toast.success("Refreshed from Notion");
 		} catch (error) {
 			toast.error("Failed to refresh from Notion", {
 				description: error instanceof Error ? error.message : String(error),
@@ -199,16 +240,11 @@ function App() {
 		let disposed = false;
 		const refreshFromOpen = async () => {
 			try {
-				const hasLocalChanges = hasLocalChangesSinceLastNotionSync();
-				if (hasLocalChanges) {
-					const overwrite = window.confirm(
-						"This linked Notion file has local changes that are not pushed. Replace it with the latest Notion page?",
-					);
-					if (!overwrite || disposed) return;
+				const result = await refreshCurrentNotionPage();
+				if (result.kind === "local-changes") {
+					if (!disposed) alertNotionRefreshBlockedByLocalChanges();
+					return;
 				}
-				await refreshCurrentNotionPage({
-					forceLocalOverwrite: hasLocalChanges,
-				});
 			} catch (error) {
 				if (disposed) return;
 				toast.error("Failed to refresh from Notion", {
@@ -292,6 +328,44 @@ function App() {
 		}
 	}, []);
 
+	const openCommandBarFile = useCallback((path: string) => {
+		setSidebarOpen(true);
+		void loadPath(path);
+	}, []);
+
+	const openCommandBarWorkspace = useCallback(async (path?: string) => {
+		const switched = await openWorkspace(path);
+		if (switched && workspaceStore.get().workspacePath !== null) {
+			setSidebarOpen(true);
+		}
+		return switched;
+	}, []);
+
+	const openNotionResult = useCallback(
+		async (result: Parameters<typeof openOrImportNotionPage>[0]) => {
+			const isPage = result.object === "page";
+			setNotionLoadingLabel(
+				isPage ? "Opening Notion page" : "Importing Notion table",
+			);
+			try {
+				if (isPage) {
+					await openOrImportNotionPage(result, {
+						folderPath: focusedSidebarPath,
+					});
+					toast.success("Notion page opened");
+					return;
+				}
+				await importNotionDatabase(result, {
+					folderPath: focusedSidebarPath,
+				});
+				toast.success("Notion table imported");
+			} finally {
+				setNotionLoadingLabel(null);
+			}
+		},
+		[focusedSidebarPath],
+	);
+
 	useEffect(() => {
 		void desktopApi.setMenuState({ hasWorkspace });
 	}, [hasWorkspace]);
@@ -318,6 +392,10 @@ function App() {
 			} else if (keymatch(event, "CmdOrCtrl+O")) {
 				event.preventDefault();
 				await openFilePicker();
+			} else if (keymatch(event, "CmdOrCtrl+P")) {
+				event.preventDefault();
+				if (!workspaceStore.get().workspacePath) return;
+				setCommandBarOpen(true);
 			} else if (keymatch(event, "CmdOrCtrl+Shift+C")) {
 				const path = focusedSidebarPath ?? viewerStore.get().currentPath;
 				if (!path) return;
@@ -435,7 +513,7 @@ function App() {
 				onOpenNotionPage={() => setNotionDialogOpen(true)}
 				onPushNotionPage={pushNotionPage}
 				onRefreshNotionPage={refreshNotionPage}
-				showNotionSyncActions={notionLink !== null}
+				notionSyncMode={notionSyncMode}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<Sidebar
@@ -488,6 +566,7 @@ function App() {
 							<DocumentViewer
 								path={state.currentPath}
 								content={state.content}
+								notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 								onScrollContainerChange={setScrollContainerEl}
 							/>
 						</div>
@@ -495,6 +574,7 @@ function App() {
 				</section>
 			</div>
 			<SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+				<AppearanceSettings />
 				{updateState ? (
 					<UpdatesSection
 						state={updateState}
@@ -510,20 +590,43 @@ function App() {
 			<NotionOpenDialog
 				open={notionDialogOpen}
 				onOpenChange={setNotionDialogOpen}
-				onImportDatabase={async (result) => {
-					await importNotionDatabase(result, {
-						folderPath: focusedSidebarPath,
-					});
-					toast.success("Notion table imported");
-				}}
-				onImportPage={async (result) => {
-					await openOrImportNotionPage(result, {
-						folderPath: focusedSidebarPath,
-					});
-					toast.success("Notion page opened");
-				}}
+				onImportDatabase={openNotionResult}
+				onImportPage={openNotionResult}
 			/>
+			<CommandBar
+				open={commandBarOpen}
+				onOpenChange={setCommandBarOpen}
+				files={workspace.files}
+				folders={workspace.folders}
+				workspacePath={workspace.workspacePath}
+				recentWorkspaces={workspace.recentWorkspaces}
+				currentPath={state.currentPath}
+				onOpenFile={openCommandBarFile}
+				onOpenWorkspace={openCommandBarWorkspace}
+				onOpenNotionResult={openNotionResult}
+			/>
+			<NotionLoadingIndicator label={notionLoadingLabel} />
 		</main>
+	);
+}
+
+function NotionLoadingIndicator({ label }: { label: string | null }) {
+	if (!label) return null;
+
+	return (
+		<div
+			aria-live="assertive"
+			aria-busy="true"
+			className="fixed inset-0 z-[60] flex items-center justify-center bg-background/40 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
+		>
+			<div className="flex items-center gap-3 rounded-[var(--radius-popover)] border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-overlay">
+				<MingcuteLoading3Line
+					aria-hidden="true"
+					className="size-4 animate-spin text-muted-foreground"
+				/>
+				<span className="font-medium">{label}</span>
+			</div>
+		</div>
 	);
 }
 

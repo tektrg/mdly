@@ -32,6 +32,14 @@ import {
 	withMarkdownExtension,
 } from "../src/lib/filePath";
 import {
+	getNotionConnectionStatus,
+	getNotionPageMarkdown,
+	queryNotionDatabase,
+	searchNotion,
+	setNotionAccount,
+	updateNotionPageMarkdown,
+} from "./notion";
+import {
 	loadZoomFactor,
 	resetWindowZoom,
 	setTrafficLightInset,
@@ -1284,6 +1292,34 @@ function registerIpc() {
 	ipcMain.handle(
 		"desktop:get-fullscreen",
 		() => mainWindow?.isFullScreen() ?? false,
+	);
+
+	ipcMain.handle(
+		"desktop:notion-connection-status",
+		(_event, { account } = {}) => getNotionConnectionStatus(account),
+	);
+
+	ipcMain.handle("desktop:notion-set-account", (_event, { account }) =>
+		setNotionAccount(account),
+	);
+
+	ipcMain.handle("desktop:notion-search", (_event, { query, account }) =>
+		searchNotion(query, account),
+	);
+
+	ipcMain.handle(
+		"desktop:notion-page-markdown",
+		(_event, { pageId, account }) => getNotionPageMarkdown(pageId, account),
+	);
+
+	ipcMain.handle(
+		"desktop:notion-update-page-markdown",
+		(_event, { pageId, markdown, account, options }) =>
+			updateNotionPageMarkdown(pageId, markdown, account, options),
+	);
+
+	ipcMain.handle("desktop:notion-query-database", (_event, input) =>
+		queryNotionDatabase(input),
 	);
 
 	ipcMain.handle("desktop:check-for-updates", async () => {

@@ -103,7 +103,7 @@ export function ImageNodeView({
 						src={resolvedSrc}
 						alt={node.attrs.alt || ""}
 						title={node.attrs.title || ""}
-						className={selected ? "outline-2 outline-blue-400" : ""}
+						className={selected ? "outline-2 outline-ring" : ""}
 					/>
 				) : (
 					<div className="pm-image-missing">Image unavailable</div>

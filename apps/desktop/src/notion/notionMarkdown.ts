@@ -1,5 +1,6 @@
 import {
 	combineMarkdownFrontMatter,
+	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
 } from "@hubble.md/editor";
 import type { NotionSearchResult } from "../desktopApi/types";
@@ -48,7 +49,7 @@ export function buildNotionLinkedMarkdownFromMetadata(
 	const notionFrontMatter = notionLinkFrontMatter(metadata);
 	return combineMarkdownFrontMatter(
 		[existingFrontMatter, notionFrontMatter].filter(Boolean).join("\n"),
-		parsed.body,
+		normalizeNotionMarkdownBody(parsed.body),
 	);
 }
 
@@ -87,8 +88,12 @@ export function stripNotionLinkMetadata(markdown: string): string {
 	if (parsed.type === "none") return markdown;
 	return combineMarkdownFrontMatter(
 		stripNotionFrontMatterBlock(parsed.raw).trimEnd(),
-		parsed.body,
+		normalizeNotionMarkdownBody(parsed.body),
 	);
+}
+
+export function notionMarkdownBodyForUpdate(markdown: string): string {
+	return parseMarkdownFrontMatter(stripNotionLinkMetadata(markdown)).body;
 }
 
 export function uniqueNotionMarkdownPath({
