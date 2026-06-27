@@ -40,6 +40,11 @@ packages/sync-backend/convex/*.js.map
 **/src-tauri/target/
 **/src-tauri/gen/schemas/
 
+# local agent/dev artifacts
+.hermes/
+Hubble Dev.app/
+mdly Dev.app/
+
 # OS / editors
 .DS_Store
 .idea/

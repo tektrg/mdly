@@ -1,6 +1,6 @@
 # Desktop App
 
-Desktop app for Hubble.md (TypeScript + Electron).
+Desktop app for mdly (TypeScript + Electron).
 
 ## Prerequisites
 
@@ -41,9 +41,8 @@ pnpm bundle:desktop
 ## Distribution
 
 The desktop app is macOS-only for now. Production updates use GitHub Releases
-on `bholmesdev/hubble.md`. Each release should include:
+on `tektrg/mdly`. Each release should include:
 
 - `latest-mac.yml`
 - the generated `.zip`
 - the generated `.dmg`
-

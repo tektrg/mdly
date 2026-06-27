@@ -2,16 +2,15 @@
 	"name": "@hubble.md/desktop",
 	"private": true,
 	"version": "0.1.13",
-	"description": "Desktop app for Hubble.md",
+	"description": "Desktop app for mdly",
 	"license": "MIT",
-	"author": "Ben Holmes <hey@bholmes.dev>",
+	"author": "tektrg",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/bholmesdev/hubble.md.git",
+		"url": "git+https://github.com/tektrg/mdly.git",
 		"directory": "apps/desktop"
 	},
-	"homepage": "https://hubble.md",
-	"bugs": "https://github.com/bholmesdev/hubble.md/issues",
+	"bugs": "https://github.com/tektrg/mdly/issues",
 	"type": "module",
 	"main": "./out/main/main.js",
 	"scripts": {
@@ -73,8 +72,8 @@
 		"vitest": "^3.2.4"
 	},
 	"build": {
-		"appId": "com.benholmes.hubblemd.desktop",
-		"productName": "Hubble",
+		"appId": "com.tektrg.mdly.desktop",
+		"productName": "mdly",
 		"directories": {
 			"output": "release"
 		},
@@ -85,8 +84,8 @@
 		"publish": [
 			{
 				"provider": "github",
-				"owner": "bholmesdev",
-				"repo": "hubble.md",
+				"owner": "tektrg",
+				"repo": "mdly",
 				"tagNamePrefix": "desktop-v",
 				"releaseType": "release"
 			}

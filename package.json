@@ -1,16 +1,15 @@
 {
-	"name": "hubble-md",
+	"name": "mdly",
 	"private": true,
 	"version": "0.0.0",
-	"description": "Hubble.md monorepo",
+	"description": "mdly monorepo",
 	"license": "MIT",
-	"author": "Ben Holmes <hey@bholmes.dev>",
+	"author": "tektrg",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/bholmesdev/hubble.md.git"
+		"url": "git+https://github.com/tektrg/mdly.git"
 	},
-	"homepage": "https://hubble.md",
-	"bugs": "https://github.com/bholmesdev/hubble.md/issues",
+	"bugs": "https://github.com/tektrg/mdly/issues",
 	"scripts": {
 		"check": "biome check .",
 		"check:fix": "biome check . --write",
