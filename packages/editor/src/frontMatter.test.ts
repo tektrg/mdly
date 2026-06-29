@@ -151,9 +151,42 @@ Body`);
 				key: "nested",
 				type: "unsupported",
 				raw: "nested:\n  child: value",
+				preview: "Object",
 			},
-			{ key: "flags", type: "unsupported", raw: "flags:\n  - true\n  - false" },
+			{
+				key: "flags",
+				type: "unsupported",
+				raw: "flags:\n  - true\n  - false",
+				preview: "true, false",
+			},
 			{ key: "published", type: "checkbox", value: true },
+		]);
+	});
+
+	it("shows read-only previews for unsupported Notion-style property names", () => {
+		const parsed = parseMarkdownFrontMatter(`---
+AI Summary: Draft intro
+Review Owners:
+  - Ada
+  - Ben
+---
+Body`);
+
+		expect(parsed.type).toBe("valid");
+		if (parsed.type !== "valid") return;
+		expect(parsed.properties).toEqual([
+			{
+				key: "AI Summary",
+				type: "unsupported",
+				raw: "AI Summary: Draft intro",
+				preview: "Draft intro",
+			},
+			{
+				key: "Review Owners",
+				type: "unsupported",
+				raw: "Review Owners:\n  - Ada\n  - Ben",
+				preview: "Ada, Ben",
+			},
 		]);
 	});
 
@@ -177,6 +210,48 @@ date: 2026-06-03
 tags:
   - work
   - draft`);
+	});
+
+	it("preserves unsupported properties with non-simple keys while serializing edits", () => {
+		const yaml = serializeFrontMatter([
+			{
+				key: "AI Summary",
+				type: "unsupported",
+				raw: "AI Summary: Draft intro",
+				preview: "Draft intro",
+			},
+			{ key: "status", type: "text", value: "done" },
+		]);
+
+		expect(yaml).toBe(`AI Summary: Draft intro
+status: "done"`);
+	});
+
+	it("preserves unsupported raw YAML source while serializing supported edits", () => {
+		const parsed = parseMarkdownFrontMatter(`---
+status: draft
+AI Summary: >
+  Hello
+  world
+# keep this with the next property
+Nested Value: { child: "quoted", list: [one, two] }
+---
+Body`);
+
+		expect(parsed.type).toBe("valid");
+		if (parsed.type !== "valid") return;
+		const nextProperties = parsed.properties.map((property) =>
+			property.key === "status"
+				? { ...property, type: "text" as const, value: "done" }
+				: property,
+		);
+
+		expect(serializeFrontMatter(nextProperties)).toBe(`status: "done"
+AI Summary: >
+  Hello
+  world
+# keep this with the next property
+Nested Value: { child: "quoted", list: [one, two] }`);
 	});
 
 	it("recombines front matter with a markdown body", () => {

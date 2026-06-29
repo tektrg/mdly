@@ -6,8 +6,9 @@ import {
 	listExtensions,
 	MarkdownRolloverExtension,
 	markdownToTiptapDoc,
+	NotionCalloutExtension,
+	NotionEmptyBlockExtension,
 	normalizeNotionMarkdownBody,
-	notionBlockExtensions,
 	parseMarkdownFrontMatter,
 	StrikethroughShortcutExtension,
 	tableExtensions,
@@ -29,6 +30,7 @@ import { FindReplaceExtension } from "./FindReplaceExtension";
 import { LinkClickExtension } from "./LinkClickExtension";
 import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
+import { createNotionHtmlBlockViewExtension } from "./NotionHtmlBlockView";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { SmartLinkExtension } from "./SmartLinkExtension";
 import { TableOfContents } from "./TableOfContents";
@@ -44,12 +46,45 @@ import type { VirtualCursorMode } from "./virtualCursorMode";
 
 const DEFAULT_SAVE_DEBOUNCE_MS = 120;
 const USER_EDIT_INTENT_WINDOW_MS = 1000;
+const EDITOR_FONT_ATTRIBUTE_STYLE = "font-family: var(--editor-font-family);";
+const defaultExtraExtensions: NonNullable<EditorOptions["extensions"]> = [];
+type EditorAttributes = NonNullable<
+	NonNullable<EditorOptions["editorProps"]>["attributes"]
+>;
 
 export function hasRecentEditorUserIntent(
 	lastUserEditIntentAt: number,
 	now = Date.now(),
 ): boolean {
 	return now - lastUserEditIntentAt < USER_EDIT_INTENT_WINDOW_MS;
+}
+
+export function mergeEditorFontAttributeStyle(style?: string) {
+	if (!style?.trim()) return EDITOR_FONT_ATTRIBUTE_STYLE;
+	if (/font-family\s*:/i.test(style)) return style;
+	const separator = style.trimEnd().endsWith(";") ? " " : "; ";
+	return `${style}${separator}${EDITOR_FONT_ATTRIBUTE_STYLE}`;
+}
+
+function editorAttributesWithFontStyle(
+	attributes: EditorAttributes | undefined,
+): EditorAttributes {
+	if (typeof attributes === "function") {
+		return (state) => {
+			const resolvedAttributes = attributes(state);
+			return {
+				...resolvedAttributes,
+				"data-editor-input": "",
+				style: mergeEditorFontAttributeStyle(resolvedAttributes.style),
+			};
+		};
+	}
+
+	return {
+		...attributes,
+		"data-editor-input": "",
+		style: mergeEditorFontAttributeStyle(attributes?.style),
+	};
 }
 
 export type { WikiTarget };
@@ -76,7 +111,7 @@ export function EditorView({
 	path,
 	initialMarkdown,
 	wikiTargets = [],
-	extensions = [],
+	extensions = defaultExtraExtensions,
 	editorProps,
 	onPaste,
 	onDrop,
@@ -183,8 +218,8 @@ export function EditorView({
 		});
 	}, []);
 
-	const editor = useEditor({
-		extensions: [
+	const editorExtensions = useMemo(
+		() => [
 			StarterKit.configure({ codeBlock: false, listItem: false }),
 			HubbleCodeBlock,
 			FindReplaceExtension,
@@ -199,12 +234,28 @@ export function EditorView({
 			HeadingExtension,
 			MarkdownRolloverExtension,
 			StrikethroughShortcutExtension,
-			...notionBlockExtensions,
+			NotionCalloutExtension,
+			NotionEmptyBlockExtension,
+			createNotionHtmlBlockViewExtension({ onOpenExternalLink }),
 			...listExtensions,
 			...tableExtensions,
 			...extensions,
 			TaskItem.configure({ nested: true }),
 		],
+		[
+			extensions,
+			onOpenExternalLink,
+			onOpenNotionMentionLink,
+			onOpenWikiLink,
+		],
+	);
+	const editorAttributes = useMemo(
+		() => editorAttributesWithFontStyle(editorProps?.attributes),
+		[editorProps?.attributes],
+	);
+
+	const editor = useEditor({
+		extensions: editorExtensions,
 		content: initialDoc,
 		onUpdate: ({ editor: current }) => {
 			const doc = current.getJSON() as JSONContent;
@@ -222,10 +273,7 @@ export function EditorView({
 		},
 		editorProps: {
 			...editorProps,
-			attributes: {
-				...editorProps?.attributes,
-				"data-editor-input": "",
-			},
+			attributes: editorAttributes,
 			handlePaste: (view, event, slice): boolean => {
 				if (editorProps?.handlePaste?.(view, event, slice)) return true;
 				const currentEditor = editorRef.current;

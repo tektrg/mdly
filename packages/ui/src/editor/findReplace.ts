@@ -104,6 +104,67 @@ export function selectEditorMatch(editor: Editor, match: TextMatch) {
 	editor.view.dispatch(
 		editor.state.tr.setSelection(selection).scrollIntoView(),
 	);
+	scrollEditorMatchIntoView(editor, match);
+}
+
+function scrollEditorMatchIntoView(editor: Editor, match: TextMatch) {
+	const scrollContainer = findScrollContainer(editor.view.dom);
+	if (!scrollContainer) return;
+
+	const scroll = () => {
+		let start: ReturnType<typeof editor.view.coordsAtPos>;
+		let end: ReturnType<typeof editor.view.coordsAtPos>;
+		try {
+			start = editor.view.coordsAtPos(match.from);
+			end = editor.view.coordsAtPos(match.to);
+		} catch {
+			return;
+		}
+		const matchTop = Math.min(start.top, end.top);
+		const matchBottom = Math.max(start.bottom, end.bottom);
+		const containerRect = scrollContainer.getBoundingClientRect();
+		const margin = 48;
+		const visibleTop = containerRect.top + margin;
+		const visibleBottom = containerRect.bottom - margin;
+
+		if (matchTop >= visibleTop && matchBottom <= visibleBottom) return;
+
+		const matchCenter = (matchTop + matchBottom) / 2;
+		const containerCenter = (containerRect.top + containerRect.bottom) / 2;
+		const scrollTopDelta = matchCenter - containerCenter;
+		if (typeof scrollContainer.scrollBy === "function") {
+			scrollContainer.scrollBy({
+				top: scrollTopDelta,
+				behavior: prefersReducedMotion() ? "auto" : "smooth",
+			});
+			return;
+		}
+		scrollContainer.scrollTop += scrollTopDelta;
+	};
+
+	if (typeof requestAnimationFrame === "function") {
+		requestAnimationFrame(scroll);
+		return;
+	}
+	scroll();
+}
+
+function findScrollContainer(element: HTMLElement) {
+	let current: HTMLElement | null = element.parentElement;
+	while (current) {
+		const style = getComputedStyle(current);
+		const overflowY = style.overflowY || style.overflow;
+		if (/(auto|scroll|overlay)/.test(overflowY)) return current;
+		current = current.parentElement;
+	}
+	return null;
+}
+
+function prefersReducedMotion() {
+	return (
+		typeof matchMedia === "function" &&
+		matchMedia("(prefers-reduced-motion: reduce)").matches
+	);
 }
 
 export function replaceStringMatch(

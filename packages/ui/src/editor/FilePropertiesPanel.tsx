@@ -226,6 +226,11 @@ function PropertyRow({
 		nameInputRef.current?.focus();
 		onNameAutoFocused();
 	}, [autoFocusName, onNameAutoFocused]);
+
+	if (property.type === "unsupported") {
+		return <UnsupportedPropertyRow property={property} />;
+	}
+
 	return (
 		<div
 			ref={rowRef}
@@ -295,6 +300,38 @@ function PropertyRow({
 	);
 }
 
+function UnsupportedPropertyRow({
+	property,
+}: {
+	property: Extract<DraftFileProperty, { type: "unsupported" }>;
+}) {
+	return (
+		<div className="grid grid-cols-[minmax(7rem,0.75fr)_2fr_auto] items-start gap-2">
+			<div className="flex min-w-0 items-center gap-1">
+				<span
+					className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground"
+					title="Unsupported property"
+				>
+					<TypeIcon type="unsupported" />
+				</span>
+				<span className="min-h-7 min-w-0 truncate px-2 py-1 text-[12px] text-muted-foreground">
+					{property.key}
+				</span>
+			</div>
+			<details className={cn("rounded-sm", ghostBoxClass)}>
+				<summary className="flex min-h-7 cursor-pointer items-center gap-2 px-2 py-1 text-[11px] text-muted-foreground">
+					<span className="min-w-0 flex-1 truncate">{property.preview}</span>
+					<span className="shrink-0 text-[10px] uppercase">YAML</span>
+				</summary>
+				<pre className="m-0 overflow-auto border-t border-border p-2 font-mono text-[11px]">
+					{property.raw}
+				</pre>
+			</details>
+			<span aria-hidden="true" className="size-7" />
+		</div>
+	);
+}
+
 function PropertyValue({
 	property,
 	autoDetect,
@@ -302,24 +339,12 @@ function PropertyValue({
 	onRemoveEmpty,
 	onRemoveEmptyBlur,
 }: {
-	property: DraftFileProperty;
+	property: Exclude<DraftFileProperty, { type: "unsupported" }>;
 	autoDetect: boolean;
 	onChange: (property: DraftFileProperty) => void;
 	onRemoveEmpty: (options?: { focusAdd?: boolean }) => void;
 	onRemoveEmptyBlur: (event: FocusEvent<HTMLElement>) => void;
 }) {
-	if (property.type === "unsupported") {
-		return (
-			<details className={cn("rounded-sm", ghostBoxClass)}>
-				<summary className="cursor-pointer px-2 py-1 text-[11px] text-muted-foreground">
-					Unsupported
-				</summary>
-				<pre className="m-0 overflow-auto border-t border-border p-2 font-mono text-[11px]">
-					{property.raw}
-				</pre>
-			</details>
-		);
-	}
 	if (property.type === "checkbox") {
 		return (
 			<label className="flex h-7 items-center text-[12px]">

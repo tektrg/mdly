@@ -151,6 +151,19 @@ describe("embed markdown conversion", () => {
 		expect(tiptapDocToMarkdown(doc)).toBe(input);
 	});
 
+	it("preserves notion video blocks as raw html blocks", () => {
+		const input = '<video controls src="https://example.com/demo.mp4"></video>';
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content).toEqual([
+			{
+				type: "notionHtmlBlock",
+				attrs: { raw: input },
+			},
+		]);
+		expect(tiptapDocToMarkdown(doc)).toBe(input);
+	});
+
 	it("parses compact notion empty blocks", () => {
 		const doc = markdownToTiptapDoc("Before\n<empty-block/>\nAfter");
 

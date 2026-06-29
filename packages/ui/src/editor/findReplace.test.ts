@@ -2,7 +2,7 @@
 
 import { Editor, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	findDocumentTextMatches,
 	findStringMatches,
@@ -19,6 +19,7 @@ afterEach(() => {
 	for (const editor of editors) editor.destroy();
 	editors.length = 0;
 	document.body.replaceChildren();
+	vi.restoreAllMocks();
 });
 
 describe("findStringMatches", () => {
@@ -134,6 +135,39 @@ describe("selectEditorMatch", () => {
 		expect(editor.state.selection.from).toBe(match.from);
 		expect(editor.state.selection.to).toBe(match.to);
 	});
+
+	it("scrolls the editor viewport when the selected match is outside the visible area", () => {
+		const editor = createEditor(docWithParagraph("Alpha alpha"));
+		const [match] = findDocumentTextMatches(editor.state.doc, "alpha", {
+			caseSensitive: false,
+		});
+		const scrollContainer = editor.view.dom.parentElement as HTMLElement;
+		const scrollBy = vi.fn();
+
+		scrollContainer.style.overflowY = "auto";
+		scrollContainer.scrollBy = scrollBy;
+		vi.spyOn(scrollContainer, "getBoundingClientRect").mockReturnValue(
+			rect({ top: 0, bottom: 100 }),
+		);
+		vi.spyOn(editor.view, "coordsAtPos").mockReturnValue(
+			rect({ top: 300, bottom: 318 }),
+		);
+		vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+			(callback: FrameRequestCallback) => {
+				callback(0);
+				return 1;
+			},
+		);
+
+		selectEditorMatch(editor, match);
+
+		expect(scrollBy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				behavior: "smooth",
+				top: 259,
+			}),
+		);
+	});
 });
 
 function createEditor(content: JSONContent) {
@@ -159,5 +193,19 @@ function paragraph(text: string): JSONContent {
 	return {
 		type: "paragraph",
 		content: text ? [{ type: "text", text }] : undefined,
+	};
+}
+
+function rect({ top, bottom }: { top: number; bottom: number }): DOMRect {
+	return {
+		top,
+		bottom,
+		left: 0,
+		right: 600,
+		width: 600,
+		height: bottom - top,
+		x: 0,
+		y: top,
+		toJSON: () => ({}),
 	};
 }

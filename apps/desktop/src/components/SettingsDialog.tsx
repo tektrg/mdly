@@ -1,14 +1,28 @@
 import { Modal } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
 	CONTRAST_PREFERENCES,
 	type ContrastPreference,
+	type EditorFontPreference,
+	SYSTEM_EDITOR_FONT_PREFERENCE,
 	THEME_PREFERENCES,
 	type ThemePreference,
 } from "../lib/theme";
-import { setContrastPreference, setThemePreference } from "../store/actions";
-import { contrastPreferenceStore, themePreferenceStore } from "../store/state";
+import {
+	setContrastPreference,
+	setEditorFontPreference,
+	setShowGitStatusIndicators,
+	setShowIgnoredWorkspaceFiles,
+	setThemePreference,
+} from "../store/actions";
+import {
+	contrastPreferenceStore,
+	editorFontPreferenceStore,
+	showGitStatusIndicatorsStore,
+	showIgnoredWorkspaceFilesStore,
+	themePreferenceStore,
+} from "../store/state";
 
 export function SettingsDialog({
 	open,
@@ -65,6 +79,20 @@ const contrastPreferenceLabels: Record<ContrastPreference, string> = {
 	crisp: "Crisp",
 };
 
+const segmentedControlItemClassName =
+	"inline-flex h-7 min-w-14 items-center justify-center rounded-sm px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy select-none peer-checked:bg-card peer-checked:text-foreground peer-focus-visible:ring-1 peer-focus-visible:ring-ring/40 peer-focus-visible:outline-hidden";
+
+const fallbackEditorFontFamilies = [
+	"Avenir Next",
+	"Georgia",
+	"Helvetica Neue",
+	"Menlo",
+	"Monaco",
+	"New York",
+	"SF Mono",
+	"Times New Roman",
+];
+
 function contrastPreferenceFromSliderValue(value: string): ContrastPreference {
 	const preference = CONTRAST_PREFERENCES[Number(value)];
 	return preference ?? "standard";
@@ -74,10 +102,76 @@ function contrastPreferenceToSliderValue(preference: ContrastPreference) {
 	return CONTRAST_PREFERENCES.indexOf(preference);
 }
 
+function normalizeFontFamilies(fontFamilies: string[]) {
+	return [
+		...new Set(fontFamilies.map((family) => family.trim()).filter(Boolean)),
+	].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function useEditorFontFamilies(selectedFont: EditorFontPreference) {
+	const [fontFamilies, setFontFamilies] = useState(() =>
+		normalizeFontFamilies(fallbackEditorFontFamilies),
+	);
+	const [loading, setLoading] = useState(false);
+	const [osFontsLoaded, setOsFontsLoaded] = useState(false);
+
+	useEffect(() => {
+		if (typeof window.queryLocalFonts !== "function") return;
+
+		let cancelled = false;
+		setLoading(true);
+		void window
+			.queryLocalFonts()
+			.then((fonts) => {
+				if (cancelled) return;
+				const families = normalizeFontFamilies(
+					fonts.map((font) => font.family),
+				);
+				if (families.length > 0) {
+					setFontFamilies(families);
+					setOsFontsLoaded(true);
+				}
+			})
+			.catch(() => {
+				// Keep the fallback list when the OS/browser denies font access.
+			})
+			.finally(() => {
+				if (!cancelled) setLoading(false);
+			});
+
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	return {
+		fontFamilies: useMemo(() => {
+			if (selectedFont === SYSTEM_EDITOR_FONT_PREFERENCE) return fontFamilies;
+			if (osFontsLoaded) return fontFamilies;
+			return normalizeFontFamilies([...fontFamilies, selectedFont]);
+		}, [fontFamilies, osFontsLoaded, selectedFont]),
+		loading,
+		osFontsLoaded,
+	};
+}
+
 export function AppearanceSettings() {
 	const themePreference = useStoreValue(themePreferenceStore);
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
+	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
 	const contrastLabel = contrastPreferenceLabels[contrastPreference];
+	const {
+		fontFamilies,
+		loading: editorFontsLoading,
+		osFontsLoaded,
+	} = useEditorFontFamilies(editorFontPreference);
+
+	useEffect(() => {
+		if (!osFontsLoaded) return;
+		if (editorFontPreference === SYSTEM_EDITOR_FONT_PREFERENCE) return;
+		if (fontFamilies.includes(editorFontPreference)) return;
+		setEditorFontPreference(SYSTEM_EDITOR_FONT_PREFERENCE);
+	}, [editorFontPreference, fontFamilies, osFontsLoaded]);
 
 	return (
 		<SettingsSection title="Appearance">
@@ -98,7 +192,7 @@ export function AppearanceSettings() {
 									type="radio"
 									value={preference}
 								/>
-								<span className="inline-flex h-7 min-w-14 items-center justify-center rounded-sm px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy select-none peer-checked:bg-card peer-checked:text-foreground peer-focus-visible:ring-1 peer-focus-visible:ring-ring/40 peer-focus-visible:outline-hidden">
+								<span className={segmentedControlItemClassName}>
 									{themePreferenceLabels[preference]}
 								</span>
 							</label>
@@ -135,7 +229,80 @@ export function AppearanceSettings() {
 						<span className="text-right">Crisp</span>
 					</span>
 				</label>
+				<label className="flex min-w-64 flex-col gap-1.5">
+					<span className="flex items-center justify-between gap-3 text-[11px] font-medium text-muted-foreground">
+						Editor font
+						{editorFontsLoading ? (
+							<span className="font-normal">Loading</span>
+						) : null}
+					</span>
+					<select
+						className="h-8 w-64 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40"
+						onChange={(event) =>
+							setEditorFontPreference(event.currentTarget.value)
+						}
+						value={editorFontPreference}
+					>
+						<option value={SYSTEM_EDITOR_FONT_PREFERENCE}>System</option>
+						{fontFamilies.map((fontFamily) => (
+							<option key={fontFamily} value={fontFamily}>
+								{fontFamily}
+							</option>
+						))}
+					</select>
+				</label>
 			</div>
+		</SettingsSection>
+	);
+}
+
+export function WorkspaceSettings() {
+	const showIgnoredWorkspaceFiles = useStoreValue(
+		showIgnoredWorkspaceFilesStore,
+	);
+	const showGitStatusIndicators = useStoreValue(showGitStatusIndicatorsStore);
+
+	return (
+		<SettingsSection
+			title="Workspace"
+			description="Controls which workspace files appear in the sidebar."
+		>
+			<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+				<span className="flex min-w-0 flex-col gap-1">
+					<span className="text-[11px] font-medium text-foreground">
+						Show ignored files
+					</span>
+					<span className="text-[11px] leading-4 text-muted-foreground">
+						Includes Markdown and HTML files ignored by .gitignore or .ignore.
+					</span>
+				</span>
+				<input
+					checked={showIgnoredWorkspaceFiles}
+					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
+					onChange={(event) =>
+						setShowIgnoredWorkspaceFiles(event.currentTarget.checked)
+					}
+					type="checkbox"
+				/>
+			</label>
+			<label className="mt-2 flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+				<span className="flex min-w-0 flex-col gap-1">
+					<span className="text-[11px] font-medium text-foreground">
+						Show git status indicators
+					</span>
+					<span className="text-[11px] leading-4 text-muted-foreground">
+						Marks changed and untracked files in Git folders.
+					</span>
+				</span>
+				<input
+					checked={showGitStatusIndicators}
+					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
+					onChange={(event) =>
+						setShowGitStatusIndicators(event.currentTarget.checked)
+					}
+					type="checkbox"
+				/>
+			</label>
 		</SettingsSection>
 	);
 }

@@ -95,16 +95,16 @@ export function Toolbar({
 		await onRenameCurrentPath(nextTitle);
 	}
 
-	const borderClass = sidebarOpen
-		? "border-b border-border"
+	const chromeClass = sidebarOpen
+		? "shadow-chrome-bar"
 		: showBorder
-			? "[border-block-end:1px_dashed_var(--border)]"
-			: "border-transparent";
+			? "shadow-chrome-bar"
+			: "shadow-none";
 
 	return (
 		<div
 			{...rootProps}
-			className={`flex h-9 items-center ${borderClass} ${rootProps?.className ?? ""}`}
+			className={`flex h-9 items-center ${chromeClass} ${rootProps?.className ?? ""}`}
 		>
 			<ToolbarActions>
 				<div

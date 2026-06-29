@@ -2,6 +2,7 @@ import {
 	isMap,
 	isScalar,
 	isSeq,
+	type Pair,
 	parseDocument,
 	type Scalar,
 	stringify,
@@ -28,6 +29,7 @@ export type UnsupportedFileProperty = {
 	key: string;
 	type: "unsupported";
 	raw: string;
+	preview: string;
 };
 
 export type FileProperty = SupportedFileProperty | UnsupportedFileProperty;
@@ -43,6 +45,7 @@ export function parseMarkdownFrontMatter(markdown: string): ParsedFrontMatter {
 
 	const doc = parseDocument(split.raw, {
 		schema: "core",
+		keepSourceTokens: true,
 		uniqueKeys: true,
 	});
 	if (doc.errors.length > 0) {
@@ -66,7 +69,7 @@ export function parseMarkdownFrontMatter(markdown: string): ParsedFrontMatter {
 		type: "valid",
 		raw: split.raw,
 		body: split.body,
-		properties: mapToProperties(doc.contents),
+		properties: mapToProperties(doc.contents, split.raw),
 	};
 }
 
@@ -74,11 +77,11 @@ export function serializeFrontMatter(properties: FileProperty[]): string {
 	if (properties.length === 0) return "";
 	const lines: string[] = [];
 	for (const property of properties) {
-		if (!isSimplePropertyKey(property.key)) continue;
 		if (property.type === "unsupported") {
 			lines.push(property.raw.trimEnd());
 			continue;
 		}
+		if (!isSimplePropertyKey(property.key)) continue;
 		if (property.type === "text") {
 			lines.push(
 				`${property.key}: ${stringify(property.value, {
@@ -218,43 +221,105 @@ function hasRepeatedFrontMatterKeys(
 	return true;
 }
 
-function mapToProperties(map: YAMLMap): FileProperty[] {
-	return map.items.flatMap((item) => {
+function mapToProperties(map: YAMLMap, raw: string): FileProperty[] {
+	return map.items.flatMap((item, index) => {
 		const key = scalarValue(item.key);
 		if (typeof key !== "string") return [];
+		const rawPair = rawPairForItem(raw, item, map.items[index + 1]);
 		if (!isSimplePropertyKey(key)) {
-			return [{ key, type: "unsupported", raw: pairToRaw(key, item.value) }];
+			return [unsupportedProperty(key, item.value, rawPair)];
 		}
 		const value = item.value;
 		if (!value || (isScalar(value) && value.value == null)) {
 			return [{ key, type: "text", value: "" }];
 		}
-		if (isScalar(value)) return scalarProperty(key, value);
-		if (isSeq(value)) return seqProperty(key, value);
-		return [{ key, type: "unsupported", raw: pairToRaw(key, value) }];
+		if (isScalar(value)) return scalarProperty(key, value, rawPair);
+		if (isSeq(value)) return seqProperty(key, value, rawPair);
+		return [unsupportedProperty(key, value, rawPair)];
 	});
 }
 
-function scalarProperty(key: string, scalar: Scalar): FileProperty[] {
+function scalarProperty(
+	key: string,
+	scalar: Scalar,
+	rawPair: string,
+): FileProperty[] {
 	const value = scalar.value;
 	if (typeof value === "boolean") return [{ key, type: "checkbox", value }];
 	if (typeof value === "number") return [{ key, type: "number", value }];
 	if (typeof value !== "string") {
-		return [{ key, type: "unsupported", raw: pairToRaw(key, scalar) }];
+		return [unsupportedProperty(key, scalar, rawPair)];
 	}
 	if (isDateString(value)) return [{ key, type: "date", value }];
 	return [{ key, type: "text", value }];
 }
 
-function seqProperty(key: string, seq: YAMLSeq): FileProperty[] {
+function seqProperty(
+	key: string,
+	seq: YAMLSeq,
+	rawPair: string,
+): FileProperty[] {
 	const values: string[] = [];
 	for (const item of seq.items) {
 		if (!isScalar(item) || typeof item.value !== "string") {
-			return [{ key, type: "unsupported", raw: pairToRaw(key, seq) }];
+			return [unsupportedProperty(key, seq, rawPair)];
 		}
 		values.push(item.value);
 	}
 	return [{ key, type: "tags", value: values }];
+}
+
+function unsupportedProperty(
+	key: string,
+	value: unknown,
+	raw: string,
+): UnsupportedFileProperty {
+	return {
+		key,
+		type: "unsupported",
+		raw,
+		preview: unsupportedPreview(value),
+	};
+}
+
+function rawPairForItem(
+	raw: string,
+	item: Pair<unknown, unknown>,
+	nextItem?: Pair<unknown, unknown>,
+): string {
+	const start = itemStartOffset(item);
+	const end = nextItem ? itemStartOffset(nextItem) : raw.length;
+	if (start === null || end === null || end <= start) {
+		const key = scalarValue(item.key);
+		return typeof key === "string" ? pairToRaw(key, item.value) : "";
+	}
+	return raw.slice(start, end).trimEnd();
+}
+
+function itemStartOffset(item: Pair<unknown, unknown>): number | null {
+	const token = item.srcToken;
+	const startToken = token?.start?.find((part) => part.type !== "space");
+	if (startToken) return startToken.offset;
+	const keyOffset = token?.key?.offset;
+	if (typeof keyOffset === "number") return keyOffset;
+	const valueOffset = token?.value?.offset;
+	return typeof valueOffset === "number" ? valueOffset : null;
+}
+
+function unsupportedPreview(value: unknown): string {
+	if (!value || (isScalar(value) && value.value == null)) return "Empty";
+	if (isScalar(value)) return String(value.value);
+	if (isSeq(value)) {
+		const scalarValues = value.items.flatMap((item) => {
+			return isScalar(item) && item.value != null ? [String(item.value)] : [];
+		});
+		if (scalarValues.length === value.items.length) {
+			return scalarValues.length === 0 ? "Empty list" : scalarValues.join(", ");
+		}
+		return `${value.items.length} item${value.items.length === 1 ? "" : "s"}`;
+	}
+	if (isMap(value)) return "Object";
+	return "Unsupported YAML";
 }
 
 function scalarValue(node: unknown) {

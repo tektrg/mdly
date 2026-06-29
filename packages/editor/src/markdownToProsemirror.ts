@@ -382,7 +382,9 @@ function hastToNotionBlock(root: HastRoot, raw: string): JSONContent | null {
 }
 
 function isRawNotionHtmlBlock(tagName: string): boolean {
-	return tagName === "bookmark" || tagName === "link-preview";
+	return (
+		tagName === "bookmark" || tagName === "link-preview" || tagName === "video"
+	);
 }
 
 function extractOpeningTagAttributes(raw: string, tagName: string): string {

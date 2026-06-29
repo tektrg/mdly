@@ -2,8 +2,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyContrastPreference,
+	applyEditorFontPreference,
 	applyResolvedTheme,
 	readStoredContrastPreference,
+	readStoredEditorFontPreference,
 	readStoredThemePreference,
 	resolveThemePreference,
 	syncThemePreference,
@@ -13,6 +15,8 @@ describe("theme preference", () => {
 	beforeEach(() => {
 		document.documentElement.className = "";
 		document.documentElement.removeAttribute("style");
+		document.documentElement.removeAttribute("data-contrast");
+		document.documentElement.removeAttribute("data-editor-font");
 		vi.unstubAllGlobals();
 	});
 
@@ -73,6 +77,32 @@ describe("theme preference", () => {
 		).toBe("standard");
 	});
 
+	it("reads only supported persisted editor font preferences", () => {
+		expect(
+			readStoredEditorFontPreference("hubble", {
+				getItem: () =>
+					JSON.stringify({ ui: { editorFontPreference: "Avenir Next" } }),
+			}),
+		).toBe("Avenir Next");
+		expect(
+			readStoredEditorFontPreference("hubble", {
+				getItem: () =>
+					JSON.stringify({ ui: { editorFontPreference: "Bad\nFont" } }),
+			}),
+		).toBe("system");
+		expect(
+			readStoredEditorFontPreference("hubble", {
+				getItem: () =>
+					JSON.stringify({ ui: { editorFontPreference: "rounded" } }),
+			}),
+		).toBe("Fredoka");
+		expect(
+			readStoredEditorFontPreference("hubble", {
+				getItem: () => "{not-json",
+			}),
+		).toBe("system");
+	});
+
 	it("applies the resolved theme class and native color scheme", () => {
 		applyResolvedTheme("dark");
 		expect(document.documentElement.classList.contains("dark")).toBe(true);
@@ -89,6 +119,25 @@ describe("theme preference", () => {
 
 		applyContrastPreference("crisp");
 		expect(document.documentElement.dataset.contrast).toBe("crisp");
+	});
+
+	it("applies the editor font preference to the root element", () => {
+		applyEditorFontPreference("Avenir Next");
+		expect(document.documentElement.dataset.editorFont).toBe("custom");
+		expect(
+			document.documentElement.style.getPropertyValue("--editor-font-family"),
+		).toContain('"Avenir Next"');
+
+		applyEditorFontPreference('Quote " Font');
+		expect(
+			document.documentElement.style.getPropertyValue("--editor-font-family"),
+		).toContain('"Quote \\" Font"');
+
+		applyEditorFontPreference("system");
+		expect(document.documentElement.dataset.editorFont).toBe("system");
+		expect(
+			document.documentElement.style.getPropertyValue("--editor-font-family"),
+		).toBe("");
 	});
 
 	it("keeps system preference synced to OS color-scheme changes", () => {

@@ -33,9 +33,15 @@
 	--row-pad-inline: 0.5rem;
 	--font-size-content: 1.0625rem;
 	--font-size-sidebar: 0.8125rem;
+	--editor-font-family:
+		ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 	/* flat: in-page shadows off; overlays use --shadow-overlay */
 	--panel-shadow: none;
 	--chrome-inset-shadow: none;
+	--shadow-chrome-bar: 0 12px 24px -24px rgb(17 24 39 / 0.5);
+	--shadow-chrome-sidebar: 12px 0 24px -28px rgb(17 24 39 / 0.55);
+	--shadow-chrome-section: 0 10px 18px -20px rgb(17 24 39 / 0.45);
+	--shadow-chrome-section-reverse: 0 -10px 18px -20px rgb(17 24 39 / 0.45);
 	--shadow-overlay:
 		0 8px 24px rgb(17 24 39 / 0.1), 0 1px 3px rgb(17 24 39 / 0.08);
 	--cursor-motion-duration: 105ms;
@@ -86,6 +92,10 @@
 	--sidebar-accent: var(--accent);
 	--sidebar-accent-foreground: var(--accent-foreground);
 	--sidebar-border: var(--border);
+	--shadow-chrome-bar: 0 12px 24px -24px rgb(0 0 0 / 0.75);
+	--shadow-chrome-sidebar: 12px 0 24px -28px rgb(0 0 0 / 0.78);
+	--shadow-chrome-section: 0 10px 18px -20px rgb(0 0 0 / 0.7);
+	--shadow-chrome-section-reverse: 0 -10px 18px -20px rgb(0 0 0 / 0.7);
 	--shadow-overlay: 0 10px 30px rgb(0 0 0 / 0.34), 0 1px 4px rgb(0 0 0 / 0.28);
 	--syntax-foreground: color-mix(in oklab, var(--foreground) 90%, transparent);
 	--syntax-muted: oklch(0.64 0.005 106);
@@ -253,6 +263,10 @@
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--shadow-panel: var(--panel-shadow);
 	--shadow-overlay: var(--shadow-overlay);
+	--shadow-chrome-bar: var(--shadow-chrome-bar);
+	--shadow-chrome-sidebar: var(--shadow-chrome-sidebar);
+	--shadow-chrome-section: var(--shadow-chrome-section);
+	--shadow-chrome-section-reverse: var(--shadow-chrome-section-reverse);
 	--inset-shadow-chrome: var(--chrome-inset-shadow);
 	/* default UI ease-out (hovers, color/transform transitions) */
 	--ease-snappy: cubic-bezier(0.2, 0, 0, 1);

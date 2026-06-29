@@ -66,6 +66,7 @@
 	font-feature-settings: "liga" 0;
 	caret-color: transparent;
 	color: var(--foreground);
+	font-family: var(--editor-font-family);
 	font-size: var(--font-size-content);
 }
 
@@ -581,6 +582,62 @@
 	background: var(--muted);
 	color: var(--muted-foreground);
 	font-size: 0.8125rem;
+}
+
+[data-hubble-editor] .pm-notion-html-block {
+	max-inline-size: min(100%, 900px);
+}
+
+[data-hubble-editor] .pm-notion-html-block-card {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--muted);
+	padding: 0.75rem 0.875rem;
+	color: var(--foreground);
+}
+
+[data-hubble-editor] .pm-notion-html-block-label {
+	display: grid;
+	min-inline-size: 0;
+	gap: 0.125rem;
+}
+
+[data-hubble-editor] .pm-notion-html-block-kicker {
+	color: var(--muted-foreground);
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+[data-hubble-editor] .pm-notion-html-block-url {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.875rem;
+}
+
+[data-hubble-editor] .pm-notion-html-block-open {
+	display: grid;
+	flex: 0 0 auto;
+	inline-size: 2rem;
+	block-size: 2rem;
+	place-items: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--background);
+	color: var(--foreground);
+}
+
+[data-hubble-editor] .pm-notion-html-block-open:hover {
+	background: var(--accent);
+}
+
+[data-hubble-editor] .pm-notion-html-block-open svg {
+	inline-size: 1rem;
+	block-size: 1rem;
 }
 
 [data-hubble-editor] .pm-image-upload-placeholder {
