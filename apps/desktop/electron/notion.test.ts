@@ -4,6 +4,7 @@ import {
 	notionMarkdownPatchBody,
 	notionMarkdownUpdatePayload,
 	resolveNotionCommandPath,
+	shouldFallbackToFullNotionMarkdownUpdate,
 } from "./notion";
 
 describe("resolveNotionCommandPath", () => {
@@ -122,6 +123,43 @@ describe("notionMarkdownUpdatePayload", () => {
 		});
 	});
 
+	it("noops when only a Notion signed video URL rotated", () => {
+		const oldVideoUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=old";
+		const currentVideoUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=current";
+
+		expect(
+			notionMarkdownUpdatePayload({
+				previousMarkdown: `<video src="${oldVideoUrl}"></video>`,
+				currentMarkdown: `<video src="${currentVideoUrl}"></video>`,
+				nextMarkdown: `<video src="${oldVideoUrl}"></video>`,
+			}),
+		).toEqual({
+			kind: "noop",
+			markdown: `<video src="${currentVideoUrl}"></video>`,
+		});
+	});
+
+	it("preserves current Notion signed source URLs in targeted video updates", () => {
+		const oldVideoUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=old";
+		const currentVideoUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=current";
+
+		expect(
+			notionMarkdownUpdatePayload({
+				previousMarkdown: `<video controls>\n<source src="${oldVideoUrl}" type="video/mp4">\n</video>\n\nOld copy`,
+				currentMarkdown: `<video controls>\n<source src="${currentVideoUrl}" type="video/mp4">\n</video>\n\nOld copy`,
+				nextMarkdown: `<video controls>\n<source src="${oldVideoUrl}" type="video/mp4">\n</video>\n\nNew copy`,
+			}),
+		).toEqual({
+			kind: "targeted",
+			oldStr: "Old",
+			newStr: "New",
+		});
+	});
+
 	it("uses whole current content as a targeted update when smaller ranges are ambiguous", () => {
 		expect(
 			notionMarkdownUpdatePayload({
@@ -134,5 +172,50 @@ describe("notionMarkdownUpdatePayload", () => {
 			oldStr: `![diagram](${currentSignedUrl})\n\nA\n\nA`,
 			newStr: `![diagram](${currentSignedUrl})\n\nB\n\nA`,
 		});
+	});
+});
+
+describe("shouldFallbackToFullNotionMarkdownUpdate", () => {
+	const signedUrl =
+		"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/image.png?X-Amz-Signature=current";
+
+	it("falls back when Notion cannot match a targeted update on a text-only page", () => {
+		expect(
+			shouldFallbackToFullNotionMarkdownUpdate(
+				new Error(
+					"Public API request failed (400 Bad Request validation_error): No matches found for > Verdict",
+				),
+				{
+					previousMarkdown: "Old copy",
+					currentMarkdown: "Old copy",
+					nextMarkdown: "New copy",
+				},
+			),
+		).toBe(true);
+	});
+
+	it("keeps the targeted failure when a full update could clobber volatile file URLs", () => {
+		expect(
+			shouldFallbackToFullNotionMarkdownUpdate(
+				new Error(
+					"Public API request failed (400 Bad Request validation_error): No matches found for Old copy",
+				),
+				{
+					previousMarkdown: `![diagram](${signedUrl})\n\nOld copy`,
+					currentMarkdown: `![diagram](${signedUrl})\n\nOld copy`,
+					nextMarkdown: `![diagram](${signedUrl})\n\nNew copy`,
+				},
+			),
+		).toBe(false);
+	});
+
+	it("does not fall back for unrelated Notion failures", () => {
+		expect(
+			shouldFallbackToFullNotionMarkdownUpdate(new Error("Unauthorized"), {
+				previousMarkdown: "Old copy",
+				currentMarkdown: "Old copy",
+				nextMarkdown: "New copy",
+			}),
+		).toBe(false);
 	});
 });

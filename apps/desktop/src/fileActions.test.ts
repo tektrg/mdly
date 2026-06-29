@@ -428,6 +428,137 @@ describe("Notion file actions", () => {
 		expect(viewerStore.get().content).toBe(localMarkdown);
 	});
 
+	it("refreshes rotated Notion image URLs without marking the page locally edited", async () => {
+		const api = createDesktopApi();
+		const oldSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/image.png?X-Amz-Signature=old";
+		const currentSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/image.png?X-Amz-Signature=current";
+		const oldRemoteMarkdown = `---\nStatus: Draft\n---\n![diagram](${oldSignedUrl})`;
+		const currentRemoteMarkdown = `---\nStatus: Draft\n---\n![diagram](${currentSignedUrl})`;
+		const oldRemoteHash = notionMarkdownContentHash(oldRemoteMarkdown);
+		api.getNotionPageMarkdown.mockResolvedValue({
+			pageId: "page-id",
+			account: "7lab",
+			markdown: currentRemoteMarkdown,
+			contentHash: notionMarkdownContentHash(currentRemoteMarkdown),
+		});
+		const {
+			appStore,
+			hasLocalChangesSinceLastNotionSync,
+			refreshCurrentNotionPage,
+			viewerStore,
+		} = await loadFileActions(api);
+		const path = "/workspace/roadmap.md";
+		const localMarkdown = linkedPageMarkdown({
+			contentHash: oldRemoteHash,
+			body: `![diagram](${oldSignedUrl})`,
+		});
+		setOpenFile(appStore, path, localMarkdown);
+		const getFileContent = bindFileContent(api, localMarkdown);
+
+		await expect(refreshCurrentNotionPage()).resolves.toEqual({
+			kind: "refreshed",
+		});
+
+		expect(api.writeFileText).toHaveBeenCalledWith(
+			path,
+			expect.stringContaining(currentSignedUrl),
+		);
+		expect(getFileContent()).toContain(currentSignedUrl);
+		expect(viewerStore.get().content).toBe(getFileContent());
+		expect(viewerStore.get().diskContent).toBe(getFileContent());
+		expect(hasLocalChangesSinceLastNotionSync()).toBe(false);
+	});
+
+	it("refreshes rotated Notion video URLs without marking the page locally edited", async () => {
+		const api = createDesktopApi();
+		const oldSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=old";
+		const currentSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=current";
+		const oldRemoteMarkdown = `---\nStatus: Draft\n---\n<video controls src="${oldSignedUrl}"></video>`;
+		const currentRemoteMarkdown = `---\nStatus: Draft\n---\n<video controls src="${currentSignedUrl}"></video>`;
+		const oldRemoteHash = notionMarkdownContentHash(oldRemoteMarkdown);
+		api.getNotionPageMarkdown.mockResolvedValue({
+			pageId: "page-id",
+			account: "7lab",
+			markdown: currentRemoteMarkdown,
+			contentHash: notionMarkdownContentHash(currentRemoteMarkdown),
+		});
+		const {
+			appStore,
+			hasLocalChangesSinceLastNotionSync,
+			refreshCurrentNotionPage,
+			viewerStore,
+		} = await loadFileActions(api);
+		const path = "/workspace/roadmap.md";
+		const localMarkdown = linkedPageMarkdown({
+			contentHash: oldRemoteHash,
+			body: `<video controls src="${oldSignedUrl}"></video>`,
+		});
+		setOpenFile(appStore, path, localMarkdown);
+		const getFileContent = bindFileContent(api, localMarkdown);
+
+		await expect(refreshCurrentNotionPage()).resolves.toEqual({
+			kind: "refreshed",
+		});
+
+		expect(api.writeFileText).toHaveBeenCalledWith(
+			path,
+			expect.stringContaining(currentSignedUrl),
+		);
+		expect(getFileContent()).toContain(currentSignedUrl);
+		expect(viewerStore.get().content).toBe(getFileContent());
+		expect(viewerStore.get().diskContent).toBe(getFileContent());
+		expect(hasLocalChangesSinceLastNotionSync()).toBe(false);
+	});
+
+	it("refreshes rotated Notion video source URLs without marking the page locally edited", async () => {
+		const api = createDesktopApi();
+		const oldSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=old";
+		const currentSignedUrl =
+			"https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/video.mp4?X-Amz-Signature=current";
+		const oldVideo = `<video controls>\n<source src="${oldSignedUrl}" type="video/mp4">\n</video>`;
+		const currentVideo = `<video controls>\n<source src="${currentSignedUrl}" type="video/mp4">\n</video>`;
+		const oldRemoteMarkdown = `---\nStatus: Draft\n---\n${oldVideo}`;
+		const currentRemoteMarkdown = `---\nStatus: Draft\n---\n${currentVideo}`;
+		const oldRemoteHash = notionMarkdownContentHash(oldRemoteMarkdown);
+		api.getNotionPageMarkdown.mockResolvedValue({
+			pageId: "page-id",
+			account: "7lab",
+			markdown: currentRemoteMarkdown,
+			contentHash: notionMarkdownContentHash(currentRemoteMarkdown),
+		});
+		const {
+			appStore,
+			hasLocalChangesSinceLastNotionSync,
+			refreshCurrentNotionPage,
+			viewerStore,
+		} = await loadFileActions(api);
+		const path = "/workspace/roadmap.md";
+		const localMarkdown = linkedPageMarkdown({
+			contentHash: oldRemoteHash,
+			body: oldVideo,
+		});
+		setOpenFile(appStore, path, localMarkdown);
+		const getFileContent = bindFileContent(api, localMarkdown);
+
+		await expect(refreshCurrentNotionPage()).resolves.toEqual({
+			kind: "refreshed",
+		});
+
+		expect(api.writeFileText).toHaveBeenCalledWith(
+			path,
+			expect.stringContaining(currentSignedUrl),
+		);
+		expect(getFileContent()).toContain(currentSignedUrl);
+		expect(viewerStore.get().content).toBe(getFileContent());
+		expect(viewerStore.get().diskContent).toBe(getFileContent());
+		expect(hasLocalChangesSinceLastNotionSync()).toBe(false);
+	});
+
 	it("repairs legacy content hashes when local content still matches Notion", async () => {
 		const api = createDesktopApi();
 		const remoteMarkdown = "---\nStatus: Draft\n---\n\n# Existing roadmap";

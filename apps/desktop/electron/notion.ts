@@ -184,17 +184,33 @@ export async function updateNotionPageMarkdown(
 	}
 
 	if (updatePayload.kind === "targeted") {
-		await runNotionCommand(
-			[
-				"api",
-				`v1/pages/${trimmedPageId}/markdown`,
-				"-X",
-				"PATCH",
-				"-d",
-				JSON.stringify(notionMarkdownPatchBody(updatePayload)),
-			],
-			{ account },
-		);
+		try {
+			await runNotionCommand(
+				[
+					"api",
+					`v1/pages/${trimmedPageId}/markdown`,
+					"-X",
+					"PATCH",
+					"-d",
+					JSON.stringify(notionMarkdownPatchBody(updatePayload)),
+				],
+				{ account },
+			);
+		} catch (error) {
+			if (
+				!shouldFallbackToFullNotionMarkdownUpdate(error, {
+					previousMarkdown: options.previousMarkdown,
+					currentMarkdown: options.currentMarkdown,
+					nextMarkdown: markdown,
+				})
+			) {
+				throw error;
+			}
+			await runNotionCommand(["pages", "update", trimmedPageId], {
+				account,
+				stdin: markdown,
+			});
+		}
 	} else {
 		await runNotionCommand(["pages", "update", trimmedPageId], {
 			account,
@@ -206,6 +222,27 @@ export async function updateNotionPageMarkdown(
 		account,
 		contentHash: notionMarkdownContentHash(markdown),
 	};
+}
+
+export function shouldFallbackToFullNotionMarkdownUpdate(
+	error: unknown,
+	{
+		previousMarkdown,
+		currentMarkdown,
+		nextMarkdown,
+	}: {
+		previousMarkdown?: string;
+		currentMarkdown?: string;
+		nextMarkdown: string;
+	},
+): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	if (!/\bNo matches found\b/i.test(message)) return false;
+	return ![
+		previousMarkdown ?? "",
+		currentMarkdown ?? "",
+		nextMarkdown,
+	].some(hasVolatileNotionFileUrl);
 }
 
 type NotionMarkdownUpdatePayload =
@@ -240,7 +277,7 @@ export function notionMarkdownUpdatePayload({
 }): NotionMarkdownUpdatePayload {
 	if (!previousMarkdown || !currentMarkdown) return { kind: "replace" };
 
-	const nextWithCurrentFileUrls = replaceUnchangedVolatileNotionImageUrls({
+	const nextWithCurrentFileUrls = replaceUnchangedVolatileNotionFileUrls({
 		sourceMarkdown: nextMarkdown,
 		previousMarkdown,
 		currentMarkdown,
@@ -255,19 +292,19 @@ export function notionMarkdownUpdatePayload({
 	}
 
 	if (
-		hasVolatileNotionImageUrl(previousMarkdown) ||
-		hasVolatileNotionImageUrl(currentMarkdown) ||
-		hasVolatileNotionImageUrl(nextMarkdown)
+		hasVolatileNotionFileUrl(previousMarkdown) ||
+		hasVolatileNotionFileUrl(currentMarkdown) ||
+		hasVolatileNotionFileUrl(nextMarkdown)
 	) {
 		throw new Error(
-			"Cannot safely write back this Notion page because it contains Notion-hosted images with expiring URLs and a minimal targeted update could not be built.",
+			"Cannot safely write back this Notion page because it contains Notion-hosted files with expiring URLs and a minimal targeted update could not be built.",
 		);
 	}
 
 	return { kind: "replace" };
 }
 
-function replaceUnchangedVolatileNotionImageUrls({
+function replaceUnchangedVolatileNotionFileUrls({
 	sourceMarkdown,
 	previousMarkdown,
 	currentMarkdown,
@@ -276,12 +313,12 @@ function replaceUnchangedVolatileNotionImageUrls({
 	previousMarkdown: string;
 	currentMarkdown: string;
 }): string {
-	const previousImages = markdownImageReferences(previousMarkdown);
-	const currentImages = markdownImageReferences(currentMarkdown);
+	const previousFiles = markdownFileReferences(previousMarkdown);
+	const currentFiles = markdownFileReferences(currentMarkdown);
 	let next = sourceMarkdown;
-	for (let index = 0; index < previousImages.length; index += 1) {
-		const previous = previousImages[index];
-		const current = currentImages[index];
+	for (let index = 0; index < previousFiles.length; index += 1) {
+		const previous = previousFiles[index];
+		const current = currentFiles[index];
 		if (!previous || !current || previous.url === current.url) continue;
 		const previousKey = volatileNotionImageUrlKey(previous.url);
 		const currentKey = volatileNotionImageUrlKey(current.url);
@@ -420,15 +457,43 @@ function countOccurrences(value: string, needle: string): number {
 	}
 }
 
-function markdownImageReferences(markdown: string): { url: string }[] {
-	return [...markdown.matchAll(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(
-		(match) => ({ url: match[1] ?? "" }),
-	);
+function markdownFileReferences(markdown: string): { url: string }[] {
+	return [
+		...markdownImageReferences(markdown),
+		...htmlMediaReferences(markdown),
+	];
 }
 
-function hasVolatileNotionImageUrl(markdown: string): boolean {
-	return markdownImageReferences(markdown).some((image) =>
-		Boolean(volatileNotionImageUrlKey(image.url)),
+function markdownImageReferences(markdown: string): { url: string }[] {
+	return [...markdown.matchAll(/!\[[^\]]*]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
+		.map((match) => ({ url: match[1] ?? "" }))
+		.filter((reference) => reference.url.length > 0);
+}
+
+function htmlMediaReferences(markdown: string): { url: string }[] {
+	const references: { url: string }[] = [];
+	const mediaTags = markdown.matchAll(/<(?:video|source)\b[^>]*>/gi);
+	for (const tag of mediaTags) {
+		const src = htmlAttributeValue(tag[0], "src");
+		if (src) references.push({ url: src });
+	}
+	return references;
+}
+
+function htmlAttributeValue(tag: string, name: string): string | null {
+	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = tag.match(
+		new RegExp(
+			`\\s${escapedName}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`,
+			"i",
+		),
+	);
+	return match?.[2] ?? match?.[3] ?? match?.[4] ?? null;
+}
+
+function hasVolatileNotionFileUrl(markdown: string): boolean {
+	return markdownFileReferences(markdown).some((file) =>
+		Boolean(volatileNotionImageUrlKey(file.url)),
 	);
 }
 

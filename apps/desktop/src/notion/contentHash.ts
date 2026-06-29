@@ -46,13 +46,37 @@ function canonicalizeNotionCallouts(markdown: string): string {
 }
 
 function canonicalizeVolatileNotionFileUrls(markdown: string): string {
-	return markdown.replace(
-		/!\[([^\]]*)]\(([^)\s]+)(\s+"[^"]*")?\)/g,
-		(match, alt: string, rawUrl: string, title: string | undefined) => {
-			const canonicalUrl = canonicalNotionFileUrl(rawUrl);
-			return canonicalUrl ? `![${alt}](${canonicalUrl}${title ?? ""})` : match;
-		},
+	return canonicalizeHtmlMediaFileUrls(
+		markdown.replace(
+			/!\[([^\]]*)]\(([^)\s]+)(\s+"[^"]*")?\)/g,
+			(match, alt: string, rawUrl: string, title: string | undefined) => {
+				const canonicalUrl = canonicalNotionFileUrl(rawUrl);
+				return canonicalUrl
+					? `![${alt}](${canonicalUrl}${title ?? ""})`
+					: match;
+			},
+		),
 	);
+}
+
+function canonicalizeHtmlMediaFileUrls(markdown: string): string {
+	return markdown.replace(/<(?:video|source)\b[^>]*>/gi, (tag) => {
+		const src = htmlAttributeValue(tag, "src");
+		if (!src) return tag;
+		const canonicalUrl = canonicalNotionFileUrl(src);
+		return canonicalUrl ? tag.split(src).join(canonicalUrl) : tag;
+	});
+}
+
+function htmlAttributeValue(tag: string, name: string): string | null {
+	const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const match = tag.match(
+		new RegExp(
+			`\\s${escapedName}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`,
+			"i",
+		),
+	);
+	return match?.[2] ?? match?.[3] ?? match?.[4] ?? null;
 }
 
 function canonicalNotionFileUrl(rawUrl: string): string | null {

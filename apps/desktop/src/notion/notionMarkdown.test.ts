@@ -265,6 +265,44 @@ describe("stripNotionLinkMetadata", () => {
 			notionMarkdownContentHash(nextFetch),
 		);
 	});
+
+	it("ignores rotating query signatures on Notion-hosted video URLs", () => {
+		const firstFetch = [
+			"# Demo",
+			"",
+			'<video controls src="https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/demo.mp4?X-Amz-Signature=old"></video>',
+		].join("\n");
+		const nextFetch = [
+			"# Demo",
+			"",
+			'<video controls src="https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/demo.mp4?X-Amz-Signature=new"></video>',
+		].join("\n");
+
+		expect(notionMarkdownContentHash(firstFetch)).toBe(
+			notionMarkdownContentHash(nextFetch),
+		);
+	});
+
+	it("ignores rotating query signatures on Notion-hosted video source URLs", () => {
+		const firstFetch = [
+			"# Demo",
+			"",
+			"<video controls>",
+			'<source src="https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/demo.mp4?X-Amz-Signature=old" type="video/mp4">',
+			"</video>",
+		].join("\n");
+		const nextFetch = [
+			"# Demo",
+			"",
+			"<video controls>",
+			'<source src="https://prod-files-secure.s3.us-west-2.amazonaws.com/workspace/demo.mp4?X-Amz-Signature=new" type="video/mp4">',
+			"</video>",
+		].join("\n");
+
+		expect(notionMarkdownContentHash(firstFetch)).toBe(
+			notionMarkdownContentHash(nextFetch),
+		);
+	});
 });
 
 describe("notionMarkdownBodyForUpdate", () => {
