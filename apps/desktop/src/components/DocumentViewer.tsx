@@ -1,7 +1,11 @@
 import { wikiDisplayNameForTarget } from "@hubble.md/editor";
-import { EditorView, type WikiTarget } from "@hubble.md/ui";
+import {
+	EditorView,
+	type EditorViewProps,
+	type WikiTarget,
+} from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { createEmbedExtension } from "../editor/EmbedExtension";
@@ -116,50 +120,83 @@ function MarkdownEditor({
 	const workspace = useStoreValue(workspaceStore);
 	const notionAccount =
 		parseNotionLinkMetadata(initialMarkdown)?.account ?? null;
-	const wikiTargets: WikiTarget[] = workspace.files.map((file) => {
-		const target = relativeWorkspacePath(file.path, workspace.workspacePath);
-		return {
-			path: file.path,
-			target,
-			title: wikiDisplayNameForTarget(target),
-		};
-	});
+	const wikiTargets: WikiTarget[] = useMemo(
+		() =>
+			workspace.files.map((file) => {
+				const target = relativeWorkspacePath(
+					file.path,
+					workspace.workspacePath,
+				);
+				return {
+					path: file.path,
+					target,
+					title: wikiDisplayNameForTarget(target),
+				};
+			}),
+		[workspace.files, workspace.workspacePath],
+	);
+	const editorExtensions = useMemo(
+		() => [
+			createImageExtension(path),
+			createEmbedExtension({
+				workspacePath: workspace.workspacePath,
+				filePath: path,
+			}),
+		],
+		[path, workspace.workspacePath],
+	);
+	const handlePaste = useCallback<NonNullable<EditorViewProps["onPaste"]>>(
+		(editor, event) => handleImagePaste({ editor, event }),
+		[],
+	);
+	const handleDrop = useCallback<NonNullable<EditorViewProps["onDrop"]>>(
+		(editor, event) => handleImageDrop({ editor, event }),
+		[],
+	);
+	const openNotionMentionLink = useCallback(
+		(href: string) =>
+			void openOrImportNotionMentionPage(href, {
+				account: notionAccount,
+				folderPath: path,
+			}),
+		[notionAccount, path],
+	);
+	const openWikiLink = useCallback(
+		(target: string) =>
+			void loadPath(
+				resolveWikiPath({
+					target,
+					files: workspace.files,
+					workspacePath: workspace.workspacePath,
+				}),
+			),
+		[workspace.files, workspace.workspacePath],
+	);
+	const showEditorMessage = useCallback(
+		(message: string, kind: "success" | "error") => {
+			if (kind === "success") {
+				toast.success(message);
+				return;
+			}
+			toast.error(message);
+		},
+		[],
+	);
 	return (
 		<EditorView
 			path={path}
 			initialMarkdown={initialMarkdown}
 			wikiTargets={wikiTargets}
-			extensions={[
-				createImageExtension(path),
-				createEmbedExtension({
-					workspacePath: workspace.workspacePath,
-					filePath: path,
-				}),
-			]}
-			onPaste={(editor, event) => handleImagePaste({ editor, event })}
-			onDrop={(editor, event) => handleImageDrop({ editor, event })}
+			extensions={editorExtensions}
+			onPaste={handlePaste}
+			onDrop={handleDrop}
 			onLocalChange={updateEditorContent}
 			onSave={savePathContent}
 			onScrollContainerChange={onScrollContainerChange}
 			onOpenExternalLink={desktopApi.openExternalUrl}
-			onOpenNotionMentionLink={(href) =>
-				void openOrImportNotionMentionPage(href, {
-					account: notionAccount,
-					folderPath: path,
-				})
-			}
-			onOpenWikiLink={(target) =>
-				void loadPath(
-					resolveWikiPath({
-						target,
-						files: workspace.files,
-						workspacePath: workspace.workspacePath,
-					}),
-				)
-			}
-			onMessage={(message, kind) =>
-				kind === "success" ? toast.success(message) : toast.error(message)
-			}
+			onOpenNotionMentionLink={openNotionMentionLink}
+			onOpenWikiLink={openWikiLink}
+			onMessage={showEditorMessage}
 		/>
 	);
 }

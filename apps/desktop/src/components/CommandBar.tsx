@@ -1,12 +1,12 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Command } from "cmdk";
 import {
+	type KeyboardEvent,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type KeyboardEvent,
 } from "react";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
 import { desktopApi } from "../desktopApi";
@@ -15,14 +15,14 @@ import type {
 	NotionSearchResult,
 } from "../desktopApi/types";
 import {
+	type CommandScopeKind,
 	commandScopeOptions,
+	type FolderScopeOption,
 	findScopeTrigger,
 	insertScopeToken,
 	resolveFolderScope,
 	resolveNotionScope,
 	resolveWorkspaceScope,
-	type CommandScopeKind,
-	type FolderScopeOption,
 } from "../lib/commandQuery";
 import { basename, relativeWorkspacePath } from "../lib/filePath";
 import { searchWorkspaceFiles } from "../lib/fileSearch";
@@ -34,13 +34,14 @@ import {
 import { EDITOR_INPUT_SELECTOR } from "../selectors";
 import type { FileEntry, FolderEntry } from "../store/state";
 import {
-	CommandFooter,
-	ScopeOptionPopover,
 	accountValue,
+	type CommandBarMode,
+	CommandFooter,
 	fileValue,
 	folderValue,
 	notionValue,
 	renderCommandContent,
+	ScopeOptionPopover,
 	workspaceValue,
 } from "./CommandBarItems";
 
@@ -52,9 +53,16 @@ type CommandBarProps = {
 	workspacePath: string | null;
 	recentWorkspaces: string[];
 	currentPath: string | null;
+	moveSourcePath: string | null;
 	onOpenFile: (path: string) => void;
 	onOpenWorkspace: (path?: string) => Promise<boolean>;
 	onOpenNotionResult: (result: NotionSearchResult) => Promise<void>;
+	onMoveFileToFolder: (
+		sourcePath: string,
+		targetFolderPath: string,
+		targetWorkspacePath: string,
+	) => Promise<boolean>;
+	onRequestMoveCurrentFile: () => void;
 };
 
 const notionSearchDebounceMs = 300;
@@ -67,13 +75,29 @@ export function CommandBar({
 	workspacePath,
 	recentWorkspaces,
 	currentPath,
+	moveSourcePath,
 	onOpenFile,
 	onOpenWorkspace,
 	onOpenNotionResult,
+	onMoveFileToFolder,
+	onRequestMoveCurrentFile,
 }: CommandBarProps) {
+	const commandMode: CommandBarMode = moveSourcePath ? "move-file" : "open";
 	const [query, setQuery] = useState("");
 	const [selectedValue, setSelectedValue] = useState("");
 	const [scopeOptionIndex, setScopeOptionIndex] = useState(0);
+	const [moveWorkspacePath, setMoveWorkspacePath] = useState<string | null>(
+		null,
+	);
+	const [moveWorkspaceFiles, setMoveWorkspaceFiles] = useState<FileEntry[]>([]);
+	const [moveWorkspaceFolders, setMoveWorkspaceFolders] = useState<
+		FolderEntry[]
+	>([]);
+	const [moveWorkspaceStatus, setMoveWorkspaceStatus] = useState<
+		"idle" | "loading" | "ready" | "error"
+	>("idle");
+	const [moveStatus, setMoveStatus] = useState<"idle" | "moving">("idle");
+	const [moveError, setMoveError] = useState<string | null>(null);
 	const [notionConnection, setNotionConnection] =
 		useState<NotionConnectionStatus | null>(null);
 	const [notionResults, setNotionResults] = useState<NotionSearchResult[]>([]);
@@ -87,30 +111,56 @@ export function CommandBar({
 	const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	const folderOptions = useMemo(
+	const scopedMoveWorkspacePath = moveWorkspacePath ?? workspacePath;
+	const useScopedMoveListing =
+		commandMode === "move-file" &&
+		moveWorkspacePath !== null &&
+		workspacePath !== null &&
+		moveWorkspacePath.toLocaleLowerCase() !== workspacePath.toLocaleLowerCase();
+	const commandFolderOptions = useMemo(
 		() => buildFolderScopeOptions({ files, folders, workspacePath }),
 		[files, folders, workspacePath],
 	);
+	const moveFolderOptions = useMemo(
+		() =>
+			buildFolderScopeOptions({
+				files: useScopedMoveListing ? moveWorkspaceFiles : files,
+				folders: useScopedMoveListing ? moveWorkspaceFolders : folders,
+				workspacePath: scopedMoveWorkspacePath,
+			}),
+		[
+			files,
+			folders,
+			moveWorkspaceFiles,
+			moveWorkspaceFolders,
+			scopedMoveWorkspacePath,
+			useScopedMoveListing,
+		],
+	);
+	const folderOptions =
+		commandMode === "move-file" ? moveFolderOptions : commandFolderOptions;
+	const moveIsLoadingFolders =
+		commandMode === "move-file" &&
+		useScopedMoveListing &&
+		moveWorkspaceStatus === "loading";
 	const scopeTrigger = useMemo(() => findScopeTrigger(query), [query]);
 	const scopeOptions = useMemo(
 		() =>
 			scopeTrigger
-				? commandScopeOptions.filter((option) =>
-						option.kind.startsWith(scopeTrigger.filter),
+				? commandScopeOptions.filter(
+						(option) =>
+							(commandMode === "open" || option.kind === "workspace") &&
+							option.kind.startsWith(scopeTrigger.filter),
 					)
 				: [],
-		[scopeTrigger],
+		[commandMode, scopeTrigger],
 	);
 	const folderScope = useMemo(
 		() => resolveFolderScope(query, folderOptions),
 		[folderOptions, query],
 	);
 	const notionScope = useMemo(
-		() =>
-			resolveNotionScope(
-				query,
-				notionConnection?.availableAccounts ?? [],
-			),
+		() => resolveNotionScope(query, notionConnection?.availableAccounts ?? []),
 		[notionConnection?.availableAccounts, query],
 	);
 	const notionConnectionMatchesScope =
@@ -119,7 +169,8 @@ export function CommandBar({
 		notionConnection?.account === notionScope.account;
 	const workspaceScope = useMemo(() => resolveWorkspaceScope(query), [query]);
 	const showingWorkspace = workspaceScope.kind !== "none";
-	const showingNotion = !showingWorkspace && notionScope.kind !== "none";
+	const showingNotion =
+		commandMode === "open" && !showingWorkspace && notionScope.kind !== "none";
 	const workspaceChoices = useMemo(
 		() =>
 			showingWorkspace
@@ -131,13 +182,20 @@ export function CommandBar({
 				: [],
 		[recentWorkspaces, showingWorkspace, workspacePath, workspaceScope],
 	);
-	const folderChoices = useMemo(
-		() =>
-			!showingWorkspace && folderScope.kind === "editing"
-				? filterFolderOptions(folderOptions, folderScope.input)
-				: [],
-		[folderOptions, folderScope, showingWorkspace],
-	);
+	const folderChoices = useMemo(() => {
+		if (showingWorkspace) return [];
+		if (commandMode === "move-file") {
+			return filterFolderOptions(
+				folderOptions,
+				folderScope.kind === "editing"
+					? folderScope.input
+					: folderScope.searchQuery,
+			);
+		}
+		return folderScope.kind === "editing"
+			? filterFolderOptions(folderOptions, folderScope.input)
+			: [];
+	}, [commandMode, folderOptions, folderScope, showingWorkspace]);
 	const accountChoices =
 		notionScope.kind === "needs-account" ||
 		notionScope.kind === "invalid-account"
@@ -145,7 +203,10 @@ export function CommandBar({
 			: [];
 	const fileResults = useMemo(
 		() =>
-			showingWorkspace || showingNotion || folderScope.kind === "editing"
+			showingWorkspace ||
+			showingNotion ||
+			folderScope.kind === "editing" ||
+			commandMode === "move-file"
 				? []
 				: searchWorkspaceFiles({
 						files,
@@ -153,21 +214,40 @@ export function CommandBar({
 						query: folderScope.searchQuery,
 						currentPath,
 						folderPath:
-							folderScope.kind === "resolved"
-								? folderScope.folder.path
-								: null,
+							folderScope.kind === "resolved" ? folderScope.folder.path : null,
 					}),
-		[currentPath, files, folderScope, showingNotion, showingWorkspace, workspacePath],
+		[
+			commandMode,
+			currentPath,
+			files,
+			folderScope,
+			showingNotion,
+			showingWorkspace,
+			workspacePath,
+		],
 	);
+	const moveSourceLabel = moveSourcePath ? basename(moveSourcePath) : null;
+	const openModeMoveLabel = currentPath ? basename(currentPath) : null;
 	const visibleValues = useMemo(
 		() => [
 			...workspaceChoices.map(workspaceValue),
 			...folderChoices.map((folder) => folderValue(folder)),
 			...accountChoices.map((account) => accountValue(account)),
+			...(commandMode === "open" && currentPath
+				? ["action:move-current-file"]
+				: []),
 			...fileResults.map((result) => fileValue(result.path)),
 			...notionResults.map(notionValue),
 		],
-		[accountChoices, fileResults, folderChoices, notionResults, workspaceChoices],
+		[
+			accountChoices,
+			commandMode,
+			currentPath,
+			fileResults,
+			folderChoices,
+			notionResults,
+			workspaceChoices,
+		],
 	);
 
 	const closeCommandBar = useCallback(() => {
@@ -184,10 +264,10 @@ export function CommandBar({
 				onOpenChange(true);
 				return;
 			}
-			if (workspaceStatus === "switching") return;
+			if (workspaceStatus === "switching" || moveStatus === "moving") return;
 			closeCommandBar();
 		},
-		[closeCommandBar, onOpenChange, workspaceStatus],
+		[closeCommandBar, moveStatus, onOpenChange, workspaceStatus],
 	);
 
 	useEffect(() => {
@@ -200,6 +280,12 @@ export function CommandBar({
 			setQuery("");
 			setSelectedValue("");
 			setScopeOptionIndex(0);
+			setMoveWorkspacePath(null);
+			setMoveWorkspaceFiles([]);
+			setMoveWorkspaceFolders([]);
+			setMoveWorkspaceStatus("idle");
+			setMoveStatus("idle");
+			setMoveError(null);
 			setWorkspaceStatus("idle");
 			setWorkspaceError(null);
 			requestAnimationFrame(() => inputRef.current?.focus());
@@ -209,12 +295,50 @@ export function CommandBar({
 		setNotionResults([]);
 		setNotionError(null);
 		setNotionStatus("idle");
+		setMoveWorkspaceStatus("idle");
+		setMoveStatus("idle");
+		setMoveError(null);
 		setWorkspaceStatus("idle");
 		setWorkspaceError(null);
 	}, [open]);
 
 	useEffect(() => {
-		if (!open) return;
+		if (
+			!open ||
+			commandMode !== "move-file" ||
+			!moveWorkspacePath ||
+			!useScopedMoveListing
+		) {
+			return;
+		}
+
+		let active = true;
+		setMoveWorkspaceStatus("loading");
+		setMoveWorkspaceFiles([]);
+		setMoveWorkspaceFolders([]);
+		setMoveError(null);
+		desktopApi
+			.listDirectory(moveWorkspacePath)
+			.then((listing) => {
+				if (!active) return;
+				setMoveWorkspaceFiles(listing.files);
+				setMoveWorkspaceFolders(listing.folders);
+				setMoveWorkspaceStatus("ready");
+			})
+			.catch((error) => {
+				if (!active) return;
+				setMoveWorkspaceFiles([]);
+				setMoveWorkspaceFolders([]);
+				setMoveWorkspaceStatus("error");
+				setMoveError(error instanceof Error ? error.message : String(error));
+			});
+		return () => {
+			active = false;
+		};
+	}, [commandMode, moveWorkspacePath, open, useScopedMoveListing]);
+
+	useEffect(() => {
+		if (!open || commandMode !== "open") return;
 		let active = true;
 		setNotionStatus("checking");
 		desktopApi
@@ -235,11 +359,12 @@ export function CommandBar({
 		return () => {
 			active = false;
 		};
-	}, [open]);
+	}, [commandMode, open]);
 
 	useEffect(() => {
 		if (
 			!open ||
+			commandMode !== "open" ||
 			notionScope.kind !== "ready" ||
 			!notionScope.account ||
 			notionConnection?.account === notionScope.account
@@ -269,7 +394,7 @@ export function CommandBar({
 		return () => {
 			active = false;
 		};
-	}, [notionConnection?.account, notionScope, open]);
+	}, [commandMode, notionConnection?.account, notionScope, open]);
 
 	useEffect(() => {
 		if (visibleValues.length === 0) {
@@ -283,6 +408,7 @@ export function CommandBar({
 	useEffect(() => {
 		if (
 			!open ||
+			commandMode !== "open" ||
 			notionScope.kind !== "ready" ||
 			!notionConnection?.connected ||
 			!notionConnectionMatchesScope ||
@@ -304,7 +430,9 @@ export function CommandBar({
 				.catch((error) => {
 					if (!active) return;
 					setNotionResults([]);
-					setNotionError(error instanceof Error ? error.message : String(error));
+					setNotionError(
+						error instanceof Error ? error.message : String(error),
+					);
 				})
 				.finally(() => {
 					if (active) setNotionStatus("idle");
@@ -319,6 +447,7 @@ export function CommandBar({
 		notionConnection?.connected,
 		notionConnectionMatchesScope,
 		notionScope,
+		commandMode,
 		open,
 	]);
 
@@ -329,8 +458,32 @@ export function CommandBar({
 	};
 
 	const selectFolder = (folder: FolderScopeOption) => {
+		if (commandMode === "move-file") {
+			void selectMoveFolder(folder);
+			return;
+		}
 		setQuery(replaceFolderScope(query, folder));
 		requestAnimationFrame(() => inputRef.current?.focus());
+	};
+
+	const selectMoveFolder = async (folder: FolderScopeOption) => {
+		if (!moveSourcePath || !scopedMoveWorkspacePath) return;
+		if (moveStatus === "moving") return;
+		if (moveIsLoadingFolders) return;
+		setMoveStatus("moving");
+		setMoveError(null);
+		try {
+			const moved = await onMoveFileToFolder(
+				moveSourcePath,
+				folder.path,
+				scopedMoveWorkspacePath,
+			);
+			if (moved) closeCommandBar();
+		} catch (error) {
+			setMoveError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setMoveStatus("idle");
+		}
 	};
 
 	const selectAccount = (account: string) => {
@@ -342,6 +495,14 @@ export function CommandBar({
 		if (!path) return;
 		onOpenFile(path);
 		closeCommandBar();
+	};
+
+	const startMoveCurrentFile = () => {
+		setQuery("");
+		setSelectedValue("");
+		setScopeOptionIndex(0);
+		setMoveError(null);
+		onRequestMoveCurrentFile();
 	};
 
 	const selectNotionResult = async (result: NotionSearchResult) => {
@@ -358,6 +519,23 @@ export function CommandBar({
 	};
 
 	const selectWorkspace = async (choice: WorkspaceChoice) => {
+		if (commandMode === "move-file") {
+			if (choice.kind === "add-folder") {
+				const selected = await desktopApi.openFolderPicker();
+				if (typeof selected === "string") {
+					setMoveWorkspacePath(selected);
+					setMoveWorkspaceStatus("loading");
+					setQuery("");
+				}
+				requestAnimationFrame(() => inputRef.current?.focus());
+				return;
+			}
+			setMoveWorkspacePath(choice.current ? null : choice.path);
+			setMoveWorkspaceStatus(choice.current ? "idle" : "loading");
+			setQuery("");
+			requestAnimationFrame(() => inputRef.current?.focus());
+			return;
+		}
 		if (workspaceStatus === "switching") return;
 		if (choice.kind === "workspace" && choice.current) {
 			closeCommandBar();
@@ -381,7 +559,9 @@ export function CommandBar({
 		if (scopeOptions.length > 0) {
 			if (event.key === "Tab") {
 				event.preventDefault();
-				selectScope(scopeOptions[scopeOptionIndex]?.kind ?? scopeOptions[0].kind);
+				selectScope(
+					scopeOptions[scopeOptionIndex]?.kind ?? scopeOptions[0].kind,
+				);
 				return;
 			}
 			if (event.key === "ArrowDown") {
@@ -398,11 +578,17 @@ export function CommandBar({
 			}
 			if (event.key === "Enter") {
 				event.preventDefault();
-				selectScope(scopeOptions[scopeOptionIndex]?.kind ?? scopeOptions[0].kind);
+				selectScope(
+					scopeOptions[scopeOptionIndex]?.kind ?? scopeOptions[0].kind,
+				);
 				return;
 			}
 		}
-		if (event.key === "Escape" && workspaceStatus !== "switching") {
+		if (
+			event.key === "Escape" &&
+			workspaceStatus !== "switching" &&
+			moveStatus !== "moving"
+		) {
 			event.preventDefault();
 			closeCommandBar();
 		}
@@ -421,7 +607,9 @@ export function CommandBar({
 				>
 					<Dialog.Title className="sr-only">Command bar</Dialog.Title>
 					<Dialog.Description className="sr-only">
-						Search files, switch workspaces, and open Notion pages.
+						{commandMode === "move-file"
+							? "Search destination folders and move a Markdown file."
+							: "Search files, switch workspaces, and open Notion pages."}
 					</Dialog.Description>
 					<Command
 						label="Command bar"
@@ -437,7 +625,11 @@ export function CommandBar({
 								value={query}
 								onValueChange={setQuery}
 								onKeyDown={handleInputKeyDown}
-								placeholder="Search files, @workspace, @folder, or @notion"
+								placeholder={
+									commandMode === "move-file"
+										? "Search folders or @workspace"
+										: "Search files, @workspace, @folder, or @notion"
+								}
 								className="h-11 min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-hidden placeholder:text-muted-foreground"
 							/>
 							<kbd className="rounded-[var(--radius-inner)] bg-muted px-1.5 py-0.5 text-[10px] leading-4 text-muted-foreground">
@@ -454,9 +646,14 @@ export function CommandBar({
 						<Command.List className="min-h-0 flex-1 overflow-y-auto p-1">
 							{renderCommandContent({
 								accountChoices,
+								commandMode,
 								fileResults,
 								folderChoices,
 								folderScope,
+								moveError,
+								moveIsLoadingFolders,
+								moveSourceLabel,
+								moveStatus,
 								notionConnection,
 								notionError,
 								notionResults,
@@ -468,6 +665,8 @@ export function CommandBar({
 								onSelectNotionResult: (result) =>
 									void selectNotionResult(result),
 								onSelectWorkspace: (choice) => void selectWorkspace(choice),
+								onStartMoveCurrentFile: startMoveCurrentFile,
+								openModeMoveLabel,
 								showingNotion,
 								showingWorkspace,
 								workspaceChoices,
@@ -476,7 +675,13 @@ export function CommandBar({
 							})}
 						</Command.List>
 						<CommandFooter
+							commandMode={commandMode}
 							folderScope={folderScope}
+							moveDestinationLabel={
+								scopedMoveWorkspacePath
+									? basename(scopedMoveWorkspacePath)
+									: null
+							}
 							notionScope={notionScope}
 							showingNotion={showingNotion}
 							showingWorkspace={showingWorkspace}
@@ -499,6 +704,7 @@ function buildFolderScopeOptions({
 	workspacePath: string | null;
 }) {
 	const paths = new Set<string>();
+	if (workspacePath) paths.add(workspacePath);
 	for (const folder of folders) paths.add(folder.path);
 	for (const file of files) {
 		const relativePath = relativeWorkspacePath(file.path, workspacePath);
@@ -508,10 +714,15 @@ function buildFolderScopeOptions({
 	}
 	return [...paths]
 		.map((path): FolderScopeOption => {
-			const relativePath = relativeWorkspacePath(path, workspacePath);
+			const isRoot =
+				workspacePath !== null &&
+				path.toLocaleLowerCase() === workspacePath.toLocaleLowerCase();
+			const relativePath = isRoot
+				? "Workspace root"
+				: relativeWorkspacePath(path, workspacePath);
 			return {
 				path,
-				label: basename(relativePath),
+				label: isRoot ? basename(path) : basename(relativePath),
 				relativePath,
 			};
 		})

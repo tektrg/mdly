@@ -1,26 +1,33 @@
 import { Command } from "cmdk";
 import MingcuteRightLine from "~icons/mingcute/right-line";
 import MingcuteTextLine from "~icons/mingcute/text-line";
-import {
-	commandScopeOptions,
-	resolveFolderScope,
-	resolveNotionScope,
-	type CommandScopeKind,
-	type FolderScopeOption,
-} from "../lib/commandQuery";
-import type { FileSearchResult } from "../lib/fileSearch";
-import { cn } from "../lib/utils";
-import type { WorkspaceChoice } from "../lib/workspaceChoices";
 import type {
 	NotionConnectionStatus,
 	NotionSearchResult,
 } from "../desktopApi/types";
+import type {
+	CommandScopeKind,
+	commandScopeOptions,
+	FolderScopeOption,
+	resolveFolderScope,
+	resolveNotionScope,
+} from "../lib/commandQuery";
+import type { FileSearchResult } from "../lib/fileSearch";
+import { cn } from "../lib/utils";
+import type { WorkspaceChoice } from "../lib/workspaceChoices";
+
+export type CommandBarMode = "open" | "move-file";
 
 type CommandBarContentInput = {
 	accountChoices: string[];
+	commandMode: CommandBarMode;
 	fileResults: FileSearchResult[];
 	folderChoices: FolderScopeOption[];
 	folderScope: ReturnType<typeof resolveFolderScope>;
+	moveError: string | null;
+	moveIsLoadingFolders: boolean;
+	moveSourceLabel: string | null;
+	moveStatus: "idle" | "moving";
 	notionConnection: NotionConnectionStatus | null;
 	notionError: string | null;
 	notionResults: NotionSearchResult[];
@@ -31,6 +38,8 @@ type CommandBarContentInput = {
 	onSelectFolder: (folder: FolderScopeOption) => void;
 	onSelectNotionResult: (result: NotionSearchResult) => void;
 	onSelectWorkspace: (choice: WorkspaceChoice) => void;
+	onStartMoveCurrentFile: () => void;
+	openModeMoveLabel: string | null;
 	showingNotion: boolean;
 	showingWorkspace: boolean;
 	workspaceChoices: WorkspaceChoice[];
@@ -40,9 +49,14 @@ type CommandBarContentInput = {
 
 export function renderCommandContent({
 	accountChoices,
+	commandMode,
 	fileResults,
 	folderChoices,
 	folderScope,
+	moveError,
+	moveIsLoadingFolders,
+	moveSourceLabel,
+	moveStatus,
 	notionConnection,
 	notionError,
 	notionResults,
@@ -53,6 +67,8 @@ export function renderCommandContent({
 	onSelectFolder,
 	onSelectNotionResult,
 	onSelectWorkspace,
+	onStartMoveCurrentFile,
+	openModeMoveLabel,
 	showingNotion,
 	showingWorkspace,
 	workspaceChoices,
@@ -76,6 +92,33 @@ export function renderCommandContent({
 		);
 	}
 
+	if (commandMode === "move-file") {
+		return (
+			<>
+				<MoveStatusRows
+					error={moveError}
+					isLoadingFolders={moveIsLoadingFolders}
+					sourceLabel={moveSourceLabel}
+					status={moveStatus}
+				/>
+				<Command.Group heading="Move to folder" className={groupClassName}>
+					{folderChoices.map((folder) => (
+						<FolderCommandItem
+							key={folder.path}
+							folder={folder}
+							onSelect={onSelectFolder}
+						/>
+					))}
+					{folderChoices.length === 0 ? (
+						<Command.Empty className={emptyClassName}>
+							{moveIsLoadingFolders ? "Loading folders..." : "No folders found"}
+						</Command.Empty>
+					) : null}
+				</Command.Group>
+			</>
+		);
+	}
+
 	if (folderScope.kind === "editing") {
 		return (
 			<Command.Group heading="Folders" className={groupClassName}>
@@ -87,7 +130,9 @@ export function renderCommandContent({
 					/>
 				))}
 				{folderChoices.length === 0 ? (
-					<Command.Empty className={emptyClassName}>No folders found</Command.Empty>
+					<Command.Empty className={emptyClassName}>
+						No folders found
+					</Command.Empty>
 				) : null}
 			</Command.Group>
 		);
@@ -130,6 +175,12 @@ export function renderCommandContent({
 
 	return (
 		<Command.Group heading="Files" className={groupClassName}>
+			{openModeMoveLabel ? (
+				<MoveCurrentFileCommandItem
+					label={openModeMoveLabel}
+					onSelect={onStartMoveCurrentFile}
+				/>
+			) : null}
 			{fileResults.map((result) => (
 				<FileCommandItem
 					key={result.path}
@@ -137,8 +188,10 @@ export function renderCommandContent({
 					onSelect={onSelectFile}
 				/>
 			))}
-			{fileResults.length === 0 ? (
-				<Command.Empty className={emptyClassName}>No Markdown files found</Command.Empty>
+			{fileResults.length === 0 && !openModeMoveLabel ? (
+				<Command.Empty className={emptyClassName}>
+					No Markdown files found
+				</Command.Empty>
 			) : null}
 		</Command.Group>
 	);
@@ -182,13 +235,17 @@ export function ScopeOptionPopover({
 }
 
 export function CommandFooter({
+	commandMode,
 	folderScope,
+	moveDestinationLabel,
 	notionScope,
 	showingNotion,
 	showingWorkspace,
 	workspaceStatus,
 }: {
+	commandMode: CommandBarMode;
 	folderScope: ReturnType<typeof resolveFolderScope>;
+	moveDestinationLabel: string | null;
 	notionScope: ReturnType<typeof resolveNotionScope>;
 	showingNotion: boolean;
 	showingWorkspace: boolean;
@@ -198,14 +255,19 @@ export function CommandFooter({
 		? workspaceStatus === "switching"
 			? "Switching workspace…"
 			: "Workspace · Recent folders"
-		: showingNotion
-			? notionScope.kind === "ready" && notionScope.account
-				? `Notion · ${notionScope.account}`
-				: "Notion"
-			: folderScope.kind === "resolved"
-				? `Folder · ${folderScope.folder.relativePath}`
-				: "Markdown files";
-	const action = showingWorkspace ? "switch" : "open";
+		: commandMode === "move-file"
+			? moveDestinationLabel
+				? `Move · ${moveDestinationLabel}`
+				: "Move · Current workspace"
+			: showingNotion
+				? notionScope.kind === "ready" && notionScope.account
+					? `Notion · ${notionScope.account}`
+					: "Notion"
+				: folderScope.kind === "resolved"
+					? `Folder · ${folderScope.folder.relativePath}`
+					: "Markdown files";
+	const action =
+		commandMode === "move-file" ? "move" : showingWorkspace ? "switch" : "open";
 	return (
 		<div className="flex items-center justify-between border-t border-border px-3 py-2 text-[10px] text-muted-foreground">
 			<span className="truncate">{label}</span>
@@ -215,6 +277,34 @@ export function CommandFooter({
 				</kbd>
 				{action}
 			</span>
+		</div>
+	);
+}
+
+function MoveStatusRows({
+	error,
+	isLoadingFolders,
+	sourceLabel,
+	status,
+}: {
+	error: string | null;
+	isLoadingFolders: boolean;
+	sourceLabel: string | null;
+	status: "idle" | "moving";
+}) {
+	const messages: string[] = [];
+	if (sourceLabel) messages.push(`Move ${sourceLabel}`);
+	if (isLoadingFolders) messages.push("Loading folders...");
+	if (status === "moving") messages.push("Moving file…");
+	if (error) messages.push(error);
+	if (messages.length === 0) return null;
+	return (
+		<div className="px-3 py-3 text-sm text-muted-foreground" aria-live="polite">
+			{messages.map((message) => (
+				<p key={message} className="m-0">
+					{message}
+				</p>
+			))}
 		</div>
 	);
 }
@@ -256,7 +346,8 @@ function NotionStatusRows({
 	if (status === "checking" && !connection) messages.push("Checking Notion");
 	if (status === "searching") messages.push("Searching Notion");
 	if (status === "opening") messages.push("Opening Notion page");
-	if (connection && !connection.connected) messages.push("Notion is not connected");
+	if (connection && !connection.connected)
+		messages.push("Notion is not connected");
 	if (scope.kind === "needs-account") messages.push("Choose a Notion account");
 	if (scope.kind === "invalid-account") messages.push("Unknown Notion account");
 	if (scope.kind === "ready" && !scope.searchQuery.trim()) {
@@ -275,6 +366,27 @@ function NotionStatusRows({
 	);
 }
 
+function MoveCurrentFileCommandItem({
+	label,
+	onSelect,
+}: {
+	label: string;
+	onSelect: () => void;
+}) {
+	return (
+		<Command.Item
+			value="action:move-current-file"
+			keywords={["move", "file", label]}
+			onSelect={onSelect}
+			className={itemClassName}
+		>
+			<ItemIcon />
+			<ItemText label="Move current file to..." detail={label} />
+			<MingcuteRightLine className="size-3.5 shrink-0 text-muted-foreground opacity-70" />
+		</Command.Item>
+	);
+}
+
 function FileCommandItem({
 	result,
 	onSelect,
@@ -290,7 +402,10 @@ function FileCommandItem({
 			className={itemClassName}
 		>
 			<ItemIcon />
-			<ItemText label={result.label} detail={result.directory || result.relativePath} />
+			<ItemText
+				label={result.label}
+				detail={result.directory || result.relativePath}
+			/>
 			<MingcuteRightLine className="size-3.5 shrink-0 text-muted-foreground opacity-70" />
 		</Command.Item>
 	);

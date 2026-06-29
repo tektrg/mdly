@@ -14,6 +14,7 @@ import { NotionOpenDialog } from "./components/NotionOpenDialog";
 import {
 	AppearanceSettings,
 	SettingsDialog,
+	WorkspaceSettings,
 } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
@@ -32,8 +33,14 @@ import {
 	pushCurrentNotionPage,
 	refreshCurrentNotionPage,
 } from "./fileActions";
+import { basename, joinPath } from "./lib/filePath";
 import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
-import { applyContrastPreference, syncThemePreference } from "./lib/theme";
+import {
+	applyContrastPreference,
+	applyEditorFontPreference,
+	syncThemePreference,
+} from "./lib/theme";
+import { notionBrowserUrlForMarkdown } from "./notion/notionBrowserUrl";
 import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
 import { SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
@@ -42,16 +49,19 @@ import {
 	getPendingRenameTarget,
 	handleExternalFileChange,
 	loadPath,
+	moveMarkdownFileToFolder,
 	openWorkspace,
 	openWorkspaceWithSidebar,
 	refreshFiles,
 	refreshFilesDebounced,
 	reloadFromDiskConflict,
+	restorePersistedWorkspace,
 	setSidebarOpen,
 	setWorkspaceSwitcherOpen,
 } from "./store/actions";
 import {
 	contrastPreferenceStore,
+	editorFontPreferenceStore,
 	sidebarOpenStore,
 	themePreferenceStore,
 	uiStore,
@@ -94,10 +104,18 @@ async function revealPath(path: string | null) {
 	}
 }
 
-function alertNotionRefreshBlockedByLocalChanges() {
+function alertNotionRefreshBlockedByLocalChanges(options?: {
+	onForceRefresh?: () => void;
+}) {
 	toast.error("Notion refresh paused", {
 		description:
-			"This file has local changes since the last Notion fetch. Push them to Notion before fetching again.",
+			"This file has local changes since the last Notion fetch. Push them to Notion, or refresh anyway to replace local changes with the latest Notion version.",
+		action: options?.onForceRefresh
+			? {
+					label: "Refresh",
+					onClick: options.onForceRefresh,
+				}
+			: undefined,
 	});
 }
 
@@ -108,6 +126,7 @@ function App() {
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
 	const themePreference = useStoreValue(themePreferenceStore);
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
+	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
 	const hasWorkspace = workspacePath !== null;
 	const [scrollContainerEl, setScrollContainerEl] =
 		useState<HTMLDivElement | null>(null);
@@ -123,12 +142,16 @@ function App() {
 	const [htmlAppsCalloutVisible, setHtmlAppsCalloutVisible] = useState(false);
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
+	const [commandBarMoveSourcePath, setCommandBarMoveSourcePath] = useState<
+		string | null
+	>(null);
 	const [notionLoadingLabel, setNotionLoadingLabel] = useState<string | null>(
 		null,
 	);
 	const [notionDatabaseRefreshToken, setNotionDatabaseRefreshToken] =
 		useState(0);
 	const notionOpenRefreshPathRef = useRef<string | null>(null);
+	const skipNextNotionOpenRefreshPathRef = useRef<string | null>(null);
 
 	const dismissHtmlAppsCallout = useCallback(() => {
 		if (workspacePath) {
@@ -179,6 +202,10 @@ function App() {
 		applyContrastPreference(contrastPreference);
 	}, [contrastPreference]);
 
+	useEffect(() => {
+		applyEditorFontPreference(editorFontPreference);
+	}, [editorFontPreference]);
+
 	const openSettings = useCallback(() => {
 		setSettingsOpen(true);
 	}, []);
@@ -206,6 +233,19 @@ function App() {
 		}
 	}, []);
 
+	const forceRefreshNotionPage = useCallback(async () => {
+		try {
+			const result = await refreshCurrentNotionPage({
+				forceLocalOverwrite: true,
+			});
+			if (result.kind === "refreshed") toast.success("Refreshed from Notion");
+		} catch (error) {
+			toast.error("Failed to refresh from Notion", {
+				description: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}, []);
+
 	const refreshNotionPage = useCallback(async () => {
 		if (parseNotionDatabaseMetadata(viewerStore.get().content)) {
 			setNotionDatabaseRefreshToken((token) => token + 1);
@@ -215,12 +255,30 @@ function App() {
 		try {
 			const result = await refreshCurrentNotionPage();
 			if (result.kind === "local-changes") {
-				alertNotionRefreshBlockedByLocalChanges();
+				alertNotionRefreshBlockedByLocalChanges({
+					onForceRefresh: () => void forceRefreshNotionPage(),
+				});
 				return;
 			}
 			if (result.kind === "refreshed") toast.success("Refreshed from Notion");
 		} catch (error) {
 			toast.error("Failed to refresh from Notion", {
+				description: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}, [forceRefreshNotionPage]);
+
+	const openNotionInBrowser = useCallback(async () => {
+		const url = notionBrowserUrlForMarkdown(viewerStore.get().content);
+		if (!url) {
+			toast.error("No Notion browser URL saved for this file");
+			return;
+		}
+
+		try {
+			await desktopApi.openExternalUrl(url);
+		} catch (error) {
+			toast.error("Failed to open Notion in browser", {
 				description: error instanceof Error ? error.message : String(error),
 			});
 		}
@@ -235,6 +293,10 @@ function App() {
 		if (state.status !== "ready") return;
 		if (notionOpenRefreshPathRef.current === path) return;
 		notionOpenRefreshPathRef.current = path;
+		if (skipNextNotionOpenRefreshPathRef.current === path) {
+			skipNextNotionOpenRefreshPathRef.current = null;
+			return;
+		}
 
 		if (!currentNotionLinkStatus()) return;
 		let disposed = false;
@@ -341,6 +403,16 @@ function App() {
 		return switched;
 	}, []);
 
+	const openMoveFileCommandBar = useCallback((path: string | null) => {
+		if (!path) return;
+		setCommandBarMoveSourcePath(path);
+		setCommandBarOpen(true);
+	}, []);
+
+	const openMoveCurrentFileCommandBar = useCallback(() => {
+		openMoveFileCommandBar(viewerStore.get().currentPath);
+	}, [openMoveFileCommandBar]);
+
 	const openNotionResult = useCallback(
 		async (result: Parameters<typeof openOrImportNotionPage>[0]) => {
 			const isPage = result.object === "page";
@@ -364,6 +436,29 @@ function App() {
 			}
 		},
 		[focusedSidebarPath],
+	);
+
+	const moveFileToFolderWithoutNotionRefresh = useCallback(
+		async (
+			sourcePath: string,
+			targetFolderPath: string,
+			targetWorkspacePath: string,
+		) => {
+			const isCurrentFile = viewerStore.get().currentPath === sourcePath;
+			const targetPath = joinPath(targetFolderPath, basename(sourcePath));
+			if (isCurrentFile) {
+				skipNextNotionOpenRefreshPathRef.current = targetPath;
+			}
+			const moved = await moveMarkdownFileToFolder(
+				sourcePath,
+				targetFolderPath,
+				targetWorkspacePath,
+			);
+			if (!moved || !isCurrentFile)
+				skipNextNotionOpenRefreshPathRef.current = null;
+			return moved;
+		},
+		[],
 	);
 
 	useEffect(() => {
@@ -396,6 +491,7 @@ function App() {
 				event.preventDefault();
 				if (!workspaceStore.get().workspacePath) return;
 				setCommandBarOpen(true);
+				setCommandBarMoveSourcePath(null);
 			} else if (keymatch(event, "CmdOrCtrl+Shift+C")) {
 				const path = focusedSidebarPath ?? viewerStore.get().currentPath;
 				if (!path) return;
@@ -488,6 +584,9 @@ function App() {
 				setSidebarOpen(true);
 				return;
 			}
+			await restorePersistedWorkspace();
+			if (!active) return;
+
 			const nextState = viewerStore.get();
 			const workspace = workspaceStore.get();
 			const lastPath =
@@ -511,13 +610,16 @@ function App() {
 				scrollContainer={scrollContainerEl}
 				showSidebarBadge={!sidebarOpen && showUpdateCallout}
 				onOpenNotionPage={() => setNotionDialogOpen(true)}
+				onOpenNotionInBrowser={openNotionInBrowser}
 				onPushNotionPage={pushNotionPage}
 				onRefreshNotionPage={refreshNotionPage}
+				onMoveCurrentFile={openMoveCurrentFileCommandBar}
 				notionSyncMode={notionSyncMode}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<Sidebar
 					onFocusedPathChange={setFocusedSidebarPath}
+					onMoveFile={openMoveFileCommandBar}
 					footer={
 						updateState?.status === "ready" && showUpdateCallout ? (
 							<SidebarUpdateCallout
@@ -575,6 +677,7 @@ function App() {
 			</div>
 			<SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}>
 				<AppearanceSettings />
+				<WorkspaceSettings />
 				{updateState ? (
 					<UpdatesSection
 						state={updateState}
@@ -595,15 +698,21 @@ function App() {
 			/>
 			<CommandBar
 				open={commandBarOpen}
-				onOpenChange={setCommandBarOpen}
+				onOpenChange={(nextOpen) => {
+					setCommandBarOpen(nextOpen);
+					if (!nextOpen) setCommandBarMoveSourcePath(null);
+				}}
 				files={workspace.files}
 				folders={workspace.folders}
 				workspacePath={workspace.workspacePath}
 				recentWorkspaces={workspace.recentWorkspaces}
 				currentPath={state.currentPath}
+				moveSourcePath={commandBarMoveSourcePath}
 				onOpenFile={openCommandBarFile}
 				onOpenWorkspace={openCommandBarWorkspace}
 				onOpenNotionResult={openNotionResult}
+				onMoveFileToFolder={moveFileToFolderWithoutNotionRefresh}
+				onRequestMoveCurrentFile={openMoveCurrentFileCommandBar}
 			/>
 			<NotionLoadingIndicator label={notionLoadingLabel} />
 		</main>

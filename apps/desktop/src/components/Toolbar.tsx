@@ -36,15 +36,19 @@ export function Toolbar({
 	scrollContainer,
 	showSidebarBadge = false,
 	onOpenNotionPage,
+	onOpenNotionInBrowser,
 	onPushNotionPage,
 	onRefreshNotionPage,
+	onMoveCurrentFile,
 	notionSyncMode,
 }: {
 	scrollContainer: HTMLDivElement | null;
 	showSidebarBadge?: boolean;
 	onOpenNotionPage: () => void;
+	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
+	onMoveCurrentFile: () => void;
 	notionSyncMode: NotionSyncMode;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
@@ -69,8 +73,10 @@ export function Toolbar({
 					<NoteActionsMenu
 						path={currentPath ?? null}
 						onOpenNotionPage={onOpenNotionPage}
+						onOpenNotionInBrowser={onOpenNotionInBrowser}
 						onPushNotionPage={onPushNotionPage}
 						onRefreshNotionPage={onRefreshNotionPage}
+						onMoveFile={onMoveCurrentFile}
 						notionSyncMode={notionSyncMode}
 					/>
 				) : undefined
@@ -82,14 +88,18 @@ export function Toolbar({
 function NoteActionsMenu({
 	path,
 	onOpenNotionPage,
+	onOpenNotionInBrowser,
 	onPushNotionPage,
 	onRefreshNotionPage,
+	onMoveFile,
 	notionSyncMode,
 }: {
 	path: string | null;
 	onOpenNotionPage: () => void;
+	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
+	onMoveFile: () => void;
 	notionSyncMode: NotionSyncMode;
 }) {
 	async function revealFile() {
@@ -138,6 +148,13 @@ function NoteActionsMenu({
 						{notionSyncMode !== "none" ? (
 							<>
 								<Menu.Separator className="my-1 h-px bg-border" />
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onOpenNotionInBrowser}
+								>
+									<MingcuteLinkLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Open in Notion</span>
+								</Menu.Item>
 								{notionSyncMode === "page" ? (
 									<Menu.Item
 										className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
@@ -168,6 +185,13 @@ function NoteActionsMenu({
 										{revealFileLabel(desktopApi.platform)}
 									</span>
 									<ShortcutHint>⌘⌥R</ShortcutHint>
+								</Menu.Item>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onMoveFile}
+								>
+									<MingcuteFolderOpenLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Move to...</span>
 								</Menu.Item>
 								<Menu.Item
 									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
