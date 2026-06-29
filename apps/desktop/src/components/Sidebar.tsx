@@ -31,9 +31,11 @@ import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 export function Sidebar({
 	footer,
 	onFocusedPathChange,
+	onMoveFile,
 }: {
 	footer?: ReactNode;
 	onFocusedPathChange?: (path: string | null) => void;
+	onMoveFile?: (path: string) => void;
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
@@ -94,10 +96,16 @@ export function Sidebar({
 				path: file.path,
 				modifiedAt: file.modified_at,
 				pinned: pinnedSet.has(file.path),
+				isSymlink: file.is_symlink,
+				symlinkTarget: file.symlink_target,
+				symlinkTargetExists: file.symlink_target_exists,
 			}))}
 			folders={folders.map((folder) => ({
 				path: folder.path,
 				modifiedAt: folder.modified_at,
+				isSymlink: folder.is_symlink,
+				symlinkTarget: folder.symlink_target,
+				symlinkTargetExists: folder.symlink_target_exists,
 			}))}
 			currentPath={currentPath ?? null}
 			sortMode={sortMode}
@@ -110,6 +118,7 @@ export function Sidebar({
 			onSelectFile={(path) => void loadPath(path)}
 			onRevealFile={(path) => void desktopApi.revealFile(path)}
 			onCopyFilePath={(path) => void copyFilePath(path)}
+			onMoveFile={onMoveFile}
 			onRevealFolder={(folderId) =>
 				void desktopApi.revealFile(absolutePath(folderId))
 			}

@@ -17,8 +17,8 @@ let nextWatchId = 0;
 const desktopApi = {
 	platform: process.platform,
 	homeDir: os.homedir(),
-	listDirectory: (path) =>
-		ipcRenderer.invoke("desktop:list-directory", { path }),
+	listDirectory: (path, options) =>
+		ipcRenderer.invoke("desktop:list-directory", { path, options }),
 	listHtmlAppFiles: (workspacePath, glob) =>
 		ipcRenderer.invoke("desktop:html-app-list-files", { workspacePath, glob }),
 	readWorkspaceConfig: (workspacePath) =>
@@ -34,6 +34,11 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:write-file-text", { path, content }),
 	renameFile: (fromPath, toPath) =>
 		ipcRenderer.invoke("desktop:rename-file", { fromPath, toPath }),
+	renameSymlinkTarget: (linkPath, nextName) =>
+		ipcRenderer.invoke("desktop:rename-symlink-target", {
+			linkPath,
+			nextName,
+		}),
 	pathExists: (path) => ipcRenderer.invoke("desktop:path-exists", { path }),
 	persistPastedImage: (input) =>
 		ipcRenderer.invoke("desktop:persist-pasted-image", input),

@@ -40,4 +40,39 @@ describe("buildFileTree", () => {
 
 		expect(folderNames(tree)).toEqual([]);
 	});
+
+	it("preserves symlink metadata on files and folders", () => {
+		const tree = buildFileTree(
+			[
+				{
+					path: "/workspace/linked.md",
+					modifiedAt: 1,
+					isSymlink: true,
+					symlinkTarget: "/target.md",
+					symlinkTargetExists: true,
+				},
+			],
+			[
+				{
+					path: "/workspace/linked-folder",
+					modifiedAt: 2,
+					isSymlink: true,
+					symlinkTarget: "/target",
+					symlinkTargetExists: false,
+				},
+			],
+			(path) => path.replace("/workspace/", ""),
+		);
+
+		expect(tree.files[0]).toMatchObject({
+			isSymlink: true,
+			symlinkTarget: "/target.md",
+			symlinkTargetExists: true,
+		});
+		expect(tree.folders.get("linked-folder")?.source).toMatchObject({
+			isSymlink: true,
+			symlinkTarget: "/target",
+			symlinkTargetExists: false,
+		});
+	});
 });

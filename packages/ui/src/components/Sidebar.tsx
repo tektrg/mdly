@@ -29,9 +29,11 @@ import {
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
+import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteEditLine from "~icons/mingcute/edit-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
+import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import MingcutePinFill from "~icons/mingcute/pin-fill";
 import MingcutePinLine from "~icons/mingcute/pin-line";
@@ -128,6 +130,7 @@ export function Sidebar({
 	onSelectFile,
 	onRevealFile,
 	onCopyFilePath,
+	onMoveFile,
 	onRevealFolder,
 	onFocusedItemChange,
 	revealLabel,
@@ -154,6 +157,7 @@ export function Sidebar({
 	onSelectFile: (path: string) => void;
 	onRevealFile?: (path: string) => void;
 	onCopyFilePath?: (path: string) => void;
+	onMoveFile?: (path: string) => void;
 	onRevealFolder?: (folderId: string) => void;
 	onFocusedItemChange?: (item: SidebarFocusedItem) => void;
 	revealLabel?: string;
@@ -539,6 +543,7 @@ export function Sidebar({
 											row.kind === "file" &&
 											!onRevealFile &&
 											!onCopyFilePath &&
+											!onMoveFile &&
 											!onRenameFile &&
 											!onDeleteFile
 										)
@@ -603,22 +608,28 @@ export function Sidebar({
 											dragListeners={listeners}
 										>
 											{chevron}
-											{row.kind === "folder" ? (
-												<FolderSegmentLabel
-													dropTarget={dropTarget}
-													row={row}
-													enabled={Boolean(onMoveItem)}
-												/>
-											) : (
-												<span
-													className={cn(
-														"min-w-0 flex-1 truncate",
-														isPinnedFile && "[direction:rtl] [text-align:left]",
-													)}
-												>
-													{row.label}
-												</span>
-											)}
+							{row.kind === "folder" ? (
+								<>
+									<FolderSegmentLabel
+										dropTarget={dropTarget}
+										row={row}
+										enabled={Boolean(onMoveItem)}
+									/>
+									<SymlinkIndicator item={row.folder} />
+								</>
+							) : (
+								<>
+									<span
+										className={cn(
+											"min-w-0 flex-1 truncate",
+											isPinnedFile && "[direction:rtl] [text-align:left]",
+										)}
+									>
+										{row.label}
+									</span>
+									<SymlinkIndicator item={row.file} />
+								</>
+							)}
 										</DroppableRowButton>
 									)}
 									{canTogglePinnedFile && (
@@ -664,6 +675,7 @@ export function Sidebar({
 										{row.kind === "file" &&
 											(onRevealFile ||
 												onCopyFilePath ||
+												onMoveFile ||
 												onRenameFile ||
 												onDeleteFile ||
 												onTogglePinnedFile) && (
@@ -676,6 +688,7 @@ export function Sidebar({
 													}
 													onRevealFile={onRevealFile}
 													onCopyFilePath={onCopyFilePath}
+													onMoveFile={onMoveFile}
 													revealLabel={revealLabel}
 													onRenameFile={beginRename}
 													onTogglePinnedFile={onTogglePinnedFile}
@@ -705,7 +718,7 @@ export function Sidebar({
 
 	return (
 		<SidebarFrame onCollapse={onCollapse} storageScope={storageScope}>
-			<div className="flex items-center justify-between border-b border-sidebar-border px-2.5 py-1.5">
+			<div className="flex items-center justify-between px-2.5 py-1.5 shadow-chrome-section">
 				{header ?? (
 					<span className="text-[11px] font-medium uppercase text-muted-foreground">
 						Files
@@ -764,9 +777,7 @@ export function Sidebar({
 				<div
 					className={cn(
 						"p-2",
-						showFooterBorder
-							? "[border-block-start:1px_dashed_var(--sidebar-border)]"
-							: "border-transparent",
+						showFooterBorder ? "shadow-chrome-section-reverse" : "shadow-none",
 					)}
 				>
 					{footer}
@@ -912,6 +923,37 @@ function DroppableRowButton({
 		>
 			{children}
 		</button>
+	);
+}
+
+function SymlinkIndicator({
+	item,
+}: {
+	item?: {
+		isSymlink?: boolean;
+		symlinkTarget?: string | null;
+		symlinkTargetExists?: boolean;
+	};
+}) {
+	if (!item?.isSymlink) return null;
+	const isBroken = item.symlinkTargetExists === false;
+	const title = isBroken
+		? "Broken symbolic link"
+		: item.symlinkTarget
+			? `Symbolic link to ${item.symlinkTarget}`
+			: "Symbolic link";
+	const Icon = isBroken ? MingcuteCloseLine : MingcuteLinkLine;
+	return (
+		<span
+			aria-label={title}
+			className={cn(
+				"inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70",
+				isBroken && "text-destructive/80",
+			)}
+			title={title}
+		>
+			<Icon aria-hidden="true" className="size-3" />
+		</span>
 	);
 }
 
@@ -1179,7 +1221,7 @@ export function SidebarFrame({
 			ref={asideRef}
 			data-sidebar-root
 			className={cn(
-				"relative flex shrink-0 flex-col overflow-visible border-e border-sidebar-border bg-sidebar",
+				"relative flex shrink-0 flex-col overflow-visible bg-sidebar shadow-chrome-sidebar",
 				isResizing && "select-none",
 			)}
 			style={
@@ -1289,6 +1331,7 @@ function FileActionsMenu({
 	onOpenChange,
 	onRevealFile,
 	onCopyFilePath,
+	onMoveFile,
 	revealLabel,
 	onRenameFile,
 	onTogglePinnedFile,
@@ -1300,6 +1343,7 @@ function FileActionsMenu({
 	onOpenChange: (open: boolean) => void;
 	onRevealFile?: (path: string) => void;
 	onCopyFilePath?: (path: string) => void;
+	onMoveFile?: (path: string) => void;
 	revealLabel?: string;
 	onRenameFile?: (file: SidebarFile, label: string) => void;
 	onTogglePinnedFile?: (path: string) => void;
@@ -1331,6 +1375,14 @@ function FileActionsMenu({
 					onClick={() => onRenameFile(file, label)}
 				>
 					Rename
+				</ActionItem>
+			)}
+			{onMoveFile && (
+				<ActionItem
+					icon={<MingcuteFolderOpenLine />}
+					onClick={() => onMoveFile(file.path)}
+				>
+					Move to...
 				</ActionItem>
 			)}
 			{onTogglePinnedFile && (

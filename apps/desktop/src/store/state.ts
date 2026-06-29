@@ -9,6 +9,9 @@ export type SortMode = "alpha" | "recent";
 export type FileEntry = {
 	path: string;
 	modified_at: number;
+	is_symlink?: boolean;
+	symlink_target?: string | null;
+	symlink_target_exists?: boolean;
 };
 
 export type FolderEntry = FileEntry;
@@ -146,3 +149,7 @@ export const sidebarOpenStore = uiStore.select("sidebarOpen");
 export const switcherOpenStore = uiStore.select("isSwitcherOpen");
 export const themePreferenceStore = uiStore.select("themePreference");
 export const contrastPreferenceStore = uiStore.select("contrastPreference");
+export const editorFontPreferenceStore = uiStore.select("editorFontPreference");
+export const showIgnoredWorkspaceFilesStore = uiStore.select(
+	"showIgnoredWorkspaceFiles",
+);

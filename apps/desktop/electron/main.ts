@@ -27,10 +27,10 @@ import type {
 } from "../src/desktopApi/types";
 import {
 	hasDocumentExtension,
-	isHiddenSidebarFolderName,
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
+import { collectDocumentFiles } from "./fileDiscovery";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -416,10 +416,6 @@ function isIgnoredByRules(candidatePath: string, rules: IgnoreRule[]) {
 		if (result.unignored || directoryResult.unignored) ignored = false;
 	}
 	return ignored;
-}
-
-function isDocumentPath(candidatePath: string): boolean {
-	return hasDocumentExtension(candidatePath);
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -839,34 +835,6 @@ function fileAssetsDir(filePath: string): string {
 	return assetsDir;
 }
 
-async function collectDocumentFiles(
-	dir: string,
-	out: DirectoryListing,
-	inheritedRules: IgnoreRule[] = [],
-) {
-	const rules = await rulesForDir(dir, inheritedRules);
-	const entries = await fs.readdir(dir, { withFileTypes: true });
-	for (const entry of entries) {
-		const entryPath = path.join(dir, entry.name);
-		if (isIgnoredByRules(entryPath, rules)) continue;
-		if (entry.isDirectory()) {
-			if (isHiddenSidebarFolderName(entry.name)) continue;
-			const stat = await fs.stat(entryPath);
-			out.folders.push({
-				path: entryPath,
-				modified_at: Math.floor(stat.mtimeMs / 1000),
-			});
-			await collectDocumentFiles(entryPath, out, rules);
-		} else if (isDocumentPath(entry.name)) {
-			const stat = await fs.stat(entryPath);
-			out.files.push({
-				path: entryPath,
-				modified_at: Math.floor(stat.mtimeMs / 1000),
-			});
-		}
-	}
-}
-
 async function collectWorkspaceFiles(
 	root: string,
 	dir: string,
@@ -986,12 +954,21 @@ async function createWindow() {
 function registerIpc() {
 	ipcMain.handle(
 		"desktop:list-directory",
-		async (_event, { path: dirPath }) => {
+		async (
+			_event,
+			{ path: dirPath, options }: { path: string; options?: unknown },
+		) => {
 			const root = assertGrantedRoot(dirPath);
 			const stat = await fs.stat(root);
 			if (!stat.isDirectory()) throw new Error(`Not a directory: ${dirPath}`);
 			const listing: DirectoryListing = { files: [], folders: [] };
-			await collectDocumentFiles(root, listing);
+			await collectDocumentFiles(root, listing, {
+				includeIgnoredWorkspaceFiles:
+					typeof options === "object" &&
+					options !== null &&
+					"includeIgnoredWorkspaceFiles" in options &&
+					options.includeIgnoredWorkspaceFiles === true,
+			});
 			return listing;
 		},
 	);
@@ -1069,6 +1046,38 @@ function registerIpc() {
 			await fs.mkdir(path.dirname(to), { recursive: true });
 			await fs.rename(from, to);
 			grantFileWithParent(to);
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:rename-symlink-target",
+		async (_event, { linkPath, nextName }) => {
+			const link = assertGranted(linkPath);
+			const linkStat = await fs.lstat(link);
+			if (!linkStat.isSymbolicLink())
+				throw new Error(`Not a symbolic link: ${linkPath}`);
+			const rawTarget = await fs.readlink(link);
+			const target = await fs.realpath(link);
+			const targetDir = path.dirname(target);
+			const normalizedName = path.normalize(String(nextName));
+			if (
+				path.isAbsolute(normalizedName) ||
+				normalizedName === ".." ||
+				normalizedName.startsWith(`..${path.sep}`)
+			) {
+				throw new Error(`Unsafe symlink target rename: ${nextName}`);
+			}
+			const nextTarget = path.join(targetDir, normalizedName);
+			if (path.resolve(nextTarget) === path.resolve(target)) return;
+			if (await pathExists(nextTarget))
+				throw new Error(`Target already exists: ${nextTarget}`);
+			await fs.mkdir(path.dirname(nextTarget), { recursive: true });
+			await fs.rename(target, nextTarget);
+			const nextRawTarget = path.isAbsolute(rawTarget)
+				? nextTarget
+				: path.relative(path.dirname(link), nextTarget);
+			await fs.unlink(link);
+			await fs.symlink(nextRawTarget, link);
 		},
 	);
 
@@ -1230,7 +1239,7 @@ function registerIpc() {
 					depth: 0,
 				});
 				const emitFile = (changedPath: string) => {
-					if (isDocumentPath(changedPath)) {
+					if (hasDocumentExtension(changedPath)) {
 						emit(changedPath);
 					}
 				};

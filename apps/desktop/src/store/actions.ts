@@ -23,12 +23,17 @@ import {
 	pathAfterMove,
 	rewriteMovedLinks,
 } from "../lib/markdownLinkRewrite";
-import type { ContrastPreference, ThemePreference } from "../lib/theme";
+import type {
+	ContrastPreference,
+	EditorFontPreference,
+	ThemePreference,
+} from "../lib/theme";
 import {
 	applyFileAction,
 	appStore,
 	cleanFileState,
 	contrastPreferenceStore,
+	editorFontPreferenceStore,
 	emptyDoc,
 	type FileEntry,
 	type FolderEntry,
@@ -37,6 +42,7 @@ import {
 	LOADING_DELAY_MS,
 	MAX_RECENT,
 	type SortMode,
+	showIgnoredWorkspaceFilesStore,
 	sidebarOpenStore,
 	switcherOpenStore,
 	themePreferenceStore,
@@ -56,7 +62,9 @@ type SidebarMoveItem =
 export async function refreshFiles(path = workspaceStore.get().workspacePath) {
 	if (!path) return;
 	const listing = await desktopApi
-		.listDirectory(path)
+		.listDirectory(path, {
+			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
+		})
 		.catch((): { files: FileEntry[]; folders: FolderEntry[] } => ({
 			files: [],
 			folders: [],
@@ -167,7 +175,9 @@ async function updateMovedLinks(movedFiles: MovedFile[], files: FileEntry[]) {
 	const movedByOldPath = indexMovedFiles(movedFiles);
 	const current = viewerStore.get();
 
-	for (const file of files.filter((file) => hasMarkdownExtension(file.path))) {
+	for (const file of files.filter(
+		(file) => hasMarkdownExtension(file.path) && !file.is_symlink,
+	)) {
 		const nextPath = pathAfterMove(file.path, movedByOldPath);
 		try {
 			// The open editor may have unsaved changes, so disk content is stale for
@@ -217,6 +227,15 @@ function uniqueMovePath(parent: string, sourcePath: string, isFolder: boolean) {
 		const candidate = joinPath(parent, name);
 		if (!existing.has(candidate.toLocaleLowerCase())) return candidate;
 	}
+}
+
+function targetPathWithPreservedName(parent: string, sourcePath: string) {
+	return normalizePath(joinPath(parent, basename(sourcePath)));
+}
+
+async function targetFileExists(path: string, files: FileEntry[]) {
+	if (files.some((file) => pathEquals(file.path, path))) return true;
+	return desktopApi.pathExists(path);
 }
 
 async function loadPinnedNotes(workspacePath: string) {
@@ -304,6 +323,19 @@ export function setThemePreference(themePreference: ThemePreference) {
 
 export function setContrastPreference(contrastPreference: ContrastPreference) {
 	contrastPreferenceStore.set(contrastPreference);
+}
+
+export function setEditorFontPreference(
+	editorFontPreference: EditorFontPreference,
+) {
+	editorFontPreferenceStore.set(editorFontPreference);
+}
+
+export function setShowIgnoredWorkspaceFiles(
+	showIgnoredWorkspaceFiles: boolean,
+) {
+	showIgnoredWorkspaceFilesStore.set(showIgnoredWorkspaceFiles);
+	void refreshFiles();
 }
 
 export function toggleSidebar() {
@@ -478,6 +510,25 @@ export async function renameMarkdownFile(path: string, nextName: string) {
 	// rename behavior for nested notes.
 	const nextPath = normalizePath(joinPath(parent, nextNameWithExt));
 	if (!isSafeRelativeRenamePath(trimmedName, nextPath, workspacePath)) return;
+	const symlinkFile = filesBeforeRename.find((file) => file.path === path);
+	if (symlinkFile?.is_symlink && symlinkFile.symlink_target_exists !== false) {
+		try {
+			if (isCurrentFile) {
+				await savePathContent(path, current.content, { force: true });
+			}
+			await desktopApi.renameSymlinkTarget(path, nextNameWithExt);
+			await refreshFiles();
+			if (isCurrentFile) {
+				await loadPath(path);
+			}
+		} catch (err) {
+			const message = handleFileError(err);
+			toast.error("Failed to rename symlink target", {
+				description: message,
+			});
+		}
+		return;
+	}
 	if (nextPath === path) return;
 
 	try {
@@ -591,12 +642,23 @@ export async function moveSidebarItem(
 	const currentAffected =
 		currentPath && moveAffectsPath(currentPath, sourcePath, isFolder);
 	const nextPath = uniqueMovePath(targetFolderPath, sourcePath, isFolder);
+	const sourceEntry = isFolder
+		? workspaceStore
+				.get()
+				.folders.find((folder) => pathEquals(folder.path, sourcePath))
+		: filesBeforeMove.find((file) => pathEquals(file.path, sourcePath));
+	const movesSymlink = sourceEntry?.is_symlink === true;
 	const movedFiles = movedMarkdownFiles(
 		filesBeforeMove,
 		sourcePath,
 		nextPath,
 		isFolder,
-	);
+	).filter((movedFile) => {
+		const file = filesBeforeMove.find((file) =>
+			pathEquals(file.path, movedFile.fromPath),
+		);
+		return !file?.is_symlink;
+	});
 
 	try {
 		if (currentAffected && currentPath) {
@@ -604,7 +666,7 @@ export async function moveSidebarItem(
 		}
 		await desktopApi.renameFile(sourcePath, nextPath);
 		const movedAssetFolder =
-			item.kind === "file"
+			item.kind === "file" && !movesSymlink
 				? await moveAssociatedAssetFolder(sourcePath, nextPath)
 				: null;
 		appStore.set((state) => ({
@@ -642,13 +704,133 @@ export async function moveSidebarItem(
 			},
 		}));
 		if (movedAssetFolder) movedFiles.push(movedAssetFolder);
-		await updateMovedLinks(movedFiles, filesBeforeMove);
+		if (!movesSymlink) await updateMovedLinks(movedFiles, filesBeforeMove);
 		await syncPinnedNotes();
 		await refreshFiles();
 	} catch (err) {
 		const message = handleFileError(err);
 		toast.error("Failed to move item", { description: message });
 		await refreshFiles();
+	}
+}
+
+export async function moveMarkdownFileToFolder(
+	sourcePath: string,
+	targetFolderPath: string,
+	targetWorkspacePath = workspaceStore.get().workspacePath,
+) {
+	const sourceWorkspacePath = workspaceStore.get().workspacePath;
+	if (!sourceWorkspacePath || !targetWorkspacePath) return false;
+	if (!isInWorkspace(sourcePath, sourceWorkspacePath)) return false;
+
+	const sourceParent = dirname(sourcePath);
+	if (!sourceParent) return false;
+
+	const nextPath = targetPathWithPreservedName(targetFolderPath, sourcePath);
+	if (pathEquals(sourcePath, nextPath)) return true;
+
+	const sameWorkspace = pathEquals(sourceWorkspacePath, targetWorkspacePath);
+	const filesBeforeMove = workspaceStore.get().files;
+	if (await targetFileExists(nextPath, sameWorkspace ? filesBeforeMove : [])) {
+		toast.error("A file with that name already exists", {
+			description: basename(sourcePath),
+		});
+		return false;
+	}
+
+	const current = viewerStore.get();
+	const isCurrentFile = pathEquals(current.currentPath ?? "", sourcePath);
+	const movedFiles = sameWorkspace
+		? movedMarkdownFiles(filesBeforeMove, sourcePath, nextPath, false)
+		: [{ fromPath: sourcePath, toPath: nextPath }];
+
+	try {
+		if (isCurrentFile) {
+			await savePathContent(sourcePath, current.content, { force: true });
+		}
+		pendingRenames.set(sourcePath, nextPath);
+		await desktopApi.renameFile(sourcePath, nextPath);
+		const movedAssetFolder = await moveAssociatedAssetFolder(
+			sourcePath,
+			nextPath,
+		);
+		if (sameWorkspace && movedAssetFolder) movedFiles.push(movedAssetFolder);
+
+		appStore.set((state) => {
+			const lastOpenedPaths = Object.fromEntries(
+				Object.entries(state.workspace.lastOpenedPaths).filter(
+					([workspace, openedPath]) =>
+						!pathEquals(workspace, sourceWorkspacePath) ||
+						!pathEquals(openedPath, sourcePath),
+				),
+			);
+			if (sameWorkspace && isCurrentFile) {
+				lastOpenedPaths[sourceWorkspacePath] = nextPath;
+			}
+
+			return {
+				...state,
+				workspace: {
+					...state.workspace,
+					files: sameWorkspace
+						? state.workspace.files.map((file) =>
+								pathEquals(file.path, sourcePath)
+									? { ...file, path: nextPath }
+									: file,
+							)
+						: state.workspace.files.filter(
+								(file) => !pathEquals(file.path, sourcePath),
+							),
+					pinnedNotes: sameWorkspace
+						? state.workspace.pinnedNotes.map((pinnedPath) =>
+								pathEquals(pinnedPath, sourcePath) ? nextPath : pinnedPath,
+							)
+						: state.workspace.pinnedNotes.filter(
+								(pinnedPath) => !pathEquals(pinnedPath, sourcePath),
+							),
+					lastOpenedPaths,
+				},
+				document:
+					isCurrentFile && sameWorkspace
+						? {
+								...state.document,
+								currentPath: nextPath,
+								lastOpenedPath: nextPath,
+							}
+						: isCurrentFile
+							? {
+									...state.document,
+									currentPath: nextPath,
+									lastOpenedPath: nextPath,
+								}
+							: state.document,
+			};
+		});
+
+		if (sameWorkspace) {
+			await updateMovedLinks(movedFiles, filesBeforeMove);
+		}
+		await syncPinnedNotes();
+
+		if (isCurrentFile && !sameWorkspace) {
+			await openWorkspace(targetWorkspacePath);
+			await loadPath(nextPath);
+			sidebarOpenStore.set(true);
+			return true;
+		}
+
+		await refreshFiles();
+		if (isCurrentFile) {
+			await loadPath(nextPath);
+		}
+		return true;
+	} catch (err) {
+		const message = handleFileError(err);
+		toast.error("Failed to move file", { description: message });
+		await refreshFiles();
+		return false;
+	} finally {
+		window.setTimeout(() => pendingRenames.delete(sourcePath), 1000);
 	}
 }
 

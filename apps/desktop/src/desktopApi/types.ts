@@ -1,6 +1,9 @@
 export type FileEntry = {
 	path: string;
 	modified_at: number;
+	is_symlink?: boolean;
+	symlink_target?: string | null;
+	symlink_target_exists?: boolean;
 };
 
 export type FolderEntry = FileEntry;
@@ -8,6 +11,10 @@ export type FolderEntry = FileEntry;
 export type DirectoryListing = {
 	files: FileEntry[];
 	folders: FolderEntry[];
+};
+
+export type DirectoryListingOptions = {
+	includeIgnoredWorkspaceFiles?: boolean;
 };
 
 export type HtmlAppFileEntry = {
@@ -128,7 +135,10 @@ export type WorkspaceConfig = {
 export type DesktopApi = {
 	platform: DesktopPlatform;
 	homeDir: string;
-	listDirectory(path: string): Promise<DirectoryListing>;
+	listDirectory(
+		path: string,
+		options?: DirectoryListingOptions,
+	): Promise<DirectoryListing>;
 	listHtmlAppFiles(
 		workspacePath: string,
 		glob: string,
@@ -141,6 +151,7 @@ export type DesktopApi = {
 	readFileText(path: string): Promise<string>;
 	writeFileText(path: string, content: string): Promise<void>;
 	renameFile(fromPath: string, toPath: string): Promise<void>;
+	renameSymlinkTarget(linkPath: string, nextName: string): Promise<void>;
 	pathExists(path: string): Promise<boolean>;
 	persistPastedImage(
 		input: PersistPastedImageInput,

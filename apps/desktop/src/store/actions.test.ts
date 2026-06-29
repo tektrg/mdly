@@ -7,6 +7,7 @@ type MockDesktopApi = {
 	readWorkspaceConfig: ReturnType<typeof vi.fn>;
 	writeWorkspaceConfig: ReturnType<typeof vi.fn>;
 	renameFile: ReturnType<typeof vi.fn>;
+	renameSymlinkTarget: ReturnType<typeof vi.fn>;
 	pathExists: ReturnType<typeof vi.fn>;
 	openFolderPicker: ReturnType<typeof vi.fn>;
 };
@@ -19,6 +20,7 @@ function createDesktopApi(): MockDesktopApi {
 		readWorkspaceConfig: vi.fn(async () => ({ version: 1, pinnedNotes: [] })),
 		writeWorkspaceConfig: vi.fn(async () => {}),
 		renameFile: vi.fn(async () => {}),
+		renameSymlinkTarget: vi.fn(async () => {}),
 		pathExists: vi.fn(async () => false),
 		openFolderPicker: vi.fn(async () => undefined),
 	};
@@ -125,6 +127,43 @@ describe("desktop savePathContent", () => {
 	});
 });
 
+describe("desktop sidebar discovery preferences", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("passes the ignored-files preference when refreshing files", async () => {
+		const api = createDesktopApi();
+		const {
+			appStore,
+			refreshFiles,
+			setShowIgnoredWorkspaceFiles,
+			workspaceStore,
+		} = await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+			},
+		}));
+
+		await refreshFiles();
+		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
+			includeIgnoredWorkspaceFiles: false,
+		});
+
+		setShowIgnoredWorkspaceFiles(true);
+		await Promise.resolve();
+
+		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
+			includeIgnoredWorkspaceFiles: true,
+		});
+		expect(workspaceStore.get().workspacePath).toBe("/workspace");
+	});
+});
+
 describe("desktop renameMarkdownFile", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
@@ -170,6 +209,67 @@ describe("desktop renameMarkdownFile", () => {
 		expect(workspaceStore.get().lastOpenedPaths["/workspace"]).toBe(
 			"/workspace/renamed.md",
 		);
+	});
+
+	it("renames a symlink target without moving the sidebar link", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("target content");
+		api.listDirectory.mockResolvedValue({
+			files: [
+				{
+					path: "/workspace/linked.md",
+					modified_at: 2,
+					is_symlink: true,
+					symlink_target: "/outside/target-renamed.md",
+					symlink_target_exists: true,
+				},
+			],
+			folders: [],
+		});
+		const { appStore, renameMarkdownFile, viewerStore, workspaceStore } =
+			await loadStoreActions(api);
+		const path = "/workspace/linked.md";
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+				files: [
+					{
+						path,
+						modified_at: 1,
+						is_symlink: true,
+						symlink_target: "/outside/target.md",
+						symlink_target_exists: true,
+					},
+				],
+				lastOpenedPaths: { "/workspace": path },
+			},
+			document: {
+				...current.document,
+				currentPath: path,
+				lastOpenedPath: path,
+				content: "target content",
+				diskContent: "target content",
+				externalChange: { kind: "none" },
+				status: "ready",
+				error: null,
+			},
+		}));
+
+		await renameMarkdownFile(path, "target-renamed");
+
+		expect(api.renameSymlinkTarget).toHaveBeenCalledWith(
+			path,
+			"target-renamed.md",
+		);
+		expect(api.renameFile).not.toHaveBeenCalled();
+		expect(viewerStore.get().currentPath).toBe(path);
+		expect(workspaceStore.get().files[0]).toMatchObject({
+			path,
+			symlink_target: "/outside/target-renamed.md",
+		});
 	});
 
 	it("updates pinned note paths in workspace config", async () => {
@@ -508,6 +608,63 @@ describe("desktop moveSidebarItem", () => {
 		});
 	});
 
+	it("moves a symlink file without rewriting target content", async () => {
+		const api = createDesktopApi();
+		api.pathExists.mockResolvedValue(true);
+		api.listDirectory.mockResolvedValue({
+			files: [
+				{
+					path: "/workspace/archive/linked.md",
+					modified_at: 2,
+					is_symlink: true,
+					symlink_target: "/outside/target.md",
+					symlink_target_exists: true,
+				},
+			],
+			folders: [],
+		});
+		const { appStore, moveSidebarItem, workspaceStore } =
+			await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+				files: [
+					{
+						path: "/workspace/linked.md",
+						modified_at: 1,
+						is_symlink: true,
+						symlink_target: "/outside/target.md",
+						symlink_target_exists: true,
+					},
+				],
+				folders: [{ path: "/workspace/archive", modified_at: 1 }],
+			},
+		}));
+
+		await moveSidebarItem(
+			{ kind: "file", path: "/workspace/linked.md" },
+			"/workspace/archive",
+		);
+
+		expect(api.renameFile).toHaveBeenCalledWith(
+			"/workspace/linked.md",
+			"/workspace/archive/linked.md",
+		);
+		expect(api.readFileText).not.toHaveBeenCalled();
+		expect(api.writeFileText).not.toHaveBeenCalled();
+		expect(api.renameFile).not.toHaveBeenCalledWith(
+			"/workspace/linked.assets",
+			"/workspace/archive/linked.assets",
+		);
+		expect(workspaceStore.get().files[0]).toMatchObject({
+			path: "/workspace/archive/linked.md",
+			is_symlink: true,
+		});
+	});
+
 	it("updates relative refs when moving a file", async () => {
 		const api = createDesktopApi();
 		api.readFileText.mockResolvedValue(
@@ -695,6 +852,135 @@ describe("desktop moveSidebarItem", () => {
 				"[[archive/project/notes/b.md|B]]",
 			].join("\n"),
 		);
+	});
+});
+
+describe("desktop moveMarkdownFileToFolder", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("moves a file with its existing name and updates pinned state", async () => {
+		const api = createDesktopApi();
+		api.listDirectory.mockResolvedValue({
+			files: [{ path: "/workspace/archive/note.md", modified_at: 1 }],
+			folders: [{ path: "/workspace/archive", modified_at: 1 }],
+		});
+		const { appStore, moveMarkdownFileToFolder, workspaceStore } =
+			await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+				files: [
+					{ path: "/workspace/note.md", modified_at: 1 },
+					{ path: "/workspace/archive/existing.md", modified_at: 1 },
+				],
+				pinnedNotes: ["/workspace/note.md"],
+			},
+		}));
+
+		await moveMarkdownFileToFolder(
+			"/workspace/note.md",
+			"/workspace/archive",
+			"/workspace",
+		);
+
+		expect(api.renameFile).toHaveBeenCalledWith(
+			"/workspace/note.md",
+			"/workspace/archive/note.md",
+		);
+		expect(workspaceStore.get().pinnedNotes).toEqual([
+			"/workspace/archive/note.md",
+		]);
+	});
+
+	it("blocks target filename conflicts instead of suffixing", async () => {
+		const api = createDesktopApi();
+		const { appStore, moveMarkdownFileToFolder } = await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+				files: [
+					{ path: "/workspace/note.md", modified_at: 1 },
+					{ path: "/workspace/archive/note.md", modified_at: 1 },
+				],
+			},
+		}));
+
+		const moved = await moveMarkdownFileToFolder(
+			"/workspace/note.md",
+			"/workspace/archive",
+			"/workspace",
+		);
+
+		expect(moved).toBe(false);
+		expect(api.renameFile).not.toHaveBeenCalled();
+	});
+
+	it("moves the current file to another workspace and opens it there", async () => {
+		const api = createDesktopApi();
+		api.listDirectory.mockImplementation(async (path: string) => {
+			if (path === "/target-workspace") {
+				return {
+					files: [{ path: "/target-workspace/note.md", modified_at: 2 }],
+					folders: [],
+				};
+			}
+			return { files: [], folders: [] };
+		});
+		api.readFileText.mockImplementation(async (path: string) =>
+			path === "/target-workspace/note.md" ? "draft" : "before",
+		);
+		const { appStore, moveMarkdownFileToFolder, viewerStore, workspaceStore } =
+			await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/source-workspace",
+				files: [{ path: "/source-workspace/note.md", modified_at: 1 }],
+				pinnedNotes: ["/source-workspace/note.md"],
+				lastOpenedPaths: {
+					"/source-workspace": "/source-workspace/note.md",
+				},
+			},
+			document: {
+				...current.document,
+				currentPath: "/source-workspace/note.md",
+				lastOpenedPath: "/source-workspace/note.md",
+				content: "draft",
+				diskContent: "draft",
+				externalChange: { kind: "none" },
+				status: "ready",
+				error: null,
+			},
+		}));
+
+		const moved = await moveMarkdownFileToFolder(
+			"/source-workspace/note.md",
+			"/target-workspace",
+			"/target-workspace",
+		);
+
+		expect(moved).toBe(true);
+		expect(api.renameFile).toHaveBeenCalledWith(
+			"/source-workspace/note.md",
+			"/target-workspace/note.md",
+		);
+		expect(api.writeWorkspaceConfig).toHaveBeenCalledWith("/source-workspace", {
+			version: 1,
+			pinnedNotes: [],
+		});
+		expect(workspaceStore.get().workspacePath).toBe("/target-workspace");
+		expect(viewerStore.get().currentPath).toBe("/target-workspace/note.md");
+		expect(viewerStore.get().content).toBe("draft");
 	});
 });
 

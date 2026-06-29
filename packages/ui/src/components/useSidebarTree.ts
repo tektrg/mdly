@@ -7,17 +7,24 @@ export type SidebarFile = {
 	path: string;
 	modifiedAt?: number;
 	pinned?: boolean;
+	isSymlink?: boolean;
+	symlinkTarget?: string | null;
+	symlinkTargetExists?: boolean;
 };
 
 export type SidebarFolder = {
 	path: string;
 	modifiedAt?: number;
+	isSymlink?: boolean;
+	symlinkTarget?: string | null;
+	symlinkTargetExists?: boolean;
 };
 
 type FolderNode = {
 	id: string;
 	name: string;
 	modifiedAt: number;
+	source?: SidebarFolder;
 	folders: Map<string, FolderNode>;
 	files: SidebarFile[];
 };
@@ -35,6 +42,7 @@ export type SidebarRow =
 			label: string;
 			depth: number;
 			expanded: boolean;
+			folder?: SidebarFolder;
 			segments: SidebarFolderSegment[];
 	  }
 	| {
@@ -172,11 +180,12 @@ export function useSidebarTree({
 	return { collapseFolder, expandFolder, rows, toggleFolder };
 }
 
-function makeFolder(id: string, name: string): FolderNode {
+function makeFolder(id: string, name: string, source?: SidebarFolder): FolderNode {
 	return {
 		id,
 		name,
 		modifiedAt: 0,
+		source,
 		folders: new Map(),
 		files: [],
 	};
@@ -200,6 +209,7 @@ export function buildFileTree(
 			folder.modifiedAt = Math.max(folder.modifiedAt, modifiedAt);
 			parent = folder;
 		}
+		parent.source = folderEntry;
 	}
 
 	for (const file of files) {
@@ -291,6 +301,7 @@ function appendFolderChildren(
 			label: compacted.label,
 			depth,
 			expanded,
+			folder: compacted.folder.source,
 			segments: compacted.segments,
 		});
 		if (expanded) {
@@ -324,7 +335,11 @@ function compactFolder(folder: FolderNode): {
 	const names = [folder.name];
 	const segments = [{ id: folder.id, name: folder.name }];
 	let cursor = folder;
-	while (cursor.files.length === 0 && cursor.folders.size === 1) {
+	while (
+		!cursor.source?.isSymlink &&
+		cursor.files.length === 0 &&
+		cursor.folders.size === 1
+	) {
 		const onlyChild = cursor.folders.values().next().value as
 			| FolderNode
 			| undefined;

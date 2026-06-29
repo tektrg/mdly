@@ -1,10 +1,13 @@
 import {
 	type ContrastPreference,
+	type EditorFontPreference,
 	isContrastPreference,
 	isThemePreference,
+	normalizeEditorFontPreference,
+	SYSTEM_EDITOR_FONT_PREFERENCE,
 	type ThemePreference,
 } from "../lib/theme";
-import { emptyDoc, type SortMode } from "./state";
+import type { SortMode } from "./state";
 import { STORAGE_KEY } from "./storage";
 
 type WorkspaceState = {
@@ -12,18 +15,36 @@ type WorkspaceState = {
 	recentWorkspaces: string[];
 	lastOpenedPaths: Record<string, string>;
 	sortMode: SortMode;
-	files: { path: string; modified_at: number }[];
-	folders: { path: string; modified_at: number }[];
+	files: WorkspaceEntry[];
+	folders: WorkspaceEntry[];
 	pinnedNotes: string[];
 };
 
-type DocumentState = ReturnType<typeof emptyDoc>;
+type WorkspaceEntry = {
+	path: string;
+	modified_at: number;
+	is_symlink?: boolean;
+	symlink_target?: string | null;
+	symlink_target_exists?: boolean;
+};
+
+type DocumentState = {
+	currentPath: string | null;
+	lastOpenedPath: string | null;
+	content: string;
+	diskContent: string;
+	externalChange: { kind: "none" } | { kind: "conflict"; diskContent: string };
+	status: "idle" | "loading" | "ready" | "error";
+	error: string | null;
+};
 
 type UiState = {
 	sidebarOpen: boolean;
 	isSwitcherOpen: boolean;
 	themePreference: ThemePreference;
 	contrastPreference: ContrastPreference;
+	editorFontPreference: EditorFontPreference;
+	showIgnoredWorkspaceFiles: boolean;
 };
 
 export type DesktopState = {
@@ -44,6 +65,8 @@ type Persisted = {
 		sidebarOpen?: boolean;
 		themePreference?: unknown;
 		contrastPreference?: unknown;
+		editorFontPreference?: unknown;
+		showIgnoredWorkspaceFiles?: boolean;
 	};
 };
 
@@ -79,6 +102,10 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 }
 
 function hydrateUi(ui: Persisted["ui"]): UiState {
+	const editorFontPreference =
+		normalizeEditorFontPreference(ui?.editorFontPreference) ??
+		SYSTEM_EDITOR_FONT_PREFERENCE;
+
 	return {
 		sidebarOpen: ui?.sidebarOpen ?? false,
 		isSwitcherOpen: false,
@@ -88,6 +115,22 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 		contrastPreference: isContrastPreference(ui?.contrastPreference)
 			? ui.contrastPreference
 			: "standard",
+		editorFontPreference,
+		showIgnoredWorkspaceFiles: ui?.showIgnoredWorkspaceFiles === true,
+	};
+}
+
+function emptyPersistedDoc(
+	lastOpenedPath: string | null = null,
+): DocumentState {
+	return {
+		currentPath: null,
+		lastOpenedPath,
+		content: "",
+		diskContent: "",
+		externalChange: { kind: "none" },
+		status: "idle",
+		error: null,
 	};
 }
 
@@ -95,7 +138,7 @@ export function getInitialState(): DesktopState {
 	const p = readStorage<Persisted>(STORAGE_KEY);
 	return {
 		workspace: hydrateWorkspace(p?.workspace),
-		document: emptyDoc(p?.document?.lastOpenedPath ?? null),
+		document: emptyPersistedDoc(p?.document?.lastOpenedPath ?? null),
 		ui: hydrateUi(p?.ui),
 	};
 }
@@ -115,6 +158,8 @@ export function serialize(state: DesktopState): Persisted {
 			sidebarOpen: state.ui.sidebarOpen,
 			themePreference: state.ui.themePreference,
 			contrastPreference: state.ui.contrastPreference,
+			editorFontPreference: state.ui.editorFontPreference,
+			showIgnoredWorkspaceFiles: state.ui.showIgnoredWorkspaceFiles,
 		},
 	};
 }
