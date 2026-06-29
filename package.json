@@ -26,6 +26,7 @@
 		"dev:sync-backend": "pnpm --filter \"./packages/sync-backend\" exec convex dev",
 		"dev:cli": "pnpm --filter \"./packages/sync\" --filter \"./packages/cli\" --parallel --stream dev",
 		"build:dev-app": "node scripts/build-dev-app.mjs",
+		"install:dev-app": "bash scripts/install-dev-app.sh",
 		"hubble": "node packages/cli/dist/index.js"
 	},
 	"devDependencies": {

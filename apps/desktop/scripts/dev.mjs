@@ -22,6 +22,15 @@ const playgroundPath = path.join(devAppDir, "playground");
 const wrapperVersion = 2;
 const currentPlaygroundHtmlMarkers = ["bg-card", "text-foreground"];
 const stalePlaygroundHtmlMarkers = ["./vendor/", "px-6"];
+const uiDistReadyFiles = [
+	path.resolve(appDir, "../../packages/ui/dist/index.js"),
+	path.resolve(appDir, "../../packages/ui/dist/index.css"),
+	path.resolve(appDir, "../../packages/ui/dist/theme.css"),
+	path.resolve(appDir, "../../packages/ui/dist/fonts.css"),
+	path.resolve(appDir, "../../packages/ui/dist/tailwind.css"),
+];
+const uiDistWaitIntervalMs = 100;
+const uiDistWaitTimeoutMs = 15_000;
 
 async function pathExists(input) {
 	try {
@@ -296,6 +305,19 @@ function startElectronVite(env) {
 	});
 }
 
+async function waitForUiDist() {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < uiDistWaitTimeoutMs) {
+		const readyFiles = await Promise.all(uiDistReadyFiles.map(pathExists));
+		if (readyFiles.every(Boolean)) return;
+		await new Promise((resolve) => setTimeout(resolve, uiDistWaitIntervalMs));
+	}
+
+	console.warn(
+		"Timed out waiting for @hubble.md/ui dist files; starting desktop dev anyway.",
+	);
+}
+
 const env = { ...process.env };
 
 if (process.platform === "darwin") {
@@ -330,4 +352,5 @@ if (process.platform === "darwin") {
 	console.log(`Playground: ${playgroundPath}`);
 }
 
+await waitForUiDist();
 startElectronVite(env);

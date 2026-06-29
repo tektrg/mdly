@@ -2,6 +2,8 @@ Use logical CSS spacing props (`margin/padding` inline/block/start/end), not phy
 
 Check work: `pnpm build:desktop` (builds packages, runs biome check, tsc, vite build, cargo check). For quick iteration use `pnpm check` and desktop tsc.
 
+Before development handoff for the desktop app, run `pnpm install:dev-app`. It rebuilds the Hubble/mdly dev launcher, installs it to `/Applications/Hubble Dev.app`, and opens it, which restarts the `hubble_desktop_dev` tmux session and the Electron app.
+
 Test the web app by appending `?test=1` to the dev server URL — bypasses the connect / workspace-picker screens. Requires `VITE_TEST_CONVEX_URL` and `VITE_TEST_WORKSPACE_ID` in `apps/www/.env.local` (see `apps/www/.env.example`).
 
 When asked why you made a decision, answer why. Don't take it as a challenge to your approach, or pressure to change your solution.

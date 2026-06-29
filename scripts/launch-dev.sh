@@ -10,6 +10,7 @@ PNPM_DIR="$(dirname "$PNPM")"
 
 # Kill old session if it exists
 "$TMUX_BIN" kill-session -t "$SESSION" 2>/dev/null || true
+pkill -f "$REPO_DIR/apps/desktop/.dev-electron/.*/Contents/MacOS/.* Dev" 2>/dev/null || true
 
 # Start fresh dev session
 "$TMUX_BIN" new-session -d -s "$SESSION" -c "$REPO_DIR" \
