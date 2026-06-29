@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import ignore from "ignore";
-import type { DirectoryListing } from "../src/desktopApi/types";
+import type {
+	DirectoryListing,
+	FileEntry,
+	FolderEntry,
+} from "../src/desktopApi/types";
 import {
 	hasDocumentExtension,
 	isHiddenSidebarFolderName,
@@ -16,6 +20,21 @@ type SymlinkInfo = {
 	is_symlink?: true;
 	symlink_target?: string | null;
 	symlink_target_exists?: boolean;
+	symlink_target_in_workspace?: boolean;
+	symlink_canonical_path?: string | null;
+};
+
+type PendingSymlinkMetadata = {
+	targetRealPath: string;
+	symlinkTarget: string | null;
+	listingEntry: FileEntry | FolderEntry;
+};
+
+type DiscoveryContext = {
+	workspaceRealPath: string;
+	canonicalPathByRealPath: Map<string, string>;
+	visitedRealPaths: Set<string>;
+	pendingSymlinkMetadata: PendingSymlinkMetadata[];
 };
 
 export type DocumentDiscoveryOptions = {
@@ -23,7 +42,12 @@ export type DocumentDiscoveryOptions = {
 };
 
 const ignoreConfigFiles = [".gitignore", ".ignore"];
-const ignoredWorkspaceDirs = new Set([".git", "dist", "node_modules"]);
+const ignoredWorkspaceDirs = new Set([
+	".dev-electron",
+	".git",
+	"dist",
+	"node_modules",
+]);
 
 /** Covers always-ignored workspace dirs in case Git ignores do not catch them. */
 function isAlwaysIgnoredWorkspacePath(candidatePath: string): boolean {
@@ -74,13 +98,51 @@ function modifiedAtSeconds(stat: { mtimeMs: number | bigint }): number {
 	return Math.floor(Number(stat.mtimeMs) / 1000);
 }
 
-async function readSymlinkInfo(entryPath: string): Promise<SymlinkInfo> {
+function isPathInside(parentPath: string, candidatePath: string): boolean {
+	const relative = path.relative(parentPath, candidatePath);
+	return (
+		relative === "" ||
+		(Boolean(relative) &&
+			!relative.startsWith("..") &&
+			!path.isAbsolute(relative))
+	);
+}
+
+function symlinkTargetInfo(
+	target: string | null,
+	targetRealPath: string | null,
+	context: DiscoveryContext,
+): Pick<SymlinkInfo, "symlink_target_in_workspace" | "symlink_canonical_path"> {
+	if (!targetRealPath) {
+		return {
+			symlink_target_in_workspace: target
+				? isPathInside(context.workspaceRealPath, path.resolve(target))
+				: false,
+			symlink_canonical_path: null,
+		};
+	}
+	const canonicalPath = context.canonicalPathByRealPath.get(targetRealPath);
+	const inWorkspace =
+		Boolean(canonicalPath) ||
+		isPathInside(context.workspaceRealPath, targetRealPath);
+	return {
+		symlink_target_in_workspace: inWorkspace,
+		symlink_canonical_path: canonicalPath ?? null,
+	};
+}
+
+async function readSymlinkInfo(
+	entryPath: string,
+	context: DiscoveryContext,
+): Promise<SymlinkInfo> {
 	try {
 		const target = await fs.readlink(entryPath);
+		const resolvedTarget = path.resolve(path.dirname(entryPath), target);
 		return {
 			is_symlink: true,
-			symlink_target: path.resolve(path.dirname(entryPath), target),
+			symlink_target: resolvedTarget,
 			symlink_target_exists: true,
+			...symlinkTargetInfo(resolvedTarget, null, context),
 		};
 	} catch (error) {
 		if (isMissingPathError(error)) {
@@ -88,6 +150,8 @@ async function readSymlinkInfo(entryPath: string): Promise<SymlinkInfo> {
 				is_symlink: true,
 				symlink_target: null,
 				symlink_target_exists: false,
+				symlink_target_in_workspace: false,
+				symlink_canonical_path: null,
 			};
 		}
 		throw error;
@@ -111,16 +175,42 @@ async function rulesForDir(dir: string, inherited: IgnoreRule[]) {
 	return hasRules ? [...inherited, { dir, matcher }] : inherited;
 }
 
+async function createDiscoveryContext(
+	rootDir: string,
+): Promise<DiscoveryContext> {
+	const workspaceRealPath = await fs.realpath(rootDir);
+	return {
+		workspaceRealPath,
+		canonicalPathByRealPath: new Map(),
+		visitedRealPaths: new Set(),
+		pendingSymlinkMetadata: [],
+	};
+}
+
+async function finalizePendingSymlinks(
+	context: DiscoveryContext,
+) {
+	for (const pending of context.pendingSymlinkMetadata) {
+		Object.assign(
+			pending.listingEntry,
+			symlinkTargetInfo(pending.symlinkTarget, pending.targetRealPath, context),
+		);
+	}
+}
+
 export async function collectDocumentFiles(
 	dir: string,
 	out: DirectoryListing,
 	options: DocumentDiscoveryOptions = {},
 	inheritedRules: IgnoreRule[] = [],
-	visitedRealPaths: Set<string> = new Set(),
+	context?: DiscoveryContext,
 ) {
+	const isRootCall = !context;
+	context ??= await createDiscoveryContext(dir);
 	const realDir = await fs.realpath(dir);
-	if (visitedRealPaths.has(realDir)) return;
-	visitedRealPaths.add(realDir);
+	if (context.visitedRealPaths.has(realDir)) return;
+	context.visitedRealPaths.add(realDir);
+	context.canonicalPathByRealPath.set(realDir, dir);
 
 	const includeIgnoredWorkspaceFiles =
 		options.includeIgnoredWorkspaceFiles ?? false;
@@ -137,14 +227,26 @@ export async function collectDocumentFiles(
 		}
 		if (entry.isSymbolicLink()) {
 			const linkStat = await fs.lstat(entryPath);
-			const symlinkInfo = await readSymlinkInfo(entryPath);
+			const symlinkInfo = await readSymlinkInfo(entryPath, context);
 			let targetStat: Awaited<ReturnType<typeof fs.stat>> | null = null;
+			let targetRealPath: string | null = null;
 			if (symlinkInfo.symlink_target_exists) {
 				try {
 					targetStat = await fs.stat(entryPath);
+					targetRealPath = await fs.realpath(entryPath);
+					Object.assign(
+						symlinkInfo,
+						symlinkTargetInfo(
+							symlinkInfo.symlink_target ?? null,
+							targetRealPath,
+							context,
+						),
+					);
 				} catch (error) {
 					if (!isMissingPathError(error)) throw error;
 					symlinkInfo.symlink_target_exists = false;
+					symlinkInfo.symlink_target_in_workspace = false;
+					symlinkInfo.symlink_canonical_path = null;
 				}
 			}
 			if (targetStat?.isDirectory()) {
@@ -154,19 +256,26 @@ export async function collectDocumentFiles(
 					modified_at: modifiedAtSeconds(targetStat),
 					...symlinkInfo,
 				});
-				await collectDocumentFiles(
-					entryPath,
-					out,
-					options,
-					rules,
-					visitedRealPaths,
-				);
+				if (targetRealPath) {
+					context.pendingSymlinkMetadata.push({
+						targetRealPath,
+						symlinkTarget: symlinkInfo.symlink_target ?? null,
+						listingEntry: out.folders[out.folders.length - 1],
+					});
+				}
 			} else if (targetStat?.isFile() && isDocumentPath(entry.name)) {
 				out.files.push({
 					path: entryPath,
 					modified_at: modifiedAtSeconds(targetStat),
 					...symlinkInfo,
 				});
+				if (targetRealPath) {
+					context.pendingSymlinkMetadata.push({
+						targetRealPath,
+						symlinkTarget: symlinkInfo.symlink_target ?? null,
+						listingEntry: out.files[out.files.length - 1],
+					});
+				}
 			} else if (!targetStat && !symlinkInfo.symlink_target_exists) {
 				const brokenEntry = {
 					path: entryPath,
@@ -189,14 +298,19 @@ export async function collectDocumentFiles(
 				out,
 				options,
 				rules,
-				visitedRealPaths,
+				context,
 			);
 		} else if (isDocumentPath(entry.name)) {
 			const stat = await fs.stat(entryPath);
+			context.canonicalPathByRealPath.set(await fs.realpath(entryPath), entryPath);
 			out.files.push({
 				path: entryPath,
 				modified_at: modifiedAtSeconds(stat),
 			});
 		}
+	}
+
+	if (isRootCall) {
+		await finalizePendingSymlinks(context);
 	}
 }

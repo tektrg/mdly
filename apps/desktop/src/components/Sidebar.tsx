@@ -99,6 +99,9 @@ export function Sidebar({
 				isSymlink: file.is_symlink,
 				symlinkTarget: file.symlink_target,
 				symlinkTargetExists: file.symlink_target_exists,
+				symlinkTargetInWorkspace: file.symlink_target_in_workspace,
+				symlinkCanonicalPath: file.symlink_canonical_path,
+				gitStatus: file.git_status,
 			}))}
 			folders={folders.map((folder) => ({
 				path: folder.path,
@@ -106,6 +109,8 @@ export function Sidebar({
 				isSymlink: folder.is_symlink,
 				symlinkTarget: folder.symlink_target,
 				symlinkTargetExists: folder.symlink_target_exists,
+				symlinkTargetInWorkspace: folder.symlink_target_in_workspace,
+				symlinkCanonicalPath: folder.symlink_canonical_path,
 			}))}
 			currentPath={currentPath ?? null}
 			sortMode={sortMode}
@@ -118,6 +123,13 @@ export function Sidebar({
 			onSelectFile={(path) => void loadPath(path)}
 			onRevealFile={(path) => void desktopApi.revealFile(path)}
 			onCopyFilePath={(path) => void copyFilePath(path)}
+			onCopySymlinkTarget={(path) =>
+				void navigator.clipboard
+					.writeText(path)
+					.then(() => toast.success("Symlink target path copied"))
+					.catch(() => toast.error("Failed to copy symlink target path"))
+			}
+			onBrokenSymlink={() => toast.error("Symlink target is missing")}
 			onMoveFile={onMoveFile}
 			onRevealFolder={(folderId) =>
 				void desktopApi.revealFile(absolutePath(folderId))

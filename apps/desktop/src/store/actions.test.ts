@@ -30,10 +30,10 @@ function createDesktopApi(): MockDesktopApi {
  * Actions capture window.desktopApi at import time, so each test stubs globals
  * before importing the store modules.
  */
-async function loadStoreActions(api: MockDesktopApi) {
+async function loadStoreActions(api: MockDesktopApi, persisted?: unknown) {
 	vi.resetModules();
 	vi.stubGlobal("localStorage", {
-		getItem: vi.fn(() => null),
+		getItem: vi.fn(() => (persisted ? JSON.stringify(persisted) : null)),
 		setItem: vi.fn(),
 	});
 	vi.stubGlobal("window", {
@@ -137,6 +137,7 @@ describe("desktop sidebar discovery preferences", () => {
 		const {
 			appStore,
 			refreshFiles,
+			setShowGitStatusIndicators,
 			setShowIgnoredWorkspaceFiles,
 			workspaceStore,
 		} = await loadStoreActions(api);
@@ -152,6 +153,7 @@ describe("desktop sidebar discovery preferences", () => {
 		await refreshFiles();
 		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
 			includeIgnoredWorkspaceFiles: false,
+			includeGitStatus: false,
 		});
 
 		setShowIgnoredWorkspaceFiles(true);
@@ -159,8 +161,42 @@ describe("desktop sidebar discovery preferences", () => {
 
 		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
 			includeIgnoredWorkspaceFiles: true,
+			includeGitStatus: false,
+		});
+
+		setShowGitStatusIndicators(true);
+		await Promise.resolve();
+
+		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
+			includeIgnoredWorkspaceFiles: true,
+			includeGitStatus: true,
 		});
 		expect(workspaceStore.get().workspacePath).toBe("/workspace");
+	});
+
+	it("does not scan a persisted workspace before startup routing restores it", async () => {
+		const api = createDesktopApi();
+		const { restorePersistedWorkspace, workspaceStore } = await loadStoreActions(
+			api,
+			{
+				workspace: {
+					workspacePath: "/large-workspace",
+					recentWorkspaces: ["/large-workspace"],
+					lastOpenedPaths: {},
+					sortMode: "recent",
+				},
+			},
+		);
+
+		expect(workspaceStore.get().workspacePath).toBe("/large-workspace");
+		expect(api.listDirectory).not.toHaveBeenCalled();
+
+		await restorePersistedWorkspace();
+
+		expect(api.listDirectory).toHaveBeenCalledWith("/large-workspace", {
+			includeIgnoredWorkspaceFiles: false,
+			includeGitStatus: false,
+		});
 	});
 });
 

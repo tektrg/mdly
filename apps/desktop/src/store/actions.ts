@@ -42,6 +42,7 @@ import {
 	LOADING_DELAY_MS,
 	MAX_RECENT,
 	type SortMode,
+	showGitStatusIndicatorsStore,
 	showIgnoredWorkspaceFilesStore,
 	sidebarOpenStore,
 	switcherOpenStore,
@@ -64,6 +65,7 @@ export async function refreshFiles(path = workspaceStore.get().workspacePath) {
 	const listing = await desktopApi
 		.listDirectory(path, {
 			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
+			includeGitStatus: showGitStatusIndicatorsStore.get(),
 		})
 		.catch((): { files: FileEntry[]; folders: FolderEntry[] } => ({
 			files: [],
@@ -301,8 +303,10 @@ export function getPendingRenameTarget(path: string) {
 	return pendingRenames.get(path) ?? null;
 }
 
-if (workspaceStore.get().workspacePath) {
-	void refreshFiles();
+export async function restorePersistedWorkspace() {
+	const workspacePath = workspaceStore.get().workspacePath;
+	if (!workspacePath) return;
+	await Promise.all([refreshFiles(workspacePath), loadPinnedNotes(workspacePath)]);
 }
 
 export function setSortMode(mode: SortMode) {
@@ -335,6 +339,11 @@ export function setShowIgnoredWorkspaceFiles(
 	showIgnoredWorkspaceFiles: boolean,
 ) {
 	showIgnoredWorkspaceFilesStore.set(showIgnoredWorkspaceFiles);
+	void refreshFiles();
+}
+
+export function setShowGitStatusIndicators(showGitStatusIndicators: boolean) {
+	showGitStatusIndicatorsStore.set(showGitStatusIndicators);
 	void refreshFiles();
 }
 

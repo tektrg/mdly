@@ -28,8 +28,8 @@ import {
 } from "react";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
-import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
+import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteEditLine from "~icons/mingcute/edit-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
@@ -56,6 +56,7 @@ import {
 	type SidebarSortMode,
 	useSidebarTree,
 } from "./useSidebarTree";
+import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
 export type { SidebarFile, SidebarFolder, SidebarSortMode };
 
@@ -130,6 +131,8 @@ export function Sidebar({
 	onSelectFile,
 	onRevealFile,
 	onCopyFilePath,
+	onCopySymlinkTarget,
+	onBrokenSymlink,
 	onMoveFile,
 	onRevealFolder,
 	onFocusedItemChange,
@@ -157,6 +160,8 @@ export function Sidebar({
 	onSelectFile: (path: string) => void;
 	onRevealFile?: (path: string) => void;
 	onCopyFilePath?: (path: string) => void;
+	onCopySymlinkTarget?: (path: string) => void;
+	onBrokenSymlink?: () => void;
 	onMoveFile?: (path: string) => void;
 	onRevealFolder?: (folderId: string) => void;
 	onFocusedItemChange?: (item: SidebarFocusedItem) => void;
@@ -182,6 +187,9 @@ export function Sidebar({
 	const [pendingFocusDisplayPath, setPendingFocusDisplayPath] = useState<
 		string | null
 	>(null);
+	const [pendingFocusFolderId, setPendingFocusFolderId] = useState<string | null>(
+		null,
+	);
 	const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 	const highlightPath = pendingPath ?? currentPath;
@@ -230,10 +238,50 @@ export function Sidebar({
 	);
 	const activateRow = useCallback(
 		(row: SidebarRow) => {
-			if (row.kind === "file") onSelectFile(row.file.path);
-			else if (row.kind === "folder") toggleFolder(row.id);
+			if (row.kind === "file") {
+				const target = symlinkActivationTarget(row.file);
+				if (target.kind === "broken") {
+					onBrokenSymlink?.();
+					return;
+				}
+				if (target.kind === "external") {
+					onCopySymlinkTarget?.(target.path);
+					return;
+				}
+				onSelectFile(target.kind === "canonical" ? target.path : row.file.path);
+				return;
+			}
+			if (row.kind === "folder") {
+				const target = symlinkActivationTarget(row.folder);
+				if (target.kind === "broken") {
+					onBrokenSymlink?.();
+					return;
+				}
+				if (target.kind === "external") {
+					onCopySymlinkTarget?.(target.path);
+					return;
+				}
+				if (target.kind === "canonical") {
+					const folderId = folderIdForDisplayPath(getDisplayPath(target.path));
+					if (folderId) {
+						for (const id of folderIdAndAncestors(folderId)) expandFolder(id);
+						setPendingFocusFolderId(folderId);
+						onFocusedItemChange?.({ kind: "folder", folderId });
+					}
+					return;
+				}
+				toggleFolder(row.id);
+			}
 		},
-		[onSelectFile, toggleFolder],
+		[
+			expandFolder,
+			getDisplayPath,
+			onBrokenSymlink,
+			onCopySymlinkTarget,
+			onFocusedItemChange,
+			onSelectFile,
+			toggleFolder,
+		],
 	);
 	const enterRowEdit = useCallback(
 		(row: SidebarRow) => {
@@ -267,6 +315,16 @@ export function Sidebar({
 		navRef,
 		activeIndex,
 	});
+	const virtualRows = useVirtualSidebarRows({
+		rows,
+		scrollRef: navRef,
+	});
+
+	useEffect(() => {
+		if (focusedIndex === null) return;
+		virtualRows.scrollToIndex(focusedIndex);
+	}, [focusedIndex, virtualRows.scrollToIndex]);
+
 	useEffect(() => {
 		const row = focusedIndex === null ? null : rows[focusedIndex];
 		if (!row || row.kind === "section") {
@@ -292,6 +350,19 @@ export function Sidebar({
 		setFocusedIndex(index);
 		setPendingFocusDisplayPath(null);
 	}, [getDisplayPath, pendingFocusDisplayPath, rows, setFocusedIndex]);
+
+	useEffect(() => {
+		if (!pendingFocusFolderId) return;
+		const index = rows.findIndex(
+			(row) =>
+				row.kind === "folder" &&
+				(row.id === pendingFocusFolderId ||
+					row.segments.some((segment) => segment.id === pendingFocusFolderId)),
+		);
+		if (index < 0) return;
+		setFocusedIndex(index);
+		setPendingFocusFolderId(null);
+	}, [pendingFocusFolderId, rows, setFocusedIndex]);
 
 	const handleDragStart = useCallback((event: DragStartEvent) => {
 		const data = event.active.data.current as DragItemData | undefined;
@@ -454,7 +525,13 @@ export function Sidebar({
 				onKeyDown={onKeyDown}
 			>
 				{rows.length === 0 && emptyState}
-				{rows.map((row, index) => {
+				{virtualRows.paddingTop > 0 ? (
+					<div
+						aria-hidden="true"
+						style={{ height: virtualRows.paddingTop }}
+					/>
+				) : null}
+				{virtualRows.items.map(({ row, index }) => {
 					const isActive =
 						row.kind === "file" && row.file.path === highlightPath;
 					const isFocused = focusedIndex === index;
@@ -480,9 +557,14 @@ export function Sidebar({
 					const rowStyle = {
 						paddingInlineStart: `${0.5 + row.depth * 0.75}rem`,
 					} as React.CSSProperties;
+					const isPointerFolder =
+						row.kind === "folder" && row.folder?.isSymlink;
 					const chevron = (
-						<span className="inline-flex size-3 shrink-0 items-center justify-center text-muted-foreground">
-							{row.kind === "folder" && (
+						<span
+							className="inline-flex size-3 shrink-0 items-center justify-center text-muted-foreground"
+							data-sidebar-chevron
+						>
+							{row.kind === "folder" && !isPointerFolder && (
 								<MingcuteRightLine
 									className={cn(
 										"size-3 transition-transform duration-150 ease-out",
@@ -518,7 +600,7 @@ export function Sidebar({
 									}
 									aria-selected={isActive}
 									className={cn(
-										"group/sidebar-row relative flex w-full items-center text-sidebar-foreground",
+										"group/sidebar-row relative flex w-full items-center text-sidebar-foreground hover:bg-accent",
 										!isActive && isFocused && "bg-accent",
 										isActive &&
 											"bg-sidebar-accent text-sidebar-accent-foreground font-medium",
@@ -536,8 +618,6 @@ export function Sidebar({
 										activeDragLabel && isActive && !dropGroup && "grayscale",
 										isDragging && "opacity-50",
 									)}
-									onPointerEnter={() => setFocusedIndex(index)}
-									onPointerLeave={() => setFocusedIndex(null)}
 									onContextMenu={(event) => {
 										if (
 											row.kind === "file" &&
@@ -594,11 +674,11 @@ export function Sidebar({
 												"truncate border-none bg-transparent",
 											)}
 											style={rowStyle}
-											onClick={(event) => {
-												if (row.kind === "file" && event.detail > 1) return;
-												activateRow(row);
-												requestAnimationFrame(() => navRef.current?.focus());
-											}}
+							onClick={(event) => {
+								if (row.kind === "file" && event.detail > 1) return;
+								activateRow(row);
+								requestAnimationFrame(() => navRef.current?.focus());
+							}}
 											onDoubleClick={(event) => {
 												if (row.kind !== "file" || !onRenameFile) return;
 												event.preventDefault();
@@ -608,28 +688,36 @@ export function Sidebar({
 											dragListeners={listeners}
 										>
 											{chevron}
-							{row.kind === "folder" ? (
-								<>
-									<FolderSegmentLabel
-										dropTarget={dropTarget}
-										row={row}
-										enabled={Boolean(onMoveItem)}
-									/>
-									<SymlinkIndicator item={row.folder} />
-								</>
-							) : (
-								<>
-									<span
-										className={cn(
-											"min-w-0 flex-1 truncate",
-											isPinnedFile && "[direction:rtl] [text-align:left]",
-										)}
-									>
-										{row.label}
-									</span>
-									<SymlinkIndicator item={row.file} />
-								</>
-							)}
+											{row.kind === "folder" ? (
+												<>
+													<FolderSegmentLabel
+														dropTarget={dropTarget}
+														row={row}
+														enabled={Boolean(onMoveItem)}
+													/>
+										<SymlinkIndicator
+											getDisplayPath={getDisplayPath}
+											item={row.folder}
+										/>
+												</>
+											) : (
+												<>
+													<span
+														className={cn(
+															"min-w-0 flex-1 truncate",
+															isPinnedFile &&
+																"[direction:rtl] [text-align:left]",
+														)}
+													>
+														{row.label}
+													</span>
+										<SymlinkIndicator
+											getDisplayPath={getDisplayPath}
+											item={row.file}
+										/>
+													<GitStatusIndicator status={row.file.gitStatus} />
+												</>
+											)}
 										</DroppableRowButton>
 									)}
 									{canTogglePinnedFile && (
@@ -701,6 +789,12 @@ export function Sidebar({
 						</DraggableSidebarRow>
 					);
 				})}
+				{virtualRows.paddingBottom > 0 ? (
+					<div
+						aria-hidden="true"
+						style={{ height: virtualRows.paddingBottom }}
+					/>
+				) : null}
 			</DroppableSidebarNav>
 			<DragOverlay
 				dropAnimation={null}
@@ -926,33 +1020,118 @@ function DroppableRowButton({
 	);
 }
 
+type SymlinkActivatable = {
+	isSymlink?: boolean;
+	symlinkTarget?: string | null;
+	symlinkTargetExists?: boolean;
+	symlinkTargetInWorkspace?: boolean;
+	symlinkCanonicalPath?: string | null;
+};
+
+type SymlinkActivationTarget =
+	| { kind: "self" }
+	| { kind: "canonical"; path: string }
+	| { kind: "external"; path: string }
+	| { kind: "broken" };
+
+function symlinkActivationTarget(
+	item?: SymlinkActivatable,
+): SymlinkActivationTarget {
+	if (!item?.isSymlink) return { kind: "self" };
+	if (item.symlinkTargetExists === false) return { kind: "broken" };
+	if (item.symlinkTargetInWorkspace) {
+		return item.symlinkCanonicalPath
+			? { kind: "canonical", path: item.symlinkCanonicalPath }
+			: { kind: "self" };
+	}
+	if (item.symlinkTarget) return { kind: "external", path: item.symlinkTarget };
+	return { kind: "self" };
+}
+
+function symlinkTooltipLabel(
+	item: SymlinkActivatable,
+	getDisplayPath: (path: string) => string,
+) {
+	if (item.symlinkTargetExists === false) return "Broken symbolic link";
+	if (item.symlinkTargetInWorkspace && item.symlinkCanonicalPath) {
+		return `Symbolic link to ${normalizeDisplayPath(
+			getDisplayPath(item.symlinkCanonicalPath),
+		)}`;
+	}
+	if (item.symlinkTargetInWorkspace) return "Symbolic link to workspace path";
+	if (item.symlinkTarget) return "External symbolic link. Click to copy target path.";
+	return "Symbolic link";
+}
+
 function SymlinkIndicator({
+	getDisplayPath,
 	item,
 }: {
+	getDisplayPath: (path: string) => string;
 	item?: {
 		isSymlink?: boolean;
 		symlinkTarget?: string | null;
 		symlinkTargetExists?: boolean;
+		symlinkTargetInWorkspace?: boolean;
+		symlinkCanonicalPath?: string | null;
 	};
 }) {
 	if (!item?.isSymlink) return null;
 	const isBroken = item.symlinkTargetExists === false;
-	const title = isBroken
-		? "Broken symbolic link"
-		: item.symlinkTarget
-			? `Symbolic link to ${item.symlinkTarget}`
-			: "Symbolic link";
+	const title = symlinkTooltipLabel(item, getDisplayPath);
 	const Icon = isBroken ? MingcuteCloseLine : MingcuteLinkLine;
 	return (
-		<span
-			aria-label={title}
+		<SidebarIndicatorTooltip
 			className={cn(
 				"inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70",
 				isBroken && "text-destructive/80",
 			)}
-			title={title}
+			label={title}
 		>
 			<Icon aria-hidden="true" className="size-3" />
+		</SidebarIndicatorTooltip>
+	);
+}
+
+function GitStatusIndicator({ status }: { status?: "changed" | "untracked" }) {
+	if (!status) return null;
+	const title =
+		status === "untracked" ? "Untracked git file" : "Changed git file";
+	return (
+		<SidebarIndicatorTooltip
+			className={cn(
+				"inline-flex size-3.5 shrink-0 items-center justify-center",
+				status === "untracked"
+					? "text-sidebar-foreground/45"
+					: "text-primary/80",
+			)}
+			label={title}
+		>
+			<span
+				aria-hidden="true"
+				className={cn(
+					"block rounded-full",
+					status === "untracked"
+						? "size-1.5 border border-current"
+						: "size-1.5 bg-current",
+				)}
+			/>
+		</SidebarIndicatorTooltip>
+	);
+}
+
+function SidebarIndicatorTooltip({
+	children,
+	className,
+	label,
+}: {
+	children: ReactNode;
+	className?: string;
+	label: string;
+}) {
+	return (
+		<span aria-label={label} className={className} role="img" title={label}>
+			{children}
 		</span>
 	);
 }
@@ -1043,6 +1222,22 @@ function isActiveSegmentDrop(target: DropTarget | null, segmentId: string) {
 function folderIdFromDisplayPath(displayPath: string): string | null {
 	const dir = dirname(normalizeDisplayPath(displayPath));
 	return dir ? `${normalizeDisplayPath(dir)}/` : null;
+}
+
+function folderIdForDisplayPath(displayPath: string): string | null {
+	const normalized = normalizeDisplayPath(displayPath).replace(/\/+$/, "");
+	return normalized ? `${normalized}/` : null;
+}
+
+function folderIdAndAncestors(folderId: string): string[] {
+	const segments = folderId.replace(/\/+$/, "").split("/").filter(Boolean);
+	const ids: string[] = [];
+	let current = "";
+	for (const segment of segments) {
+		current = `${current}${segment}/`;
+		ids.push(current);
+	}
+	return ids;
 }
 
 function parentFolderId(folderId: string): string | null {

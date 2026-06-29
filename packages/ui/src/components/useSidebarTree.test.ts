@@ -50,6 +50,8 @@ describe("buildFileTree", () => {
 					isSymlink: true,
 					symlinkTarget: "/target.md",
 					symlinkTargetExists: true,
+					symlinkTargetInWorkspace: true,
+					symlinkCanonicalPath: "/workspace/target.md",
 				},
 			],
 			[
@@ -59,6 +61,8 @@ describe("buildFileTree", () => {
 					isSymlink: true,
 					symlinkTarget: "/target",
 					symlinkTargetExists: false,
+					symlinkTargetInWorkspace: false,
+					symlinkCanonicalPath: null,
 				},
 			],
 			(path) => path.replace("/workspace/", ""),
@@ -68,11 +72,25 @@ describe("buildFileTree", () => {
 			isSymlink: true,
 			symlinkTarget: "/target.md",
 			symlinkTargetExists: true,
+			symlinkTargetInWorkspace: true,
+			symlinkCanonicalPath: "/workspace/target.md",
 		});
 		expect(tree.folders.get("linked-folder")?.source).toMatchObject({
 			isSymlink: true,
 			symlinkTarget: "/target",
 			symlinkTargetExists: false,
+			symlinkTargetInWorkspace: false,
+			symlinkCanonicalPath: null,
 		});
+	});
+
+	it("preserves git status metadata on files", () => {
+		const tree = buildFileTree(
+			[{ path: "/workspace/changed.md", modifiedAt: 1, gitStatus: "changed" }],
+			[],
+			(path) => path.replace("/workspace/", ""),
+		);
+
+		expect(tree.files[0]).toMatchObject({ gitStatus: "changed" });
 	});
 });

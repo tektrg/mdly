@@ -74,6 +74,24 @@ describe("collectDocumentFiles", () => {
 		expect(relativePaths(listing.folders)).not.toContain("node_modules");
 	});
 
+	it("always prunes the generated dev Electron app bundle", async () => {
+		await writeFile(
+			"apps/desktop/.dev-electron/playground/README.md",
+			"# Playground",
+		);
+		await writeFile("visible.md", "# Visible");
+
+		const listing: DirectoryListing = { files: [], folders: [] };
+		await collectDocumentFiles(tmpDir, listing, {
+			includeIgnoredWorkspaceFiles: true,
+		});
+
+		expect(relativePaths(listing.files)).toEqual(["visible.md"]);
+		expect(relativePaths(listing.folders)).not.toContain(
+			"apps/desktop/.dev-electron",
+		);
+	});
+
 	it("marks document symlinks in the listing", async () => {
 		await writeFile("target.md", "# Target");
 		await fs.symlink("target.md", path.join(tmpDir, "linked.md"));
@@ -86,21 +104,91 @@ describe("collectDocumentFiles", () => {
 			is_symlink: true,
 			symlink_target: path.join(tmpDir, "target.md"),
 			symlink_target_exists: true,
+			symlink_target_in_workspace: true,
+			symlink_canonical_path: path.join(tmpDir, "target.md"),
 		});
 	});
 
-	it("traverses symlinked folders and marks the folder row", async () => {
+	it("shows canonical folder children when a symlink and canonical folder are both visible", async () => {
 		await writeFile("target/note.md", "# Target");
 		await fs.symlink("target", path.join(tmpDir, "linked-folder"));
 
 		const listing: DirectoryListing = { files: [], folders: [] };
 		await collectDocumentFiles(tmpDir, listing);
 
-		expect(relativePaths(listing.files)).toContain("linked-folder/note.md");
+		expect(relativePaths(listing.files)).toContain("target/note.md");
+		expect(relativePaths(listing.files)).not.toContain("linked-folder/note.md");
 		expect(relativeEntry(listing.folders, "linked-folder")).toMatchObject({
 			is_symlink: true,
 			symlink_target: path.join(tmpDir, "target"),
 			symlink_target_exists: true,
+			symlink_target_in_workspace: true,
+			symlink_canonical_path: path.join(tmpDir, "target"),
+		});
+	});
+
+	it("lets canonical folders own children even when the symlink is encountered first", async () => {
+		await writeFile("z-target/note.md", "# Target");
+		await fs.symlink("z-target", path.join(tmpDir, "a-linked-folder"));
+
+		const listing: DirectoryListing = { files: [], folders: [] };
+		await collectDocumentFiles(tmpDir, listing);
+
+		expect(relativePaths(listing.files)).toContain("z-target/note.md");
+		expect(relativePaths(listing.files)).not.toContain(
+			"a-linked-folder/note.md",
+		);
+		expect(relativeEntry(listing.folders, "a-linked-folder")).toMatchObject({
+			is_symlink: true,
+			symlink_canonical_path: path.join(tmpDir, "z-target"),
+		});
+	});
+
+	it("keeps external symlinked folders as pointer rows without traversal", async () => {
+		const externalDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "hubble-discovery-external-"),
+		);
+		try {
+			await fs.mkdir(path.join(externalDir, "target"), { recursive: true });
+			await fs.writeFile(path.join(externalDir, "target", "note.md"), "# Target");
+			await fs.symlink(
+				path.join(externalDir, "target"),
+				path.join(tmpDir, "linked-folder"),
+			);
+
+			const listing: DirectoryListing = { files: [], folders: [] };
+			await collectDocumentFiles(tmpDir, listing);
+
+			expect(relativePaths(listing.files)).not.toContain(
+				"linked-folder/note.md",
+			);
+			expect(relativeEntry(listing.folders, "linked-folder")).toMatchObject({
+				is_symlink: true,
+				symlink_target: path.join(externalDir, "target"),
+				symlink_target_exists: true,
+				symlink_target_in_workspace: false,
+				symlink_canonical_path: null,
+			});
+		} finally {
+			await fs.rm(externalDir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not traverse in-workspace symlinks to ignored heavy folders", async () => {
+		await writeFile("node_modules/pkg/README.md", "# Dependency");
+		await fs.symlink("node_modules", path.join(tmpDir, "deps"));
+
+		const listing: DirectoryListing = { files: [], folders: [] };
+		await collectDocumentFiles(tmpDir, listing);
+
+		expect(relativePaths(listing.files)).not.toContain("deps/pkg/README.md");
+		expect(relativePaths(listing.folders)).not.toContain("node_modules");
+		expect(relativeEntry(listing.folders, "deps")).toMatchObject({
+			is_symlink: true,
+			symlink_target: path.join(tmpDir, "node_modules"),
+			symlink_target_exists: true,
+			symlink_target_in_workspace: true,
+			symlink_canonical_path: null,
 		});
 	});
 
@@ -113,10 +201,12 @@ describe("collectDocumentFiles", () => {
 
 		expect(relativeEntry(listing.files, "broken.md")).toMatchObject({
 			is_symlink: true,
+			symlink_target: path.join(tmpDir, "missing.md"),
 			symlink_target_exists: false,
 		});
 		expect(relativeEntry(listing.folders, "broken-folder")).toMatchObject({
 			is_symlink: true,
+			symlink_target: path.join(tmpDir, "missing-folder"),
 			symlink_target_exists: false,
 		});
 	});

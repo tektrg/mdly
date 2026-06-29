@@ -3,6 +3,8 @@ import { z } from "zod/v4";
 import { fileNameFromPath, normalizeDisplayPath } from "../lib/filePath";
 
 export type SidebarSortMode = "alpha" | "recent";
+export type SidebarGitStatus = "changed" | "untracked";
+
 export type SidebarFile = {
 	path: string;
 	modifiedAt?: number;
@@ -10,6 +12,9 @@ export type SidebarFile = {
 	isSymlink?: boolean;
 	symlinkTarget?: string | null;
 	symlinkTargetExists?: boolean;
+	symlinkTargetInWorkspace?: boolean;
+	symlinkCanonicalPath?: string | null;
+	gitStatus?: SidebarGitStatus;
 };
 
 export type SidebarFolder = {
@@ -18,6 +23,8 @@ export type SidebarFolder = {
 	isSymlink?: boolean;
 	symlinkTarget?: string | null;
 	symlinkTargetExists?: boolean;
+	symlinkTargetInWorkspace?: boolean;
+	symlinkCanonicalPath?: string | null;
 };
 
 type FolderNode = {
@@ -180,7 +187,11 @@ export function useSidebarTree({
 	return { collapseFolder, expandFolder, rows, toggleFolder };
 }
 
-function makeFolder(id: string, name: string, source?: SidebarFolder): FolderNode {
+function makeFolder(
+	id: string,
+	name: string,
+	source?: SidebarFolder,
+): FolderNode {
 	return {
 		id,
 		name,

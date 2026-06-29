@@ -15,6 +15,7 @@ import {
 	Menu,
 	protocol,
 	screen,
+	session,
 	shell,
 } from "electron";
 import electronUpdater from "electron-updater";
@@ -31,6 +32,7 @@ import {
 	withMarkdownExtension,
 } from "../src/lib/filePath";
 import { collectDocumentFiles } from "./fileDiscovery";
+import { applyGitStatusToListing } from "./gitStatus";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -92,6 +94,7 @@ const appName = devAppName ?? "Hubble";
 const debugPort = process.env.HUBBLE_DESKTOP_DEBUG_PORT ?? "9222";
 const updateFeedUrl = process.env.HUBBLE_DESKTOP_UPDATE_URL;
 const supportsAutoUpdates = !isDev && process.platform === "darwin";
+const devHttpCacheSizeBytes = 10 * 1024 * 1024;
 // Check every 4 hours after the initial packaged-app update check.
 const updateCheckIntervalMs = 4 * 60 * 60 * 1000;
 
@@ -103,6 +106,9 @@ if (devAppName) {
 if (isDev && process.env.HUBBLE_DESKTOP_ENABLE_CDP === "1") {
 	app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 	app.commandLine.appendSwitch("remote-debugging-port", debugPort);
+}
+if (isDev) {
+	app.commandLine.appendSwitch("disk-cache-size", String(devHttpCacheSizeBytes));
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -132,7 +138,12 @@ const grantedRoots = new Set<string>();
 let grantsLoaded = false;
 
 const ignoreConfigFiles = [".gitignore", ".ignore"];
-const ignoredWorkspaceDirs = new Set([".git", "dist", "node_modules"]);
+const ignoredWorkspaceDirs = new Set([
+	".dev-electron",
+	".git",
+	"dist",
+	"node_modules",
+]);
 const workspaceConfigVersion = 1;
 const workspaceConfigDir = ".hubble";
 const workspaceConfigFile = "config.json";
@@ -793,6 +804,15 @@ function configureAutoUpdates() {
 	}, updateCheckIntervalMs);
 }
 
+async function clearDevHttpCache() {
+	if (!isDev) return;
+	try {
+		await session.defaultSession.clearCache();
+	} catch (error) {
+		console.warn("Failed to clear development HTTP cache", error);
+	}
+}
+
 function extensionFromImage(
 	bytes: Uint8Array,
 	mimeType: string | null,
@@ -969,6 +989,14 @@ function registerIpc() {
 					"includeIgnoredWorkspaceFiles" in options &&
 					options.includeIgnoredWorkspaceFiles === true,
 			});
+			if (
+				typeof options === "object" &&
+				options !== null &&
+				"includeGitStatus" in options &&
+				options.includeGitStatus === true
+			) {
+				await applyGitStatusToListing(root, listing);
+			}
 			return listing;
 		},
 	);
@@ -1384,6 +1412,7 @@ if (!singleInstanceLock) {
 	});
 
 	app.whenReady().then(async () => {
+		await clearDevHttpCache();
 		await loadGrants();
 		if (launchWorkspacePath) grantRoot(launchWorkspacePath);
 		await saveGrants();

@@ -26,6 +26,9 @@ type WorkspaceEntry = {
 	is_symlink?: boolean;
 	symlink_target?: string | null;
 	symlink_target_exists?: boolean;
+	symlink_target_in_workspace?: boolean;
+	symlink_canonical_path?: string | null;
+	git_status?: "changed" | "untracked";
 };
 
 type DocumentState = {
@@ -45,6 +48,7 @@ type UiState = {
 	contrastPreference: ContrastPreference;
 	editorFontPreference: EditorFontPreference;
 	showIgnoredWorkspaceFiles: boolean;
+	showGitStatusIndicators: boolean;
 };
 
 export type DesktopState = {
@@ -67,6 +71,7 @@ type Persisted = {
 		contrastPreference?: unknown;
 		editorFontPreference?: unknown;
 		showIgnoredWorkspaceFiles?: boolean;
+		showGitStatusIndicators?: boolean;
 	};
 };
 
@@ -117,6 +122,7 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 			: "standard",
 		editorFontPreference,
 		showIgnoredWorkspaceFiles: ui?.showIgnoredWorkspaceFiles === true,
+		showGitStatusIndicators: ui?.showGitStatusIndicators === true,
 	};
 }
 
@@ -160,6 +166,7 @@ export function serialize(state: DesktopState): Persisted {
 			contrastPreference: state.ui.contrastPreference,
 			editorFontPreference: state.ui.editorFontPreference,
 			showIgnoredWorkspaceFiles: state.ui.showIgnoredWorkspaceFiles,
+			showGitStatusIndicators: state.ui.showGitStatusIndicators,
 		},
 	};
 }
