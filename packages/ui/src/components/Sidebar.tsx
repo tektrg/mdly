@@ -1518,11 +1518,7 @@ function FolderActionsMenu({
 				<ActionItem
 					destructive
 					icon={<MingcuteDeleteLine />}
-					onClick={() => {
-						if (!window.confirm(`Delete ${label} and all its contents?`))
-							return;
-						onDeleteFolder(id);
-					}}
+					onClick={() => onDeleteFolder(id)}
 				>
 					Delete
 				</ActionItem>
@@ -1604,10 +1600,7 @@ function FileActionsMenu({
 				<ActionItem
 					destructive
 					icon={<MingcuteDeleteLine />}
-					onClick={() => {
-						if (!window.confirm(`Delete ${label}?`)) return;
-						onDeleteFile(file.path);
-					}}
+					onClick={() => onDeleteFile(file.path)}
 				>
 					Delete
 				</ActionItem>

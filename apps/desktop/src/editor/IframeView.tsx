@@ -353,17 +353,10 @@ async function applyMarkdownPatch(
 	return nextMarkdown;
 }
 
-/**
- * Deletes a workspace Markdown file after the user confirms the app-triggered
- * deletion.
- */
 async function removeMarkdownFile(workspacePath: string, path: string) {
 	const absolutePath = await resolveWorkspaceFile(workspacePath, path, {
 		exists: true,
 	});
-	if (!window.confirm(`Delete ${path}?`)) {
-		throw new Error("File deletion was cancelled.");
-	}
 	await deleteMarkdownFile(absolutePath, { throwOnError: true });
 }
 
