@@ -174,26 +174,39 @@ export function renderCommandContent({
 	}
 
 	return (
-		<Command.Group heading="Files" className={groupClassName}>
-			{openModeMoveLabel ? (
-				<MoveCurrentFileCommandItem
-					label={openModeMoveLabel}
-					onSelect={onStartMoveCurrentFile}
-				/>
+		<>
+			<Command.Group heading="Files" className={groupClassName}>
+				{openModeMoveLabel ? (
+					<MoveCurrentFileCommandItem
+						label={openModeMoveLabel}
+						onSelect={onStartMoveCurrentFile}
+					/>
+				) : null}
+				{fileResults.map((result) => (
+					<FileCommandItem
+						key={result.path}
+						result={result}
+						onSelect={onSelectFile}
+					/>
+				))}
+				{fileResults.length === 0 && !openModeMoveLabel ? (
+					<Command.Empty className={emptyClassName}>
+						No Markdown files found
+					</Command.Empty>
+				) : null}
+			</Command.Group>
+			{workspaceChoices.length > 0 ? (
+				<Command.Group heading="Workspaces" className={groupClassName}>
+					{workspaceChoices.map((choice) => (
+						<WorkspaceCommandItem
+							key={workspaceValue(choice)}
+							choice={choice}
+							onSelect={onSelectWorkspace}
+						/>
+					))}
+				</Command.Group>
 			) : null}
-			{fileResults.map((result) => (
-				<FileCommandItem
-					key={result.path}
-					result={result}
-					onSelect={onSelectFile}
-				/>
-			))}
-			{fileResults.length === 0 && !openModeMoveLabel ? (
-				<Command.Empty className={emptyClassName}>
-					No Markdown files found
-				</Command.Empty>
-			) : null}
-		</Command.Group>
+		</>
 	);
 }
 

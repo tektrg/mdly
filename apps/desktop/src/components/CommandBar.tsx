@@ -2,6 +2,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Command } from "cmdk";
 import {
 	type KeyboardEvent,
+	memo,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -25,7 +26,7 @@ import {
 	resolveWorkspaceScope,
 } from "../lib/commandQuery";
 import { basename, relativeWorkspacePath } from "../lib/filePath";
-import { searchWorkspaceFiles } from "../lib/fileSearch";
+import { buildFileSearchIndex, searchFileIndex } from "../lib/fileSearch";
 import { cn } from "../lib/utils";
 import {
 	buildWorkspaceChoices,
@@ -66,8 +67,9 @@ type CommandBarProps = {
 };
 
 const notionSearchDebounceMs = 300;
+const blankSearchFileLimitWithWorkspaces = 8;
 
-export function CommandBar({
+function CommandBarComponent({
 	open,
 	onOpenChange,
 	files,
@@ -117,6 +119,12 @@ export function CommandBar({
 		moveWorkspacePath !== null &&
 		workspacePath !== null &&
 		moveWorkspacePath.toLocaleLowerCase() !== workspacePath.toLocaleLowerCase();
+	// Built once per workspace snapshot so keystroke-driven searches only score
+	// precomputed strings instead of re-normalizing every file each time.
+	const searchIndex = useMemo(
+		() => buildFileSearchIndex(files, workspacePath),
+		[files, workspacePath],
+	);
 	const commandFolderOptions = useMemo(
 		() => buildFolderScopeOptions({ files, folders, workspacePath }),
 		[files, folders, workspacePath],
@@ -169,19 +177,43 @@ export function CommandBar({
 		notionConnection?.account === notionScope.account;
 	const workspaceScope = useMemo(() => resolveWorkspaceScope(query), [query]);
 	const showingWorkspace = workspaceScope.kind !== "none";
+	const workspaceSearchQuery =
+		workspaceScope.kind === "active" ? workspaceScope.searchQuery : "";
 	const showingNotion =
 		commandMode === "open" && !showingWorkspace && notionScope.kind !== "none";
-	const workspaceChoices = useMemo(
-		() =>
-			showingWorkspace
-				? buildWorkspaceChoices({
-						workspacePath,
-						recentWorkspaces,
-						query: workspaceScope.searchQuery,
-					})
-				: [],
-		[recentWorkspaces, showingWorkspace, workspacePath, workspaceScope],
-	);
+	const canShowDefaultWorkspaces =
+		commandMode === "open" &&
+		!showingWorkspace &&
+		!showingNotion &&
+		folderScope.kind === "none";
+	const isBlankDefaultWorkspaceSearch =
+		canShowDefaultWorkspaces && !folderScope.searchQuery.trim();
+	const workspaceChoices = useMemo(() => {
+		if (showingWorkspace) {
+			return buildWorkspaceChoices({
+				workspacePath,
+				recentWorkspaces,
+				query: workspaceSearchQuery,
+			});
+		}
+		if (canShowDefaultWorkspaces) {
+			return buildWorkspaceChoices({
+				workspacePath,
+				recentWorkspaces,
+				query: folderScope.searchQuery,
+				includeAddFolder: isBlankDefaultWorkspaceSearch,
+			});
+		}
+		return [];
+	}, [
+		canShowDefaultWorkspaces,
+		folderScope.searchQuery,
+		isBlankDefaultWorkspaceSearch,
+		recentWorkspaces,
+		showingWorkspace,
+		workspacePath,
+		workspaceSearchQuery,
+	]);
 	const folderChoices = useMemo(() => {
 		if (showingWorkspace) return [];
 		if (commandMode === "move-file") {
@@ -208,35 +240,37 @@ export function CommandBar({
 			folderScope.kind === "editing" ||
 			commandMode === "move-file"
 				? []
-				: searchWorkspaceFiles({
-						files,
-						workspacePath,
+				: searchFileIndex({
+						index: searchIndex,
 						query: folderScope.searchQuery,
 						currentPath,
 						folderPath:
 							folderScope.kind === "resolved" ? folderScope.folder.path : null,
+						limit: isBlankDefaultWorkspaceSearch
+							? blankSearchFileLimitWithWorkspaces
+							: undefined,
 					}),
 		[
 			commandMode,
 			currentPath,
-			files,
 			folderScope,
+			isBlankDefaultWorkspaceSearch,
+			searchIndex,
 			showingNotion,
 			showingWorkspace,
-			workspacePath,
 		],
 	);
 	const moveSourceLabel = moveSourcePath ? basename(moveSourcePath) : null;
 	const openModeMoveLabel = currentPath ? basename(currentPath) : null;
 	const visibleValues = useMemo(
 		() => [
-			...workspaceChoices.map(workspaceValue),
 			...folderChoices.map((folder) => folderValue(folder)),
 			...accountChoices.map((account) => accountValue(account)),
 			...(commandMode === "open" && currentPath
 				? ["action:move-current-file"]
 				: []),
 			...fileResults.map((result) => fileValue(result.path)),
+			...workspaceChoices.map(workspaceValue),
 			...notionResults.map(notionValue),
 		],
 		[
@@ -693,6 +727,11 @@ export function CommandBar({
 		</Dialog.Root>
 	);
 }
+
+// Memoized: App re-renders on every editor keystroke (document store update).
+// Without this, CommandBar would re-run its internal state/useMemo hooks on
+// every keystroke even while closed.
+export const CommandBar = memo(CommandBarComponent);
 
 function buildFolderScopeOptions({
 	files,

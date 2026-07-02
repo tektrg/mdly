@@ -21,10 +21,7 @@ describe("buildWorkspaceChoices", () => {
 	it("keeps other recent workspaces in persisted order", () => {
 		const choices = buildWorkspaceChoices({
 			workspacePath: "/Users/me/current-notes",
-			recentWorkspaces: [
-				"/Users/me/client-notes",
-				"/Users/me/project-notes",
-			],
+			recentWorkspaces: ["/Users/me/client-notes", "/Users/me/project-notes"],
 			query: "",
 		});
 
@@ -38,10 +35,7 @@ describe("buildWorkspaceChoices", () => {
 	it("does not repeat the current workspace from recents", () => {
 		const choices = buildWorkspaceChoices({
 			workspacePath: "/Users/me/current-notes",
-			recentWorkspaces: [
-				"/Users/me/current-notes",
-				"/Users/me/project-notes",
-			],
+			recentWorkspaces: ["/Users/me/current-notes", "/Users/me/project-notes"],
 			query: "",
 		});
 
@@ -57,10 +51,7 @@ describe("buildWorkspaceChoices", () => {
 	it("filters workspaces by folder name", () => {
 		const choices = buildWorkspaceChoices({
 			workspacePath: "/Users/me/current-notes",
-			recentWorkspaces: [
-				"/Users/me/client-notes",
-				"/Users/me/project-notes",
-			],
+			recentWorkspaces: ["/Users/me/client-notes", "/Users/me/project-notes"],
 			query: "CLIENT",
 		});
 
@@ -100,5 +91,16 @@ describe("buildWorkspaceChoices", () => {
 				detail: "Choose another folder to open",
 			},
 		]);
+	});
+
+	it("can omit the add folder choice when embedded in default search results", () => {
+		const choices = buildWorkspaceChoices({
+			workspacePath: "/Users/me/current-notes",
+			recentWorkspaces: ["/Users/me/client-notes"],
+			query: "client",
+			includeAddFolder: false,
+		});
+
+		expect(choices.map((choice) => choice.label)).toEqual(["client-notes"]);
 	});
 });

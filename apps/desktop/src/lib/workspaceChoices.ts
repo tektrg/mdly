@@ -17,6 +17,7 @@ export type BuildWorkspaceChoicesOptions = {
 	recentWorkspaces: readonly string[];
 	query: string;
 	limit?: number;
+	includeAddFolder?: boolean;
 };
 
 const addFolderChoice: WorkspaceChoice = {
@@ -34,6 +35,7 @@ export function buildWorkspaceChoices({
 	recentWorkspaces,
 	query,
 	limit = 20,
+	includeAddFolder = true,
 }: BuildWorkspaceChoicesOptions): WorkspaceChoice[] {
 	const normalizedQuery = query.trim().toLocaleLowerCase();
 	const workspaceChoices: WorkspaceChoice[] = [];
@@ -70,7 +72,9 @@ export function buildWorkspaceChoices({
 		addWorkspace(path, false);
 	}
 
-	return [...workspaceChoices, addFolderChoice];
+	return includeAddFolder
+		? [...workspaceChoices, addFolderChoice]
+		: workspaceChoices;
 }
 
 function matchesQuery(label: string, path: string, normalizedQuery: string) {
