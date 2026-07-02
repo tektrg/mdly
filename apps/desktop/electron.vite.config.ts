@@ -75,6 +75,12 @@ export default defineConfig({
 		server: {
 			port: devPort,
 			strictPort: false,
+			watch: {
+				// The shared UI package is built by its own watcher. Watching its
+				// generated dist here causes noisy HMR reloads and can catch the
+				// package mid-rebuild.
+				ignored: ["**/packages/ui/dist/**"],
+			},
 		},
 		build: {
 			rollupOptions: {

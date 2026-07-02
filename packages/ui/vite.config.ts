@@ -19,6 +19,7 @@ export default defineConfig({
 	],
 	build: {
 		cssCodeSplit: true,
+		emptyOutDir: false,
 		lib: {
 			entry: {
 				index: resolve("./src/index.ts"),
