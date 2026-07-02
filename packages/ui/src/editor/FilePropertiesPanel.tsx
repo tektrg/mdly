@@ -687,8 +687,8 @@ function PropertyTypeSelect({
 				<TypeIcon type={value} />
 			</Select.Trigger>
 			<Select.Portal>
-				<Select.Positioner align="start" side="bottom" sideOffset={4}>
-					<Select.Popup className="z-50 w-36 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden">
+				<Select.Positioner className="z-50" align="start" side="bottom" sideOffset={4}>
+					<Select.Popup className="w-36 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden">
 						{propertyTypes.map((type) => (
 							<Select.Item
 								key={type}

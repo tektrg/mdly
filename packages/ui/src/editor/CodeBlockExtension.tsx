@@ -146,8 +146,8 @@ function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
 						</Select.Value>
 					</Select.Trigger>
 					<Select.Portal>
-						<Select.Positioner align="end" side="bottom" sideOffset={8}>
-							<Select.Popup className="z-50 w-40 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+						<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={8}>
+							<Select.Popup className="w-40 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 								{codeBlockLanguages.map((option) => (
 									<Select.Item
 										key={option.value}

@@ -188,9 +188,9 @@ export function Sidebar({
 	const [pendingFocusDisplayPath, setPendingFocusDisplayPath] = useState<
 		string | null
 	>(null);
-	const [pendingFocusFolderId, setPendingFocusFolderId] = useState<string | null>(
-		null,
-	);
+	const [pendingFocusFolderId, setPendingFocusFolderId] = useState<
+		string | null
+	>(null);
 	const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 	const highlightPath = pendingPath ?? currentPath;
@@ -527,10 +527,7 @@ export function Sidebar({
 			>
 				{rows.length === 0 && emptyState}
 				{virtualRows.paddingTop > 0 ? (
-					<div
-						aria-hidden="true"
-						style={{ height: virtualRows.paddingTop }}
-					/>
+					<div aria-hidden="true" style={{ height: virtualRows.paddingTop }} />
 				) : null}
 				{virtualRows.items.map(({ row, index }) => {
 					const isActive =
@@ -675,11 +672,11 @@ export function Sidebar({
 												"truncate border-none bg-transparent",
 											)}
 											style={rowStyle}
-							onClick={(event) => {
-								if (row.kind === "file" && event.detail > 1) return;
-								activateRow(row);
-								requestAnimationFrame(() => navRef.current?.focus());
-							}}
+											onClick={(event) => {
+												if (row.kind === "file" && event.detail > 1) return;
+												activateRow(row);
+												requestAnimationFrame(() => navRef.current?.focus());
+											}}
 											onDoubleClick={(event) => {
 												if (row.kind !== "file" || !onRenameFile) return;
 												event.preventDefault();
@@ -696,10 +693,10 @@ export function Sidebar({
 														row={row}
 														enabled={Boolean(onMoveItem)}
 													/>
-										<SymlinkIndicator
-											getDisplayPath={getDisplayPath}
-											item={row.folder}
-										/>
+													<SymlinkIndicator
+														getDisplayPath={getDisplayPath}
+														item={row.folder}
+													/>
 												</>
 											) : (
 												<>
@@ -712,10 +709,10 @@ export function Sidebar({
 													>
 														{row.label}
 													</span>
-										<SymlinkIndicator
-											getDisplayPath={getDisplayPath}
-											item={row.file}
-										/>
+													<SymlinkIndicator
+														getDisplayPath={getDisplayPath}
+														item={row.file}
+													/>
 													<GitStatusIndicator status={row.file.gitStatus} />
 												</>
 											)}
@@ -865,8 +862,8 @@ export function Sidebar({
 							)}
 						</Select.Trigger>
 						<Select.Portal>
-							<Select.Positioner align="end" side="bottom" sideOffset={4}>
-								<Select.Popup className="z-50 w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+							<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
+								<Select.Popup className="w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 									<p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
 										Sort by
 									</p>
@@ -1071,7 +1068,8 @@ function symlinkTooltipLabel(
 		)}`;
 	}
 	if (item.symlinkTargetInWorkspace) return "Symbolic link to workspace path";
-	if (item.symlinkTarget) return "External symbolic link. Click to copy target path.";
+	if (item.symlinkTarget)
+		return "External symbolic link. Click to copy target path.";
 	return "Symbolic link";
 }
 
@@ -1428,7 +1426,7 @@ export function SidebarFrame({
 			ref={asideRef}
 			data-sidebar-root
 			className={cn(
-				"relative flex shrink-0 flex-col overflow-visible bg-sidebar shadow-chrome-sidebar",
+				"relative z-20 flex shrink-0 flex-col overflow-visible bg-sidebar shadow-chrome-sidebar",
 				isResizing && "select-none",
 			)}
 			style={
@@ -1639,8 +1637,8 @@ function ActionsMenu({
 				<MingcuteMore2Line className="size-3.5" />
 			</Menu.Trigger>
 			<Menu.Portal>
-				<Menu.Positioner align="end" side="bottom" sideOffset={4}>
-					<Menu.Popup className="z-50 w-44 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+				<Menu.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
+					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						{children}
 					</Menu.Popup>
 				</Menu.Positioner>
