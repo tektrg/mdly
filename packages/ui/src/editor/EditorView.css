@@ -1,7 +1,9 @@
 [data-hubble-editor] .editorViewport {
 	--editor-content-max-inline-size: 56rem;
 	--editor-content-padding-inline: clamp(1rem, 4vw, 3rem);
+	--editor-floating-chip-clearance: 2.75rem;
 
+	padding-block-start: var(--editor-floating-chip-clearance);
 	padding-block-end: clamp(4rem, 16vh, 8rem);
 }
 

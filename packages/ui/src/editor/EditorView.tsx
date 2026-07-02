@@ -44,7 +44,11 @@ import { FormatCommandMenu } from "./FormatCommandMenu";
 import { FormattingStatusBar } from "./FormattingStatusBar";
 import type { VirtualCursorMode } from "./virtualCursorMode";
 
-const DEFAULT_SAVE_DEBOUNCE_MS = 120;
+// A short debounce fires a disk write (plus the workspace-store "touch" that
+// follows it) on nearly every pause in typing. In large workspaces that touch
+// fans out into sidebar/command-bar/wiki-link recomputation, so keep this long
+// enough to coalesce normal typing pauses without noticeably delaying autosave.
+const DEFAULT_SAVE_DEBOUNCE_MS = 500;
 const USER_EDIT_INTENT_WINDOW_MS = 1000;
 const EDITOR_FONT_ATTRIBUTE_STYLE = "font-family: var(--editor-font-family);";
 const defaultExtraExtensions: NonNullable<EditorOptions["extensions"]> = [];
@@ -242,12 +246,7 @@ export function EditorView({
 			...extensions,
 			TaskItem.configure({ nested: true }),
 		],
-		[
-			extensions,
-			onOpenExternalLink,
-			onOpenNotionMentionLink,
-			onOpenWikiLink,
-		],
+		[extensions, onOpenExternalLink, onOpenNotionMentionLink, onOpenWikiLink],
 	);
 	const editorAttributes = useMemo(
 		() => editorAttributesWithFontStyle(editorProps?.attributes),
@@ -411,7 +410,11 @@ export function EditorView({
 				onOpenChange={setFindReplaceOpen}
 				onFrontMatterActiveChange={setFrontMatterSearchReveal}
 			/>
-			<FormattingStatusBar editor={editor} scrollContainer={editorViewportEl} />
+			<FormattingStatusBar
+				editor={editor}
+				path={path}
+				scrollContainer={editorViewportEl}
+			/>
 		</div>
 	);
 }
