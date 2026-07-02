@@ -93,7 +93,7 @@ const devAppName = isDev ? process.env.HUBBLE_DESKTOP_DEV_APP_NAME : undefined;
 const appName = devAppName ?? "mdly";
 const debugPort = process.env.HUBBLE_DESKTOP_DEBUG_PORT ?? "9222";
 const updateFeedUrl = process.env.HUBBLE_DESKTOP_UPDATE_URL;
-const supportsAutoUpdates = !isDev && process.platform === "darwin";
+const supportsAutoUpdates = false;
 const devHttpCacheSizeBytes = 10 * 1024 * 1024;
 // Check every 4 hours after the initial packaged-app update check.
 const updateCheckIntervalMs = 4 * 60 * 60 * 1000;
@@ -108,7 +108,10 @@ if (isDev && process.env.HUBBLE_DESKTOP_ENABLE_CDP === "1") {
 	app.commandLine.appendSwitch("remote-debugging-port", debugPort);
 }
 if (isDev) {
-	app.commandLine.appendSwitch("disk-cache-size", String(devHttpCacheSizeBytes));
+	app.commandLine.appendSwitch(
+		"disk-cache-size",
+		String(devHttpCacheSizeBytes),
+	);
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -129,7 +132,7 @@ let updateState: DesktopUpdateState = {
 	progressPercent: null,
 	message: supportsAutoUpdates
 		? null
-		: "Updates are available on packaged macOS builds only.",
+		: "Automatic updates are disabled for this build.",
 	lastCheckedAt: null,
 };
 const watchers = new Map<string, FSWatcher>();
@@ -718,7 +721,7 @@ async function checkForUpdates() {
 	if (!supportsAutoUpdates) {
 		patchUpdateState({
 			status: "idle",
-			message: "Updates are available on packaged macOS builds only.",
+			message: "Automatic updates are disabled for this build.",
 		});
 		return;
 	}
@@ -943,6 +946,34 @@ async function createWindow() {
 		if (window.isDestroyed()) return;
 		window.show();
 	});
+	window.webContents.on(
+		"did-fail-load",
+		(_event, errorCode, errorDescription, validatedUrl) => {
+			console.error("Renderer failed to load", {
+				errorCode,
+				errorDescription,
+				validatedUrl,
+			});
+		},
+	);
+	window.webContents.on("render-process-gone", (_event, details) => {
+		console.error("Renderer process gone", details);
+	});
+	window.webContents.on("unresponsive", () => {
+		console.error("Renderer became unresponsive");
+	});
+	window.webContents.on(
+		"console-message",
+		(_event, level, message, line, sourceId) => {
+			if (level < 2) return;
+			console.error("Renderer console message", {
+				level,
+				message,
+				line,
+				sourceId,
+			});
+		},
+	);
 
 	window.on("focus", () => sendToRenderer("desktop:window-focus"));
 	window.on("enter-full-screen", () =>
