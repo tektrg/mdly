@@ -24,12 +24,96 @@ type SearchWorkspaceFilesInput = {
 	limit?: number;
 };
 
+type SearchFileIndexInput = {
+	index: IndexedFile[];
+	query: string;
+	currentPath?: string | null;
+	folderPath?: string | null;
+	limit?: number;
+};
+
+// A file with its display fields and pre-normalized search haystacks computed
+// once. Building this per workspace snapshot lets each keystroke skip the
+// per-file relativePath/basename/normalize work that dominated search latency
+// on large workspaces.
+export type IndexedFile = {
+	path: string;
+	label: string;
+	directory: string;
+	relativePath: string;
+	modifiedAt: number;
+	searchFileName: string;
+	searchStem: string;
+	searchRelativePath: string;
+	searchAbsolutePath: string;
+};
+
 type ScoredFile = FileSearchResult & {
 	score: number;
 	currentBoost: number;
 };
 
 const defaultResultLimit = 50;
+
+// Build the reusable search index for a workspace snapshot. Recompute only when
+// the file list (or workspace root) changes, not on every keystroke.
+export function buildFileSearchIndex(
+	files: FileEntry[],
+	workspacePath: string | null,
+): IndexedFile[] {
+	const index: IndexedFile[] = [];
+	for (const file of files) {
+		if (!hasMarkdownExtension(file.path)) continue;
+		const relativePath = relativeWorkspacePath(file.path, workspacePath);
+		const label = basename(relativePath);
+		const extension = extname(label);
+		const stem = extension ? label.slice(0, -extension.length) : label;
+		index.push({
+			path: file.path,
+			label,
+			directory: directoryFromRelativePath(relativePath),
+			relativePath,
+			modifiedAt: file.modified_at,
+			searchFileName: normalizeSearchText(label),
+			searchStem: normalizeSearchText(stem),
+			searchRelativePath: normalizeSearchText(relativePath),
+			searchAbsolutePath: normalizeSearchText(file.path),
+		});
+	}
+	return index;
+}
+
+// Score and rank a prebuilt index against a query. This is the per-keystroke
+// hot path, so it only reads precomputed fields — no string normalization.
+export function searchFileIndex({
+	index,
+	query,
+	currentPath = null,
+	folderPath = null,
+	limit = defaultResultLimit,
+}: SearchFileIndexInput): FileSearchResult[] {
+	const normalizedQuery = normalizeSearchText(query);
+	const candidates: ScoredFile[] = [];
+	for (const entry of index) {
+		if (folderPath && !pathInFolder(entry.path, folderPath)) continue;
+		const score = normalizedQuery ? scoreIndexedFile(entry, normalizedQuery) : 1;
+		if (score <= 0) continue;
+		candidates.push({
+			path: entry.path,
+			label: entry.label,
+			directory: entry.directory,
+			relativePath: entry.relativePath,
+			modifiedAt: entry.modifiedAt,
+			score,
+			currentBoost: entry.path === currentPath ? 1 : 0,
+		});
+	}
+
+	return candidates
+		.sort(compareScoredFiles)
+		.slice(0, limit)
+		.map(({ score: _score, currentBoost: _currentBoost, ...result }) => result);
+}
 
 export function searchWorkspaceFiles({
 	files,
@@ -39,56 +123,21 @@ export function searchWorkspaceFiles({
 	folderPath = null,
 	limit = defaultResultLimit,
 }: SearchWorkspaceFilesInput): FileSearchResult[] {
-	const normalizedQuery = normalizeSearchText(query);
-	const candidates = files
-		.filter((file) => hasMarkdownExtension(file.path))
-		.filter((file) => !folderPath || pathInFolder(file.path, folderPath))
-		.map((file): ScoredFile | null => {
-			const relativePath = relativeWorkspacePath(file.path, workspacePath);
-			const label = basename(relativePath);
-			const directory = directoryFromRelativePath(relativePath);
-			const score = normalizedQuery
-				? scoreFileMatch(
-						{ label, relativePath, path: file.path },
-						normalizedQuery,
-					)
-				: 1;
-			if (score <= 0) return null;
-			return {
-				path: file.path,
-				label,
-				directory,
-				relativePath,
-				modifiedAt: file.modified_at,
-				score,
-				currentBoost: file.path === currentPath ? 1 : 0,
-			};
-		})
-		.filter((file): file is ScoredFile => file !== null);
-
-	return candidates
-		.sort(compareScoredFiles)
-		.slice(0, limit)
-		.map(({ score: _score, currentBoost: _currentBoost, ...result }) => result);
+	return searchFileIndex({
+		index: buildFileSearchIndex(files, workspacePath),
+		query,
+		currentPath,
+		folderPath,
+		limit,
+	});
 }
 
-function scoreFileMatch(
-	file: { label: string; relativePath: string; path: string },
-	normalizedQuery: string,
-) {
-	const fileName = normalizeSearchText(file.label);
-	const extension = extname(file.label);
-	const stem = normalizeSearchText(
-		extension ? file.label.slice(0, -extension.length) : file.label,
-	);
-	const relativePath = normalizeSearchText(file.relativePath);
-	const absolutePath = normalizeSearchText(file.path);
-
+function scoreIndexedFile(entry: IndexedFile, normalizedQuery: string) {
 	return Math.max(
-		scoreText(fileName, normalizedQuery, 100),
-		scoreText(stem, normalizedQuery, 98),
-		scoreText(relativePath, normalizedQuery, 78),
-		scoreText(absolutePath, normalizedQuery, 35),
+		scoreText(entry.searchFileName, normalizedQuery, 100),
+		scoreText(entry.searchStem, normalizedQuery, 98),
+		scoreText(entry.searchRelativePath, normalizedQuery, 78),
+		scoreText(entry.searchAbsolutePath, normalizedQuery, 35),
 	);
 }
 

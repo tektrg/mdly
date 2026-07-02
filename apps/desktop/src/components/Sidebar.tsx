@@ -5,7 +5,7 @@ import {
 	SidebarFrame,
 } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import type { ReactNode } from "react";
+import { memo, type ReactNode, useMemo } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
@@ -28,7 +28,7 @@ import {
 } from "../store/state";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
-export function Sidebar({
+function SidebarComponent({
 	footer,
 	onFocusedPathChange,
 	onMoveFile,
@@ -41,7 +41,37 @@ export function Sidebar({
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
 	const currentPath = useStoreValue(currentPathStore);
 	const { workspacePath, files, folders, pinnedNotes, sortMode } = workspace;
-	const pinnedSet = new Set(pinnedNotes);
+
+	// Memoized so re-renders triggered by unrelated state (e.g. switching the
+	// current file) don't redo this O(workspace files) mapping when the file
+	// list itself hasn't changed.
+	const sidebarFiles = useMemo(() => {
+		const pinnedSet = new Set(pinnedNotes);
+		return files.map((file) => ({
+			path: file.path,
+			modifiedAt: file.modified_at,
+			pinned: pinnedSet.has(file.path),
+			isSymlink: file.is_symlink,
+			symlinkTarget: file.symlink_target,
+			symlinkTargetExists: file.symlink_target_exists,
+			symlinkTargetInWorkspace: file.symlink_target_in_workspace,
+			symlinkCanonicalPath: file.symlink_canonical_path,
+			gitStatus: file.git_status,
+		}));
+	}, [files, pinnedNotes]);
+	const sidebarFolders = useMemo(
+		() =>
+			folders.map((folder) => ({
+				path: folder.path,
+				modifiedAt: folder.modified_at,
+				isSymlink: folder.is_symlink,
+				symlinkTarget: folder.symlink_target,
+				symlinkTargetExists: folder.symlink_target_exists,
+				symlinkTargetInWorkspace: folder.symlink_target_in_workspace,
+				symlinkCanonicalPath: folder.symlink_canonical_path,
+			})),
+		[folders],
+	);
 
 	if (!sidebarOpen) return null;
 	const collapseSidebar = () => setSidebarOpen(false);
@@ -92,26 +122,8 @@ export function Sidebar({
 
 	return (
 		<SharedSidebar
-			files={files.map((file) => ({
-				path: file.path,
-				modifiedAt: file.modified_at,
-				pinned: pinnedSet.has(file.path),
-				isSymlink: file.is_symlink,
-				symlinkTarget: file.symlink_target,
-				symlinkTargetExists: file.symlink_target_exists,
-				symlinkTargetInWorkspace: file.symlink_target_in_workspace,
-				symlinkCanonicalPath: file.symlink_canonical_path,
-				gitStatus: file.git_status,
-			}))}
-			folders={folders.map((folder) => ({
-				path: folder.path,
-				modifiedAt: folder.modified_at,
-				isSymlink: folder.is_symlink,
-				symlinkTarget: folder.symlink_target,
-				symlinkTargetExists: folder.symlink_target_exists,
-				symlinkTargetInWorkspace: folder.symlink_target_in_workspace,
-				symlinkCanonicalPath: folder.symlink_canonical_path,
-			}))}
+			files={sidebarFiles}
+			folders={sidebarFolders}
 			currentPath={currentPath ?? null}
 			sortMode={sortMode}
 			storageScope={workspacePath}
@@ -157,3 +169,8 @@ export function Sidebar({
 		/>
 	);
 }
+
+// Memoized: App re-renders on every editor keystroke (document store update).
+// Without this, Sidebar would re-run its O(workspace files) mapping/tree build
+// on every keystroke even though the file list didn't change.
+export const Sidebar = memo(SidebarComponent);
