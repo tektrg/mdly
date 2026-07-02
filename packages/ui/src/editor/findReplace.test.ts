@@ -163,7 +163,7 @@ describe("selectEditorMatch", () => {
 
 		expect(scrollBy).toHaveBeenCalledWith(
 			expect.objectContaining({
-				behavior: "smooth",
+				behavior: "auto",
 				top: 259,
 			}),
 		);

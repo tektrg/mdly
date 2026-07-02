@@ -107,7 +107,7 @@ export function selectEditorMatch(editor: Editor, match: TextMatch) {
 	scrollEditorMatchIntoView(editor, match);
 }
 
-function scrollEditorMatchIntoView(editor: Editor, match: TextMatch) {
+export function scrollEditorMatchIntoView(editor: Editor, match: TextMatch) {
 	const scrollContainer = findScrollContainer(editor.view.dom);
 	if (!scrollContainer) return;
 
@@ -135,7 +135,7 @@ function scrollEditorMatchIntoView(editor: Editor, match: TextMatch) {
 		if (typeof scrollContainer.scrollBy === "function") {
 			scrollContainer.scrollBy({
 				top: scrollTopDelta,
-				behavior: prefersReducedMotion() ? "auto" : "smooth",
+				behavior: "auto",
 			});
 			return;
 		}
@@ -158,13 +158,6 @@ function findScrollContainer(element: HTMLElement) {
 		current = current.parentElement;
 	}
 	return null;
-}
-
-function prefersReducedMotion() {
-	return (
-		typeof matchMedia === "function" &&
-		matchMedia("(prefers-reduced-motion: reduce)").matches
-	);
 }
 
 export function replaceStringMatch(

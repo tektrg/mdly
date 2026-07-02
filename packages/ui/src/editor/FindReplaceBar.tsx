@@ -1,5 +1,11 @@
 import type { Editor } from "@tiptap/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+	type WheelEvent as ReactWheelEvent,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
@@ -16,7 +22,7 @@ import {
 	replaceEditorMatch,
 	replaceStringMatch,
 	type StringMatch,
-	selectEditorMatch,
+	scrollEditorMatchIntoView,
 	type TextMatch,
 } from "./findReplace";
 
@@ -25,7 +31,7 @@ type FrontMatterSearch = {
 	onReplace: (nextFrontMatter: string) => void;
 };
 
-type CombinedMatch =
+export type CombinedMatch =
 	| { scope: "body"; match: TextMatch }
 	| { scope: "frontMatter"; match: StringMatch };
 
@@ -58,6 +64,7 @@ export function FindReplaceBar({
 	onFrontMatterActiveChange?: (active: boolean) => void;
 }) {
 	const queryInputRef = useRef<HTMLInputElement>(null);
+	const lastScrolledBodyMatchKeyRef = useRef<string | null>(null);
 	const [query, setQuery] = useState("");
 	const [replacement, setReplacement] = useState("");
 	const [caseSensitive, setCaseSensitive] = useState(false);
@@ -127,9 +134,19 @@ export function FindReplaceBar({
 	}, [activeIndex, totalMatches]);
 
 	useEffect(() => {
-		if (!editor || activeMatch?.scope !== "body") return;
-		selectEditorMatch(editor, activeMatch.match);
-	}, [activeMatch, editor]);
+		if (!open) {
+			lastScrolledBodyMatchKeyRef.current = null;
+			return;
+		}
+		if (!editor || !shouldScrollActiveEditorMatch(open, activeMatch)) {
+			lastScrolledBodyMatchKeyRef.current = null;
+			return;
+		}
+		const matchKey = bodyMatchKey(activeMatch.match);
+		if (lastScrolledBodyMatchKeyRef.current === matchKey) return;
+		lastScrolledBodyMatchKeyRef.current = matchKey;
+		scrollEditorMatchIntoView(editor, activeMatch.match);
+	}, [activeMatch, editor, open]);
 
 	useEffect(() => {
 		const active = open && activeMatch?.scope === "frontMatter";
@@ -143,7 +160,7 @@ export function FindReplaceBar({
 			if (event.key === "Escape") {
 				event.preventDefault();
 				onOpenChange(false);
-				editor?.commands.focus();
+				focusEditorAfterFindClose(editor);
 			}
 		};
 		window.addEventListener("keydown", onKeyDown, true);
@@ -154,9 +171,17 @@ export function FindReplaceBar({
 
 	const goTo = (direction: 1 | -1) => {
 		if (totalMatches === 0) return;
-		setActiveIndex((current) =>
-			clampIndex(current + direction + totalMatches, totalMatches),
+		const currentIndex = clampIndex(activeIndex, totalMatches);
+		const nextIndex = clampIndex(
+			currentIndex + direction + totalMatches,
+			totalMatches,
 		);
+		if (nextIndex === currentIndex) {
+			scrollCurrentBodyMatchIntoView(editor, matches[nextIndex]);
+			return;
+		}
+		lastScrolledBodyMatchKeyRef.current = null;
+		setActiveIndex(nextIndex);
 	};
 
 	const replaceCurrent = () => {
@@ -191,7 +216,11 @@ export function FindReplaceBar({
 	};
 
 	return (
-		<search className="findReplaceBar" aria-label="Find and replace">
+		<search
+			className="findReplaceBar"
+			aria-label="Find and replace"
+			onWheel={handleFindBarWheel}
+		>
 			<div className="flex min-w-0 flex-1 items-center gap-1.5">
 				<MingcuteSearchLine className="size-3.5 shrink-0 text-muted-foreground" />
 				<Input
@@ -298,7 +327,7 @@ export function FindReplaceBar({
 					title="Close"
 					onClick={() => {
 						onOpenChange(false);
-						editor?.commands.focus();
+						focusEditorAfterFindClose(editor);
 					}}
 				>
 					<MingcuteCloseLine className="size-3" />
@@ -306,6 +335,62 @@ export function FindReplaceBar({
 			</div>
 		</search>
 	);
+}
+
+export function shouldScrollActiveEditorMatch(
+	open: boolean,
+	activeMatch: CombinedMatch | null,
+): activeMatch is Extract<CombinedMatch, { scope: "body" }> {
+	return open && activeMatch?.scope === "body";
+}
+
+function bodyMatchKey(match: TextMatch) {
+	return `${match.from}:${match.to}:${match.text}`;
+}
+
+function scrollCurrentBodyMatchIntoView(
+	editor: Editor | null,
+	activeMatch: CombinedMatch | undefined,
+) {
+	if (!editor || activeMatch?.scope !== "body") return;
+	scrollEditorMatchIntoView(editor, activeMatch.match);
+}
+
+export function focusEditorAfterFindClose(editor: Editor | null) {
+	editor?.commands.focus(undefined, { scrollIntoView: false });
+}
+
+function handleFindBarWheel(event: ReactWheelEvent<HTMLElement>) {
+	scrollEditorViewportFromFindBarWheel(event.currentTarget, {
+		deltaX: event.deltaX,
+		deltaY: event.deltaY,
+		preventDefault: () => event.preventDefault(),
+	});
+}
+
+export function scrollEditorViewportFromFindBarWheel(
+	findBar: HTMLElement,
+	event: {
+		deltaX: number;
+		deltaY: number;
+		preventDefault: () => void;
+	},
+) {
+	const viewport = findEditorViewportForFindBar(findBar);
+	if (!viewport) return;
+	if (event.deltaX === 0 && event.deltaY === 0) return;
+
+	event.preventDefault();
+	viewport.scrollBy({
+		left: event.deltaX,
+		top: event.deltaY,
+		behavior: "auto",
+	});
+}
+
+function findEditorViewportForFindBar(findBar: HTMLElement) {
+	const editorRoot = findBar.closest("[data-hubble-editor]");
+	return editorRoot?.querySelector<HTMLElement>(".editorViewport") ?? null;
 }
 
 function clampIndex(index: number, total: number) {
