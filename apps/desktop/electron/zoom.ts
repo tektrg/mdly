@@ -75,6 +75,11 @@ function trafficLightInsetForZoom(zoomFactor: number) {
 	return (x + trafficLightWidth + trafficLightGap) / zoomFactor;
 }
 
+function trafficLightTopInsetForZoom(zoomFactor: number) {
+	const { y } = trafficLightPositionForZoom(zoomFactor);
+	return (y + trafficLightHeight + trafficLightGap) / zoomFactor;
+}
+
 function setTrafficLightPosition(window: BrowserWindow, zoomFactor: number) {
 	if (process.platform !== "darwin" || window.isDestroyed()) return;
 	window.setWindowButtonPosition(trafficLightPositionForZoom(zoomFactor));
@@ -86,9 +91,13 @@ export async function setTrafficLightInset(
 ) {
 	if (window.isDestroyed()) return;
 	const inset = trafficLightInsetForZoom(zoomFactor);
+	const topInset = trafficLightTopInsetForZoom(zoomFactor);
 	try {
 		await window.webContents.executeJavaScript(
-			`document.documentElement.style.setProperty("--hubble-traffic-light-inset", "${inset}px")`,
+			`
+				document.documentElement.style.setProperty("--hubble-traffic-light-inset", "${inset}px");
+				document.documentElement.style.setProperty("--hubble-traffic-light-top-inset", "${topInset}px");
+			`,
 		);
 	} catch {
 		// The fallback inset still works if the renderer is navigating or destroyed.

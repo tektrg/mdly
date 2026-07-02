@@ -33,6 +33,7 @@ import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteEditLine from "~icons/mingcute/edit-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
+import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import MingcutePinFill from "~icons/mingcute/pin-fill";
@@ -812,13 +813,24 @@ export function Sidebar({
 
 	return (
 		<SidebarFrame onCollapse={onCollapse} storageScope={storageScope}>
-			<div className="flex items-center justify-between px-2.5 py-1.5 shadow-chrome-section">
+			<div className="desktop-window-drag-region flex items-center justify-between px-2.5 pb-1.5 pt-[calc(var(--hubble-traffic-light-top-inset,0px)+0.375rem)] shadow-chrome-section">
 				{header ?? (
 					<span className="text-[11px] font-medium uppercase text-muted-foreground">
 						Files
 					</span>
 				)}
 				<div className="flex items-center gap-1">
+					{onCollapse && (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							aria-label="Toggle sidebar"
+							title="Toggle sidebar"
+							onClick={onCollapse}
+						>
+							<MingcuteLayoutLeftLine className="size-3.5" />
+						</Button>
+					)}
 					{onCreateFile && (
 						<Button
 							variant="ghost"

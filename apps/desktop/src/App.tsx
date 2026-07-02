@@ -1,7 +1,7 @@
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { CommandBar } from "./components/CommandBar";
@@ -117,6 +117,10 @@ function alertNotionRefreshBlockedByLocalChanges(options?: {
 				}
 			: undefined,
 	});
+}
+
+function WindowDragRegion() {
+	return <div className="desktop-window-drag-strip" aria-hidden="true" />;
 }
 
 function App() {
@@ -339,6 +343,35 @@ function App() {
 		await desktopApi.checkForUpdates();
 	}, [installUpdate, updateState]);
 
+	// Stable element identity so <Sidebar> (React.memo) can skip re-rendering
+	// on every keystroke, which otherwise re-runs its O(workspace) file list mapping.
+	const sidebarFooter = useMemo(() => {
+		if (updateState?.status === "ready" && showUpdateCallout) {
+			return (
+				<SidebarUpdateCallout
+					onInstall={installUpdate}
+					onDismiss={() => setDismissedVersion(readyVersion ?? "__unknown__")}
+				/>
+			);
+		}
+		if (htmlAppsCalloutVisible) {
+			return (
+				<SidebarHtmlAppsCallout
+					onShowMore={() => setHtmlAppsDialogOpen(true)}
+					onDismiss={dismissHtmlAppsCallout}
+				/>
+			);
+		}
+		return undefined;
+	}, [
+		updateState,
+		showUpdateCallout,
+		installUpdate,
+		readyVersion,
+		htmlAppsCalloutVisible,
+		dismissHtmlAppsCallout,
+	]);
+
 	useEffect(() => {
 		const currentPath = state.currentPath;
 		if (!currentPath) return;
@@ -407,6 +440,11 @@ function App() {
 		if (!path) return;
 		setCommandBarMoveSourcePath(path);
 		setCommandBarOpen(true);
+	}, []);
+
+	const handleCommandBarOpenChange = useCallback((nextOpen: boolean) => {
+		setCommandBarOpen(nextOpen);
+		if (!nextOpen) setCommandBarMoveSourcePath(null);
 	}, []);
 
 	const openMoveCurrentFileCommandBar = useCallback(() => {
@@ -606,6 +644,7 @@ function App() {
 
 	return (
 		<main className="flex h-dvh flex-col bg-background text-foreground">
+			<WindowDragRegion />
 			<Toolbar
 				scrollContainer={scrollContainerEl}
 				showSidebarBadge={!sidebarOpen && showUpdateCallout}
@@ -620,21 +659,7 @@ function App() {
 				<Sidebar
 					onFocusedPathChange={setFocusedSidebarPath}
 					onMoveFile={openMoveFileCommandBar}
-					footer={
-						updateState?.status === "ready" && showUpdateCallout ? (
-							<SidebarUpdateCallout
-								onInstall={installUpdate}
-								onDismiss={() =>
-									setDismissedVersion(readyVersion ?? "__unknown__")
-								}
-							/>
-						) : htmlAppsCalloutVisible ? (
-							<SidebarHtmlAppsCallout
-								onShowMore={() => setHtmlAppsDialogOpen(true)}
-								onDismiss={dismissHtmlAppsCallout}
-							/>
-						) : undefined
-					}
+					footer={sidebarFooter}
 				/>
 				<section className="flex-1 overflow-hidden" aria-live="polite">
 					{state.status === "loading" && <p>Loading…</p>}
@@ -698,10 +723,7 @@ function App() {
 			/>
 			<CommandBar
 				open={commandBarOpen}
-				onOpenChange={(nextOpen) => {
-					setCommandBarOpen(nextOpen);
-					if (!nextOpen) setCommandBarMoveSourcePath(null);
-				}}
+				onOpenChange={handleCommandBarOpenChange}
 				files={workspace.files}
 				folders={workspace.folders}
 				workspacePath={workspace.workspacePath}

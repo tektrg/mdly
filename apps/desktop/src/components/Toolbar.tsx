@@ -1,7 +1,6 @@
 import { Menu } from "@base-ui/react/menu";
-import { Button, Toolbar as SharedToolbar } from "@hubble.md/ui";
+import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import { type CSSProperties, useEffect, useState } from "react";
 import { toast } from "sonner";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
@@ -9,32 +8,11 @@ import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
-import { renameCurrentMarkdownFile, toggleSidebar } from "../store/actions";
-import {
-	currentPathStore,
-	sidebarOpenStore,
-	workspacePathStore,
-} from "../store/state";
-
-const dragRegionStyle = {
-	WebkitAppRegion: "drag",
-} as CSSProperties;
+import { currentPathStore, workspacePathStore } from "../store/state";
 
 type NotionSyncMode = "none" | "page" | "database";
 
-// Traffic lights are hidden in fullscreen, so drop their reserved inset.
-function useIsFullScreen() {
-	const [isFullScreen, setIsFullScreen] = useState(false);
-	useEffect(() => {
-		void desktopApi.getFullScreen().then(setIsFullScreen);
-		return desktopApi.onFullScreenChange(setIsFullScreen);
-	}, []);
-	return isFullScreen;
-}
-
 export function Toolbar({
-	scrollContainer,
-	showSidebarBadge = false,
 	onOpenNotionPage,
 	onOpenNotionInBrowser,
 	onPushNotionPage,
@@ -52,36 +30,21 @@ export function Toolbar({
 	notionSyncMode: NotionSyncMode;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
-	const sidebarOpen = useStoreValue(sidebarOpenStore);
 	const currentPath = useStoreValue(currentPathStore);
-	const isFullScreen = useIsFullScreen();
+	if (!workspacePath) return null;
 
 	return (
-		<SharedToolbar
-			currentPath={currentPath ?? null}
-			sidebarOpen={sidebarOpen}
-			sidebarBadge={showSidebarBadge}
-			scrollContainer={scrollContainer}
-			platformInset={!isFullScreen}
-			rootProps={{ style: dragRegionStyle }}
-			onToggleSidebar={toggleSidebar}
-			onRenameCurrentPath={(nextName) =>
-				void renameCurrentMarkdownFile(nextName)
-			}
-			rightSlot={
-				workspacePath ? (
-					<NoteActionsMenu
-						path={currentPath ?? null}
-						onOpenNotionPage={onOpenNotionPage}
-						onOpenNotionInBrowser={onOpenNotionInBrowser}
-						onPushNotionPage={onPushNotionPage}
-						onRefreshNotionPage={onRefreshNotionPage}
-						onMoveFile={onMoveCurrentFile}
-						notionSyncMode={notionSyncMode}
-					/>
-				) : undefined
-			}
-		/>
+		<div className="desktop-window-no-drag pointer-events-none fixed end-3 top-3 z-30">
+			<NoteActionsMenu
+				path={currentPath ?? null}
+				onOpenNotionPage={onOpenNotionPage}
+				onOpenNotionInBrowser={onOpenNotionInBrowser}
+				onPushNotionPage={onPushNotionPage}
+				onRefreshNotionPage={onRefreshNotionPage}
+				onMoveFile={onMoveCurrentFile}
+				notionSyncMode={notionSyncMode}
+			/>
+		</div>
 	);
 }
 
@@ -128,6 +91,7 @@ function NoteActionsMenu({
 					<Button
 						variant="ghost"
 						size="icon-sm"
+						className="pointer-events-auto rounded-full border border-border/50 bg-background/78 text-muted-foreground shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md hover:bg-accent"
 						aria-label="Note actions"
 						title="Note actions"
 					/>
@@ -136,8 +100,8 @@ function NoteActionsMenu({
 				<MingcuteMore2Line className="size-4" />
 			</Menu.Trigger>
 			<Menu.Portal>
-				<Menu.Positioner align="end" side="bottom" sideOffset={4}>
-					<Menu.Popup className="z-50 w-44 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+				<Menu.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
+					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						<Menu.Item
 							className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 							onClick={onOpenNotionPage}
