@@ -29,7 +29,7 @@
 	position: absolute;
 	inset-inline-end: 0;
 	display: block;
-	inline-size: 0.9rem;
+	inline-size: 0.45rem;
 	block-size: 2px;
 	border-radius: 999px;
 	background: color-mix(in oklab, var(--muted-foreground) 28%, transparent);
@@ -43,11 +43,11 @@
 
 [data-hubble-editor] .editorTableOfContentsDash[data-level="1"],
 [data-hubble-editor] .editorTableOfContentsDash[data-level="2"] {
-	inline-size: 1.25rem;
+	inline-size: 0.625rem;
 }
 
 [data-hubble-editor] .editorTableOfContentsDash[data-active="true"] {
-	inline-size: 1.55rem;
+	inline-size: 0.775rem;
 	background: color-mix(in oklab, var(--brand) 68%, var(--foreground));
 	opacity: 1;
 }
