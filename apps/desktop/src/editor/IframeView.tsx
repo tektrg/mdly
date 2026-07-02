@@ -238,9 +238,7 @@ async function handleHtmlAppRequest(
 				value: { path },
 			};
 		}
-		throw new Error(
-			`Unknown Hubble HTML app method: ${String(request.method)}`,
-		);
+		throw new Error(`Unknown mdly HTML app method: ${String(request.method)}`);
 	} catch (error) {
 		return {
 			ok: false,

@@ -46,7 +46,7 @@ export function SidebarHtmlAppsCallout({
 				<div className="flex flex-col gap-1">
 					<p className="text-[11px] text-foreground">
 						<span className="font-semibold">Turn notes into HTML Apps.</span>{" "}
-						Install Hubble skills for your agents to build live views from your
+						Install mdly skills for your agents to build live views from your
 						notes.
 					</p>
 				</div>
@@ -99,7 +99,7 @@ export function HtmlAppsDialog({
 					<p className="text-xs text-foreground">
 						Turn your notes into <strong>live, interactive apps.</strong>{" "}
 						Install the skills, then tell your coding agent what app you want to
-						build. You can view the app directly in Hubble with live reloading.
+						build. You can view the app directly in mdly with live reloading.
 					</p>
 					<div className="flex items-start gap-2 rounded-sm border border-border bg-muted/40 p-2">
 						<code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs text-foreground">

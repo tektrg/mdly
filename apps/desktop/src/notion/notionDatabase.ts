@@ -38,7 +38,7 @@ export function buildNotionDatabaseMarkdown({
 	const body = [
 		`# ${result.title}`,
 		"",
-		"> Read-only Notion database. Open this file in Hubble to browse rows with paging.",
+		"> Read-only Notion database. Open this file in mdly to browse rows with paging.",
 		"",
 		databaseSnapshotTable(query),
 	].join("\n");

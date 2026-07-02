@@ -52,7 +52,7 @@ if [ -f "$SHIM_PATH" ] && [ -n "$MAIN_PATH" ]; then
   } > "$SHIM_PATH"
 fi
 
-# Kill any existing Hubble Dev instance before launching a new one.
+# Kill any existing dev app instance before launching a new one.
 pkill -x "$EXEC_NAME" 2>/dev/null || true
 sleep 0.3
 

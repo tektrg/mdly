@@ -44,7 +44,7 @@ export function describeError(err: ConvexErrorKind): string {
 		case "network":
 			return "Couldn't reach this deployment. Check the URL and your connection.";
 		case "missing-function":
-			return `This deployment doesn't expose ${err.functionName}. It may not be running the hubble.md backend.`;
+			return `This deployment doesn't expose ${err.functionName}. It may not be running the mdly backend.`;
 		case "validator":
 			return `${err.functionName} rejected the call. The backend's function signature may differ from what this app expects.`;
 		case "unknown":

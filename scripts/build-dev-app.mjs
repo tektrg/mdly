@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds Hubble Dev.app as a real Electron app bundle. The app is a tiny
+// Builds mdly.app as a real Electron app bundle. The app is a tiny
 // launcher that delegates to scripts/launch-dev.sh, which remains the source of
 // truth for starting the tmux dev server and opening logs.
 
@@ -21,9 +21,10 @@ const repoDir = path.resolve(scriptDir, "..");
 const desktopDir = path.join(repoDir, "apps", "desktop");
 const desktopRequire = createRequire(path.join(desktopDir, "package.json"));
 
-const appName = "Hubble Dev";
+const appName = "mdly";
 const bundleId = "com.benholmes.hubblemd.desktop.dev.launcher";
 const outApp = path.join(repoDir, `${appName}.app`);
+const legacyOutApp = path.join(repoDir, "Hubble Dev.app");
 const iconSource = path.join(repoDir, "apps", "desktop", "assets", "icon.icns");
 const launchScript = path.join(repoDir, "scripts", "launch-dev.sh");
 
@@ -79,6 +80,7 @@ async function main() {
 	const sourceApp = electronAppPath(electronExecutable);
 
 	rmSync(outApp, { force: true, recursive: true });
+	rmSync(legacyOutApp, { force: true, recursive: true });
 	run("/usr/bin/ditto", [sourceApp, outApp]);
 
 	const contentsDir = path.join(outApp, "Contents");
@@ -92,13 +94,13 @@ async function main() {
 		renameSync(sourceExecutable, appExecutable);
 	}
 
-	await copyFile(iconSource, path.join(resourcesDir, "hubble-dev.icns"));
+	await copyFile(iconSource, path.join(resourcesDir, "mdly.icns"));
 
 	upsertPlistValue(plistPath, "CFBundleIdentifier", bundleId);
 	upsertPlistValue(plistPath, "CFBundleName", appName);
 	upsertPlistValue(plistPath, "CFBundleDisplayName", appName);
 	upsertPlistValue(plistPath, "CFBundleExecutable", appName);
-	upsertPlistValue(plistPath, "CFBundleIconFile", "hubble-dev.icns");
+	upsertPlistValue(plistPath, "CFBundleIconFile", "mdly.icns");
 	upsertPlistValue(
 		plistPath,
 		"LSApplicationCategoryType",
@@ -107,7 +109,7 @@ async function main() {
 	upsertPlistValue(
 		plistPath,
 		"NSAppleEventsUsageDescription",
-		"Hubble Dev opens Terminal to show the tmux dev server logs.",
+		"mdly opens Terminal to show the tmux dev server logs.",
 	);
 
 	const defaultApp = path.join(resourcesDir, "default_app.asar");
@@ -119,7 +121,7 @@ async function main() {
 	writeFileSync(
 		path.join(launcherAppDir, "package.json"),
 		JSON.stringify(
-			{ name: "hubble-dev-launcher", version: "0.0.1", main: "main.js" },
+			{ name: "mdly-dev-launcher", version: "0.0.1", main: "main.js" },
 			null,
 			2,
 		),
@@ -140,7 +142,7 @@ app.whenReady().then(() => {
 \t\tenv: process.env,
 \t});
 \tchild.on("error", (error) => {
-\t\tdialog.showErrorBox("Hubble Dev failed to start", error.message);
+\t\tdialog.showErrorBox("mdly failed to start", error.message);
 \t});
 \tchild.unref();
 \tapp.quit();

@@ -13,7 +13,7 @@ export function WelcomeScreen({
 				className="welcome-rise font-rounded text-3xl font-medium tracking-tight"
 				style={{ animationDelay: "0.05s" }}
 			>
-				Welcome to <span className="font-semibold">hubble</span>
+				Welcome to <span className="font-semibold">mdly</span>
 			</h2>
 			<p
 				className="welcome-rise mb-2 text-sm text-muted-foreground"

@@ -2,9 +2,10 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="Hubble Dev"
+APP_NAME="mdly"
 BUILT_APP="$REPO_DIR/$APP_NAME.app"
 INSTALLED_APP="/Applications/$APP_NAME.app"
+OLD_INSTALLED_APP="/Applications/Hubble Dev.app"
 PNPM="${PNPM:-/Users/trungluong/.nvm/versions/node/v22.22.2/bin/pnpm}"
 
 if [[ ! -x "$PNPM" ]]; then
@@ -21,6 +22,7 @@ cd "$REPO_DIR"
 
 rm -rf "$INSTALLED_APP"
 /usr/bin/ditto "$BUILT_APP" "$INSTALLED_APP"
+rm -rf "$OLD_INSTALLED_APP"
 
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
 	-f "$INSTALLED_APP"

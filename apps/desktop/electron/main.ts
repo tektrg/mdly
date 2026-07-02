@@ -90,7 +90,7 @@ type WindowBounds = {
 const isDev = !app.isPackaged || process.env.HUBBLE_DESKTOP_FORCE_DEV === "1";
 const { autoUpdater } = electronUpdater;
 const devAppName = isDev ? process.env.HUBBLE_DESKTOP_DEV_APP_NAME : undefined;
-const appName = devAppName ?? "Hubble";
+const appName = devAppName ?? "mdly";
 const debugPort = process.env.HUBBLE_DESKTOP_DEBUG_PORT ?? "9222";
 const updateFeedUrl = process.env.HUBBLE_DESKTOP_UPDATE_URL;
 const supportsAutoUpdates = !isDev && process.platform === "darwin";
@@ -769,7 +769,7 @@ function configureAutoUpdates() {
 			status: "up-to-date",
 			availableVersion: null,
 			progressPercent: null,
-			message: "Hubble is up to date.",
+			message: "mdly is up to date.",
 			lastCheckedAt: Date.now(),
 		});
 	});
@@ -785,7 +785,7 @@ function configureAutoUpdates() {
 			status: "ready",
 			availableVersion: info.version ?? updateState.availableVersion,
 			progressPercent: 100,
-			message: "Restart Hubble to install the update.",
+			message: "Restart mdly to install the update.",
 			lastCheckedAt: Date.now(),
 		});
 	});

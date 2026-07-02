@@ -150,7 +150,7 @@ function IframeEmbedNodeView({
 							: ""
 					}
 					style={{ blockSize: `${height}px` }}
-					title={src || "Hubble iframe embed"}
+					title={src || "mdly iframe embed"}
 					workspacePath={workspacePath}
 				/>
 			)}

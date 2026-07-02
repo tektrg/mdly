@@ -42,7 +42,7 @@ export function ConnectScreen({ onConnected }: Props) {
 				className="flex w-full max-w-md flex-col gap-3 rounded-md border border-border bg-sidebar p-6"
 			>
 				<div>
-					<h1 className="m-0 text-base font-semibold">Connect to hubble.md</h1>
+					<h1 className="m-0 text-base font-semibold">Connect to mdly</h1>
 					<p className="m-0 mt-1 text-xs text-muted-foreground">
 						Paste the URL of your Convex deployment.
 					</p>
