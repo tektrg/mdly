@@ -2,7 +2,9 @@ Use logical CSS spacing props (`margin/padding` inline/block/start/end), not phy
 
 Check work: `pnpm build:desktop` (builds packages, runs biome check, tsc, vite build, cargo check). For quick iteration use `pnpm check` and desktop tsc.
 
-Before development handoff for the desktop app, run `pnpm install:dev-app`. It rebuilds the Hubble/mdly dev launcher, installs it to `/Applications/Hubble Dev.app`, and opens it, which restarts the `hubble_desktop_dev` tmux session and the Electron app.
+Before development handoff for the desktop app, run `pnpm install:dev-app`. It rebuilds the Hubble/mdly dev launcher, installs it to `/Applications/mdly.app`, and opens it, which restarts the `hubble_desktop_dev` tmux session and the Electron app.
+
+After desktop builds, review large derivative artifacts and clean clearly stale ones before handoff. Common candidates include old `.dev-electron` app bundles, repo-local launcher `.app` outputs, stale release packages, and root `.build`; keep current release deliverables, active dev app caches/watchers, and anything ambiguous. Report what was removed and what was kept.
 
 Test the web app by appending `?test=1` to the dev server URL — bypasses the connect / workspace-picker screens. Requires `VITE_TEST_CONVEX_URL` and `VITE_TEST_WORKSPACE_ID` in `apps/www/.env.local` (see `apps/www/.env.example`).
 
