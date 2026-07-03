@@ -27,7 +27,19 @@ export default defineConfig({
 	main: {
 		plugins: [
 			externalizeDepsPlugin({
-				exclude: ["@hubble.md/runtime", "@tailwindcss/browser", "alpinejs"],
+				// electron/notion.ts -> src/notion/contentHash.ts -> @hubble.md/editor
+				// -> @tiptap/pm (and its transitive prosemirror-* packages), used for
+				// main-process document parsing. These must be bundled, not
+				// externalized: electron-builder's pnpm packaging drops the nested
+				// prosemirror-* symlinks that @tiptap/pm resolves through, causing
+				// ERR_MODULE_NOT_FOUND at runtime in the packaged app.
+				exclude: [
+					"@hubble.md/runtime",
+					"@tailwindcss/browser",
+					"alpinejs",
+					"@tiptap/pm",
+					"@hubble.md/editor",
+				],
 			}),
 			cjsOutputTypeMarker("out/main"),
 		],
