@@ -1,0 +1,32 @@
+name = "mdly-notion-web"
+main = "worker/index.ts"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain — the deploy target. Must be a top-level key (before any
+# [table] header) or TOML folds it into the preceding table.
+routes = [
+	{ pattern = "mdly.theindie.app", custom_domain = true }
+]
+
+# The Vite SPA build output. The Worker serves these as static assets and
+# only runs first for the API/auth routes below.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/auth/*"]
+
+# Session token store: session-id (httpOnly cookie) -> Notion OAuth token.
+# Create with: wrangler kv namespace create SESSIONS
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "d44eb40d9e594aaaa7d328d7fe026133"
+
+[vars]
+NOTION_API_VERSION = "2026-03-11"
+# NOTION_REDIRECT_URI is set per-environment; defaults to request origin + /auth/notion/callback.
+
+# Secrets (set via `wrangler secret put`):
+#   NOTION_CLIENT_ID
+#   NOTION_CLIENT_SECRET

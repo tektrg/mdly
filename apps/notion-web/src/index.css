@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "open-props/easings";
+@import "@hubble.md/ui/tailwind.css";
+@import "@hubble.md/ui/style.css";
+@import "@hubble.md/ui/theme.css";
+@import "@hubble.md/ui/fonts.css";
+
+html,
+body,
+#root {
+	block-size: 100%;
+	margin: 0;
+}
+
+body {
+	font-family:
+		ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	color: var(--foreground);
+	background-color: var(--background);
+}

@@ -1,0 +1,6 @@
+# Copy to `.dev.vars` for local `wrangler dev`. Do not commit real secrets.
+NOTION_CLIENT_ID = "your-notion-oauth-client-id"
+NOTION_CLIENT_SECRET = "your-notion-oauth-client-secret"
+# Optional: overrides the derived redirect URI (defaults to <origin>/auth/notion/callback).
+# For local dev the Notion integration redirect URI must match exactly.
+NOTION_REDIRECT_URI = "http://localhost:8787/auth/notion/callback"
