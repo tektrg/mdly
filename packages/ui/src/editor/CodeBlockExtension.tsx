@@ -7,7 +7,15 @@ import {
 	NodeViewWrapper,
 	ReactNodeViewRenderer,
 } from "@tiptap/react";
-import { common, createLowlight } from "lowlight";
+import bash from "highlight.js/lib/languages/bash";
+import css from "highlight.js/lib/languages/css";
+import javascript from "highlight.js/lib/languages/javascript";
+import json from "highlight.js/lib/languages/json";
+import markdown from "highlight.js/lib/languages/markdown";
+import python from "highlight.js/lib/languages/python";
+import typescript from "highlight.js/lib/languages/typescript";
+import xml from "highlight.js/lib/languages/xml";
+import { createLowlight } from "lowlight";
 import { useState } from "react";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
@@ -26,7 +34,18 @@ const TWO_SPACE_LANGUAGES = new Set([
 ]);
 export const CODE_BLOCK_COPY_EVENT = "hubble:code-block-copy";
 
-const lowlight = createLowlight(common);
+// Register only the languages common to md/html workspaces instead of
+// lowlight's full `common` set (~35 grammars) to keep the startup bundle lean.
+const lowlight = createLowlight({
+	bash,
+	css,
+	javascript,
+	json,
+	markdown,
+	python,
+	typescript,
+	xml,
+});
 lowlight.registerAlias({
 	javascript: ["js", "jsx"],
 	typescript: ["ts", "tsx"],
