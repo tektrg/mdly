@@ -27,6 +27,7 @@
 		"dev:cli": "pnpm --filter \"./packages/sync\" --filter \"./packages/cli\" --parallel --stream dev",
 		"build:dev-app": "node scripts/build-dev-app.mjs",
 		"install:dev-app": "bash scripts/install-dev-app.sh",
+		"install:prod-app": "bash scripts/install-prod-app.sh",
 		"hubble": "node packages/cli/dist/index.js"
 	},
 	"devDependencies": {

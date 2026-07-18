@@ -2,7 +2,9 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="mdly"
+# The dev launcher installs as "mdly Dev" so the production "mdly" app can own
+# /Applications/mdly.app. See scripts/install-prod-app.sh for the daily app.
+APP_NAME="mdly Dev"
 BUILT_APP="$REPO_DIR/$APP_NAME.app"
 INSTALLED_APP="/Applications/$APP_NAME.app"
 OLD_INSTALLED_APP="/Applications/Hubble Dev.app"

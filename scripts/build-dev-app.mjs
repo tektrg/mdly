@@ -22,9 +22,15 @@ const desktopDir = path.join(repoDir, "apps", "desktop");
 const desktopRequire = createRequire(path.join(desktopDir, "package.json"));
 
 const appName = "mdly";
+// The dev launcher installs alongside the production "mdly" app, so it is
+// branded "mdly Dev" to keep the two visibly distinct in /Applications.
+const displayName = "mdly Dev";
 const bundleId = "com.benholmes.hubblemd.desktop.dev.launcher";
-const outApp = path.join(repoDir, `${appName}.app`);
-const legacyOutApp = path.join(repoDir, "Hubble Dev.app");
+const outApp = path.join(repoDir, `${displayName}.app`);
+const legacyOutApps = [
+	path.join(repoDir, "Hubble Dev.app"),
+	path.join(repoDir, `${appName}.app`),
+];
 const iconSource = path.join(repoDir, "apps", "desktop", "assets", "icon.icns");
 const launchScript = path.join(repoDir, "scripts", "launch-dev.sh");
 
@@ -80,7 +86,9 @@ async function main() {
 	const sourceApp = electronAppPath(electronExecutable);
 
 	rmSync(outApp, { force: true, recursive: true });
-	rmSync(legacyOutApp, { force: true, recursive: true });
+	for (const legacyOutApp of legacyOutApps) {
+		rmSync(legacyOutApp, { force: true, recursive: true });
+	}
 	run("/usr/bin/ditto", [sourceApp, outApp]);
 
 	const contentsDir = path.join(outApp, "Contents");
@@ -97,8 +105,8 @@ async function main() {
 	await copyFile(iconSource, path.join(resourcesDir, "mdly.icns"));
 
 	upsertPlistValue(plistPath, "CFBundleIdentifier", bundleId);
-	upsertPlistValue(plistPath, "CFBundleName", appName);
-	upsertPlistValue(plistPath, "CFBundleDisplayName", appName);
+	upsertPlistValue(plistPath, "CFBundleName", displayName);
+	upsertPlistValue(plistPath, "CFBundleDisplayName", displayName);
 	upsertPlistValue(plistPath, "CFBundleExecutable", appName);
 	upsertPlistValue(plistPath, "CFBundleIconFile", "mdly.icns");
 	upsertPlistValue(
