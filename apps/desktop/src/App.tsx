@@ -1,16 +1,22 @@
 import { Button } from "@hubble.md/ui";
-import { useStoreValue } from "@simplestack/store/react";
+import { useShallow, useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
-import { CommandBar } from "./components/CommandBar";
 import { DocumentViewer } from "./components/DocumentViewer";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
-import { NotionOpenDialog } from "./components/NotionOpenDialog";
 import {
 	AppearanceSettings,
 	SettingsDialog,
@@ -70,6 +76,19 @@ import {
 	workspaceStore,
 } from "./store/state";
 
+// Heavy, on-demand panels are code-split and mounted only after first open, so
+// their chunks stay out of the startup bundle.
+const CommandBar = lazy(() =>
+	import("./components/CommandBar").then((module) => ({
+		default: module.CommandBar,
+	})),
+);
+const NotionOpenDialog = lazy(() =>
+	import("./components/NotionOpenDialog").then((module) => ({
+		default: module.NotionOpenDialog,
+	})),
+);
+
 const HTML_APPS_CALLOUT_DISMISSED_PREFIX =
 	"hubble:html-apps-callout-dismissed:";
 
@@ -124,7 +143,23 @@ function WindowDragRegion() {
 }
 
 function App() {
-	const state = useStoreValue(viewerStore);
+	// Subscribe to only the viewer fields App renders with. Live editor `content`
+	// is deliberately excluded so per-keystroke content updates don't re-render
+	// App (and with it Sidebar/Toolbar/CommandBar). The content-dependent view is
+	// isolated in <ReadyDocument>, which subscribes to content itself.
+	const state = useStoreValue(
+		viewerStore,
+		useShallow((viewer) => ({
+			status: viewer.status,
+			currentPath: viewer.currentPath,
+			error: viewer.error,
+		})),
+	);
+	const isNotionDatabase = useStoreValue(viewerStore, (viewer) =>
+		viewer.status === "ready"
+			? parseNotionDatabaseMetadata(viewer.content) !== null
+			: false,
+	);
 	const workspace = useStoreValue(workspaceStore);
 	const workspacePath = useStoreValue(workspacePathStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
@@ -146,6 +181,15 @@ function App() {
 	const [htmlAppsCalloutVisible, setHtmlAppsCalloutVisible] = useState(false);
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
+	// Keep code-split panels mounted once opened so close animations still play.
+	const [commandBarMounted, setCommandBarMounted] = useState(false);
+	const [notionDialogMounted, setNotionDialogMounted] = useState(false);
+	useEffect(() => {
+		if (commandBarOpen) setCommandBarMounted(true);
+	}, [commandBarOpen]);
+	useEffect(() => {
+		if (notionDialogOpen) setNotionDialogMounted(true);
+	}, [notionDialogOpen]);
 	const [commandBarMoveSourcePath, setCommandBarMoveSourcePath] = useState<
 		string | null
 	>(null);
@@ -188,13 +232,9 @@ function App() {
 			: null;
 	const showUpdateCallout = readyVersion !== dismissedVersion;
 	const notionLink = currentNotionLinkStatus();
-	const notionDatabase =
-		state.status === "ready"
-			? parseNotionDatabaseMetadata(state.content)
-			: null;
 	const notionSyncMode = notionLink
 		? "page"
-		: notionDatabase
+		: isNotionDatabase
 			? "database"
 			: "none";
 
@@ -683,20 +723,11 @@ function App() {
 							</div>
 						)}
 					{state.status === "ready" && state.currentPath && (
-						<div className="flex h-full min-h-0 flex-col">
-							{state.externalChange.kind === "conflict" && (
-								<ExternalChangeBanner
-									onKeepMyEdits={() => void forceKeepLocalEdits()}
-									onReloadFromDisk={reloadFromDiskConflict}
-								/>
-							)}
-							<DocumentViewer
-								path={state.currentPath}
-								content={state.content}
-								notionDatabaseRefreshToken={notionDatabaseRefreshToken}
-								onScrollContainerChange={setScrollContainerEl}
-							/>
-						</div>
+						<ReadyDocument
+							currentPath={state.currentPath}
+							notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+							onScrollContainerChange={setScrollContainerEl}
+						/>
 					)}
 				</section>
 			</div>
@@ -715,27 +746,35 @@ function App() {
 				onOpenChange={setHtmlAppsDialogOpen}
 				workspacePath={workspacePath ?? null}
 			/>
-			<NotionOpenDialog
-				open={notionDialogOpen}
-				onOpenChange={setNotionDialogOpen}
-				onImportDatabase={openNotionResult}
-				onImportPage={openNotionResult}
-			/>
-			<CommandBar
-				open={commandBarOpen}
-				onOpenChange={handleCommandBarOpenChange}
-				files={workspace.files}
-				folders={workspace.folders}
-				workspacePath={workspace.workspacePath}
-				recentWorkspaces={workspace.recentWorkspaces}
-				currentPath={state.currentPath}
-				moveSourcePath={commandBarMoveSourcePath}
-				onOpenFile={openCommandBarFile}
-				onOpenWorkspace={openCommandBarWorkspace}
-				onOpenNotionResult={openNotionResult}
-				onMoveFileToFolder={moveFileToFolderWithoutNotionRefresh}
-				onRequestMoveCurrentFile={openMoveCurrentFileCommandBar}
-			/>
+			{notionDialogMounted ? (
+				<Suspense fallback={null}>
+					<NotionOpenDialog
+						open={notionDialogOpen}
+						onOpenChange={setNotionDialogOpen}
+						onImportDatabase={openNotionResult}
+						onImportPage={openNotionResult}
+					/>
+				</Suspense>
+			) : null}
+			{commandBarMounted ? (
+				<Suspense fallback={null}>
+					<CommandBar
+						open={commandBarOpen}
+						onOpenChange={handleCommandBarOpenChange}
+						files={workspace.files}
+						folders={workspace.folders}
+						workspacePath={workspace.workspacePath}
+						recentWorkspaces={workspace.recentWorkspaces}
+						currentPath={state.currentPath}
+						moveSourcePath={commandBarMoveSourcePath}
+						onOpenFile={openCommandBarFile}
+						onOpenWorkspace={openCommandBarWorkspace}
+						onOpenNotionResult={openNotionResult}
+						onMoveFileToFolder={moveFileToFolderWithoutNotionRefresh}
+						onRequestMoveCurrentFile={openMoveCurrentFileCommandBar}
+					/>
+				</Suspense>
+			) : null}
 			<NotionLoadingIndicator label={notionLoadingLabel} />
 		</main>
 	);
@@ -757,6 +796,40 @@ function NotionLoadingIndicator({ label }: { label: string | null }) {
 				/>
 				<span className="font-medium">{label}</span>
 			</div>
+		</div>
+	);
+}
+
+// Isolates the live-content subscription so per-keystroke content updates
+// re-render only the document view, not the whole App shell.
+function ReadyDocument({
+	currentPath,
+	notionDatabaseRefreshToken,
+	onScrollContainerChange,
+}: {
+	currentPath: string;
+	notionDatabaseRefreshToken: number;
+	onScrollContainerChange: (el: HTMLDivElement | null) => void;
+}) {
+	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
+	const hasConflict = useStoreValue(
+		viewerStore,
+		(viewer) => viewer.externalChange.kind === "conflict",
+	);
+	return (
+		<div className="flex h-full min-h-0 flex-col">
+			{hasConflict && (
+				<ExternalChangeBanner
+					onKeepMyEdits={() => void forceKeepLocalEdits()}
+					onReloadFromDisk={reloadFromDiskConflict}
+				/>
+			)}
+			<DocumentViewer
+				path={currentPath}
+				content={content}
+				notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+				onScrollContainerChange={onScrollContainerChange}
+			/>
 		</div>
 	);
 }
