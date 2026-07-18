@@ -121,3 +121,13 @@ const desktopApi = {
 } satisfies DesktopApi;
 
 contextBridge.exposeInMainWorld("desktopApi", desktopApi);
+
+// Diagnostic-only bridge for the renderer storm detector (background OOM crash
+// investigation). Gated by the same kill switch as the crash tracer: when
+// disabled, the bridge is absent and the renderer detector no-ops entirely.
+if (process.env.HUBBLE_DESKTOP_DISABLE_CRASH_TRACE !== "1") {
+	contextBridge.exposeInMainWorld("hubbleDiagnostics", {
+		reportStorm: (payload: Record<string, unknown>) =>
+			ipcRenderer.send("desktop:renderer-storm", payload),
+	});
+}

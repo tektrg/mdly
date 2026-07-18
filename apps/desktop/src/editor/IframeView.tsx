@@ -10,6 +10,7 @@ import {
 	refreshFiles,
 	touchFile,
 } from "../store/actions";
+import { flushEditorDraft } from "../store/editorDraft";
 import { cleanFileState, getBaseline, viewerStore } from "../store/state";
 import {
 	applyPatchToMarkdown,
@@ -312,6 +313,7 @@ async function applyMarkdownPatch(
 	absolutePath: string,
 	patch: HtmlAppFilePatch,
 ) {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const isCurrent = current.currentPath
 		? pathEquals(current.currentPath, absolutePath)

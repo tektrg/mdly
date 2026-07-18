@@ -2,6 +2,7 @@ import { store } from "@simplestack/store";
 import type { FileAction } from "../externalFileChange";
 import { localStoragePersist } from "../lib/localStoragePersist";
 import { type DesktopState, getInitialState, serialize } from "./persistence";
+import { recordStormEvent } from "./stormDetector";
 import { STORAGE_KEY } from "./storage";
 
 export type SortMode = "alpha" | "recent";
@@ -144,6 +145,17 @@ export const appStore = store<DesktopState>(getInitialState(), {
 export const workspaceStore = appStore.select("workspace");
 export const viewerStore = appStore.select("document");
 export const uiStore = appStore.select("ui");
+
+// Diagnostic instrumentation for the background OOM crash: every write into the
+// file-list store is the loop's "notify" edge, so counting them here (with the
+// caller's stack on a storm) names the runtime trigger a heap snapshot cannot.
+// See stormDetector.ts. The wrapper is a no-op unless the diagnostics bridge is
+// present, and delegates to the original `set` (bound to preserve `this`).
+const rawWorkspaceSet = workspaceStore.set.bind(workspaceStore);
+workspaceStore.set = ((...args: Parameters<typeof rawWorkspaceSet>) => {
+	recordStormEvent("workspaceStore.set");
+	return rawWorkspaceSet(...args);
+}) as typeof workspaceStore.set;
 
 export const workspacePathStore = workspaceStore.select("workspacePath");
 export const recentWorkspacesStore = workspaceStore.select("recentWorkspaces");

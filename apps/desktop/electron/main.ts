@@ -18,7 +18,6 @@ import {
 	session,
 	shell,
 } from "electron";
-import electronUpdater from "electron-updater";
 import ignore from "ignore";
 import { z } from "zod/v4";
 import type {
@@ -32,6 +31,7 @@ import {
 	withMarkdownExtension,
 } from "../src/lib/filePath";
 import { collectDocumentFiles } from "./fileDiscovery";
+import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import { applyGitStatusToListing } from "./gitStatus";
 import {
 	getNotionConnectionStatus,
@@ -88,7 +88,18 @@ type WindowBounds = {
 };
 
 const isDev = !app.isPackaged || process.env.HUBBLE_DESKTOP_FORCE_DEV === "1";
-const { autoUpdater } = electronUpdater;
+
+// electron-updater is loaded lazily instead of imported at module load. Auto
+// updates are disabled (supportsAutoUpdates === false), so this dependency is
+// never needed at runtime and is intentionally NOT bundled into the packaged
+// app (see electron.vite.config.ts). Every caller sits behind the
+// supportsAutoUpdates guard, so a packaged build never reaches this import.
+async function loadAutoUpdater(): Promise<
+	import("electron-updater").AppUpdater
+> {
+	const electronUpdater = (await import("electron-updater")).default;
+	return electronUpdater.autoUpdater;
+}
 const devAppName = isDev ? process.env.HUBBLE_DESKTOP_DEV_APP_NAME : undefined;
 const appName = devAppName ?? "mdly";
 const debugPort = process.env.HUBBLE_DESKTOP_DEBUG_PORT ?? "9222";
@@ -558,12 +569,41 @@ function insertBeforeCloseTag(html: string, tagName: string, content: string) {
 	return `${html.slice(0, closeIndex)}${content}${html.slice(closeIndex)}`;
 }
 
+// Alpine directives appear as HTML attributes: x-*, @event="…", or :binding="…".
+// The event/binding forms require `=` so CSS at-rules (@media, @font-face) and
+// namespaced attributes inside inline <style>/<svg> don't trigger a false match.
+const alpineDirectivePattern = /\sx-[a-z]|\s@[a-z-]+=|\s:[a-z-]+=/i;
+
+function htmlUsesAlpine(html: string): boolean {
+	return alpineDirectivePattern.test(html);
+}
+
+// The Tailwind browser compiler is only needed to compile utility classes or an
+// inline `text/tailwindcss` block. Alpine can add classes at runtime, so keep
+// the compiler whenever Alpine directives are present. Purely static HTML with
+// no classes skips both heavy runtimes.
+function htmlUsesTailwind(html: string): boolean {
+	return (
+		/type=["']text\/tailwindcss["']/i.test(html) ||
+		/\sclass(?:Name)?=/i.test(html) ||
+		htmlUsesAlpine(html)
+	);
+}
+
 function injectHtmlAppRuntime(html: string): string {
+	const wantsTailwind = htmlUsesTailwind(html);
+	const wantsAlpine = htmlUsesAlpine(html);
+	const headScriptAssets = htmlAppHeadScripts.filter(
+		(asset) => asset.name !== "tailwind-browser" || wantsTailwind,
+	);
+	const bodyScriptAssets = htmlAppBodyEndScripts.filter(
+		(asset) => asset.name !== "alpine" || wantsAlpine,
+	);
 	const headStyles = htmlAppHeadStyles.map(styleTag).join("\n");
-	const headScripts = htmlAppHeadScripts.map(scriptTag).join("\n");
-	const bodyEndScripts = htmlAppBodyEndScripts.map(scriptTag).join("\n");
+	const headScripts = headScriptAssets.map(scriptTag).join("\n");
+	const bodyEndScripts = bodyScriptAssets.map(scriptTag).join("\n");
 	const headInjection = `\n${headStyles}\n${headScripts}\n`;
-	const bodyEndInjection = `\n${bodyEndScripts}\n`;
+	const bodyEndInjection = bodyEndScripts ? `\n${bodyEndScripts}\n` : "";
 	const withHead =
 		html.search(/<\/head\s*>/i) === -1
 			? `${headInjection}${html}`
@@ -738,6 +778,7 @@ async function checkForUpdates() {
 		message: null,
 	});
 	try {
+		const autoUpdater = await loadAutoUpdater();
 		await autoUpdater.checkForUpdates();
 	} catch (error) {
 		patchUpdateState({
@@ -748,8 +789,9 @@ async function checkForUpdates() {
 	}
 }
 
-function configureAutoUpdates() {
+async function configureAutoUpdates() {
 	if (!supportsAutoUpdates) return;
+	const autoUpdater = await loadAutoUpdater();
 	if (updateFeedUrl) {
 		autoUpdater.setFeedURL({
 			provider: "generic",
@@ -934,6 +976,9 @@ async function createWindow() {
 		},
 	});
 	mainWindow = window;
+	// Trace memory/crash telemetry to userData/logs so a background OOM leaves
+	// a diagnosable record on disk (see crashTrace.ts).
+	startCrashTrace(window);
 	if (windowState.isFullScreen) {
 		window.setFullScreen(true);
 	} else if (windowState.isMaximized) {
@@ -956,8 +1001,31 @@ async function createWindow() {
 			});
 		},
 	);
+	// Recover from renderer crashes (e.g. V8 SIGTRAP) by reloading instead of
+	// leaving a permanently blank window. Back off if the renderer crash-loops.
+	let consecutiveRendererCrashes = 0;
+	let lastRendererCrashAt = 0;
+	const rendererCrashWindowMs = 5000;
+	const maxConsecutiveRendererCrashes = 3;
 	window.webContents.on("render-process-gone", (_event, details) => {
 		console.error("Renderer process gone", details);
+		if (details.reason === "clean-exit" || window.isDestroyed()) return;
+		const now = Date.now();
+		consecutiveRendererCrashes =
+			now - lastRendererCrashAt < rendererCrashWindowMs
+				? consecutiveRendererCrashes + 1
+				: 1;
+		lastRendererCrashAt = now;
+		if (consecutiveRendererCrashes > maxConsecutiveRendererCrashes) {
+			console.error("Renderer crashed repeatedly; leaving window as-is", {
+				consecutiveRendererCrashes,
+			});
+			return;
+		}
+		console.error("Reloading renderer after crash", {
+			attempt: consecutiveRendererCrashes,
+		});
+		window.webContents.reload();
 	});
 	window.webContents.on("unresponsive", () => {
 		console.error("Renderer became unresponsive");
@@ -1003,6 +1071,19 @@ async function createWindow() {
 }
 
 function registerIpc() {
+	// Diagnostic-only: renderer storm detector forwards abnormal file-list
+	// store-write bursts (with the offending stack) into the crash-trace log.
+	// Fire-and-forget so it never blocks the renderer mid-storm; recording
+	// respects the crash-trace kill switch inside recordCrashTraceEvent.
+	ipcMain.on("desktop:renderer-storm", (_event, payload: unknown) => {
+		recordCrashTraceEvent(
+			"renderer-storm",
+			payload && typeof payload === "object"
+				? (payload as Record<string, unknown>)
+				: { payload },
+		);
+	});
+
 	ipcMain.handle(
 		"desktop:list-directory",
 		async (
@@ -1394,10 +1475,11 @@ function registerIpc() {
 		await checkForUpdates();
 	});
 
-	ipcMain.handle("desktop:install-update", () => {
+	ipcMain.handle("desktop:install-update", async () => {
 		if (updateState.status !== "ready") {
 			throw new Error("No downloaded update is ready to install.");
 		}
+		const autoUpdater = await loadAutoUpdater();
 		autoUpdater.quitAndInstall(false, true);
 	});
 
@@ -1457,7 +1539,7 @@ if (!singleInstanceLock) {
 		});
 		registerIpc();
 		buildMenu();
-		configureAutoUpdates();
+		void configureAutoUpdates();
 		await createWindow();
 	});
 

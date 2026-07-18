@@ -16,6 +16,7 @@ import {
 } from "@hubble.md/editor";
 import type { Editor } from "@tiptap/core";
 import { TaskItem } from "@tiptap/extension-list";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
 	EditorContent,
 	type EditorOptions,
@@ -102,6 +103,12 @@ export type EditorViewProps = {
 	onPaste?: (editor: Editor, event: ClipboardEvent) => boolean;
 	onDrop?: (editor: Editor, event: DragEvent) => boolean;
 	saveDebounceMs?: number;
+	/**
+	 * Lets the host register a synchronous "flush draft" hook. Serialization is
+	 * deferred off the keystroke path, so callers that read the last
+	 * onLocalChange value as the live draft must invoke the flush first.
+	 */
+	registerDraftFlush?: (flush: () => void) => (() => void) | void;
 	onLocalChange: (path: string, markdown: string) => void;
 	onSave: (path: string, markdown: string) => void | Promise<void>;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
@@ -109,6 +116,12 @@ export type EditorViewProps = {
 	onOpenWikiLink: (target: string) => void | Promise<void>;
 	onOpenNotionMentionLink?: (href: string) => void | Promise<void>;
 	onMessage?: (message: string, type: "success" | "error") => void;
+	/**
+	 * Called with the live editor instance once it is created (and with null on
+	 * teardown). Lets a host attach editor-level observers (e.g. diagnostics)
+	 * without EditorView needing to depend on host-specific modules.
+	 */
+	onEditorReady?: (editor: Editor | null) => void;
 };
 
 export function EditorView({
@@ -120,6 +133,7 @@ export function EditorView({
 	onPaste,
 	onDrop,
 	saveDebounceMs = DEFAULT_SAVE_DEBOUNCE_MS,
+	registerDraftFlush,
 	onLocalChange,
 	onSave,
 	onScrollContainerChange,
@@ -127,6 +141,7 @@ export function EditorView({
 	onOpenWikiLink,
 	onOpenNotionMentionLink,
 	onMessage,
+	onEditorReady,
 }: EditorViewProps) {
 	const initialFrontMatter = useMemo(
 		() => parseMarkdownFrontMatter(initialMarkdown),
@@ -145,6 +160,9 @@ export function EditorView({
 		),
 	);
 	const saveTimerRef = useRef<number | null>(null);
+	// Edits park here as an immutable ProseMirror doc reference (O(1) to hold)
+	// and only serialize to markdown when a consumer needs the text.
+	const pendingDocRef = useRef<ProseMirrorNode | null>(null);
 	const lastUserEditIntentAtRef = useRef(Number.NEGATIVE_INFINITY);
 	const editorRootRef = useRef<HTMLDivElement | null>(null);
 	const editorViewportRef = useRef<HTMLDivElement | null>(null);
@@ -160,6 +178,42 @@ export function EditorView({
 	const pathRef = useRef(path);
 	const editorRef = useRef<Editor | null>(null);
 	pathRef.current = path;
+	const onLocalChangeRef = useRef(onLocalChange);
+	onLocalChangeRef.current = onLocalChange;
+
+	// Serializes the pending doc (if any) to markdown and syncs the internal
+	// refs. Safe to call after the editor is destroyed because it works from
+	// the retained doc reference, not the editor instance. Returns the markdown,
+	// or null when there was nothing to serialize.
+	const serializePendingDraft = useCallback(() => {
+		const pendingDoc = pendingDocRef.current;
+		if (!pendingDoc) return null;
+		const doc = pendingDoc.toJSON() as JSONContent;
+		// Keep the draft pending while an image upload placeholder is in the doc;
+		// the upload completion fires another update with the final node.
+		if (hasUploadImage(doc)) return null;
+		pendingDocRef.current = null;
+		const body = tiptapDocToMarkdown(doc);
+		partsRef.current = { ...partsRef.current, body };
+		const markdown = combineMarkdownFrontMatter(
+			partsRef.current.frontMatter,
+			body,
+		);
+		latestMarkdownRef.current = markdown;
+		return markdown;
+	}, []);
+
+	const flushDraft = useCallback(() => {
+		const markdown = serializePendingDraft();
+		if (markdown !== null) onLocalChangeRef.current(pathRef.current, markdown);
+	}, [serializePendingDraft]);
+
+	useEffect(() => {
+		const unregister = registerDraftFlush?.(flushDraft);
+		return () => {
+			unregister?.();
+		};
+	}, [registerDraftFlush, flushDraft]);
 
 	const setEditorViewport = useCallback(
 		(node: HTMLDivElement | null) => {
@@ -189,17 +243,22 @@ export function EditorView({
 			window.clearTimeout(saveTimerRef.current);
 		}
 		saveTimerRef.current = window.setTimeout(() => {
+			flushDraft();
 			void onSave(savePath, latestMarkdownRef.current);
 		}, saveDebounceMs);
-	}, [onSave, saveDebounceMs]);
+	}, [flushDraft, onSave, saveDebounceMs]);
 
 	const updateFrontMatter = useCallback(
 		(
 			frontMatter: string,
-			nextState = frontMatterStateFromMarkdown(
-				combineMarkdownFrontMatter(frontMatter, partsRef.current.body),
-			),
+			nextState?: ReturnType<typeof frontMatterStateFromMarkdown>,
 		) => {
+			// Fold any pending body edits in first so the combined markdown below
+			// doesn't resurrect a stale body.
+			flushDraft();
+			nextState ??= frontMatterStateFromMarkdown(
+				combineMarkdownFrontMatter(frontMatter, partsRef.current.body),
+			);
 			partsRef.current = { ...partsRef.current, frontMatter };
 			const markdown = combineMarkdownFrontMatter(
 				frontMatter,
@@ -210,7 +269,7 @@ export function EditorView({
 			onLocalChange(pathRef.current, markdown);
 			scheduleSave();
 		},
-		[onLocalChange, scheduleSave],
+		[flushDraft, onLocalChange, scheduleSave],
 	);
 
 	const setFrontMatterSearchReveal = useCallback((active: boolean) => {
@@ -224,7 +283,12 @@ export function EditorView({
 
 	const editorExtensions = useMemo(
 		() => [
-			StarterKit.configure({ codeBlock: false, listItem: false }),
+			StarterKit.configure({
+				codeBlock: false,
+				listItem: false,
+				// Cap undo history so large docs don't retain unbounded snapshots.
+				undoRedo: { depth: 50 },
+			}),
 			HubbleCodeBlock,
 			FindReplaceExtension,
 			LinkExtension,
@@ -257,17 +321,19 @@ export function EditorView({
 		extensions: editorExtensions,
 		content: initialDoc,
 		onUpdate: ({ editor: current }) => {
-			const doc = current.getJSON() as JSONContent;
-			if (hasUploadImage(doc)) return;
-			const body = tiptapDocToMarkdown(doc);
-			partsRef.current = { ...partsRef.current, body };
-			const markdown = combineMarkdownFrontMatter(
-				partsRef.current.frontMatter,
-				body,
-			);
-			latestMarkdownRef.current = markdown;
+			// Defer O(doc) markdown serialization off the keystroke path: retain the
+			// immutable doc and let flushDraft serialize when the text is needed.
+			pendingDocRef.current = current.state.doc;
+			if (!registerDraftFlush) {
+				// Hosts without a flush hook can't commit the draft on demand, so they
+				// keep eager serialization with pre-deferral publish semantics.
+				const markdown = serializePendingDraft();
+				if (markdown === null || !hasRecentUserEditIntent()) return;
+				onLocalChangeRef.current(pathRef.current, markdown);
+				scheduleSave();
+				return;
+			}
 			if (!hasRecentUserEditIntent()) return;
-			onLocalChange(pathRef.current, markdown);
 			scheduleSave();
 		},
 		editorProps: {
@@ -289,6 +355,13 @@ export function EditorView({
 	});
 	editorRef.current = editor;
 
+	const onEditorReadyRef = useRef(onEditorReady);
+	onEditorReadyRef.current = onEditorReady;
+	useEffect(() => {
+		onEditorReadyRef.current?.(editor);
+		return () => onEditorReadyRef.current?.(null);
+	}, [editor]);
+
 	useEffect(() => {
 		if (!editor || !editorViewportEl) return;
 		const focusEditorEnd = (event: MouseEvent) => {
@@ -302,9 +375,15 @@ export function EditorView({
 
 	useEffect(() => {
 		if (!editor) return;
+		// Commit pending edits before comparing, so a deferred draft is not
+		// mistaken for external content divergence.
+		flushDraft();
 		if (initialMarkdown === latestMarkdownRef.current) {
 			return;
 		}
+		// External content wins from here on; drop any draft flushDraft retained
+		// (e.g. one held back by an in-flight image upload).
+		pendingDocRef.current = null;
 		const parsed = parseMarkdownFrontMatter(initialMarkdown);
 		const frontMatter = parsed.type === "none" ? "" : parsed.raw;
 		const body = bodyForEditor(parsed);
@@ -317,17 +396,18 @@ export function EditorView({
 				emitUpdate: false,
 			});
 		}
-	}, [editor, initialMarkdown]);
+	}, [editor, flushDraft, initialMarkdown]);
 
 	useEffect(() => {
 		return () => {
 			if (saveTimerRef.current !== null) {
 				window.clearTimeout(saveTimerRef.current);
 				saveTimerRef.current = null;
+				flushDraft();
 				void onSave(path, latestMarkdownRef.current);
 			}
 		};
-	}, [path, onSave]);
+	}, [path, onSave, flushDraft]);
 
 	useEffect(() => {
 		if (!onMessage) return;

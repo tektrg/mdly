@@ -23,6 +23,7 @@ import {
 	refreshFiles,
 	savePathContent,
 } from "./store/actions";
+import { flushEditorDraft } from "./store/editorDraft";
 import { getBaseline, viewerStore, workspaceStore } from "./store/state";
 
 export type NotionPushResult =
@@ -179,6 +180,7 @@ export function currentNotionLinkStatus() {
 }
 
 export function hasLocalChangesSinceLastNotionSync() {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const metadata = parseNotionLinkMetadata(current.content);
 	if (!metadata) return false;
@@ -191,6 +193,7 @@ export function hasLocalChangesSinceLastNotionSync() {
 export async function pushCurrentNotionPage(options?: {
 	forceRemoteOverwrite?: boolean;
 }): Promise<NotionPushResult> {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	if (!current.currentPath) return { kind: "not-linked" };
 	const metadata = parseNotionLinkMetadata(current.content);
@@ -246,6 +249,7 @@ export async function pushCurrentNotionPage(options?: {
 export async function refreshCurrentNotionPage(options?: {
 	forceLocalOverwrite?: boolean;
 }): Promise<NotionRefreshResult> {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	if (!current.currentPath) return { kind: "not-linked" };
 	const metadata = parseNotionLinkMetadata(current.content);

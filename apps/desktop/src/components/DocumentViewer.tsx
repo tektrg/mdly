@@ -5,7 +5,7 @@ import {
 	type WikiTarget,
 } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { createEmbedExtension } from "../editor/EmbedExtension";
@@ -22,6 +22,8 @@ import {
 	savePathContent,
 	updateEditorContent,
 } from "../store/actions";
+import { registerEditorDraftFlush } from "../store/editorDraft";
+import { observeEditorTransactionStorms } from "../store/editorStormDetector";
 import { workspaceStore } from "../store/state";
 import { NotionDatabaseViewer } from "./NotionDatabaseViewer";
 
@@ -182,6 +184,17 @@ function MarkdownEditor({
 		},
 		[],
 	);
+	// Diagnostic: attach the transaction-storm detector to the live editor so a
+	// background-OOM loop names its driver on disk. No-ops without the bridge.
+	const stormProbeDisposeRef = useRef<(() => void) | null>(null);
+	const handleEditorReady = useCallback<
+		NonNullable<EditorViewProps["onEditorReady"]>
+	>((editor) => {
+		stormProbeDisposeRef.current?.();
+		stormProbeDisposeRef.current = editor
+			? observeEditorTransactionStorms(editor)
+			: null;
+	}, []);
 	return (
 		<EditorView
 			path={path}
@@ -190,6 +203,7 @@ function MarkdownEditor({
 			extensions={editorExtensions}
 			onPaste={handlePaste}
 			onDrop={handleDrop}
+			registerDraftFlush={registerEditorDraftFlush}
 			onLocalChange={updateEditorContent}
 			onSave={savePathContent}
 			onScrollContainerChange={onScrollContainerChange}
@@ -197,6 +211,7 @@ function MarkdownEditor({
 			onOpenNotionMentionLink={openNotionMentionLink}
 			onOpenWikiLink={openWikiLink}
 			onMessage={showEditorMessage}
+			onEditorReady={handleEditorReady}
 		/>
 	);
 }

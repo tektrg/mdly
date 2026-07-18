@@ -51,6 +51,8 @@ import {
 	withOpenedDoc,
 	workspaceStore,
 } from "./state";
+import { flushEditorDraft } from "./editorDraft";
+import { recordStormEvent } from "./stormDetector";
 
 const REFRESH_FILES_DEBOUNCE_MS = 250;
 const missingPathErrorPattern = /\bENOENT\b|\bENOTDIR\b/;
@@ -62,6 +64,9 @@ type SidebarMoveItem =
 
 export async function refreshFiles(path = workspaceStore.get().workspacePath) {
 	if (!path) return;
+	// Diagnostic: count file scans so a storm's stack names who kicks them off
+	// (the store-write stack is post-`await`, so it cannot). See stormDetector.ts.
+	recordStormEvent("refreshFiles");
 	const listing = await desktopApi
 		.listDirectory(path, {
 			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
@@ -175,6 +180,7 @@ async function updateMovedLinks(movedFiles: MovedFile[], files: FileEntry[]) {
 	const workspacePath = workspaceStore.get().workspacePath;
 	if (!workspacePath || movedFiles.length === 0) return;
 	const movedByOldPath = indexMovedFiles(movedFiles);
+	flushEditorDraft();
 	const current = viewerStore.get();
 
 	for (const file of files.filter(
@@ -434,6 +440,7 @@ export async function savePathContent(
 	content: string,
 	options?: { force?: boolean },
 ) {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const force = options?.force === true;
 	if (current.currentPath !== path) return;
@@ -501,6 +508,7 @@ export async function savePathContent(
 }
 
 export async function renameMarkdownFile(path: string, nextName: string) {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const isCurrentFile = current.currentPath === path;
 	const { files: filesBeforeRename, workspacePath } = workspaceStore.get();
@@ -646,6 +654,7 @@ export async function moveSidebarItem(
 	if (pathEquals(sourceParent, targetFolderPath)) return;
 	if (isFolder && pathStartsWithFolder(targetFolderPath, sourcePath)) return;
 
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const currentPath = current.currentPath;
 	const currentAffected =
@@ -747,6 +756,7 @@ export async function moveMarkdownFileToFolder(
 		return false;
 	}
 
+	flushEditorDraft();
 	const current = viewerStore.get();
 	const isCurrentFile = pathEquals(current.currentPath ?? "", sourcePath);
 	const movedFiles = sameWorkspace
@@ -955,6 +965,7 @@ export function handleExternalFileChange(
 	path: string,
 	nextDiskContent: string,
 ) {
+	flushEditorDraft();
 	viewerStore.set((state) => {
 		if (state.currentPath !== path) return state;
 		const action = classifyFileChange({
@@ -978,12 +989,28 @@ export function reloadFromDiskConflict() {
 
 /** Force-writes the current editor content to disk, overwriting any external changes. */
 export async function forceKeepLocalEdits() {
+	flushEditorDraft();
 	const current = viewerStore.get();
 	if (current.currentPath === null) return;
 	await savePathContent(current.currentPath, current.content, { force: true });
 }
 
 export const loadPath = latest(async ({ isStale }, path: string) => {
+	// Persist unsaved edits of the outgoing file before switching. The editor's
+	// unmount save fires after currentPath has already moved on, so
+	// savePathContent's path guard would silently drop it.
+	flushEditorDraft();
+	const previous = viewerStore.get();
+	if (
+		previous.currentPath &&
+		previous.currentPath !== path &&
+		previous.status === "ready" &&
+		previous.externalChange.kind === "none" &&
+		previous.content !== previous.diskContent
+	) {
+		await savePathContent(previous.currentPath, previous.content);
+	}
+
 	const timer = window.setTimeout(() => {
 		if (isStale()) return;
 		viewerStore.set((state) => ({ ...state, status: "loading", error: null }));

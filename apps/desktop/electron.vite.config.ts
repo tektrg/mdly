@@ -27,18 +27,26 @@ export default defineConfig({
 	main: {
 		plugins: [
 			externalizeDepsPlugin({
-				// electron/notion.ts -> src/notion/contentHash.ts -> @hubble.md/editor
-				// -> @tiptap/pm (and its transitive prosemirror-* packages), used for
-				// main-process document parsing. These must be bundled, not
-				// externalized: electron-builder's pnpm packaging drops the nested
-				// prosemirror-* symlinks that @tiptap/pm resolves through, causing
-				// ERR_MODULE_NOT_FOUND at runtime in the packaged app.
+				// The packaged app ships ONLY out/** (see package.json build.files) —
+				// no node_modules. So every pure-JS dependency the main process uses
+				// must be BUNDLED here, not externalized, or it throws
+				// ERR_MODULE_NOT_FOUND at runtime in the packaged app (blank window).
+				// electron-builder's pnpm packaging also drops the nested symlinks
+				// (e.g. the prosemirror-* tree @tiptap/pm resolves through), so
+				// externalizing is not an option even if node_modules were shipped.
+				// Only truly runtime-provided modules stay external: `electron`
+				// itself, Node built-ins, and electron-updater (loaded lazily and
+				// never reached because auto-updates are disabled — see main.ts).
 				exclude: [
 					"@hubble.md/runtime",
 					"@tailwindcss/browser",
 					"alpinejs",
 					"@tiptap/pm",
+					"@tiptap/core",
+					"@tiptap/extension-list",
 					"@hubble.md/editor",
+					"ignore",
+					"zod",
 				],
 			}),
 			cjsOutputTypeMarker("out/main"),
