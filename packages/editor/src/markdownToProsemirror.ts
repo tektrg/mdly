@@ -550,9 +550,10 @@ function inlineToPM(children: Content[]): JSONContent[] {
 			case "html":
 				if (child.value) {
 					out.push(
-						...(notionMentionToPM(child.value) ?? [
-							{ type: "text", text: child.value },
-						]),
+						...(brHtmlToPM(child.value) ??
+							notionMentionToPM(child.value) ?? [
+								{ type: "text", text: child.value },
+							]),
 					);
 				}
 				break;
@@ -562,6 +563,12 @@ function inlineToPM(children: Content[]): JSONContent[] {
 		}
 	}
 	return out;
+}
+
+const BR_TAG_PATTERN = /^<br\s*\/?>$/i;
+
+function brHtmlToPM(raw: string): JSONContent[] | null {
+	return BR_TAG_PATTERN.test(raw.trim()) ? [{ type: "hardBreak" }] : null;
 }
 
 function notionMentionToPM(raw: string): JSONContent[] | null {

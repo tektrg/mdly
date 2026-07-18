@@ -173,6 +173,27 @@ describe("table markdown conversion", () => {
 		expect(tiptapDocToMarkdown(doc)).toBe(input);
 	});
 
+	it("round-trips <br> line breaks inside table cells", () => {
+		const input = "| Example |\n| --- |\n| line1<br>line2 |";
+		const doc = markdownToTiptapDoc(input);
+
+		const cellParagraph =
+			doc.content?.[0]?.content?.[1]?.content?.[0]?.content?.[0];
+		expect(cellParagraph?.content?.map((node) => node.type)).toEqual([
+			"text",
+			"hardBreak",
+			"text",
+		]);
+		expect(tiptapDocToMarkdown(doc)).toBe(input);
+	});
+
+	it("round-trips self-closing <br/> line breaks inside table cells", () => {
+		const input = "| Example |\n| --- |\n| line1<br/>line2 |";
+		const doc = markdownToTiptapDoc(input);
+
+		expect(tiptapDocToMarkdown(doc)).toBe("| Example |\n| --- |\n| line1<br>line2 |");
+	});
+
 	it("parses Notion HTML tables with header-row into table nodes", () => {
 		const doc = markdownToTiptapDoc(notionHtmlTable);
 		const table = doc.content?.[0];
