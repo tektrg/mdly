@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 import {
 	type WheelEvent as ReactWheelEvent,
 	useEffect,
@@ -11,7 +12,10 @@ import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
 import { Button } from "../primitives/button";
 import { Input } from "../primitives/input";
-import { findReplaceHighlightKey } from "./FindReplaceExtension";
+import {
+	type FindReplaceHighlightState,
+	findReplaceHighlightKey,
+} from "./FindReplaceExtension";
 import {
 	type FindOptions,
 	findDocumentTextMatches,
@@ -96,10 +100,25 @@ export function FindReplaceBar({
 
 	useEffect(() => {
 		if (!editor) return;
-		const updateRevision = () => setEditorRevision((revision) => revision + 1);
-		editor.on("transaction", updateRevision);
+		const refreshMatchesForTransaction = ({
+			transaction,
+		}: {
+			transaction: Transaction;
+		}) => {
+			// Body matches depend only on the document text, query, and options.
+			// A selection-only or meta-only transaction — including this bar's own
+			// highlight dispatch below — cannot change the match set, so ignore it.
+			// Bumping the revision on every transaction (not just doc changes) makes
+			// `bodyMatches` a fresh array, which re-runs the highlight effect, which
+			// dispatches another transaction, which re-enters here: an unbounded
+			// feedback loop that piles up React updates until the renderer OOMs.
+			if (findMatchesAffectedByTransaction(transaction)) {
+				setEditorRevision((revision) => revision + 1);
+			}
+		};
+		editor.on("transaction", refreshMatchesForTransaction);
 		return () => {
-			editor.off("transaction", updateRevision);
+			editor.off("transaction", refreshMatchesForTransaction);
 		};
 	}, [editor]);
 
@@ -118,13 +137,21 @@ export function FindReplaceBar({
 
 	useEffect(() => {
 		if (!editor) return;
-		const tr = editor.state.tr.setMeta(
-			findReplaceHighlightKey,
-			open && bodyMatches.length > 0
-				? { matches: bodyMatches, activeIndex: activeBodyIndex }
-				: null,
+		const nextHighlight = nextFindReplaceHighlight(
+			open,
+			bodyMatches,
+			activeBodyIndex,
 		);
-		editor.view.dispatch(tr);
+		const currentHighlight = findReplaceHighlightKey.getState(editor.state);
+		// Don't emit a transaction when nothing would change — both when there is
+		// nothing to clear (closed with no highlight) and to avoid feeding the
+		// transaction stream needlessly on unrelated re-renders.
+		if (!shouldDispatchFindReplaceHighlight(currentHighlight, nextHighlight)) {
+			return;
+		}
+		editor.view.dispatch(
+			editor.state.tr.setMeta(findReplaceHighlightKey, nextHighlight),
+		);
 	}, [activeBodyIndex, bodyMatches, editor, open]);
 
 	useEffect(() => {
@@ -335,6 +362,37 @@ export function FindReplaceBar({
 			</div>
 		</search>
 	);
+}
+
+// A transaction changes the find-match set only when it changes the document.
+// Selection-only and meta-only transactions (including the highlight dispatch)
+// leave matches untouched, so they must not trigger a match recompute.
+export function findMatchesAffectedByTransaction(transaction: {
+	docChanged: boolean;
+}): boolean {
+	return transaction.docChanged;
+}
+
+// The highlight the plugin should hold given the current bar state: the body
+// matches while the bar is open and has hits, otherwise cleared (null).
+export function nextFindReplaceHighlight(
+	open: boolean,
+	bodyMatches: TextMatch[],
+	activeBodyIndex: number,
+): FindReplaceHighlightState | null {
+	return open && bodyMatches.length > 0
+		? { matches: bodyMatches, activeIndex: activeBodyIndex }
+		: null;
+}
+
+// Only dispatch a highlight transaction when it actually changes plugin state.
+// Clearing an already-empty highlight is a no-op we must skip, so an unrelated
+// re-render never emits a transaction (which would otherwise be self-feeding).
+export function shouldDispatchFindReplaceHighlight(
+	current: FindReplaceHighlightState | null | undefined,
+	next: FindReplaceHighlightState | null,
+): boolean {
+	return !(next === null && (current === null || current === undefined));
 }
 
 export function shouldScrollActiveEditorMatch(
