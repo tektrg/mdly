@@ -31,6 +31,7 @@ import { FindReplaceExtension } from "./FindReplaceExtension";
 import { LinkClickExtension } from "./LinkClickExtension";
 import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
+import { MermaidBlockViewExtension } from "./MermaidBlockView";
 import { createNotionHtmlBlockViewExtension } from "./NotionHtmlBlockView";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { SmartLinkExtension } from "./SmartLinkExtension";
@@ -305,6 +306,7 @@ export function EditorView({
 			NotionCalloutExtension,
 			NotionEmptyBlockExtension,
 			createNotionHtmlBlockViewExtension({ onOpenExternalLink }),
+			MermaidBlockViewExtension,
 			...listExtensions,
 			...tableExtensions,
 			...extensions,

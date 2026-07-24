@@ -164,11 +164,37 @@ async function readRendererMetrics(
 	}
 }
 
-function heapSnapshotPath(): string {
+function heapSnapshotDir(): string {
 	const dir = path.join(app.getPath("userData"), "logs");
 	fsSync.mkdirSync(dir, { recursive: true });
+	return dir;
+}
+
+function heapSnapshotPath(): string {
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-	return path.join(dir, `renderer-${stamp}.heapsnapshot`);
+	return path.join(heapSnapshotDir(), `renderer-${stamp}.heapsnapshot`);
+}
+
+// Snapshots are multi-GB and only ever needed one-at-a-time (the latest crash
+// is the one worth analyzing); leftovers from prior crash/restart cycles
+// otherwise accumulate unbounded across sessions. Prune before writing a new
+// one so at most one lives on disk at a time.
+function pruneOldHeapSnapshots(): void {
+	const dir = heapSnapshotDir();
+	let entries: string[];
+	try {
+		entries = fsSync.readdirSync(dir);
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		if (!entry.endsWith(".heapsnapshot")) continue;
+		try {
+			fsSync.unlinkSync(path.join(dir, entry));
+		} catch {
+			// Best-effort — a locked/already-gone file should not block capture.
+		}
+	}
 }
 
 // One-time renderer heap snapshot via CDP. V8 streams the snapshot as many
@@ -187,6 +213,7 @@ async function captureHeapSnapshot(
 	if (!remoteDebugger.isAttached()) return;
 
 	heapSnapshotInProgress = true;
+	pruneOldHeapSnapshots();
 	const filePath = heapSnapshotPath();
 	let fileDescriptor: number | null = null;
 	let bytesWritten = 0;

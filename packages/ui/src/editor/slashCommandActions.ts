@@ -12,7 +12,12 @@ export type SlashCommandKind =
 	| "taskList"
 	| "blockquote"
 	| "divider"
+	| "mermaid"
 	| "strike";
+
+// Starter source shown when a diagram is inserted so it renders immediately;
+// the user clicks the rendered block to edit.
+const MERMAID_STARTER_SOURCE = "graph TD;\n  A[Start] --> B[End];";
 
 export type SlashToken = {
 	from: number;
@@ -79,7 +84,7 @@ export function applySlashCommand(
 	if (canConvertInPlace) {
 		const mappedBlockStart = tr.mapping.map(blockStart);
 		const mappedBlockEnd = tr.mapping.map(blockEnd);
-		if (kind === "divider") {
+		if (isLeafBlockKind(kind)) {
 			const inserted = createInsertedBlock(schema, kind);
 			if (!inserted) return;
 			tr.replaceWith(mappedBlockStart, mappedBlockEnd, inserted.content);
@@ -123,7 +128,9 @@ function createInsertedBlock(
 ): { content: Fragment; selectionOffset: number } | null {
 	const node = createEmptyBlock(schema, kind);
 	if (!node) return null;
-	if (kind === "divider") {
+	// Leaf blocks (divider, mermaid diagram) can't hold a text selection, so
+	// append a trailing paragraph and place the caret there.
+	if (isLeafBlockKind(kind)) {
 		const paragraph = schema.nodes.paragraph.create();
 		return {
 			content: Fragment.fromArray([node, paragraph]),
@@ -134,6 +141,10 @@ function createInsertedBlock(
 		content: Fragment.from(node),
 		selectionOffset: selectionOffsetInsideNode(node),
 	};
+}
+
+function isLeafBlockKind(kind: SlashCommandKind): boolean {
+	return kind === "divider" || kind === "mermaid";
 }
 
 function createEmptyBlock(
@@ -173,6 +184,11 @@ function createEmptyBlock(
 			return blockquote.create(null, paragraph.create());
 		case "divider":
 			return horizontalRule.create();
+		case "mermaid": {
+			const mermaidBlock = schema.nodes.mermaidBlock;
+			if (!mermaidBlock) return null;
+			return mermaidBlock.create({ raw: MERMAID_STARTER_SOURCE });
+		}
 		case "strike":
 			return null;
 	}

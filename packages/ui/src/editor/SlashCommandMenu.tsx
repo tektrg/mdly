@@ -14,6 +14,7 @@ import MingcuteHeading3Line from "~icons/mingcute/heading-3-line";
 import MingcuteListCheck2Line from "~icons/mingcute/list-check-2-line";
 import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
 import MingcuteListOrderedLine from "~icons/mingcute/list-ordered-line";
+import MingcuteMindMapLine from "~icons/mingcute/mind-map-line";
 import MingcuteQuoteLeftLine from "~icons/mingcute/quote-left-line";
 import MingcuteStrikethroughLine from "~icons/mingcute/strikethrough-line";
 import MingcuteTextLine from "~icons/mingcute/text-line";
@@ -95,6 +96,13 @@ const SLASH_COMMANDS: SlashCommand[] = [
 		description: "Create a quote block",
 		aliases: ["blockquote", ">"],
 		icon: MingcuteQuoteLeftLine,
+	},
+	{
+		kind: "mermaid",
+		title: "Mermaid diagram",
+		description: "Insert a diagram (flowchart, sequence…)",
+		aliases: ["mermaid", "diagram", "flowchart", "graph", "chart"],
+		icon: MingcuteMindMapLine,
 	},
 	{
 		kind: "divider",

@@ -54,6 +54,11 @@ function blockToMarkdown(node: JSONContent): string {
 			return `\`\`\`${language}\n${content}\n\`\`\``;
 		}
 
+		case "mermaidBlock": {
+			const raw = typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
+			return `\`\`\`mermaid\n${raw}\n\`\`\``;
+		}
+
 		case "horizontalRule": {
 			return "---";
 		}
@@ -354,6 +359,19 @@ function escapeWikiAlias(alias: string) {
 	return alias.split("|").join("\\|");
 }
 
+type JSONMark = NonNullable<JSONContent["marks"]>[number];
+
+function dedupeMarksByType(marks: JSONMark[]): JSONMark[] {
+	const seen = new Set<string>();
+	const result: JSONMark[] = [];
+	for (const mark of marks) {
+		if (!mark.type || seen.has(mark.type)) continue;
+		seen.add(mark.type);
+		result.push(mark);
+	}
+	return result;
+}
+
 function nodeToMarkdown(node: JSONContent): string {
 	if (!node.type) return "";
 
@@ -361,8 +379,10 @@ function nodeToMarkdown(node: JSONContent): string {
 		case "text": {
 			let text = node.text ?? "";
 
-			// Apply marks in the correct order for Markdown
-			const marks = node.marks ?? [];
+			// Apply marks in the correct order for Markdown. Dedup by type so a
+			// text node that somehow carries duplicate marks (e.g. `["bold","bold"]`)
+			// is wrapped once, never `****x****`/`******x******`.
+			const marks = dedupeMarksByType(node.marks ?? []);
 
 			for (const mark of marks) {
 				switch (mark.type) {
@@ -400,7 +420,7 @@ function nodeToTableMarkdown(node: JSONContent): string {
 
 	switch (node.type) {
 		case "text": {
-			const marks = node.marks ?? [];
+			const marks = dedupeMarksByType(node.marks ?? []);
 			if (marks.some((mark) => mark.type === "code")) {
 				return `\`${(node.text ?? "").split("|").join("\\|")}\``;
 			}

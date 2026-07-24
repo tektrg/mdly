@@ -31,6 +31,7 @@ export {
 	getCaretFormattingState,
 	MarkdownRolloverExtension,
 } from "./MarkdownRolloverExtension.js";
+export { MermaidBlockExtension } from "./MermaidBlock.js";
 export {
 	hasMarkdownExtension,
 	stripMarkdownExtension,

@@ -117,6 +117,9 @@ function blockToPM(node: Content): JSONContent[] {
 				},
 			];
 		case "code":
+			if (node.lang === "mermaid") {
+				return [{ type: "mermaidBlock", attrs: { raw: node.value ?? "" } }];
+			}
 			return [
 				{
 					type: "codeBlock",
@@ -672,8 +675,15 @@ function applyMark(
 ): JSONContent[] {
 	return nodes.map((n) => {
 		if (n.type === "text") {
+			const existing = n.marks ?? [];
+			// Skip stacking a mark type the node already carries. Nested/repeated
+			// emphasis (e.g. `****x****`) would otherwise pile up duplicate marks,
+			// which the serializer re-emits as `****x****`/`******x******`.
+			if (existing.some((mark) => mark.type === markType)) {
+				return n;
+			}
 			const marks = [
-				...(n.marks ?? []),
+				...existing,
 				attrs ? { type: markType, attrs } : { type: markType },
 			];
 			return { ...n, marks };

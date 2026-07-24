@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { MermaidBlockExtension } from "@hubble.md/editor";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
@@ -118,6 +119,21 @@ describe("slash command document actions", () => {
 		});
 	});
 
+	it("inserts a mermaid diagram with a trailing paragraph", () => {
+		const editor = createEditor(docWithParagraph("/mermaid"));
+		const token = expectSlashToken(editor);
+
+		applySlashCommand(editor, token, "mermaid");
+
+		expect(editor.getJSON()).toMatchObject({
+			type: "doc",
+			content: [
+				{ type: "mermaidBlock", attrs: { raw: expect.any(String) } },
+				{ type: "paragraph" },
+			],
+		});
+	});
+
 	it("toggles strikethrough for following typed text", () => {
 		const editor = createEditor(docWithParagraph("/strike"));
 		const token = expectSlashToken(editor);
@@ -155,6 +171,7 @@ function createEditor(content: JSONContent) {
 			BulletList,
 			OrderedList,
 			CheckedListItem,
+			MermaidBlockExtension,
 		],
 		content,
 	});

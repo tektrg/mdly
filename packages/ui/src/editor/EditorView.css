@@ -112,6 +112,12 @@
 	margin-block-start: var(--editor-section-gap);
 }
 
+/* A table is a distinct block: roomy above and below. */
+[data-hubble-editor] .ProseMirror > * + table,
+[data-hubble-editor] .ProseMirror > table + * {
+	margin-block-start: var(--editor-section-gap);
+}
+
 [data-hubble-editor] .ProseMirror h1 {
 	font-size: 1.75em;
 	font-weight: 600;
@@ -640,6 +646,58 @@
 [data-hubble-editor] .pm-notion-html-block-open svg {
 	inline-size: 1rem;
 	block-size: 1rem;
+}
+
+[data-hubble-editor] .pm-mermaid-block {
+	max-inline-size: min(100%, 900px);
+}
+
+[data-hubble-editor] .pm-mermaid-block-surface {
+	display: block;
+	inline-size: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--muted);
+	padding-block: 1rem;
+	padding-inline: 1rem;
+	text-align: center;
+	cursor: pointer;
+	transition: border-color var(--default-transition-duration) ease;
+}
+
+[data-hubble-editor] .pm-mermaid-block-surface:hover {
+	border-color: var(--ring);
+}
+
+[data-hubble-editor] .pm-mermaid-block-diagram svg {
+	max-inline-size: 100%;
+	block-size: auto;
+}
+
+[data-hubble-editor] .pm-mermaid-block-placeholder {
+	color: var(--muted-foreground);
+	font-size: 0.8125rem;
+}
+
+[data-hubble-editor] .pm-mermaid-block-error {
+	display: grid;
+	gap: 0.5rem;
+	text-align: start;
+}
+
+[data-hubble-editor] .pm-mermaid-block-error-title {
+	color: var(--destructive);
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+[data-hubble-editor] .pm-mermaid-block-source {
+	display: block;
+	white-space: pre-wrap;
+	font-family: var(--font-mono, monospace);
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
 }
 
 [data-hubble-editor] .pm-image-upload-placeholder {
