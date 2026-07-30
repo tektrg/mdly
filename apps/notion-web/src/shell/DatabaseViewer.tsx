@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { Button } from "@hubble.md/ui";
+import { useEffect, useRef, useState } from "react";
+import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
+import MingcuteSearchLine from "~icons/mingcute/search-line";
 import { queryDatabase } from "../api/client";
 import type {
 	NotionDatabaseQueryResult,
@@ -12,14 +15,23 @@ type Props = {
 		title: string;
 		url: string | null;
 	}) => void;
+	onOpenMenu: () => void;
+	onOpenSearch: () => void;
 };
 
-export function DatabaseViewer({ source, onOpenRow }: Props) {
+export function DatabaseViewer({
+	source,
+	onOpenRow,
+	onOpenMenu,
+	onOpenSearch,
+}: Props) {
 	const [state, setState] = useState<
 		| { status: "loading" }
 		| { status: "error"; message: string }
 		| { status: "ready"; data: NotionDatabaseQueryResult }
 	>({ status: "loading" });
+	const [headerHidden, setHeaderHidden] = useState(false);
+	const lastScrollTopRef = useRef(0);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -49,11 +61,53 @@ export function DatabaseViewer({ source, onOpenRow }: Props) {
 
 	return (
 		<div className="flex h-full min-w-0 flex-1 flex-col">
-			<header className="border-b border-[var(--border)] px-4 py-2.5">
-				<h2 className="truncate text-sm font-medium">{source.title}</h2>
-				<p className="text-xs opacity-50">Read-only database view</p>
-			</header>
-			<div className="min-h-0 flex-1 overflow-auto p-4">
+			<div
+				className={`shrink-0 overflow-hidden border-b border-[var(--border)] transition-[max-height] duration-200 ease-in-out md:max-h-none ${
+					headerHidden ? "max-h-0 border-b-0" : "max-h-14"
+				}`}
+			>
+				<header className="flex items-center gap-1 px-2 py-2 sm:px-4 sm:py-2.5">
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Open menu"
+						title="Open menu"
+						onClick={onOpenMenu}
+						className="size-9 shrink-0 md:hidden"
+					>
+						<MingcuteLayoutLeftLine className="size-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Search Notion"
+						title="Search Notion"
+						onClick={onOpenSearch}
+						className="size-9 shrink-0 md:hidden"
+					>
+						<MingcuteSearchLine className="size-4" />
+					</Button>
+					<div className="min-w-0 flex-1">
+						<h2 className="truncate text-sm font-medium">{source.title}</h2>
+						<p className="truncate text-xs opacity-50">
+							Read-only database view
+						</p>
+					</div>
+				</header>
+			</div>
+			<div
+				className="min-h-0 flex-1 overflow-auto p-4"
+				onScroll={(event) => {
+					const scrollTop = event.currentTarget.scrollTop;
+					const delta = scrollTop - lastScrollTopRef.current;
+					lastScrollTopRef.current = scrollTop;
+					if (scrollTop <= 0 || delta < -4) {
+						setHeaderHidden(false);
+					} else if (delta > 4) {
+						setHeaderHidden(true);
+					}
+				}}
+			>
 				{state.status === "loading" ? (
 					<p className="text-sm opacity-60">Loading rows…</p>
 				) : state.status === "error" ? (

@@ -107,12 +107,13 @@ describe("Sidebar symlink activation", () => {
 				modifiedAt: index,
 			})),
 		});
+		const treePane = container.querySelector('[data-sidebar-page="tree"]');
 
-		expect(container.textContent).toContain("note-000.md");
-		expect(container.textContent).not.toContain("note-239.md");
-		expect(container.querySelectorAll("[data-sidebar-index]").length).toBeLessThan(
-			80,
-		);
+		expect(treePane?.textContent).toContain("note-000.md");
+		expect(treePane?.textContent).not.toContain("note-239.md");
+		expect(
+			treePane?.querySelectorAll("[data-sidebar-index]").length,
+		).toBeLessThan(80);
 	});
 
 	it("does not propagate row hover as focused app state", async () => {
@@ -189,6 +190,175 @@ describe("Sidebar symlink activation", () => {
 		expect(onSelectFile).not.toHaveBeenCalled();
 	});
 
+	it("recent-files page lists files flat with no folder rows, and starts hidden", async () => {
+		await renderSidebar({
+			folders: [{ path: "/workspace/notes", modifiedAt: 1 }],
+			files: [
+				{ path: "/workspace/notes/a.md", modifiedAt: 2 },
+				{ path: "/workspace/b.md", modifiedAt: 1 },
+			],
+		});
+
+		const treePane = container.querySelector('[data-sidebar-page="tree"]');
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+		expect(treePane?.getAttribute("aria-hidden")).not.toBe("true");
+		expect(recentPane?.getAttribute("aria-hidden")).toBe("true");
+		expect(recentPane?.textContent).toContain("a.md");
+		expect(recentPane?.textContent).toContain("b.md");
+		expect(recentPane?.querySelector("[data-sidebar-chevron]")).toBeNull();
+	});
+
+	it("switches to the recent-files page via the pager dot and back via the tree dot", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/note.md", modifiedAt: 1 }],
+		});
+
+		await clickPagerDot("Recent files");
+		expect(
+			container
+				.querySelector('[data-sidebar-page="recent"]')
+				?.getAttribute("aria-hidden"),
+		).not.toBe("true");
+		expect(
+			container
+				.querySelector('[data-sidebar-page="tree"]')
+				?.getAttribute("aria-hidden"),
+		).toBe("true");
+
+		await clickPagerDot("Files");
+		expect(
+			container
+				.querySelector('[data-sidebar-page="tree"]')
+				?.getAttribute("aria-hidden"),
+		).not.toBe("true");
+	});
+
+	it("switches pages on a horizontal-dominant swipe but not on vertical scrolling", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/note.md", modifiedAt: 1 }],
+		});
+		const swipeRegion = container.querySelector("[data-sidebar-swipe-region]");
+		expect(swipeRegion).toBeTruthy();
+
+		await dispatchWheel(swipeRegion as Element, { deltaX: 0, deltaY: 300 });
+		expect(
+			container
+				.querySelector('[data-sidebar-page="recent"]')
+				?.getAttribute("aria-hidden"),
+		).toBe("true");
+
+		await dispatchWheel(swipeRegion as Element, { deltaX: 200, deltaY: 0 });
+		expect(
+			container
+				.querySelector('[data-sidebar-page="recent"]')
+				?.getAttribute("aria-hidden"),
+		).not.toBe("true");
+	});
+
+	it("caps the recent-files page to the 100 most recent files and shows a hint past that boundary", async () => {
+		await renderSidebar({
+			files: Array.from({ length: 150 }, (_, index) => ({
+				path: `/workspace/note-${index.toString().padStart(3, "0")}.md`,
+				modifiedAt: index,
+			})),
+		});
+
+		await clickPagerDot("Recent files");
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+
+		expect(recentPane?.querySelectorAll("[data-sidebar-index]").length).toBe(
+			100,
+		);
+		expect(recentPane?.textContent).toContain("note-149.md");
+		expect(recentPane?.textContent).not.toContain("note-049.md");
+		expect(recentPane?.textContent).toContain("Showing 100 most recent files");
+	});
+
+	it("hides the recent-files hint at exactly 100 files, and never shows it on the tree page", async () => {
+		await renderSidebar({
+			files: Array.from({ length: 100 }, (_, index) => ({
+				path: `/workspace/note-${index.toString().padStart(3, "0")}.md`,
+				modifiedAt: index,
+			})),
+		});
+
+		await clickPagerDot("Recent files");
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+		const treePane = container.querySelector('[data-sidebar-page="tree"]');
+
+		expect(recentPane?.textContent).not.toContain(
+			"Showing 100 most recent files",
+		);
+		expect(treePane?.textContent).not.toContain("most recent files");
+	});
+
+	it("opens a file from the recent-files page with no action-menu affordance", async () => {
+		const onSelectFile = vi.fn();
+		await renderSidebar({
+			files: [
+				{ path: "/workspace/notes/a.md", modifiedAt: 2 },
+				{ path: "/workspace/b.md", modifiedAt: 1 },
+			],
+			onSelectFile,
+		});
+
+		await clickPagerDot("Recent files");
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+		expect(recentPane?.querySelector('[aria-label^="Actions for"]')).toBeNull();
+
+		const row = Array.from(recentPane?.querySelectorAll("button") ?? []).find(
+			(candidate) => candidate.textContent?.includes("a.md"),
+		);
+		await act(async () => {
+			row?.click();
+			await Promise.resolve();
+		});
+
+		expect(onSelectFile).toHaveBeenCalledWith("/workspace/notes/a.md");
+	});
+
+	it("keeps tree scroll/expansion state after flipping to the recent-files page and back", async () => {
+		await renderSidebar({
+			folders: [{ path: "/workspace/notes", modifiedAt: 1 }],
+			files: [{ path: "/workspace/notes/a.md", modifiedAt: 1 }],
+		});
+
+		await clickRow("notes");
+		expect(container.textContent).toContain("a.md");
+
+		await clickPagerDot("Recent files");
+		await clickPagerDot("Files");
+
+		const treePane = container.querySelector('[data-sidebar-page="tree"]');
+		expect(treePane?.textContent).toContain("a.md");
+	});
+
+	function clickPagerDot(label: "Files" | "Recent files") {
+		return act(async () => {
+			container
+				.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
+				?.click();
+			await Promise.resolve();
+		});
+	}
+
+	function dispatchWheel(
+		target: Element,
+		delta: { deltaX: number; deltaY: number },
+	) {
+		return act(async () => {
+			target.dispatchEvent(
+				new WheelEvent("wheel", {
+					bubbles: true,
+					cancelable: true,
+					deltaX: delta.deltaX,
+					deltaY: delta.deltaY,
+				}),
+			);
+			await Promise.resolve();
+		});
+	}
+
 	async function renderSidebar({
 		files,
 		folders = [],
@@ -233,8 +403,8 @@ describe("Sidebar symlink activation", () => {
 	}
 
 	function rowButton(label: string) {
-		return Array.from(container.querySelectorAll("button")).find(
-			(candidate) => candidate.textContent?.includes(label),
+		return Array.from(container.querySelectorAll("button")).find((candidate) =>
+			candidate.textContent?.includes(label),
 		);
 	}
 });

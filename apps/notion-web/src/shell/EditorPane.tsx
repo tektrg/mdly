@@ -1,5 +1,8 @@
-import { EditorView } from "@hubble.md/ui";
+import { Button, EditorView } from "@hubble.md/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
+import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
+import MingcuteMore2Line from "~icons/mingcute/more-2-line";
+import MingcuteSearchLine from "~icons/mingcute/search-line";
 import { pushPage, saveDraft } from "../notion/pageSync";
 import { comparableContentHash, type Draft } from "../store/drafts";
 
@@ -11,6 +14,8 @@ type Props = {
 	onDirtyChange: (pageId: string, dirty: boolean) => void;
 	onPushed: (draft: Draft) => void;
 	onTakeRemote: () => void;
+	onOpenMenu: () => void;
+	onOpenSearch: () => void;
 };
 
 export function EditorPane({
@@ -19,6 +24,8 @@ export function EditorPane({
 	onDirtyChange,
 	onPushed,
 	onTakeRemote,
+	onOpenMenu,
+	onOpenSearch,
 }: Props) {
 	const latestMarkdownRef = useRef(draft.markdown);
 	const [dirty, setDirty] = useState(
@@ -26,6 +33,59 @@ export function EditorPane({
 	);
 	const [pushing, setPushing] = useState(false);
 	const [message, setMessage] = useState<Message>(null);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+	const menuPanelRef = useRef<HTMLDivElement | null>(null);
+	const [headerHidden, setHeaderHidden] = useState(false);
+	const lastScrollTopRef = useRef(0);
+	const contentRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!menuOpen) return;
+		const handlePointerDown = (event: PointerEvent) => {
+			const target = event.target as Node;
+			if (
+				!menuButtonRef.current?.contains(target) &&
+				!menuPanelRef.current?.contains(target)
+			) {
+				setMenuOpen(false);
+			}
+		};
+		document.addEventListener("pointerdown", handlePointerDown);
+		return () => document.removeEventListener("pointerdown", handlePointerDown);
+	}, [menuOpen]);
+
+	// The header can scroll out of view (see below); don't leave the menu
+	// floating with no visible anchor once that happens.
+	useEffect(() => {
+		if (headerHidden) setMenuOpen(false);
+	}, [headerHidden]);
+
+	useEffect(() => {
+		const contentEl = contentRef.current;
+		if (!contentEl) return;
+		// Scroll events don't bubble, but they do reach ancestors registered
+		// with `capture: true` — this fires regardless of which descendant
+		// (the editor's own internal viewport) actually scrolled.
+		const handleScroll = (event: Event) => {
+			const target = event.target;
+			if (!(target instanceof HTMLElement)) return;
+			const scrollTop = target.scrollTop;
+			const delta = scrollTop - lastScrollTopRef.current;
+			lastScrollTopRef.current = scrollTop;
+			if (scrollTop <= 0 || delta < -4) {
+				setHeaderHidden(false);
+			} else if (delta > 4) {
+				setHeaderHidden(true);
+			}
+		};
+		contentEl.addEventListener("scroll", handleScroll, {
+			capture: true,
+			passive: true,
+		});
+		return () =>
+			contentEl.removeEventListener("scroll", handleScroll, { capture: true });
+	}, []);
 
 	// Reset local view state when switching pages.
 	useEffect(() => {
@@ -87,33 +147,105 @@ export function EditorPane({
 	}, [draft.pageId, onDirtyChange, onPushed]);
 
 	return (
-		<div className="flex h-full min-w-0 flex-1 flex-col">
-			<header className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-4 py-2.5 sm:gap-3">
-				<div className="min-w-0 flex-1 basis-full sm:basis-auto">
-					<h2 className="truncate text-sm font-medium">{draft.title}</h2>
-					<p className="truncate text-xs opacity-50">
-						{dirty ? "Unsaved changes" : "Synced with Notion"}
-					</p>
-				</div>
-				{draft.url ? (
-					<a
-						href={draft.url}
-						target="_blank"
-						rel="noopener noreferrer"
-						className="rounded-md px-2 py-2 text-xs opacity-60 hover:bg-[var(--muted)] hover:opacity-100 sm:py-1"
+		<div className="relative flex h-full min-w-0 flex-1 flex-col">
+			<div
+				className={`shrink-0 overflow-hidden border-b border-[var(--border)] transition-[max-height] duration-200 ease-in-out md:max-h-none ${
+					headerHidden ? "max-h-0 border-b-0" : "max-h-14"
+				}`}
+			>
+				<header className="flex items-center gap-1 px-2 py-2 sm:gap-3 sm:px-4 sm:py-2.5">
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Open menu"
+						title="Open menu"
+						onClick={onOpenMenu}
+						className="size-9 shrink-0 md:hidden"
 					>
-						Open in Notion ↗
-					</a>
-				) : null}
-				<button
-					type="button"
-					onClick={handlePush}
-					disabled={pushing || !dirty}
-					className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] disabled:opacity-40 sm:py-1.5"
+						<MingcuteLayoutLeftLine className="size-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label="Search Notion"
+						title="Search Notion"
+						onClick={onOpenSearch}
+						className="size-9 shrink-0 md:hidden"
+					>
+						<MingcuteSearchLine className="size-4" />
+					</Button>
+
+					<div className="min-w-0 flex-1">
+						<h2 className="truncate text-sm font-medium">{draft.title}</h2>
+						<p className="truncate text-xs opacity-50">
+							{dirty ? "Unsaved changes" : "Synced with Notion"}
+						</p>
+					</div>
+
+					{draft.url ? (
+						<a
+							href={draft.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							className="hidden rounded-md px-2 py-1 text-xs opacity-60 hover:bg-[var(--muted)] hover:opacity-100 md:inline-block"
+						>
+							Open in Notion ↗
+						</a>
+					) : null}
+					<button
+						type="button"
+						onClick={handlePush}
+						disabled={pushing || !dirty}
+						className="hidden rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-40 md:block"
+					>
+						{pushing ? "Pushing…" : "Push to Notion"}
+					</button>
+
+					<Button
+						ref={menuButtonRef}
+						variant="ghost"
+						size="icon"
+						aria-label="Page actions"
+						title="Page actions"
+						onClick={() => setMenuOpen((open) => !open)}
+						className="size-9 shrink-0 md:hidden"
+					>
+						<MingcuteMore2Line className="size-4" />
+					</Button>
+				</header>
+			</div>
+
+			{/* Rendered outside the header's collapsing (overflow-hidden) wrapper
+			    above so it isn't clipped when that wrapper animates its height. */}
+			{menuOpen ? (
+				<div
+					ref={menuPanelRef}
+					className="absolute right-2 top-14 z-20 w-48 rounded-md border border-[var(--border)] bg-[var(--background)] py-1 shadow-lg md:hidden"
 				>
-					{pushing ? "Pushing…" : "Push to Notion"}
-				</button>
-			</header>
+					{draft.url ? (
+						<a
+							href={draft.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							onClick={() => setMenuOpen(false)}
+							className="block px-3 py-2 text-sm hover:bg-[var(--muted)]"
+						>
+							Open in Notion ↗
+						</a>
+					) : null}
+					<button
+						type="button"
+						onClick={() => {
+							setMenuOpen(false);
+							void handlePush();
+						}}
+						disabled={pushing || !dirty}
+						className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--muted)] disabled:opacity-40"
+					>
+						{pushing ? "Pushing…" : "Push to Notion"}
+					</button>
+				</div>
+			) : null}
 
 			{conflict ? (
 				<div className="flex items-center gap-3 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs text-amber-600 dark:text-amber-400">
@@ -141,7 +273,7 @@ export function EditorPane({
 				</div>
 			) : null}
 
-			<div className="min-h-0 flex-1 overflow-hidden">
+			<div ref={contentRef} className="min-h-0 flex-1 overflow-hidden">
 				<EditorView
 					key={draft.pageId}
 					path={draft.pageId}

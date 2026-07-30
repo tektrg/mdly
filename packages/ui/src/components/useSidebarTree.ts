@@ -374,7 +374,7 @@ function compareNodes(
 	return a.name.localeCompare(b.name);
 }
 
-function compareFiles(
+export function compareFiles(
 	a: SidebarFile,
 	b: SidebarFile,
 	sortMode: SidebarSortMode,

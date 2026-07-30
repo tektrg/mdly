@@ -259,28 +259,30 @@ export function AppShell({ session }: { session: SessionStatus }) {
 			) : null}
 
 			<main className="flex min-w-0 flex-1 flex-col">
-				<div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-1.5 md:hidden">
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label="Open menu"
-						title="Open menu"
-						onClick={() => setMobileNavOpen(true)}
-						className="size-10"
-					>
-						<MingcuteLayoutLeftLine className="size-4" />
-					</Button>
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label="Search Notion"
-						title="Search Notion"
-						onClick={() => setSearchOpen(true)}
-						className="size-10"
-					>
-						<MingcuteSearchLine className="size-4" />
-					</Button>
-				</div>
+				{selection ? null : (
+					<div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-2 md:hidden">
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Open menu"
+							title="Open menu"
+							onClick={() => setMobileNavOpen(true)}
+							className="size-9"
+						>
+							<MingcuteLayoutLeftLine className="size-4" />
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Search Notion"
+							title="Search Notion"
+							onClick={() => setSearchOpen(true)}
+							className="size-9"
+						>
+							<MingcuteSearchLine className="size-4" />
+						</Button>
+					</div>
+				)}
 				{sidebarCollapsed ? (
 					<div className="hidden items-center px-2 py-1.5 md:flex">
 						<Button
@@ -310,6 +312,8 @@ export function AppShell({ session }: { session: SessionStatus }) {
 						onDirtyChange={handleDirtyChange}
 						onPushed={handlePushed}
 						onTakeRemote={() => handleTakeRemote(selection.draft.pageId)}
+						onOpenMenu={() => setMobileNavOpen(true)}
+						onOpenSearch={() => setSearchOpen(true)}
 					/>
 				) : selection?.kind === "database" ? (
 					<DatabaseViewer
@@ -323,6 +327,8 @@ export function AppShell({ session }: { session: SessionStatus }) {
 								lastEditedTime: null,
 							})
 						}
+						onOpenMenu={() => setMobileNavOpen(true)}
+						onOpenSearch={() => setSearchOpen(true)}
 					/>
 				) : (
 					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center opacity-60">

@@ -49,7 +49,9 @@ import {
 import { shouldShowFooterDivider } from "../lib/scrollOverflow";
 import { cn } from "../lib/utils";
 import { Button } from "../primitives/button";
+import { RecentFilesList } from "./RecentFilesList";
 import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
+import { useSidebarSwipeNav } from "./useSidebarSwipeNav";
 import {
 	type SidebarFile,
 	type SidebarFolder,
@@ -58,6 +60,8 @@ import {
 	useSidebarTree,
 } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
+
+const SIDEBAR_PAGE_COUNT = 2;
 
 export type { SidebarFile, SidebarFolder, SidebarSortMode };
 
@@ -193,6 +197,28 @@ export function Sidebar({
 	>(null);
 	const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+	const [activePage, setActivePage] = useState<0 | 1>(0);
+	const recentFilesNavRef = useRef<HTMLDivElement>(null);
+	// Sidebar navigation state is ephemeral (see ADR-0008); don't carry the
+	// recent-files page over when the user opens a different workspace.
+	const [activePageStorageScope, setActivePageStorageScope] =
+		useState(storageScope);
+	if (activePageStorageScope !== storageScope) {
+		setActivePageStorageScope(storageScope);
+		setActivePage(0);
+	}
+	const switchPage = useCallback((page: number) => {
+		const nextPage = page === 0 ? 0 : 1;
+		setActivePage(nextPage);
+		requestAnimationFrame(() => {
+			(nextPage === 0 ? navRef : recentFilesNavRef).current?.focus();
+		});
+	}, []);
+	const { onWheel: onSwipePageWheel } = useSidebarSwipeNav({
+		activePage,
+		pageCount: SIDEBAR_PAGE_COUNT,
+		onPageChange: switchPage,
+	});
 	const highlightPath = pendingPath ?? currentPath;
 	const { collapseFolder, expandFolder, rows, toggleFolder } = useSidebarTree({
 		files,
@@ -875,7 +901,42 @@ export function Sidebar({
 					</Select.Root>
 				</div>
 			</div>
-			{tree}
+			<SidebarPagerDots activePage={activePage} onSelectPage={switchPage} />
+			<div
+				data-sidebar-swipe-region
+				className="relative min-h-0 flex-1 overflow-hidden"
+				onWheel={onSwipePageWheel}
+			>
+				<div
+					className="flex h-full w-[200%] transition-transform duration-200 ease-out"
+					style={{
+						transform: `translateX(${activePage === 0 ? "0%" : "-50%"})`,
+					}}
+				>
+					<div
+						data-sidebar-page="tree"
+						className="flex h-full min-h-0 w-1/2 flex-col overflow-hidden"
+						aria-hidden={activePage !== 0}
+						inert={activePage !== 0 ? true : undefined}
+					>
+						{tree}
+					</div>
+					<div
+						data-sidebar-page="recent"
+						className="flex h-full min-h-0 w-1/2 flex-col overflow-hidden"
+						aria-hidden={activePage !== 1}
+						inert={activePage !== 1 ? true : undefined}
+					>
+						<RecentFilesList
+							ref={recentFilesNavRef}
+							files={files}
+							currentPath={highlightPath}
+							getDisplayPath={getDisplayPath}
+							onSelectFile={onSelectFile}
+						/>
+					</div>
+				</div>
+			</div>
 			{footer ? (
 				<div
 					className={cn(
@@ -887,6 +948,35 @@ export function Sidebar({
 				</div>
 			) : null}
 		</SidebarFrame>
+	);
+}
+
+function SidebarPagerDots({
+	activePage,
+	onSelectPage,
+}: {
+	activePage: 0 | 1;
+	onSelectPage: (page: 0 | 1) => void;
+}) {
+	return (
+		<div className="flex shrink-0 items-center justify-center gap-1.5 py-1">
+			{([0, 1] as const).map((page) => (
+				<button
+					key={page}
+					type="button"
+					aria-pressed={activePage === page}
+					aria-label={page === 0 ? "Files" : "Recent files"}
+					title={page === 0 ? "Files" : "Recent files"}
+					className={cn(
+						"size-1.5 rounded-full transition-colors",
+						activePage === page
+							? "bg-foreground/70"
+							: "bg-muted-foreground/30 hover:bg-muted-foreground/50",
+					)}
+					onClick={() => onSelectPage(page)}
+				/>
+			))}
+		</div>
 	);
 }
 

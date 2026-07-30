@@ -31,6 +31,10 @@ type PendingSymlinkMetadata = {
 };
 
 type DiscoveryContext = {
+	/** Literal (non-realpath'd) root dir — entryPath strings are built from this, so
+	 * ignore-path checks must compare against it rather than workspaceRealPath, which
+	 * can diverge when the root itself sits behind a symlink (e.g. macOS tmp dirs). */
+	workspaceRootPath: string;
 	workspaceRealPath: string;
 	canonicalPathByRealPath: Map<string, string>;
 	visitedRealPaths: Set<string>;
@@ -49,9 +53,21 @@ const ignoredWorkspaceDirs = new Set([
 	"node_modules",
 ]);
 
-/** Covers always-ignored workspace dirs in case Git ignores do not catch them. */
-function isAlwaysIgnoredWorkspacePath(candidatePath: string): boolean {
-	return candidatePath
+/**
+ * Covers always-ignored workspace dirs in case Git ignores do not catch them.
+ * Only segments below the workspace root count — if the workspace itself is
+ * nested inside a folder like `.dev-electron`, that ancestor segment must not
+ * cause every file in the workspace to be ignored.
+ */
+function isAlwaysIgnoredWorkspacePath(
+	candidatePath: string,
+	workspaceRootPath: string,
+): boolean {
+	const relative = path.relative(workspaceRootPath, candidatePath);
+	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+		return false;
+	}
+	return relative
 		.split(/[\\/]+/)
 		.some((segment) => ignoredWorkspaceDirs.has(segment));
 }
@@ -60,8 +76,12 @@ function toIgnorePath(input: string): string {
 	return input.split(path.sep).join("/");
 }
 
-function isIgnoredByRules(candidatePath: string, rules: IgnoreRule[]) {
-	if (isAlwaysIgnoredWorkspacePath(candidatePath)) return true;
+function isIgnoredByRules(
+	candidatePath: string,
+	rules: IgnoreRule[],
+	workspaceRootPath: string,
+) {
+	if (isAlwaysIgnoredWorkspacePath(candidatePath, workspaceRootPath)) return true;
 
 	let ignored = false;
 	for (const { dir, matcher } of rules) {
@@ -180,6 +200,7 @@ async function createDiscoveryContext(
 ): Promise<DiscoveryContext> {
 	const workspaceRealPath = await fs.realpath(rootDir);
 	return {
+		workspaceRootPath: rootDir,
 		workspaceRealPath,
 		canonicalPathByRealPath: new Map(),
 		visitedRealPaths: new Set(),
@@ -221,8 +242,9 @@ export async function collectDocumentFiles(
 	for (const entry of entries) {
 		const entryPath = path.join(dir, entry.name);
 		if (includeIgnoredWorkspaceFiles) {
-			if (isAlwaysIgnoredWorkspacePath(entryPath)) continue;
-		} else if (isIgnoredByRules(entryPath, rules)) {
+			if (isAlwaysIgnoredWorkspacePath(entryPath, context.workspaceRootPath))
+				continue;
+		} else if (isIgnoredByRules(entryPath, rules, context.workspaceRootPath)) {
 			continue;
 		}
 		if (entry.isSymbolicLink()) {

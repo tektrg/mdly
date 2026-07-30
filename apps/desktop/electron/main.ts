@@ -411,9 +411,18 @@ function isWithin(rootPath: string, candidatePath: string): boolean {
 	);
 }
 
-/** Covers always-ignored workspace dirs in case Git ignores do not catch them. */
-function isIgnoredWorkspacePath(candidatePath: string): boolean {
-	return candidatePath
+/**
+ * Covers always-ignored workspace dirs in case Git ignores do not catch them.
+ * Only segments below the workspace root count — if the workspace itself is
+ * nested inside a folder like `.dev-electron`, that ancestor segment must not
+ * cause every file in the workspace to be ignored.
+ */
+function isIgnoredWorkspacePath(candidatePath: string, root: string): boolean {
+	const relative = path.relative(root, candidatePath);
+	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+		return false;
+	}
+	return relative
 		.split(/[\\/]+/)
 		.some((segment) => ignoredWorkspaceDirs.has(segment));
 }
@@ -422,8 +431,8 @@ function toIgnorePath(input: string): string {
 	return input.split(path.sep).join("/");
 }
 
-function isIgnoredByRules(candidatePath: string, rules: IgnoreRule[]) {
-	if (isIgnoredWorkspacePath(candidatePath)) return true;
+function isIgnoredByRules(candidatePath: string, rules: IgnoreRule[], root: string) {
+	if (isIgnoredWorkspacePath(candidatePath, root)) return true;
 
 	let ignored = false;
 	for (const { dir, matcher } of rules) {
@@ -911,7 +920,7 @@ async function collectWorkspaceFiles(
 	const entries = await fs.readdir(dir, { withFileTypes: true });
 	for (const entry of entries) {
 		const entryPath = path.join(dir, entry.name);
-		if (isIgnoredByRules(entryPath, rules)) continue;
+		if (isIgnoredByRules(entryPath, rules, root)) continue;
 		const relativePath = path
 			.relative(root, entryPath)
 			.split(path.sep)

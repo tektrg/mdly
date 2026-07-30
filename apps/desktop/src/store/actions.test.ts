@@ -1124,6 +1124,21 @@ describe("desktop workspace switching", () => {
 		expect(workspaceStore.get().workspacePath).toBe("/workspace");
 		expect(workspaceStore.get().recentWorkspaces[0]).toBe("/workspace");
 	});
+
+	it("still reports the workspace as opened (with an empty file list) when listing fails", async () => {
+		// A workspace switch (e.g. clicking a recent workspace) can fail server-side
+		// for reasons like a revoked grant. It must surface an error, not silently
+		// pretend the folder is empty with no explanation.
+		const api = createDesktopApi();
+		api.listDirectory.mockRejectedValue(new Error("Path is outside granted scope"));
+		const { openWorkspace, workspaceStore } = await loadStoreActions(api);
+
+		const opened = await openWorkspace("/workspace");
+
+		expect(opened).toBe(true);
+		expect(workspaceStore.get().workspacePath).toBe("/workspace");
+		expect(workspaceStore.get().files).toEqual([]);
+	});
 });
 
 describe("desktop pinned notes", () => {

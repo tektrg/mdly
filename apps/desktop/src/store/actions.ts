@@ -62,7 +62,10 @@ type SidebarMoveItem =
 	| { kind: "file"; path: string }
 	| { kind: "folder"; folderId: string };
 
-export async function refreshFiles(path = workspaceStore.get().workspacePath) {
+export async function refreshFiles(
+	path = workspaceStore.get().workspacePath,
+	options?: { notifyOnError?: boolean },
+) {
 	if (!path) return;
 	// Diagnostic: count file scans so a storm's stack names who kicks them off
 	// (the store-write stack is post-`await`, so it cannot). See stormDetector.ts.
@@ -72,10 +75,14 @@ export async function refreshFiles(path = workspaceStore.get().workspacePath) {
 			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
 			includeGitStatus: showGitStatusIndicatorsStore.get(),
 		})
-		.catch((): { files: FileEntry[]; folders: FolderEntry[] } => ({
-			files: [],
-			folders: [],
-		}));
+		.catch((err: unknown): { files: FileEntry[]; folders: FolderEntry[] } => {
+			if (options?.notifyOnError) {
+				toast.error("Failed to load workspace files", {
+					description: errorMessage(err),
+				});
+			}
+			return { files: [], folders: [] };
+		});
 
 	workspaceStore.set((state) => {
 		if (state.workspacePath !== path) return state;
@@ -312,7 +319,10 @@ export function getPendingRenameTarget(path: string) {
 export async function restorePersistedWorkspace() {
 	const workspacePath = workspaceStore.get().workspacePath;
 	if (!workspacePath) return;
-	await Promise.all([refreshFiles(workspacePath), loadPinnedNotes(workspacePath)]);
+	await Promise.all([
+		refreshFiles(workspacePath, { notifyOnError: true }),
+		loadPinnedNotes(workspacePath),
+	]);
 }
 
 export function setSortMode(mode: SortMode) {
@@ -399,7 +409,10 @@ export async function openWorkspace(path?: string): Promise<boolean> {
 		};
 	});
 	switcherOpenStore.set(false);
-	await Promise.all([refreshFiles(nextPath), loadPinnedNotes(nextPath)]);
+	await Promise.all([
+		refreshFiles(nextPath, { notifyOnError: true }),
+		loadPinnedNotes(nextPath),
+	]);
 
 	const lastFile = workspaceStore.get().lastOpenedPaths[nextPath];
 	if (lastFile) {

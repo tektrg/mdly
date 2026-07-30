@@ -10,7 +10,12 @@ html,
 body,
 #root {
 	block-size: 100%;
+	/* Mobile browsers resize the visual viewport as their chrome (URL bar,
+	   toolbars) shows/hides. `dvh` tracks that live, so app chrome stays
+	   pinned and content isn't clipped under a toolbar sized for 100%. */
+	block-size: 100dvh;
 	margin: 0;
+	overflow: hidden;
 }
 
 body {

@@ -449,7 +449,7 @@ export function EditorView({
 			onPointerDownCapture={markUserEditIntent}
 		>
 			<div
-				className="editorViewport relative min-h-0 flex-1 overflow-auto overscroll-contain"
+				className="editorViewport relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
 				ref={setEditorViewport}
 			>
 				<FilePropertiesPanel

@@ -92,6 +92,31 @@ describe("collectDocumentFiles", () => {
 		);
 	});
 
+	it("still lists files when the workspace root itself sits inside a .dev-electron folder", async () => {
+		const workspaceRoot = path.join(tmpDir, ".dev-electron", "playground");
+		await writeFile(
+			path.join(".dev-electron", "playground", "README.md"),
+			"# Playground",
+		);
+		await writeFile(
+			path.join(".dev-electron", "playground", "samples", "note.md"),
+			"# Note",
+		);
+
+		const listing: DirectoryListing = { files: [], folders: [] };
+		await collectDocumentFiles(workspaceRoot, listing, {
+			includeIgnoredWorkspaceFiles: true,
+		});
+
+		expect(
+			listing.files
+				.map((entry) =>
+					path.relative(workspaceRoot, entry.path).split(path.sep).join("/"),
+				)
+				.sort(),
+		).toEqual(["README.md", "samples/note.md"]);
+	});
+
 	it("marks document symlinks in the listing", async () => {
 		await writeFile("target.md", "# Target");
 		await fs.symlink("target.md", path.join(tmpDir, "linked.md"));

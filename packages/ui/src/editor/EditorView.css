@@ -113,9 +113,19 @@
 }
 
 /* A table is a distinct block: roomy above and below. */
-[data-hubble-editor] .ProseMirror > * + table,
-[data-hubble-editor] .ProseMirror > table + * {
+[data-hubble-editor] .ProseMirror > * + .tableWrapper,
+[data-hubble-editor] .ProseMirror > .tableWrapper + * {
 	margin-block-start: var(--editor-section-gap);
+}
+
+/* The table itself may render wider than the column (many/wide cells); this
+   wrapper is the actual scroll boundary so only the table scrolls sideways,
+   not the whole document. Plain block overflow reliably clips/scrolls here,
+   unlike setting overflow directly on the table (auto table layout can grow
+   the table past its declared width regardless of the table's own overflow). */
+[data-hubble-editor] .ProseMirror .tableWrapper {
+	max-inline-size: 100%;
+	overflow-x: auto;
 }
 
 [data-hubble-editor] .ProseMirror h1 {

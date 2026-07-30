@@ -22,7 +22,13 @@ export const TableExtension = Node.create({
 	},
 
 	renderHTML({ HTMLAttributes }) {
-		return ["table", mergeAttributes(HTMLAttributes), ["tbody", 0]];
+		// Wrapped so a table wider than the editor column scrolls on its own
+		// axis, instead of forcing the whole document to scroll sideways.
+		return [
+			"div",
+			{ class: "tableWrapper" },
+			["table", mergeAttributes(HTMLAttributes), ["tbody", 0]],
+		];
 	},
 });
 
