@@ -1,10 +1,7 @@
 import { EditorView } from "@hubble.md/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pushPage, saveDraft } from "../notion/pageSync";
-import {
-	comparableContentHash,
-	type Draft,
-} from "../store/drafts";
+import { comparableContentHash, type Draft } from "../store/drafts";
 
 type Message = { text: string; type: "success" | "error" } | null;
 
@@ -33,9 +30,7 @@ export function EditorPane({
 	// Reset local view state when switching pages.
 	useEffect(() => {
 		latestMarkdownRef.current = draft.markdown;
-		setDirty(
-			comparableContentHash(draft.markdown) !== draft.syncedContentHash,
-		);
+		setDirty(comparableContentHash(draft.markdown) !== draft.syncedContentHash);
 		setMessage(null);
 	}, [draft.pageId, draft.markdown, draft.syncedContentHash]);
 
@@ -93,8 +88,8 @@ export function EditorPane({
 
 	return (
 		<div className="flex h-full min-w-0 flex-1 flex-col">
-			<header className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-2.5">
-				<div className="min-w-0 flex-1">
+			<header className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-4 py-2.5 sm:gap-3">
+				<div className="min-w-0 flex-1 basis-full sm:basis-auto">
 					<h2 className="truncate text-sm font-medium">{draft.title}</h2>
 					<p className="truncate text-xs opacity-50">
 						{dirty ? "Unsaved changes" : "Synced with Notion"}
@@ -105,7 +100,7 @@ export function EditorPane({
 						href={draft.url}
 						target="_blank"
 						rel="noopener noreferrer"
-						className="rounded-md px-2 py-1 text-xs opacity-60 hover:bg-[var(--muted)] hover:opacity-100"
+						className="rounded-md px-2 py-2 text-xs opacity-60 hover:bg-[var(--muted)] hover:opacity-100 sm:py-1"
 					>
 						Open in Notion ↗
 					</a>
@@ -114,7 +109,7 @@ export function EditorPane({
 					type="button"
 					onClick={handlePush}
 					disabled={pushing || !dirty}
-					className="rounded-md bg-[var(--foreground)] px-3 py-1.5 text-xs font-medium text-[var(--background)] disabled:opacity-40"
+					className="rounded-md bg-[var(--foreground)] px-3 py-2 text-xs font-medium text-[var(--background)] disabled:opacity-40 sm:py-1.5"
 				>
 					{pushing ? "Pushing…" : "Push to Notion"}
 				</button>

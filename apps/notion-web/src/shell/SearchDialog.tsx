@@ -53,24 +53,34 @@ export function SearchDialog({ onSelect, onClose }: Props) {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]"
+			className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/40 sm:items-start sm:p-4 sm:pt-[12vh]"
 			onClick={onClose}
 			onKeyDown={(event) => {
 				if (event.key === "Escape") onClose();
 			}}
 		>
 			<div
-				className="w-full max-w-xl overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--background)] shadow-2xl"
+				className="flex h-full w-full flex-col overflow-hidden bg-[var(--background)] sm:h-auto sm:max-w-xl sm:rounded-xl sm:border sm:border-[var(--border)] sm:shadow-2xl"
 				onClick={(event) => event.stopPropagation()}
 			>
-				<input
-					ref={inputRef}
-					value={query}
-					onChange={(event) => setQuery(event.target.value)}
-					placeholder="Search Notion pages and databases…"
-					className="w-full border-b border-[var(--border)] bg-transparent px-4 py-3.5 text-sm outline-none"
-				/>
-				<div className="max-h-[50vh] overflow-y-auto">
+				<div className="flex items-center border-b border-[var(--border)]">
+					<input
+						ref={inputRef}
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+						placeholder="Search Notion pages and databases…"
+						className="min-w-0 flex-1 bg-transparent px-4 py-3.5 text-sm outline-none"
+					/>
+					<button
+						type="button"
+						onClick={onClose}
+						aria-label="Close search"
+						className="mr-1 shrink-0 rounded-md px-3 py-2 text-xs opacity-60 hover:bg-[var(--muted)] hover:opacity-100 sm:hidden"
+					>
+						Cancel
+					</button>
+				</div>
+				<div className="min-h-0 flex-1 overflow-y-auto sm:max-h-[50vh] sm:flex-none">
 					{loading ? (
 						<p className="px-4 py-3 text-sm opacity-60">Searching…</p>
 					) : error ? (
