@@ -2,7 +2,8 @@ import { Button } from "@hubble.md/ui";
 import { useCallback, useEffect, useState } from "react";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
-import { logout } from "../api/client";
+import { logout, queryDatabase } from "../api/client";
+import { notionObjectIdFromPath } from "../notion/notionUrl";
 import { openPage, takeRemote } from "../notion/pageSync";
 import type { NotionSearchResult, SessionStatus } from "../notion/types";
 import {
@@ -97,19 +98,104 @@ export function AppShell({ session }: { session: SessionStatus }) {
 		[refreshDrafts],
 	);
 
+	const openDatabaseResult = useCallback(
+		async (result: NotionSearchResult) => {
+			setSelection({ kind: "database", source: result });
+			await store.put({
+				kind: "database",
+				pageId: result.id,
+				title: result.title,
+				url: result.url,
+				objectType:
+					result.object === "data_source" ? "data_source" : "database",
+				markdown: "",
+				syncedBody: "",
+				syncedContentHash: "",
+				updatedAt: Date.now(),
+			});
+			await refreshDrafts();
+		},
+		[refreshDrafts],
+	);
+
+	const openLinkedNotionObject = useCallback(
+		async (id: string) => {
+			setBusy(true);
+			setError(null);
+			try {
+				const outcome = await openPage({
+					id,
+					title: "",
+					url: null,
+					lastEditedTime: null,
+				});
+				setSelection({
+					kind: "page",
+					draft: outcome.draft,
+					conflict: outcome.status === "conflict",
+				});
+				await refreshDrafts();
+				return;
+			} catch {
+				// Not a page — Notion's markdown API only serves pages, so a
+				// database id lands here too. Confirm access before switching
+				// the view, instead of showing the database viewer and having
+				// it fail a second time.
+			}
+			try {
+				await queryDatabase(id, "database");
+				await openDatabaseResult({
+					id,
+					object: "database",
+					title: "Notion database",
+					url: null,
+					lastEditedTime: null,
+				});
+			} catch {
+				// Notion returns the same "not found" error for an invalid id
+				// and for a real page/database that isn't shared with the
+				// integration — it never reveals which, so we can't say more.
+				setError(
+					"Can't open this link — it may be invalid, or the page/database hasn't been shared with mdly's Notion integration yet.",
+				);
+			} finally {
+				setBusy(false);
+			}
+		},
+		[openDatabaseResult, refreshDrafts],
+	);
+
+	useEffect(() => {
+		const id = notionObjectIdFromPath(window.location.pathname);
+		if (id) void openLinkedNotionObject(id);
+	}, [openLinkedNotionObject]);
+
 	const handleSelectResult = useCallback(
 		(result: NotionSearchResult) => {
 			setSearchOpen(false);
 			if (result.object === "page") {
 				void openPageResult(result);
 			} else {
-				setSelection({ kind: "database", source: result });
+				void openDatabaseResult(result);
 			}
 		},
-		[openPageResult],
+		[openPageResult, openDatabaseResult],
 	);
 
 	const openStoredDraft = useCallback((draft: Draft) => {
+		if (draft.kind === "database") {
+			setSelection({
+				kind: "database",
+				source: {
+					id: draft.pageId,
+					object: draft.objectType ?? "database",
+					title: draft.title,
+					url: draft.url,
+					lastEditedTime: null,
+				},
+			});
+			return;
+		}
 		setSelection({ kind: "page", draft, conflict: false });
 	}, []);
 
@@ -194,8 +280,11 @@ export function AppShell({ session }: { session: SessionStatus }) {
 					<ul>
 						{drafts.map((draft) => {
 							const active =
-								selection?.kind === "page" &&
-								selection.draft.pageId === draft.pageId;
+								draft.kind === "database"
+									? selection?.kind === "database" &&
+										selection.source.id === draft.pageId
+									: selection?.kind === "page" &&
+										selection.draft.pageId === draft.pageId;
 							return (
 								<li key={draft.pageId}>
 									<button

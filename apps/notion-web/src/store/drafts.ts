@@ -5,20 +5,24 @@ import { notionMarkdownContentHash } from "../notion/contentHash";
 import { stripNotionLinkMetadata } from "../notion/notionMarkdown";
 
 export type Draft = {
+	/** Missing on drafts persisted before this field existed — treat as "page". */
+	kind?: "page" | "database";
 	pageId: string;
 	title: string;
 	url: string | null;
-	/** Full local markdown incl. the Hubble `notion:` frontmatter block. */
+	/** Only set when kind === "database"; which Notion API shape to re-query. */
+	objectType?: "database" | "data_source";
+	/** Full local markdown incl. the Hubble `notion:` frontmatter block. Empty for databases. */
 	markdown: string;
 	/**
 	 * Remote page body (no frontmatter) captured at last fetch/push. Used as the
-	 * baseline for building a minimal targeted diff on push.
+	 * baseline for building a minimal targeted diff on push. Empty for databases.
 	 */
 	syncedBody: string;
 	/**
 	 * Content hash of the remote markdown (as fetched, incl. any Notion property
 	 * frontmatter) at last sync. Compared against the local content to detect
-	 * local edits without being fooled by rotated signed media URLs.
+	 * local edits without being fooled by rotated signed media URLs. Empty for databases.
 	 */
 	syncedContentHash: string;
 	updatedAt: number;
@@ -95,7 +99,8 @@ export function comparableContentHash(markdown: string): string {
 	return notionMarkdownContentHash(stripNotionLinkMetadata(markdown));
 }
 
-/** True when the local markdown differs from the Notion baseline. */
+/** True when the local markdown differs from the Notion baseline. Databases have no markdown to diff. */
 export function hasLocalChanges(draft: Draft): boolean {
+	if (draft.kind === "database") return false;
 	return comparableContentHash(draft.markdown) !== draft.syncedContentHash;
 }
