@@ -7,3 +7,50 @@
  * styled navigation/editor-surface components out of the box. */
 @import "tailwindcss";
 @source ".";
+
+/* Tailwind only generates a color/shadow/font utility (bg-foreground,
+ * text-muted-foreground, shadow-panel, ...) when it's registered here as a
+ * theme token. This kit reads the same semantic token names as the ADR's
+ * theming contract (docs/architecture/adr-workspace-kit-package-boundary.md)
+ * -- the actual VALUES still come from whichever theme.css a host has loaded
+ * (mdly's own apps already load @hubble.md/ui/theme.css; a future host
+ * supplies its own). Without this block, every Tailwind color/shadow utility
+ * class used anywhere in this package's source compiles to nothing --
+ * confirmed missing here (bg-foreground, bg-muted-foreground, etc. absent
+ * from dist/index.css), which is why the sidebar's page-switcher dots (and
+ * likely other elements) rendered without their intended color. */
+@theme inline {
+	--color-brand: var(--brand);
+	--color-brand-accent: var(--brand-accent);
+	--color-brand-accent-foreground: var(--brand-accent-foreground);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-selected: var(--selected);
+	--color-selected-foreground: var(--selected-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--shadow-panel: var(--panel-shadow);
+	--shadow-overlay: var(--shadow-overlay);
+	--shadow-chrome-bar: var(--shadow-chrome-bar);
+	--shadow-chrome-sidebar: var(--shadow-chrome-sidebar);
+	--shadow-chrome-section: var(--shadow-chrome-section);
+	--shadow-chrome-section-reverse: var(--shadow-chrome-section-reverse);
+	--inset-shadow-chrome: var(--chrome-inset-shadow);
+	--ease-snappy: cubic-bezier(0.2, 0, 0, 1);
+	--ease-cursor-motion: var(--cursor-motion-easing);
+	--default-transition-duration: 180ms;
+}
