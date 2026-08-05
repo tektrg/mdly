@@ -214,6 +214,35 @@ describe("table markdown conversion", () => {
 		]);
 	});
 
+	it("parses Notion HTML tables with a colgroup into table nodes", () => {
+		const notionHtmlTableWithColgroup = `<table fit-page-width="true" header-row="true" header-column="true">
+<colgroup>
+<col width="265">
+<col width="46">
+</colgroup>
+<tr>
+<td>Item</td>
+<td>Status</td>
+</tr>
+<tr>
+<td>Row 1</td>
+<td>Exists</td>
+</tr>
+</table>`;
+
+		const doc = markdownToTiptapDoc(notionHtmlTableWithColgroup);
+		const table = doc.content?.[0];
+
+		expect(table?.type).toBe("table");
+		expect(table?.content?.[0]?.content?.map((cell) => cell.type)).toEqual([
+			"tableHeader",
+			"tableHeader",
+		]);
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			["| Item | Status |", "| --- | --- |", "| Row 1 | Exists |"].join("\n"),
+		);
+	});
+
 	it("serializes supported Notion HTML tables to stable GFM markdown", () => {
 		const doc = markdownToTiptapDoc(notionHtmlTable);
 

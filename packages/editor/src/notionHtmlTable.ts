@@ -147,6 +147,10 @@ function directTableRows(table: HastElement): HastElement[] {
 			rows.push(child);
 		} else if (tagName === "thead" || tagName === "tbody") {
 			rows.push(...child.children.filter(isTableRowElement));
+		} else if (tagName === "colgroup" || tagName === "caption") {
+			// Column-width/caption metadata carries no row content — skip it
+			// rather than aborting the whole table (Notion exports always
+			// include a <colgroup>).
 		} else if (hasMeaningfulHtml(child)) {
 			return [];
 		}
