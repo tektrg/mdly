@@ -43,6 +43,15 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	/* R30: sidebar's own color family (active-row highlight, drag-preview
+	 * gradient stops, chrome sidebar surface) -- confirmed missing here, which
+	 * is why bg-sidebar/bg-sidebar-accent/etc compiled to nothing in this
+	 * package's shipped CSS even though Sidebar.tsx uses them throughout. */
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--shadow-panel: var(--panel-shadow);
 	--shadow-overlay: var(--shadow-overlay);
 	--shadow-chrome-bar: var(--shadow-chrome-bar);
@@ -53,4 +62,41 @@
 	--ease-snappy: cubic-bezier(0.2, 0, 0, 1);
 	--ease-cursor-motion: var(--cursor-motion-easing);
 	--default-transition-duration: 180ms;
+}
+
+/* Kit-owned literal fallbacks (Phase 2, docs/architecture/shared-markdown-
+ * editor-kit-plan.md) -- NOT `@theme inline`, deliberately. These 9
+ * properties have no host to fall back on today: --radius-sm/--radius-md/
+ * --shadow-lg are read by EditorView.css but were never actually defined
+ * anywhere in this repo -- they only "worked" by accident, because
+ * `@import "tailwindcss"` above silently registers its own generic
+ * `--radius-sm: .25rem` / `--radius-md: .375rem` / `--shadow-lg: ...` defaults
+ * in this exact `@layer theme` at `:root,:host`. A plain `var(--radius-md,
+ * <fallback>)` at the point of use would NEVER reach a fallback -- the
+ * property is never actually unset, Tailwind's own accidental default
+ * resolves first. Redeclaring the values here, in this package's own
+ * `@theme` block (same layer, same selector, later in source order), makes
+ * OUR chosen values win over Tailwind's generic ones, while a real host or
+ * mdly override (unlayered CSS, always outranks a `@layer` rule regardless
+ * of specificity) still always wins -- unchanged from today.
+ * --shadow-chip/--destructive-surface/--destructive-surface-foreground
+ * (new tokens, R7-R9) and --radius-row/--font-size-sidebar/--row-pad-block
+ * (sidebar-only, R31) have no competing Tailwind default to out-prioritize,
+ * but need the same treatment for the same reason: a host with neither
+ * Tailwind nor packages/ui/src/theme.css loaded must still get a real value.
+ * Values match what mdly's own apps render today (packages/ui/src/theme.css
+ * for the new tokens and the sidebar-only ones; Tailwind's real, unmodified
+ * v4 defaults for radius-sm/radius-md/shadow-lg -- not apps/desktop's
+ * intended-but-never-shipped `--radius` derived scale, which never actually
+ * reaches a real CSS read anywhere, including here). */
+@theme {
+	--radius-sm: 0.25rem;
+	--radius-md: 0.375rem;
+	--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+	--shadow-chip: 0 2px 8px rgb(15 23 42 / 0.045);
+	--destructive-surface: oklch(0.78 0.11 4);
+	--destructive-surface-foreground: oklch(0.18 0.02 4);
+	--radius-row: 0.375rem;
+	--font-size-sidebar: 0.8125rem;
+	--row-pad-block: 0.25rem;
 }

@@ -19,6 +19,7 @@ import { createLowlight } from "lowlight";
 import { useState } from "react";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
+import { usePortalContainer } from "../lib/portalContainer";
 import { Button } from "../primitives/button";
 
 const DEFAULT_TAB_SIZE = 4;
@@ -134,6 +135,7 @@ function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
 	const language =
 		typeof node.attrs.language === "string" ? node.attrs.language : "";
 	const [selectOpen, setSelectOpen] = useState(false);
+	const portalContainer = usePortalContainer();
 
 	return (
 		<NodeViewWrapper className="pm-code-block" as="div">
@@ -164,7 +166,7 @@ function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
 							{languageLabel(language) || "Plain text"}
 						</Select.Value>
 					</Select.Trigger>
-					<Select.Portal>
+					<Select.Portal container={portalContainer}>
 						<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={8}>
 							<Select.Popup className="w-40 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 								{codeBlockLanguages.map((option) => (

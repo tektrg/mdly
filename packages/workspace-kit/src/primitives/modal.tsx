@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import type { ReactNode } from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
+import { usePortalContainer } from "../lib/portalContainer";
 import { cn } from "../lib/utils";
 import { Button } from "./button";
 
@@ -21,9 +22,10 @@ function Modal({
 	className,
 	children,
 }: Props) {
+	const portalContainer = usePortalContainer();
 	return (
 		<Dialog.Root open={open} onOpenChange={onOpenChange}>
-			<Dialog.Portal>
+			<Dialog.Portal container={portalContainer}>
 				<Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] opacity-100 transition-opacity duration-200 ease-snappy data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
 				<Dialog.Popup
 					className={cn(

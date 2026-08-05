@@ -103,3 +103,10 @@ export { Button, buttonVariants } from "./primitives/button";
 export { Input } from "./primitives/input";
 export { Modal } from "./primitives/modal";
 export { Separator } from "./primitives/separator";
+
+// ---- Popup mount-target (theming contract, Phase 2) ----
+export {
+	PortalContainerProvider,
+	type PortalContainerProviderProps,
+	usePortalContainer,
+} from "./lib/portalContainer";

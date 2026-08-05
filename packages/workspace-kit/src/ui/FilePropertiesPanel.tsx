@@ -19,6 +19,7 @@ import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import MingcuteTextLine from "~icons/mingcute/text-line";
 import { cn } from "../lib/utils";
+import { usePortalContainer } from "../lib/portalContainer";
 import { Button } from "../primitives/button";
 import { Input } from "../primitives/input";
 
@@ -668,6 +669,7 @@ function PropertyTypeSelect({
 	onChange: (value: FilePropertyType) => void;
 	onDelete: () => void;
 }) {
+	const portalContainer = usePortalContainer();
 	return (
 		<Select.Root
 			value={value}
@@ -686,7 +688,7 @@ function PropertyTypeSelect({
 			>
 				<TypeIcon type={value} />
 			</Select.Trigger>
-			<Select.Portal>
+			<Select.Portal container={portalContainer}>
 				<Select.Positioner className="z-50" align="start" side="bottom" sideOffset={4}>
 					<Select.Popup className="w-36 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden">
 						{propertyTypes.map((type) => (

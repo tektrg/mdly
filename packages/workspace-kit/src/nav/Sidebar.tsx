@@ -44,6 +44,7 @@ import {
 	normalizeDisplayPath,
 	splitFileName,
 } from "../lib/filePath";
+import { usePortalContainer } from "../lib/portalContainer";
 import { shouldShowFooterDivider } from "../lib/scrollOverflow";
 import { cn } from "../lib/utils";
 import { Button } from "../primitives/button";
@@ -176,6 +177,7 @@ export function Sidebar({
 	onDeleteFolder?: (folderId: string) => void;
 	onMoveItem?: (input: SidebarMoveItemInput) => Promise<void> | void;
 }) {
+	const portalContainer = usePortalContainer();
 	const navRef = useRef<HTMLDivElement>(null);
 	const renameInputRef = useRef<HTMLInputElement | null>(null);
 	const [openActionsPath, setOpenActionsPath] = useState<string | null>(null);
@@ -872,7 +874,7 @@ export function Sidebar({
 								<MingcuteSortDescendingLine className="size-3.5" />
 							)}
 						</Select.Trigger>
-						<Select.Portal>
+						<Select.Portal container={portalContainer}>
 							<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
 								<Select.Popup className="w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 									<p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
@@ -1604,6 +1606,7 @@ function ActionsMenu({
 	onOpenChange: (open: boolean) => void;
 	children: React.ReactNode;
 }) {
+	const portalContainer = usePortalContainer();
 	return (
 		<Menu.Root open={open} onOpenChange={onOpenChange}>
 			<Menu.Trigger
@@ -1622,7 +1625,7 @@ function ActionsMenu({
 			>
 				<MingcuteMore2Line className="size-3.5" />
 			</Menu.Trigger>
-			<Menu.Portal>
+			<Menu.Portal container={portalContainer}>
 				<Menu.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
 					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						{children}
@@ -1708,7 +1711,7 @@ function FileRenameInput({
 				}}
 			/>
 			{error && (
-				<span className="absolute top-full start-0 z-20 mt-1 w-max max-w-[calc(var(--sidebar-width)-2rem)] rounded-sm bg-[oklch(0.78_0.11_4)] px-2 py-1.5 text-[11px] font-normal leading-4 text-[oklch(0.18_0.02_4)] shadow-overlay">
+				<span className="absolute top-full start-0 z-20 mt-1 w-max max-w-[calc(var(--sidebar-width)-2rem)] rounded-sm bg-[var(--destructive-surface)] px-2 py-1.5 text-[11px] font-normal leading-4 text-[var(--destructive-surface-foreground)] shadow-overlay">
 					{error}
 				</span>
 			)}

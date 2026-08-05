@@ -18,7 +18,7 @@ type PaletteState = {
 };
 
 const floatingChipClass =
-	"border border-border/50 bg-background/78 text-muted-foreground shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md";
+	"border border-border/50 bg-background/78 text-muted-foreground shadow-[var(--shadow-chip)] backdrop-blur-md";
 
 export function FormattingStatusBar({
 	editor,

@@ -20,6 +20,12 @@
 	--selected: oklch(0.9 0.02 95);
 	--selected-foreground: var(--foreground);
 	--destructive: oklch(0.577 0.245 27.325);
+	/* Sidebar rename-conflict-error tooltip surface (workspace-kit Sidebar.tsx).
+	 * Deliberately separate from --destructive-foreground (shadcn button text,
+	 * apps/desktop/src/index.css oklch(0.985 0 0)) -- different value, different
+	 * semantic role (a filled error tooltip surface, not button text). */
+	--destructive-surface: oklch(0.78 0.11 4);
+	--destructive-surface-foreground: oklch(0.18 0.02 4);
 	--border: oklch(0.9 0.004 95);
 	--input: oklch(0.91 0.004 95);
 	--ring: var(--brand-accent);
@@ -44,6 +50,10 @@
 	--shadow-chrome-section-reverse: 0 -10px 18px -20px rgb(17 24 39 / 0.45);
 	--shadow-overlay:
 		0 8px 24px rgb(17 24 39 / 0.1), 0 1px 3px rgb(17 24 39 / 0.08);
+	/* FormattingStatusBar's floating word-count chip (workspace-kit). Neither
+	 * --panel-shadow (none) nor --shadow-overlay (bigger/more diffuse, for
+	 * popovers/menus) is a safe substitute for this small chip shadow. */
+	--shadow-chip: 0 2px 8px rgb(15 23 42 / 0.045);
 	--cursor-motion-duration: 105ms;
 	--cursor-motion-easing: linear(0, 0.44 25%, 0.75 50%, 0.94 75%, 1);
 	--sidebar: oklch(0.989 0.004 95); /* faint tint vs the white editor */
@@ -84,6 +94,13 @@
 	--selected: oklch(0.37 0.012 95);
 	--selected-foreground: var(--foreground);
 	--destructive: oklch(0.704 0.191 22.216);
+	/* R33 (should): straightforward to extend since --destructive already has a
+	 * dedicated dark value above -- same direction (darker/muted surface,
+	 * light-enough foreground for contrast). Not covered per-contrast-level
+	 * (--destructive itself isn't either -- no [data-contrast] block overrides
+	 * it, so this tooltip follows the same existing precedent). */
+	--destructive-surface: oklch(0.32 0.1 20);
+	--destructive-surface-foreground: oklch(0.94 0.02 20);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 14%);
 	--ring: color-mix(in oklab, var(--brand) 68%, white);
@@ -97,6 +114,7 @@
 	--shadow-chrome-section: 0 10px 18px -20px rgb(0 0 0 / 0.7);
 	--shadow-chrome-section-reverse: 0 -10px 18px -20px rgb(0 0 0 / 0.7);
 	--shadow-overlay: 0 10px 30px rgb(0 0 0 / 0.34), 0 1px 4px rgb(0 0 0 / 0.28);
+	--shadow-chip: 0 2px 8px rgb(0 0 0 / 0.32);
 	--syntax-foreground: color-mix(in oklab, var(--foreground) 90%, transparent);
 	--syntax-muted: oklch(0.64 0.005 106);
 	--syntax-comment: oklch(0.72 0.055 150);
@@ -253,6 +271,8 @@
 	--color-selected: var(--selected);
 	--color-selected-foreground: var(--selected-foreground);
 	--color-destructive: var(--destructive);
+	--color-destructive-surface: var(--destructive-surface);
+	--color-destructive-surface-foreground: var(--destructive-surface-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
@@ -263,6 +283,7 @@
 	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 	--shadow-panel: var(--panel-shadow);
 	--shadow-overlay: var(--shadow-overlay);
+	--shadow-chip: var(--shadow-chip);
 	--shadow-chrome-bar: var(--shadow-chrome-bar);
 	--shadow-chrome-sidebar: var(--shadow-chrome-sidebar);
 	--shadow-chrome-section: var(--shadow-chrome-section);
