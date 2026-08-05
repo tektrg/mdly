@@ -1,4 +1,4 @@
-import type { LinkKind } from "@hubble.md/editor";
+import type { LinkKind } from "../engine/index.js";
 import { Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";

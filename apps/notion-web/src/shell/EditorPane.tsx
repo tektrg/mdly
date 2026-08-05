@@ -1,4 +1,4 @@
-import { Button, EditorView } from "@hubble.md/ui";
+import { Button, EditorView } from "@mdly/workspace-kit";
 import { useCallback, useEffect, useRef, useState } from "react";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";

@@ -1,5 +1,6 @@
 import { api } from "@hubble.md/sync-backend";
-import { Button, Input } from "@hubble.md/ui";
+import { Button } from "@hubble.md/ui";
+import { Input } from "@mdly/workspace-kit";
 import type { ConvexHttpClient } from "convex/browser";
 import { useState } from "react";
 import { categorizeError, describeError } from "../connection/convex-error";

@@ -12,14 +12,12 @@ import {
 import {
 	setContrastPreference,
 	setEditorFontPreference,
-	setShowGitStatusIndicators,
 	setShowIgnoredWorkspaceFiles,
 	setThemePreference,
 } from "../store/actions";
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
-	showGitStatusIndicatorsStore,
 	showIgnoredWorkspaceFilesStore,
 	themePreferenceStore,
 } from "../store/state";
@@ -260,7 +258,6 @@ export function WorkspaceSettings() {
 	const showIgnoredWorkspaceFiles = useStoreValue(
 		showIgnoredWorkspaceFilesStore,
 	);
-	const showGitStatusIndicators = useStoreValue(showGitStatusIndicatorsStore);
 
 	return (
 		<SettingsSection
@@ -281,24 +278,6 @@ export function WorkspaceSettings() {
 					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
 					onChange={(event) =>
 						setShowIgnoredWorkspaceFiles(event.currentTarget.checked)
-					}
-					type="checkbox"
-				/>
-			</label>
-			<label className="mt-2 flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
-				<span className="flex min-w-0 flex-col gap-1">
-					<span className="text-[11px] font-medium text-foreground">
-						Show git status indicators
-					</span>
-					<span className="text-[11px] leading-4 text-muted-foreground">
-						Marks changed and untracked files in Git folders.
-					</span>
-				</span>
-				<input
-					checked={showGitStatusIndicators}
-					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
-					onChange={(event) =>
-						setShowGitStatusIndicators(event.currentTarget.checked)
 					}
 					type="checkbox"
 				/>

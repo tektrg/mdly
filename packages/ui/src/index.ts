@@ -1,26 +1,8 @@
+// @hubble.md/ui is now just the outer-window-layout component plus a thin
+// re-export shim for the two primitives (Button, Modal) that mdly's
+// non-moving screens (Settings, Notion dialogs, Welcome, HTML-apps callout,
+// etc.) still consume. Everything else (editor, navigation, Input,
+// Separator) moved to @mdly/workspace-kit — see
+// docs/adr/0009-workspace-kit-package-boundary-and-theming-contract.md.
 export { AppShellFrame } from "./components/AppShellFrame";
-export {
-	Sidebar,
-	type SidebarFile,
-	type SidebarFocusedItem,
-	type SidebarFolder,
-	SidebarFrame,
-	type SidebarMoveItemInput,
-	type SidebarSortMode,
-} from "./components/Sidebar";
-export { NewNoteButton, Toolbar } from "./components/Toolbar";
-export { WorkspaceSwitcherMenu } from "./components/WorkspaceSwitcherMenu";
-export {
-	EditorView,
-	type EditorViewProps,
-	type WikiTarget,
-} from "./editor/EditorView";
-export { FormattingStatusBar } from "./editor/FormattingStatusBar";
-export { LinkCreationGhostExtension } from "./editor/LinkCreationGhostExtension";
-export { SmartLinkExtension } from "./editor/SmartLinkExtension";
-export { VirtualCursor } from "./editor/VirtualCursor";
-export type { VirtualCursorMode } from "./editor/virtualCursorMode";
-export { Button, buttonVariants } from "./primitives/button";
-export { Input } from "./primitives/input";
-export { Modal } from "./primitives/modal";
-export { Separator } from "./primitives/separator";
+export { Button, buttonVariants, Modal } from "@mdly/workspace-kit";

@@ -29,15 +29,4 @@ describe("desktop state persistence", () => {
 
 		expect(getInitialState().ui.showIgnoredWorkspaceFiles).toBe(true);
 	});
-
-	it("hydrates git status indicators as disabled unless explicitly enabled", () => {
-		vi.stubGlobal("localStorage", {
-			getItem: (key: string) =>
-				key === STORAGE_KEY
-					? JSON.stringify({ ui: { showGitStatusIndicators: true } })
-					: null,
-		});
-
-		expect(getInitialState().ui.showGitStatusIndicators).toBe(true);
-	});
 });

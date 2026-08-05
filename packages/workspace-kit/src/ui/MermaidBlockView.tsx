@@ -1,4 +1,4 @@
-import { MermaidBlockExtension } from "@hubble.md/editor";
+import { MermaidBlockExtension } from "../engine/index.js";
 import {
 	type NodeViewProps,
 	NodeViewWrapper,

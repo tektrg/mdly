@@ -1,0 +1,9 @@
+/* Self-compiled Tailwind utility layer for this package's own components
+ * (navigation has no CSS files of its own and is styled entirely with
+ * Tailwind utility classes). Unlike @hubble.md/ui, which leaves a raw
+ * `@source` directive for a consumer's own Tailwind build to process, this
+ * package wires a Tailwind compiler into its own build (see vite.config.ts)
+ * so consumers with no Tailwind toolchain of their own still get fully
+ * styled navigation/editor-surface components out of the box. */
+@import "tailwindcss";
+@source ".";

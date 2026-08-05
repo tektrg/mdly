@@ -1,9 +1,9 @@
 import { createConvexBackend } from "@hubble.md/convex-client";
-import { stripMarkdownExtension } from "@hubble.md/editor";
 import type { RemoteFile, SyncBackend } from "@hubble.md/sync";
 import { api } from "@hubble.md/sync-backend";
 import type { Doc } from "@hubble.md/sync-backend/types";
 import { ConvexHttpClient } from "convex/browser";
+import { stripMarkdownExtension } from "@mdly/workspace-kit";
 import { categorizeError, describeError } from "../connection/convex-error";
 import { ensureDeviceId } from "../connection/deviceId";
 import { latest } from "../lib/latest";

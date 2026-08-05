@@ -10,7 +10,7 @@ import {
 	type LinkKind,
 	wikiDisplayNameForTarget,
 	withMarkdownExtension,
-} from "@hubble.md/editor";
+} from "../engine/index.js";
 import type { Editor } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { keymatch } from "keymatch";

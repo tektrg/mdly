@@ -1,5 +1,3 @@
-export type GitFileStatus = "changed" | "untracked";
-
 export type FileEntry = {
 	path: string;
 	modified_at: number;
@@ -8,7 +6,6 @@ export type FileEntry = {
 	symlink_target_exists?: boolean;
 	symlink_target_in_workspace?: boolean;
 	symlink_canonical_path?: string | null;
-	git_status?: GitFileStatus;
 };
 
 export type FolderEntry = FileEntry;
@@ -20,7 +17,6 @@ export type DirectoryListing = {
 
 export type DirectoryListingOptions = {
 	includeIgnoredWorkspaceFiles?: boolean;
-	includeGitStatus?: boolean;
 };
 
 export type HtmlAppFileEntry = {

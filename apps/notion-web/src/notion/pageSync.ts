@@ -1,4 +1,4 @@
-import { parseMarkdownFrontMatter } from "@hubble.md/editor";
+import { parseMarkdownFrontMatter } from "@mdly/workspace-kit";
 import {
 	getPageMarkdown,
 	updatePageMarkdown,

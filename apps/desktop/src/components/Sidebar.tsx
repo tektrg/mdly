@@ -1,9 +1,9 @@
+import { Button } from "@hubble.md/ui";
 import {
-	Button,
 	Sidebar as SharedSidebar,
 	type SidebarFocusedItem,
 	SidebarFrame,
-} from "@hubble.md/ui";
+} from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { memo, type ReactNode, useMemo } from "react";
 import { toast } from "sonner";
@@ -56,7 +56,6 @@ function SidebarComponent({
 			symlinkTargetExists: file.symlink_target_exists,
 			symlinkTargetInWorkspace: file.symlink_target_in_workspace,
 			symlinkCanonicalPath: file.symlink_canonical_path,
-			gitStatus: file.git_status,
 		}));
 	}, [files, pinnedNotes]);
 	const sidebarFolders = useMemo(

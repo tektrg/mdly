@@ -2,7 +2,7 @@ import {
 	combineMarkdownFrontMatter,
 	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit/engine";
 
 export function normalizeNotionMarkdownForHash(markdown: string): string {
 	const parsed = parseMarkdownFrontMatter(markdown);

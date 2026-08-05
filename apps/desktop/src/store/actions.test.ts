@@ -134,13 +134,8 @@ describe("desktop sidebar discovery preferences", () => {
 
 	it("passes the ignored-files preference when refreshing files", async () => {
 		const api = createDesktopApi();
-		const {
-			appStore,
-			refreshFiles,
-			setShowGitStatusIndicators,
-			setShowIgnoredWorkspaceFiles,
-			workspaceStore,
-		} = await loadStoreActions(api);
+		const { appStore, refreshFiles, setShowIgnoredWorkspaceFiles, workspaceStore } =
+			await loadStoreActions(api);
 
 		appStore.set((current) => ({
 			...current,
@@ -153,7 +148,6 @@ describe("desktop sidebar discovery preferences", () => {
 		await refreshFiles();
 		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
 			includeIgnoredWorkspaceFiles: false,
-			includeGitStatus: false,
 		});
 
 		setShowIgnoredWorkspaceFiles(true);
@@ -161,15 +155,6 @@ describe("desktop sidebar discovery preferences", () => {
 
 		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
 			includeIgnoredWorkspaceFiles: true,
-			includeGitStatus: false,
-		});
-
-		setShowGitStatusIndicators(true);
-		await Promise.resolve();
-
-		expect(api.listDirectory).toHaveBeenLastCalledWith("/workspace", {
-			includeIgnoredWorkspaceFiles: true,
-			includeGitStatus: true,
 		});
 		expect(workspaceStore.get().workspacePath).toBe("/workspace");
 	});
@@ -195,7 +180,6 @@ describe("desktop sidebar discovery preferences", () => {
 
 		expect(api.listDirectory).toHaveBeenCalledWith("/large-workspace", {
 			includeIgnoredWorkspaceFiles: false,
-			includeGitStatus: false,
 		});
 	});
 });

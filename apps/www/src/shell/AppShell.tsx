@@ -1,6 +1,6 @@
 import { createConvexSubscriber } from "@hubble.md/convex-client";
-import { withMarkdownExtension } from "@hubble.md/editor";
 import { AppShellFrame } from "@hubble.md/ui";
+import { withMarkdownExtension } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { useEffect, useRef, useState } from "react";
 import { saveWorkspace } from "../connection/connection";

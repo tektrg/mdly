@@ -3,7 +3,7 @@ import {
 	markdownToTiptapDoc,
 	parseMarkdownFrontMatter,
 	tiptapDocToMarkdown,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { notionMarkdownContentHash } from "./notion/contentHash";
 

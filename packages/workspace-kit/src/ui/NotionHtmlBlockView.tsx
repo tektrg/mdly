@@ -1,4 +1,4 @@
-import { NotionHtmlBlockExtension } from "@hubble.md/editor";
+import { NotionHtmlBlockExtension } from "../engine/index.js";
 import {
 	type NodeViewProps,
 	NodeViewWrapper,

@@ -1,4 +1,4 @@
-import { Sidebar as SharedSidebar } from "@hubble.md/ui";
+import { Sidebar as SharedSidebar } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { useState } from "react";
 import {

@@ -44,7 +44,7 @@ export default defineConfig({
 					"@tiptap/pm",
 					"@tiptap/core",
 					"@tiptap/extension-list",
-					"@hubble.md/editor",
+					"@mdly/workspace-kit",
 					"ignore",
 					"zod",
 				],
@@ -96,10 +96,10 @@ export default defineConfig({
 			port: devPort,
 			strictPort: false,
 			watch: {
-				// The shared UI package is built by its own watcher. Watching its
-				// generated dist here causes noisy HMR reloads and can catch the
-				// package mid-rebuild.
-				ignored: ["**/packages/ui/dist/**"],
+				// The shared UI/workspace-kit packages are built by their own
+				// watchers. Watching their generated dist here causes noisy HMR
+				// reloads and can catch either package mid-rebuild.
+				ignored: ["**/packages/ui/dist/**", "**/packages/workspace-kit/dist/**"],
 			},
 		},
 		build: {

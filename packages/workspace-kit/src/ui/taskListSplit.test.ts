@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { listExtensions } from "@hubble.md/editor";
+import { listExtensions } from "../engine/index.js";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { TaskItem } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";

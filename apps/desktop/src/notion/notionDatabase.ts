@@ -1,7 +1,7 @@
 import {
 	combineMarkdownFrontMatter,
 	parseMarkdownFrontMatter,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit/engine";
 import type {
 	NotionDatabaseQueryResult,
 	NotionSearchResult,

@@ -1,4 +1,4 @@
-import { WorkspaceSwitcherMenu } from "@hubble.md/ui";
+import { WorkspaceSwitcherMenu } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import MingcuteAddLine from "~icons/mingcute/add-line";
 import { openWorkspace, setWorkspaceSwitcherOpen } from "../store/actions";

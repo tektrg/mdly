@@ -28,13 +28,11 @@ import {
 } from "react";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
-import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteEditLine from "~icons/mingcute/edit-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
-import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import MingcutePinFill from "~icons/mingcute/pin-fill";
 import MingcutePinLine from "~icons/mingcute/pin-line";
@@ -713,34 +711,21 @@ export function Sidebar({
 										>
 											{chevron}
 											{row.kind === "folder" ? (
-												<>
-													<FolderSegmentLabel
-														dropTarget={dropTarget}
-														row={row}
-														enabled={Boolean(onMoveItem)}
-													/>
-													<SymlinkIndicator
-														getDisplayPath={getDisplayPath}
-														item={row.folder}
-													/>
-												</>
+												<FolderSegmentLabel
+													dropTarget={dropTarget}
+													row={row}
+													enabled={Boolean(onMoveItem)}
+												/>
 											) : (
-												<>
-													<span
-														className={cn(
-															"min-w-0 flex-1 truncate",
-															isPinnedFile &&
-																"[direction:rtl] [text-align:left]",
-														)}
-													>
-														{row.label}
-													</span>
-													<SymlinkIndicator
-														getDisplayPath={getDisplayPath}
-														item={row.file}
-													/>
-													<GitStatusIndicator status={row.file.gitStatus} />
-												</>
+												<span
+													className={cn(
+														"min-w-0 flex-1 truncate",
+														isPinnedFile &&
+															"[direction:rtl] [text-align:left]",
+													)}
+												>
+													{row.label}
+												</span>
 											)}
 										</DroppableRowButton>
 									)}
@@ -1145,95 +1130,6 @@ function symlinkActivationTarget(
 	}
 	if (item.symlinkTarget) return { kind: "external", path: item.symlinkTarget };
 	return { kind: "self" };
-}
-
-function symlinkTooltipLabel(
-	item: SymlinkActivatable,
-	getDisplayPath: (path: string) => string,
-) {
-	if (item.symlinkTargetExists === false) return "Broken symbolic link";
-	if (item.symlinkTargetInWorkspace && item.symlinkCanonicalPath) {
-		return `Symbolic link to ${normalizeDisplayPath(
-			getDisplayPath(item.symlinkCanonicalPath),
-		)}`;
-	}
-	if (item.symlinkTargetInWorkspace) return "Symbolic link to workspace path";
-	if (item.symlinkTarget)
-		return "External symbolic link. Click to copy target path.";
-	return "Symbolic link";
-}
-
-function SymlinkIndicator({
-	getDisplayPath,
-	item,
-}: {
-	getDisplayPath: (path: string) => string;
-	item?: {
-		isSymlink?: boolean;
-		symlinkTarget?: string | null;
-		symlinkTargetExists?: boolean;
-		symlinkTargetInWorkspace?: boolean;
-		symlinkCanonicalPath?: string | null;
-	};
-}) {
-	if (!item?.isSymlink) return null;
-	const isBroken = item.symlinkTargetExists === false;
-	const title = symlinkTooltipLabel(item, getDisplayPath);
-	const Icon = isBroken ? MingcuteCloseLine : MingcuteLinkLine;
-	return (
-		<SidebarIndicatorTooltip
-			className={cn(
-				"inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70",
-				isBroken && "text-destructive/80",
-			)}
-			label={title}
-		>
-			<Icon aria-hidden="true" className="size-3" />
-		</SidebarIndicatorTooltip>
-	);
-}
-
-function GitStatusIndicator({ status }: { status?: "changed" | "untracked" }) {
-	if (!status) return null;
-	const title =
-		status === "untracked" ? "Untracked git file" : "Changed git file";
-	return (
-		<SidebarIndicatorTooltip
-			className={cn(
-				"inline-flex size-3.5 shrink-0 items-center justify-center",
-				status === "untracked"
-					? "text-sidebar-foreground/45"
-					: "text-primary/80",
-			)}
-			label={title}
-		>
-			<span
-				aria-hidden="true"
-				className={cn(
-					"block rounded-full",
-					status === "untracked"
-						? "size-1.5 border border-current"
-						: "size-1.5 bg-current",
-				)}
-			/>
-		</SidebarIndicatorTooltip>
-	);
-}
-
-function SidebarIndicatorTooltip({
-	children,
-	className,
-	label,
-}: {
-	children: ReactNode;
-	className?: string;
-	label: string;
-}) {
-	return (
-		<span aria-label={label} className={className} role="img" title={label}>
-			{children}
-		</span>
-	);
 }
 
 function FolderSegmentLabel({

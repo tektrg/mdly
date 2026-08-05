@@ -24,10 +24,15 @@ const currentPlaygroundHtmlMarkers = ["bg-card", "text-foreground"];
 const stalePlaygroundHtmlMarkers = ["./vendor/", "px-6"];
 const uiDistReadyFiles = [
 	path.resolve(appDir, "../../packages/ui/dist/index.js"),
-	path.resolve(appDir, "../../packages/ui/dist/index.css"),
+	// @hubble.md/ui no longer bundles its own CSS (AppShellFrame has none of
+	// its own; Button/Modal styling now ships from workspace-kit below) — its
+	// dist has no index.css to wait for.
 	path.resolve(appDir, "../../packages/ui/dist/theme.css"),
 	path.resolve(appDir, "../../packages/ui/dist/fonts.css"),
 	path.resolve(appDir, "../../packages/ui/dist/tailwind.css"),
+	// Navigation + editor surface now ship from workspace-kit's own build.
+	path.resolve(appDir, "../../packages/workspace-kit/dist/index.js"),
+	path.resolve(appDir, "../../packages/workspace-kit/dist/index.css"),
 ];
 const uiDistWaitIntervalMs = 100;
 const uiDistWaitTimeoutMs = 15_000;
@@ -314,7 +319,7 @@ async function waitForUiDist() {
 	}
 
 	console.warn(
-		"Timed out waiting for @hubble.md/ui dist files; starting desktop dev anyway.",
+		"Timed out waiting for @hubble.md/ui / @mdly/workspace-kit dist files; starting desktop dev anyway.",
 	);
 }
 

@@ -20,8 +20,14 @@ export default defineConfig(async () => ({
 		alias: {
 			"@": fileURLToPath(new URL("./src", import.meta.url)),
 			// Desktop Vitest can run before workspace packages have built dist files.
-			"@hubble.md/editor": fileURLToPath(
-				new URL("../../packages/editor/src/index.ts", import.meta.url),
+			// The "/engine" alias must precede the bare-package alias below —
+			// string aliases match by prefix, so the more specific entry has to
+			// come first or it would resolve through the bare entry instead.
+			"@mdly/workspace-kit/engine": fileURLToPath(
+				new URL("../../packages/workspace-kit/src/engine/index.ts", import.meta.url),
+			),
+			"@mdly/workspace-kit": fileURLToPath(
+				new URL("../../packages/workspace-kit/src/index.ts", import.meta.url),
 			),
 		},
 	},

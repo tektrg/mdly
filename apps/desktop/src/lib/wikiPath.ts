@@ -1,7 +1,7 @@
 import {
 	stripMarkdownExtension,
 	withMarkdownExtension,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit/engine";
 import type { FileEntry } from "../store/state";
 import { joinPath, relativeWorkspacePath } from "./filePath";
 

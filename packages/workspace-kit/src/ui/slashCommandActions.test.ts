@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { MermaidBlockExtension } from "@hubble.md/editor";
+import { MermaidBlockExtension } from "../engine/index.js";
 import { Editor, type JSONContent } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";

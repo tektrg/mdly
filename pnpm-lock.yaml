@@ -20,15 +20,15 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.7.5
         version: 1.7.6
-      '@hubble.md/editor':
-        specifier: workspace:*
-        version: link:../../packages/editor
       '@hubble.md/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       '@hubble.md/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@mdly/workspace-kit':
+        specifier: workspace:*
+        version: link:../../packages/workspace-kit
       '@simplestack/store':
         specifier: ^0.7.5
         version: 0.7.5(react@19.2.4)
@@ -153,12 +153,12 @@ importers:
 
   apps/notion-web:
     dependencies:
-      '@hubble.md/editor':
-        specifier: workspace:*
-        version: link:../../packages/editor
       '@hubble.md/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@mdly/workspace-kit':
+        specifier: workspace:*
+        version: link:../../packages/workspace-kit
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)
@@ -244,9 +244,6 @@ importers:
       '@hubble.md/convex-client':
         specifier: workspace:*
         version: link:../../packages/convex-client
-      '@hubble.md/editor':
-        specifier: workspace:*
-        version: link:../../packages/editor
       '@hubble.md/sync':
         specifier: workspace:*
         version: link:../../packages/sync
@@ -256,6 +253,9 @@ importers:
       '@hubble.md/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@mdly/workspace-kit':
+        specifier: workspace:*
+        version: link:../../packages/workspace-kit
       '@simplestack/store':
         specifier: ^0.7.5
         version: 0.7.5(react@19.2.4)
@@ -368,52 +368,6 @@ importers:
         specifier: ~5.8.3
         version: 5.8.3
 
-  packages/editor:
-    dependencies:
-      '@tiptap/core':
-        specifier: ^3.4.3
-        version: 3.20.0(@tiptap/pm@3.20.0)
-      '@tiptap/extension-list':
-        specifier: ^3.4.2
-        version: 3.20.0(@tiptap/core@3.20.0(@tiptap/pm@3.20.0))(@tiptap/pm@3.20.0)
-      '@tiptap/pm':
-        specifier: ^3.3.0
-        version: 3.20.0
-      hast-util-from-html:
-        specifier: ^2.0.3
-        version: 2.0.3
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1
-      remark-parse:
-        specifier: ^11.0.0
-        version: 11.0.0
-      unified:
-        specifier: ^11.0.5
-        version: 11.0.5
-      unist-util-visit:
-        specifier: ^5.0.0
-        version: 5.1.0
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
-    devDependencies:
-      '@types/hast':
-        specifier: ^3.0.4
-        version: 3.0.4
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
-      '@types/unist':
-        specifier: ^3.0.3
-        version: 3.0.3
-      typescript:
-        specifier: ~5.8.3
-        version: 5.8.3
-      vitest:
-        specifier: ^3.2.4
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.5.0)(happy-dom@20.10.3)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.13(@types/node@25.5.0)(typescript@5.8.3))(yaml@2.9.0)
-
   packages/runtime: {}
 
   packages/sync:
@@ -449,6 +403,28 @@ importers:
 
   packages/ui:
     dependencies:
+      '@mdly/workspace-kit':
+        specifier: workspace:*
+        version: link:../workspace-kit
+      react:
+        specifier: ^19.1.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.1.0
+        version: 19.2.4(react@19.2.4)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.8
+        version: 19.2.14
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+      vite:
+        specifier: ^7.0.4
+        version: 7.3.5(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.9.0)
+
+  packages/workspace-kit:
+    dependencies:
       '@base-ui/react':
         specifier: ^1.3.0
         version: 1.3.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -458,9 +434,6 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.7.5
         version: 1.7.6
-      '@hubble.md/editor':
-        specifier: workspace:*
-        version: link:../editor
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)
@@ -488,6 +461,9 @@ importers:
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      hast-util-from-html:
+        specifier: ^2.0.3
+        version: 2.0.3
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -506,9 +482,24 @@ importers:
       react-dom:
         specifier: ^19.1.0
         version: 19.2.4(react@19.2.4)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
       tailwind-merge:
         specifier: ^3.5.0
         version: 3.5.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
+      unist-util-visit:
+        specifier: ^5.0.0
+        version: 5.1.0
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -516,12 +507,27 @@ importers:
       '@iconify-json/mingcute':
         specifier: ^1.2.7
         version: 1.2.7
+      '@tailwindcss/vite':
+        specifier: ^4.1.18
+        version: 4.1.18(vite@7.3.5(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.9.0))
+      '@types/hast':
+        specifier: ^3.0.4
+        version: 3.0.4
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/react':
         specifier: ^19.1.8
         version: 19.2.14
+      '@types/unist':
+        specifier: ^3.0.3
+        version: 3.0.3
       happy-dom:
         specifier: ^20.10.3
         version: 20.10.3
+      tailwindcss:
+        specifier: ^4.1.18
+        version: 4.1.18
       typescript:
         specifier: ~5.8.3
         version: 5.8.3

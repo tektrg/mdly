@@ -6,7 +6,7 @@ import {
 	combineMarkdownFrontMatter,
 	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit";
 import type { NotionSearchResult } from "./types";
 
 type NotionLinkInput = {

@@ -3,7 +3,6 @@ import { z } from "zod/v4";
 import { fileNameFromPath, normalizeDisplayPath } from "../lib/filePath";
 
 export type SidebarSortMode = "alpha" | "recent";
-export type SidebarGitStatus = "changed" | "untracked";
 
 export type SidebarFile = {
 	path: string;
@@ -14,7 +13,6 @@ export type SidebarFile = {
 	symlinkTargetExists?: boolean;
 	symlinkTargetInWorkspace?: boolean;
 	symlinkCanonicalPath?: string | null;
-	gitStatus?: SidebarGitStatus;
 };
 
 export type SidebarFolder = {

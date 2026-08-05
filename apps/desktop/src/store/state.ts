@@ -15,7 +15,6 @@ export type FileEntry = {
 	symlink_target_exists?: boolean;
 	symlink_target_in_workspace?: boolean;
 	symlink_canonical_path?: string | null;
-	git_status?: "changed" | "untracked";
 };
 
 export type FolderEntry = FileEntry;
@@ -167,7 +166,4 @@ export const contrastPreferenceStore = uiStore.select("contrastPreference");
 export const editorFontPreferenceStore = uiStore.select("editorFontPreference");
 export const showIgnoredWorkspaceFilesStore = uiStore.select(
 	"showIgnoredWorkspaceFiles",
-);
-export const showGitStatusIndicatorsStore = uiStore.select(
-	"showGitStatusIndicators",
 );

@@ -1,4 +1,4 @@
-import { hasMarkdownExtension, withMarkdownExtension } from "@hubble.md/editor";
+import { hasMarkdownExtension, withMarkdownExtension } from "@mdly/workspace-kit";
 import type { CSSProperties } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod/v4";

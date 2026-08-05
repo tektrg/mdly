@@ -1,6 +1,7 @@
 import { api } from "@hubble.md/sync-backend";
 import type { Doc } from "@hubble.md/sync-backend/types";
-import { Modal, WorkspaceSwitcherMenu } from "@hubble.md/ui";
+import { Modal } from "@hubble.md/ui";
+import { WorkspaceSwitcherMenu } from "@mdly/workspace-kit";
 import { ConvexHttpClient } from "convex/browser";
 import { useEffect, useState } from "react";
 import { categorizeError, describeError } from "../connection/convex-error";

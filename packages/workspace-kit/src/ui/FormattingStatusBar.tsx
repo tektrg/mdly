@@ -1,4 +1,4 @@
-import { getCaretFormattingState } from "@hubble.md/editor";
+import { getCaretFormattingState } from "../engine/index.js";
 import type { Editor } from "@tiptap/core";
 import { useEffect, useState } from "react";
 import MingcuteBoldLine from "~icons/mingcute/bold-line";

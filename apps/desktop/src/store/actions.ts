@@ -42,7 +42,6 @@ import {
 	LOADING_DELAY_MS,
 	MAX_RECENT,
 	type SortMode,
-	showGitStatusIndicatorsStore,
 	showIgnoredWorkspaceFilesStore,
 	sidebarOpenStore,
 	switcherOpenStore,
@@ -73,7 +72,6 @@ export async function refreshFiles(
 	const listing = await desktopApi
 		.listDirectory(path, {
 			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
-			includeGitStatus: showGitStatusIndicatorsStore.get(),
 		})
 		.catch((err: unknown): { files: FileEntry[]; folders: FolderEntry[] } => {
 			if (options?.notifyOnError) {
@@ -355,11 +353,6 @@ export function setShowIgnoredWorkspaceFiles(
 	showIgnoredWorkspaceFiles: boolean,
 ) {
 	showIgnoredWorkspaceFilesStore.set(showIgnoredWorkspaceFiles);
-	void refreshFiles();
-}
-
-export function setShowGitStatusIndicators(showGitStatusIndicators: boolean) {
-	showGitStatusIndicatorsStore.set(showGitStatusIndicators);
 	void refreshFiles();
 }
 

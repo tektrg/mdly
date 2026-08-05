@@ -2,7 +2,7 @@ import {
 	combineMarkdownFrontMatter,
 	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit/engine";
 import type { NotionSearchResult } from "../desktopApi/types";
 import { joinPath } from "../lib/filePath";
 

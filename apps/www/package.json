@@ -21,10 +21,10 @@
 	},
 	"dependencies": {
 		"@hubble.md/convex-client": "workspace:*",
-		"@hubble.md/editor": "workspace:*",
 		"@hubble.md/sync": "workspace:*",
 		"@hubble.md/sync-backend": "workspace:*",
 		"@hubble.md/ui": "workspace:*",
+		"@mdly/workspace-kit": "workspace:*",
 		"@simplestack/store": "^0.7.5",
 		"@tiptap/core": "^3.4.3",
 		"@tiptap/extension-image": "^3.20.0",

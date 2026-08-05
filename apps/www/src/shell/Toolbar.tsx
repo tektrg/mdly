@@ -1,4 +1,4 @@
-import { NewNoteButton, Toolbar as SharedToolbar } from "@hubble.md/ui";
+import { NewNoteButton, Toolbar as SharedToolbar } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { currentPathStore } from "../store/state";
 

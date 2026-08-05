@@ -26,9 +26,9 @@
 	"dependencies": {
 		"@base-ui/react": "^1.3.0",
 		"@floating-ui/dom": "^1.7.5",
-		"@hubble.md/editor": "workspace:*",
 		"@hubble.md/runtime": "workspace:*",
 		"@hubble.md/ui": "workspace:*",
+		"@mdly/workspace-kit": "workspace:*",
 		"@simplestack/store": "^0.7.5",
 		"@tailwindcss/browser": "^4.3.1",
 		"@tiptap/core": "^3.4.3",

@@ -83,14 +83,4 @@ describe("buildFileTree", () => {
 			symlinkCanonicalPath: null,
 		});
 	});
-
-	it("preserves git status metadata on files", () => {
-		const tree = buildFileTree(
-			[{ path: "/workspace/changed.md", modifiedAt: 1, gitStatus: "changed" }],
-			[],
-			(path) => path.replace("/workspace/", ""),
-		);
-
-		expect(tree.files[0]).toMatchObject({ gitStatus: "changed" });
-	});
 });

@@ -3,7 +3,7 @@ import {
 	markdownToTiptapDoc,
 	parseMarkdownFrontMatter,
 	tiptapDocToMarkdown,
-} from "@hubble.md/editor";
+} from "@mdly/workspace-kit/engine";
 import { desktopApi } from "./desktopApi";
 import type { NotionSearchResult } from "./desktopApi/types";
 import { dirname } from "./lib/filePath";

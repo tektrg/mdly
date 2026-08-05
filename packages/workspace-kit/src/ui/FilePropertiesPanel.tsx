@@ -7,7 +7,7 @@ import {
 	parseDateInput,
 	parseMarkdownFrontMatter,
 	serializeFrontMatter,
-} from "@hubble.md/editor";
+} from "../engine/index.js";
 import { type FocusEvent, useEffect, useRef, useState } from "react";
 import MingcuteAddLine from "~icons/mingcute/add-line";
 import MingcuteCalendarLine from "~icons/mingcute/calendar-line";

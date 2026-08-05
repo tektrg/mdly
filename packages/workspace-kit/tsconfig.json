@@ -12,7 +12,8 @@
 		"outDir": "dist",
 		"rootDir": "src",
 		"isolatedModules": true,
-		"verbatimModuleSyntax": true
+		"verbatimModuleSyntax": true,
+		"jsx": "react-jsx"
 	},
 	"include": ["src"]
 }

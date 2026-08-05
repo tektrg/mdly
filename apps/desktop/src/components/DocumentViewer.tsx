@@ -1,9 +1,9 @@
-import { wikiDisplayNameForTarget } from "@hubble.md/editor";
 import {
 	EditorView,
 	type EditorViewProps,
 	type WikiTarget,
-} from "@hubble.md/ui";
+	wikiDisplayNameForTarget,
+} from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";

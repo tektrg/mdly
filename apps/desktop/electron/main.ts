@@ -32,7 +32,6 @@ import {
 } from "../src/lib/filePath";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
-import { applyGitStatusToListing } from "./gitStatus";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -1120,14 +1119,6 @@ function registerIpc() {
 					"includeIgnoredWorkspaceFiles" in options &&
 					options.includeIgnoredWorkspaceFiles === true,
 			});
-			if (
-				typeof options === "object" &&
-				options !== null &&
-				"includeGitStatus" in options &&
-				options.includeGitStatus === true
-			) {
-				await applyGitStatusToListing(root, listing);
-			}
 			return listing;
 		},
 	);

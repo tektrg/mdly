@@ -1,5 +1,8 @@
-import { wikiDisplayNameForTarget } from "@hubble.md/editor";
-import { EditorView as SharedEditorView, type WikiTarget } from "@hubble.md/ui";
+import {
+	EditorView as SharedEditorView,
+	type WikiTarget,
+	wikiDisplayNameForTarget,
+} from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import {
 	loadPath,

@@ -13,7 +13,7 @@ import {
 	StrikethroughShortcutExtension,
 	tableExtensions,
 	tiptapDocToMarkdown,
-} from "@hubble.md/editor";
+} from "../engine/index.js";
 import type { Editor } from "@tiptap/core";
 import { TaskItem } from "@tiptap/extension-list";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
