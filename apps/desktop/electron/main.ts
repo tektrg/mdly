@@ -988,6 +988,16 @@ async function createWindow() {
 	// Trace memory/crash telemetry to userData/logs so a background OOM leaves
 	// a diagnosable record on disk (see crashTrace.ts).
 	startCrashTrace(window);
+	// macOS hides Writing Tools/AutoFill/Services from Electron's context menu
+	// unless a menu is popped up with the originating frame attached.
+	if (process.platform === "darwin") {
+		const editMenu = Menu.buildFromTemplate([{ role: "editMenu" }]);
+		window.webContents.on("context-menu", (_event, params) => {
+			if (params.isEditable) {
+				editMenu.popup({ window, frame: params.frame });
+			}
+		});
+	}
 	if (windowState.isFullScreen) {
 		window.setFullScreen(true);
 	} else if (windowState.isMaximized) {
