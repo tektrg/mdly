@@ -1,0 +1,270 @@
+/*
+ * The two named palettes this demo toggles between, applied on the single
+ * wrapping element around the whole app (never at `:root` -- per the ADR's
+ * Decision 2, tokens must be scoped to the kit's own container). No Tailwind
+ * anywhere in this file or this demo's toolchain -- plain CSS custom
+ * properties only (R14/R15).
+ *
+ * `.theme-mdly` mirrors mdly's own real default (light, default-contrast)
+ * look, byte-matched against packages/ui/src/theme.css's `:root` block --
+ * this is "what mdly's own apps actually render today" (R4's requirement),
+ * NOT a demo-invented look. It deliberately OMITS 9 properties that this
+ * phase gave the kit its own literal fallback for (packages/workspace-kit/
+ * src/tailwind.css's `@theme` block): --radius-sm, --radius-md, --shadow-lg
+ * (the 3 ADR-named gap properties, R1-R6) and --shadow-chip,
+ * --destructive-surface, --destructive-surface-foreground, --radius-row,
+ * --font-size-sidebar, --row-pad-block (R7-R9, R30-R31). Leaving them unset
+ * here is deliberate: this is the ONLY place in the whole repo where those 9
+ * fallback values are ever actually load-bearing (mdly's real apps always
+ * supply a real value via packages/ui/src/theme.css, so the fallback stays
+ * inert there per R6) -- so this state is the direct proof for O2/O7/QA1-c/
+ * QA2-c.
+ *
+ * `.theme-speechtodo` is a second, invented-but-authentic palette built from
+ * SpeechToDo's real design tokens (speechtodo repo's
+ * src/apps/desktop/src/renderer/design-system/tokens.css) translated through
+ * the ADR's own collision guidance -- most notably `--accent`, which means
+ * opposite things in the two systems (mdly: muted hover surface;
+ * SpeechToDo: the butter-gold brand/action color) and must NOT be mapped
+ * 1:1. Here `--brand`/`--brand-accent` (the kit's actual action-color slot,
+ * despite the "chrome" naming in mdly's own theme.css) take SpeechToDo's
+ * gold, while `--accent` takes a muted gold-tinted hover surface instead.
+ * This palette explicitly SETS all 9 of the properties the mdly palette
+ * omits, to prove a host's own value always outranks the kit's fallback
+ * (R6) and that re-theming reaches the two former hardcoded-literal leaks
+ * and the 3 sidebar-only fallbacks too (R17/R18, QA1-c/QA2-c). A few values
+ * (syntax highlighting, --primary-foreground, --destructive-surface-
+ * foreground) have no direct SpeechToDo source-of-truth counterpart -- they
+ * are reasonable inventions built from SpeechToDo's real per-tag palette,
+ * called out here rather than presented as literal production values.
+ */
+
+.theme-mdly {
+	--brand: oklch(0.45 0.008 95);
+	--brand-accent: oklch(0.72 0.012 95);
+	--background: oklch(0.995 0.001 95);
+	--foreground: oklch(0.27 0.008 150);
+	--popover: oklch(0.998 0.001 95);
+	--popover-foreground: oklch(0.27 0.008 150);
+	--primary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.96 0.003 95);
+	--muted-foreground: oklch(0.55 0.01 95);
+	--accent: oklch(0.965 0.02 95);
+	--selected: oklch(0.9 0.02 95);
+	--destructive: oklch(0.577 0.245 27.325);
+	--border: oklch(0.9 0.004 95);
+	--ring: oklch(0.72 0.012 95);
+	--radius-inner: 0.25rem;
+	--radius-popover: 0.625rem;
+	--shadow-overlay: 0 8px 24px rgb(17 24 39 / 0.1), 0 1px 3px rgb(17 24 39 / 0.08);
+	--font-size-content: 1.0625rem;
+	--editor-font-family:
+		ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-mono: "Lilex", ui-monospace, SFMono-Regular, Menlo, monospace;
+	--syntax-foreground: var(--foreground);
+	--syntax-muted: oklch(0.62 0.006 95);
+	--syntax-comment: oklch(0.48 0.07 150);
+	--syntax-keyword: oklch(0.48 0.12 320);
+	--syntax-variable: oklch(0.43 0.06 205);
+	--syntax-string: oklch(0.48 0.14 30);
+	--syntax-link: oklch(0.46 0.16 260);
+	--syntax-number: oklch(0.42 0.15 285);
+	--syntax-meta: oklch(0.42 0.07 65);
+	--syntax-type: oklch(0.45 0.12 300);
+	--syntax-attr: oklch(0.48 0.08 85);
+	--syntax-selector: oklch(0.46 0.1 55);
+
+	/* Sidebar-family tokens (R30) -- byte-matched against packages/ui/src/
+	 * theme.css's `:root` block, same as everything else in this palette.
+	 * Fixing a validate-pass finding: without these, `bg-sidebar` /
+	 * `bg-sidebar-accent` / `border-sidebar-border` compiled to nothing in the
+	 * demo (the kit's own `@theme` fallback block only covers --radius-row/
+	 * --font-size-sidebar/--row-pad-block, never the 5 sidebar color tokens
+	 * themselves) -- the sidebar container, its selected/hovered row
+	 * highlight, and the drag-preview chip all rendered invisible. */
+	--sidebar: oklch(0.989 0.004 95);
+	--sidebar-foreground: oklch(0.27 0.008 150);
+	--sidebar-border: oklch(0.9 0.004 95);
+	--sidebar-accent: oklch(0.915 0.004 95);
+	--sidebar-accent-foreground: oklch(0.27 0.008 150);
+
+	/* --radius-sm, --radius-md, --shadow-lg, --shadow-chip,
+	 * --destructive-surface, --destructive-surface-foreground, --radius-row,
+	 * --font-size-sidebar, --row-pad-block: deliberately NOT set here -- see
+	 * file header. The kit's own fallback (packages/workspace-kit/src/
+	 * tailwind.css) supplies all 9. */
+}
+
+.theme-speechtodo {
+	--brand: #cbb063;
+	--brand-accent: #e3cd8e;
+	--background: #f9f9f7;
+	--foreground: #0a0a0a;
+	--popover: #f9f9f7;
+	--popover-foreground: #0a0a0a;
+	--primary-foreground: #241d08;
+	--muted: #f4f4f2;
+	--muted-foreground: #8a8a86;
+	--accent: #f0e5c4;
+	--selected: #e4ce93;
+	--destructive: #d69a8e;
+	--border: #ededea;
+	--ring: #cbb063;
+	--radius-inner: 0.375rem;
+	--radius-popover: 0.75rem;
+	--shadow-overlay:
+		0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(0, 0, 0, 0.04),
+		0 24px 60px -16px rgba(0, 0, 0, 0.35), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+	--font-size-content: 1rem;
+	--editor-font-family:
+		-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+	--font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+	--syntax-foreground: var(--foreground);
+	--syntax-muted: #8a8a86;
+	--syntax-comment: #7c8c74;
+	--syntax-keyword: #a8698e;
+	--syntax-variable: #4f69a8;
+	--syntax-string: #4e875a;
+	--syntax-link: #6e58a4;
+	--syntax-number: #9f6e33;
+	--syntax-meta: #a35775;
+	--syntax-type: #3f7e7e;
+	--syntax-attr: #6e813c;
+	--syntax-selector: #5560a4;
+
+	/* Sidebar-family tokens (R30), invented for this palette -- deliberately
+	 * a distinct cool slate/teal family, NOT a copy of --accent (#f0e5c4) or
+	 * --selected (#e4ce93), which are both warm gold. If sidebar-accent just
+	 * aliased one of those, hovering/selecting a sidebar row would look
+	 * identical between the two demo themes and the re-theme proof would be
+	 * meaningless (this is what the validate-pass reviewer flagged). Using a
+	 * separate hue for the nav chrome vs. the content-area accent is also a
+	 * reasonable real design choice, not just a proof-of-life color. */
+	--sidebar: #f2f1ec;
+	--sidebar-foreground: #0a0a0a;
+	--sidebar-border: #e2e0d8;
+	--sidebar-accent: #cfe0e4;
+	--sidebar-accent-foreground: #12232a;
+
+	/* The 9 fallback-covered properties, explicitly overridden here (see
+	 * file header) -- proves a host value always outranks the kit's own
+	 * fallback (R6), and that re-theming reaches the two former hardcoded
+	 * leaks plus the 3 sidebar-only fallbacks (R17/R18, QA1-c/QA2-c). */
+	--radius-sm: 0.5rem;
+	--radius-md: 0.625rem;
+	--shadow-lg:
+		0 1px 0 rgba(0, 0, 0, 0.04), 0 10px 30px -8px rgba(0, 0, 0, 0.22),
+		0 0 0 0.5px rgba(0, 0, 0, 0.06);
+	--shadow-chip:
+		0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(0, 0, 0, 0.04),
+		0 16px 40px -12px rgba(0, 0, 0, 0.24);
+	--destructive-surface: #f3ddd7;
+	--destructive-surface-foreground: #7a362b;
+	--radius-row: 0.375rem;
+	--font-size-sidebar: 0.875rem;
+	--row-pad-block: 0.375rem;
+}
+
+/* The demo's own chrome (not part of the kit's theming contract) -- page
+ * shell, toolbar controls, layout scaffolding around the kit's own
+ * components. Deliberately simple inline-style-friendly selectors, no
+ * Tailwind. */
+html,
+body {
+	margin: 0;
+	height: 100%;
+	background: #d8d8d4;
+}
+
+#root {
+	height: 100%;
+}
+
+.demo-shell {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	font-family: var(--editor-font-family, system-ui, sans-serif);
+	background: var(--background);
+	color: var(--foreground);
+}
+
+.demo-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+	border-bottom: 1px solid var(--border);
+	background: var(--muted);
+	padding: 0.5rem 0.75rem;
+	font-size: 0.8rem;
+}
+
+.demo-controls label {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.demo-controls button {
+	appearance: none;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-inner, 0.25rem);
+	background: var(--popover);
+	color: var(--foreground);
+	padding: 0.3rem 0.6rem;
+	font: inherit;
+	cursor: pointer;
+}
+
+.demo-controls button[aria-pressed="true"] {
+	background: var(--selected);
+}
+
+.demo-content {
+	display: flex;
+	min-height: 0;
+	flex: 1;
+	overflow: hidden;
+}
+
+.demo-page {
+	height: 100%;
+}
+
+/* R23/QA2-a/QA2-c: bounds the themed wrapper (`.demo-shell`, the
+ * PortalContainerProvider's mount target) in a small scroll-clipped box --
+ * an ancestor of the mount target, not the mount target itself -- and forces
+ * it taller than the box so real scrolling/clipping is in play. No
+ * transform/filter here (only `overflow`+`max-height`), so this ancestor
+ * does not create a new containing block -- position:fixed popups (every
+ * popup in this kit is floating-ui/base-ui, all `position: fixed`) still
+ * escape it and land in the correct on-screen spot instead of being visually
+ * cut off by the box (R28). */
+.demo-page-constrained {
+	max-width: 620px;
+	max-height: 380px;
+	margin: 1.5rem auto;
+	overflow: auto;
+	border: 2px dashed #8a8a86;
+	border-radius: 8px;
+}
+
+.demo-page-constrained .demo-shell {
+	min-height: 640px;
+}
+
+.demo-empty-editor {
+	display: flex;
+	height: 100%;
+	align-items: center;
+	justify-content: center;
+	color: var(--muted-foreground);
+	font-size: 0.95rem;
+}
+
+.demo-empty-sidebar {
+	padding: 1rem;
+	color: var(--muted-foreground);
+	font-size: 0.8rem;
+}

@@ -65,7 +65,7 @@ collides *semantically inverted*:
 
 If the kit's CSS is allowed to inherit from SpeechToDo's `:root`, it picks up gold
 for every hover surface and falls back to unstyled defaults for the other twelve.
-Therefore SpeechToDo must declare **all 56 properties explicitly on the element
+Therefore SpeechToDo must declare **all 68 properties explicitly on the element
 wrapping the kit** — a scoped `--std-*` → kit-name translation layer. This is a
 Phase 3 exit requirement, and it is also what keeps the two design languages from
 leaking into each other in either direction.
@@ -85,12 +85,28 @@ default theme. **The kit must define a fallback value for both, or the property
 list is incomplete for a host with no Tailwind present** — SpeechToDo's renderer
 has no Tailwind toolchain by design (see plan). This is a Phase 2 exit blocker.
 
-Full property list (56 total):
+Full property list (68 total):
 
 **Color — semantic surface/foreground**
 `--background`, `--foreground`, `--muted`, `--muted-foreground`, `--popover`,
-`--popover-foreground`, `--accent`, `--selected`, `--primary-foreground`,
-`--destructive`, `--brand`, `--brand-accent`
+`--popover-foreground`, `--card`, `--input`, `--primary`, `--secondary`,
+`--accent`, `--selected`, `--primary-foreground`, `--destructive`, `--brand`,
+`--brand-accent`, `--destructive-surface`, `--destructive-surface-foreground`
+(added Phase 2 — the sidebar's rename-conflict-error tooltip, previously a
+hardcoded `oklch()` literal; deliberately not reusing `--destructive-foreground`,
+which is a different value and a different semantic role — shadcn button text).
+`--card` and `--input` were already named as kit-read properties in Decision 2's
+collision table above; `--primary` and `--secondary` are genuinely read via the
+kit's own Tailwind `@theme` mapping (`bg-primary`/`bg-secondary`, used in
+`Button`, `Toolbar`, `Sidebar`, `LinkPopover`) — all four were previously missing
+from this enumeration despite being live, host-overridable properties
+(validate-pass finding, closed same day as R30/R31 below). Several other
+mapped-but-currently-unread properties (`--card-foreground`, `--secondary-foreground`,
+`--accent-foreground`, `--brand-accent-foreground`, `--selected-foreground`,
+`--chrome-inset-shadow`/`--panel-shadow`) are deliberately NOT listed here: they
+exist in the kit's Tailwind theme mapping for future use but no shipped kit
+component actually reads them today, so they are not yet part of the live
+contract — add them here only once a real component starts using them.
 
 **Color — syntax highlighting**
 `--syntax-foreground`, `--syntax-muted`, `--syntax-comment`, `--syntax-keyword`,
@@ -104,7 +120,13 @@ Full property list (56 total):
 `--radius-md`, `--radius-sm`, `--radius-inner`, `--radius-popover`
 
 **Shadow**
-`--shadow-lg`, `--shadow-overlay`
+`--shadow-lg`, `--shadow-overlay`, `--shadow-chip` (added Phase 2 — the
+formatting status bar's floating word-count chip, previously a hardcoded
+arbitrary Tailwind shadow literal), `--shadow-chrome-bar`, `--shadow-chrome-sidebar`,
+`--shadow-chrome-section`, `--shadow-chrome-section-reverse` (the app-shell
+"chrome" shadow family — title bar, sidebar edge, section dividers — read by
+`Toolbar`/`Sidebar`; previously missing from this enumeration despite being
+live and host-overridable, closed same day as the four Color additions above)
 
 **Typography**
 `--editor-font-family`, `--font-mono`, `--font-size-content`
@@ -122,6 +144,16 @@ Full property list (56 total):
 **Icon mask**
 `--pm-task-check-mask` (data-URI SVG for the task-checkbox check icon — a host
 overriding this changes the checkbox glyph, not just its color)
+
+**Sidebar-only**
+`--sidebar`, `--sidebar-foreground`, `--sidebar-border`, `--sidebar-accent`,
+`--sidebar-accent-foreground` (added Phase 2, R30 — the sidebar's own
+color family: container background, active/hovered-row highlight, and the
+drag-preview chip; previously compiled to nothing in the kit's shipped CSS).
+`--radius-row`, `--font-size-sidebar`, `--row-pad-block` (added Phase 2, R31 —
+row corner radius, row label size, row padding; the same class of Tailwind-
+default-fallback gap as `--radius-sm`/`--radius-md`/`--shadow-lg` above, but
+sidebar-only and not named in the ADR's original list)
 
 ## Decision 3 — Extension slot
 mdly's editor is built on **Tiptap 3.x** (wraps ProseMirror directly). The kit

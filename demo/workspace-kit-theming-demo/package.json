@@ -1,0 +1,47 @@
+{
+	"name": "workspace-kit-theming-demo",
+	"private": true,
+	"version": "0.0.0",
+	"description": "Standalone, zero-Tailwind demo proving @mdly/workspace-kit's token-driven theming contract (docs/architecture/shared-markdown-editor-kit-plan.md Phase 2). Deliberately NOT an app/* or packages/* workspace member -- see pnpm-workspace.yaml at the repo root. Kept as a permanent fixture (not a throwaway) so future kit changes have a live tripwire if they silently break the \"just override CSS variables\" promise. Setup: run `pnpm install` at the repo root first (so packages/workspace-kit and its dependencies are resolved), then `npm run build` here -- it runs link-deps.mjs (symlinks this demo's node_modules straight to the monorepo's already-resolved copies of every dependency listed below, guaranteeing identical versions to what the kit itself was built and tested against, with no independent npm/pnpm resolution step and no network access) before bundling with esbuild.",
+	"type": "module",
+	"scripts": {
+		"link-deps": "node link-deps.mjs",
+		"build": "node link-deps.mjs && node build.mjs",
+		"serve": "node link-deps.mjs && node build.mjs --serve"
+	},
+	"dependencies": {
+		"@base-ui/react": "1.3.0",
+		"@dnd-kit/core": "6.3.1",
+		"@floating-ui/dom": "1.7.6",
+		"@mdly/workspace-kit": "file:../../packages/workspace-kit",
+		"@tiptap/core": "3.20.0",
+		"@tiptap/extension-code-block-lowlight": "3.20.0",
+		"@tiptap/extension-list": "3.20.0",
+		"@tiptap/pm": "3.20.0",
+		"@tiptap/react": "3.20.0",
+		"@tiptap/starter-kit": "3.20.0",
+		"class-variance-authority": "0.7.1",
+		"clsx": "2.1.1",
+		"cmdk": "1.1.1",
+		"hast-util-from-html": "2.0.3",
+		"highlight.js": "11.11.1",
+		"keymatch": "1.0.5",
+		"lowlight": "3.3.0",
+		"mermaid": "11.16.0",
+		"react": "19.2.4",
+		"react-dom": "19.2.4",
+		"remark-gfm": "4.0.1",
+		"remark-parse": "11.0.0",
+		"tailwind-merge": "3.5.0",
+		"unified": "11.0.5",
+		"unist-util-visit": "5.1.0",
+		"yaml": "2.9.0",
+		"zod": "4.4.3"
+	},
+	"devDependencies": {
+		"@types/react": "19.2.14",
+		"@types/react-dom": "19.2.4",
+		"esbuild": "0.24.2",
+		"typescript": "5.8.3"
+	}
+}

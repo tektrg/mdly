@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>@mdly/workspace-kit -- zero-Tailwind theming demo</title>
+		<!-- No Tailwind, no CSS build tool of any kind here -- just the kit's
+		own already-built stylesheet plus this demo's own tiny theme.css,
+		bundled once by esbuild into dist/main.css (see build.mjs). -->
+		<link rel="stylesheet" href="./dist/main.css" />
+	</head>
+	<body>
+		<div id="root"></div>
+		<script type="module" src="./dist/main.js"></script>
+	</body>
+</html>
