@@ -23,6 +23,8 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
+	useImperativeHandle,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -31,13 +33,17 @@ import MingcuteCheckLine from "~icons/mingcute/check-line";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteEditLine from "~icons/mingcute/edit-line";
+import MingcuteFolderLine from "~icons/mingcute/folder-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
+import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import MingcutePinFill from "~icons/mingcute/pin-fill";
 import MingcutePinLine from "~icons/mingcute/pin-line";
 import MingcuteRightLine from "~icons/mingcute/right-line";
+import MingcuteSearchLine from "~icons/mingcute/search-line";
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
+import MingcuteTagLine from "~icons/mingcute/tag-line";
 import {
 	dirname,
 	fileNameFromPath,
@@ -48,9 +54,16 @@ import { usePortalContainer } from "../lib/portalContainer";
 import { shouldShowFooterDivider } from "../lib/scrollOverflow";
 import { cn } from "../lib/utils";
 import { Button } from "../primitives/button";
+import {
+	buildSidebarSearchIndex,
+	searchSidebarFiles,
+} from "./buildSearchResults";
+import { buildTagCounts } from "./buildTagCounts";
 import { RecentFilesList } from "./RecentFilesList";
+import { SearchList } from "./SearchList";
+import { type SidebarPage, SidebarPager } from "./SidebarPager";
+import { TagList } from "./TagList";
 import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
-import { useSidebarSwipeNav } from "./useSidebarSwipeNav";
 import {
 	type SidebarFile,
 	type SidebarFolder,
@@ -60,9 +73,20 @@ import {
 } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
-const SIDEBAR_PAGE_COUNT = 2;
-
 export type { SidebarFile, SidebarFolder, SidebarSortMode };
+
+export type SidebarHandle = {
+	/**
+	 * Shows the page with this id and moves focus into it -- the Search page's
+	 * query box, every other page's row list. No-op for a page the host has not
+	 * enabled.
+	 *
+	 * Page state stays in here (it is ephemeral, see ADR-0008); this only pokes
+	 * it, so a host can bind its own shortcut without owning the state or
+	 * re-implementing the swipe/tab handling.
+	 */
+	showPage: (pageId: string) => void;
+};
 
 export type SidebarMoveItemInput = {
 	item: { kind: "file"; path: string } | { kind: "folder"; folderId: string };
@@ -119,35 +143,7 @@ const segmentFirstCollision: CollisionDetection = (args) => {
 	return segmentCollisions.length > 0 ? segmentCollisions : pointerCollisions;
 };
 
-export function Sidebar({
-	files,
-	folders,
-	currentPath,
-	pendingPath,
-	sortMode,
-	storageScope,
-	header,
-	footer,
-	emptyState,
-	getDisplayPath = (path) => path,
-	onCollapse,
-	onSortModeChange,
-	onSelectFile,
-	onRevealFile,
-	onCopyFilePath,
-	onCopySymlinkTarget,
-	onBrokenSymlink,
-	onMoveFile,
-	onRevealFolder,
-	onFocusedItemChange,
-	revealLabel,
-	onRenameFile,
-	onDeleteFile,
-	onTogglePinnedFile,
-	onCreateFile,
-	onDeleteFolder,
-	onMoveItem,
-}: {
+type SidebarProps = {
 	files: SidebarFile[];
 	folders?: SidebarFolder[];
 	currentPath: string | null;
@@ -155,6 +151,24 @@ export function Sidebar({
 	sortMode: SidebarSortMode;
 	/** Stable key used to persist folder expansion for one workspace/open folder. */
 	storageScope?: string | null;
+	/**
+	 * Who draws the sidebar's panel chrome: the surrounding <aside>, its
+	 * background, its trailing hairline, and the drag-to-resize edge.
+	 *
+	 *  "frame" (default) -- the kit owns them via SidebarFrame. Width is clamped
+	 *      to MIN_SIDEBAR_WIDTH..MAX_SIDEBAR_WIDTH, persisted to
+	 *      `hubble-sidebar-width:<storageScope>`, and an edge-drag past
+	 *      COLLAPSE_EDGE_DISTANCE calls `onCollapse`.
+	 *  "none" -- the host owns width, background, border and the resize
+	 *      affordance. The kit renders only its header row, pager and footer,
+	 *      filling whatever box the host gives it. `onCollapse` still renders the
+	 *      header's "Toggle sidebar" button -- that button is now the host's
+	 *      collapse -- but the kit neither reads nor writes a width, and has no
+	 *      edge to drag. A host in this mode MUST supply `--sidebar-width` on the
+	 *      kit's container; the kit reads it for the rename-error tooltip's width
+	 *      cap.
+	 */
+	chrome?: "frame" | "none";
 	header?: ReactNode;
 	footer?: ReactNode;
 	emptyState?: ReactNode;
@@ -176,7 +190,92 @@ export function Sidebar({
 	onCreateFile?: (folderId: string | null) => Promise<string | null>;
 	onDeleteFolder?: (folderId: string) => void;
 	onMoveItem?: (input: SidebarMoveItemInput) => Promise<void> | void;
-}) {
+	/** Currently selected tag, or null. Only meaningful with `onSelectTag`. */
+	activeTag?: string | null;
+	/**
+	 * Supplying this enables the Tags page. Tag rows come from the `tags` field
+	 * on each `SidebarFile` -- the kit counts them but never derives them, so a
+	 * host that has no tag concept simply omits this and keeps two pages.
+	 */
+	onSelectTag?: (name: string) => void;
+	/**
+	 * Fires with the newly-shown page's id whenever the user changes page. Page
+	 * state lives in here, so this is the only way a host can lazily load data
+	 * a page needs (e.g. scanning for tags only once the Tags page is opened).
+	 */
+	onPageChange?: (pageId: string) => void;
+	/** Per-row leading glyph, e.g. the host's own colored tag badge. */
+	renderTagIcon?: (name: string) => ReactNode;
+	/** Row label, when the host writes tags differently (e.g. a `#` prefix). */
+	formatTagLabel?: (name: string) => string;
+	tagsEmptyState?: ReactNode;
+	/**
+	 * Current search query. Host-owned so the same string can also drive the
+	 * host's own views (SpeechToDo filters its centre list with it) without two
+	 * copies drifting apart. Only meaningful with `onSearchChange`.
+	 */
+	searchQuery?: string;
+	/**
+	 * Supplying this enables the Search page. Ranking is the kit's
+	 * (`buildSearchResults`, scoring whatever `getDisplayPath` returns as well
+	 * as the path on disk); what a match *means* to the rest of the app is the
+	 * host's. Results are scoped to the active tag, so a tag and a query
+	 * compose, but a query never narrows the Files or Recents pages -- there is
+	 * no query box on those, so a shortened list there would look broken.
+	 */
+	onSearchChange?: (query: string) => void;
+	/** Query-box placeholder, for hosts that ship more than one language. */
+	searchPlaceholder?: string;
+	/** Trailing slot in the query box, e.g. the host's own shortcut chip. */
+	searchHint?: ReactNode;
+	/** Shown when a non-empty query matches nothing. */
+	searchEmptyState?: ReactNode;
+};
+
+export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
+	{
+		files,
+		folders,
+		currentPath,
+		pendingPath,
+		sortMode,
+		storageScope,
+		chrome = "frame",
+		header,
+		footer,
+		emptyState,
+		getDisplayPath = (path) => path,
+		onCollapse,
+		onSortModeChange,
+		onSelectFile,
+		onRevealFile,
+		onCopyFilePath,
+		onCopySymlinkTarget,
+		onBrokenSymlink,
+		onMoveFile,
+		onRevealFolder,
+		onFocusedItemChange,
+		revealLabel,
+		onRenameFile,
+		onDeleteFile,
+		onTogglePinnedFile,
+		onCreateFile,
+		onDeleteFolder,
+		onMoveItem,
+		activeTag = null,
+		onSelectTag,
+		onPageChange,
+		renderTagIcon,
+		formatTagLabel,
+		tagsEmptyState,
+		searchQuery = "",
+		onSearchChange,
+		searchPlaceholder,
+		searchHint,
+		searchEmptyState,
+	},
+	ref,
+) {
 	const portalContainer = usePortalContainer();
 	const navRef = useRef<HTMLDivElement>(null);
 	const renameInputRef = useRef<HTMLInputElement | null>(null);
@@ -197,31 +296,94 @@ export function Sidebar({
 	>(null);
 	const [activeDragLabel, setActiveDragLabel] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-	const [activePage, setActivePage] = useState<0 | 1>(0);
+	const [activePage, setActivePage] = useState(0);
 	const recentFilesNavRef = useRef<HTMLDivElement>(null);
+	const tagsNavRef = useRef<HTMLDivElement>(null);
+	const searchNavRef = useRef<HTMLInputElement>(null);
+	// Assigned once `pages` is assembled, far below; page switching reads it
+	// from here so it never has to be re-created when a page's body changes.
+	const pagesRef = useRef<SidebarPage[]>([]);
 	// Sidebar navigation state is ephemeral (see ADR-0008); don't carry the
-	// recent-files page over when the user opens a different workspace.
+	// current page over when the user opens a different workspace.
 	const [activePageStorageScope, setActivePageStorageScope] =
 		useState(storageScope);
 	if (activePageStorageScope !== storageScope) {
 		setActivePageStorageScope(storageScope);
 		setActivePage(0);
 	}
-	const switchPage = useCallback((page: number) => {
-		const nextPage = page === 0 ? 0 : 1;
-		setActivePage(nextPage);
-		requestAnimationFrame(() => {
-			(nextPage === 0 ? navRef : recentFilesNavRef).current?.focus();
-		});
-	}, []);
-	const { onWheel: onSwipePageWheel } = useSidebarSwipeNav({
-		activePage,
-		pageCount: SIDEBAR_PAGE_COUNT,
-		onPageChange: switchPage,
-	});
+	const tagsEnabled = Boolean(onSelectTag);
+	// Counts always come from the FULL file list, never the filtered one --
+	// otherwise selecting a tag would erase every other tag from the list and
+	// leave no way to switch between them.
+	const tags = useMemo(
+		() => (tagsEnabled ? buildTagCounts(files) : []),
+		[tagsEnabled, files],
+	);
+	// Selecting a tag narrows the file-showing pages to that tag. Filtering here
+	// rather than in the host is what keeps the counts above intact.
+	const visibleFiles = useMemo(
+		() =>
+			activeTag
+				? files.filter((file) => file.tags?.includes(activeTag))
+				: files,
+		[files, activeTag],
+	);
 	const highlightPath = pendingPath ?? currentPath;
+
+	const switchPage = useCallback(
+		(page: number) => {
+			const list = pagesRef.current;
+			// Index into the ENABLED pages, not a fixed table of every page there
+			// could be -- otherwise a host that enables Search but not Tags reports
+			// the wrong id here, and hosts key lazy loading off exactly this string.
+			const next = list[Math.min(Math.max(page, 0), list.length - 1)];
+			if (!next) return;
+			setActivePage(list.indexOf(next));
+			onPageChange?.(next.id);
+			requestAnimationFrame(() => {
+				next.navRef.current?.focus();
+			});
+		},
+		[onPageChange],
+	);
+	useImperativeHandle(
+		ref,
+		() => ({
+			showPage: (pageId: string) => {
+				const index = pagesRef.current.findIndex((page) => page.id === pageId);
+				if (index >= 0) switchPage(index);
+			},
+		}),
+		[switchPage],
+	);
+
+	const searchEnabled = Boolean(onSearchChange);
+	const trimmedQuery = searchQuery.trim();
+	// Normalizing every file's haystacks is the expensive half, so it hangs off
+	// the file list and not off the query -- typing only re-ranks.
+	const searchIndex = useMemo(
+		() =>
+			searchEnabled
+				? buildSidebarSearchIndex(visibleFiles, getDisplayPath)
+				: [],
+		[searchEnabled, visibleFiles, getDisplayPath],
+	);
+	// Searching `visibleFiles` (not `files`) is what makes a tag and a query
+	// compose. The query stops here on purpose: Files and Recents have no query
+	// box on them, so narrowing those would look like a bug rather than a filter.
+	const searchResults = useMemo(
+		() =>
+			trimmedQuery
+				? searchSidebarFiles({
+						index: searchIndex,
+						query: trimmedQuery,
+						currentPath: highlightPath,
+					})
+				: [],
+		[searchIndex, trimmedQuery, highlightPath],
+	);
 	const { collapseFolder, expandFolder, rows, toggleFolder } = useSidebarTree({
-		files,
+		files: visibleFiles,
 		folders,
 		getDisplayPath,
 		highlightPath,
@@ -722,8 +884,7 @@ export function Sidebar({
 												<span
 													className={cn(
 														"min-w-0 flex-1 truncate",
-														isPinnedFile &&
-															"[direction:rtl] [text-align:left]",
+														isPinnedFile && "[direction:rtl] [text-align:left]",
 													)}
 												>
 													{row.label}
@@ -821,8 +982,93 @@ export function Sidebar({
 		</DndContext>
 	);
 
-	return (
-		<SidebarFrame onCollapse={onCollapse} storageScope={storageScope}>
+	/**
+	 * Every page this sidebar shows, in swipe/tab/focus order, with the ones the
+	 * host has not enabled already dropped.
+	 *
+	 * Identity, focus target and body travel together in one object rather than
+	 * in three positionally-aligned arrays. With more than one optional page
+	 * (Tags, Search) "all of them except the last" stops working, and a mismatch
+	 * between the arrays is silent -- the right tab strip pointing at the wrong
+	 * content. Adding a view means adding one entry here and nothing else.
+	 */
+	const pages: SidebarPage[] = [
+		{
+			id: "tree",
+			label: "Files",
+			icon: <MingcuteFolderLine />,
+			navRef,
+			content: tree,
+		},
+		{
+			id: "recent",
+			label: "Recent files",
+			icon: <MingcuteHistoryLine />,
+			navRef: recentFilesNavRef,
+			content: (
+				<RecentFilesList
+					ref={recentFilesNavRef}
+					files={visibleFiles}
+					currentPath={highlightPath}
+					getDisplayPath={getDisplayPath}
+					onSelectFile={onSelectFile}
+				/>
+			),
+		},
+	];
+	if (onSelectTag) {
+		pages.push({
+			id: "tags",
+			label: "Tags",
+			icon: <MingcuteTagLine />,
+			navRef: tagsNavRef,
+			content: (
+				<TagList
+					ref={tagsNavRef}
+					tags={tags}
+					activeTag={activeTag}
+					onSelect={onSelectTag}
+					renderIcon={renderTagIcon}
+					formatLabel={formatTagLabel}
+					emptyState={tagsEmptyState}
+				/>
+			),
+		});
+	}
+	if (onSearchChange) {
+		pages.push({
+			id: "search",
+			label: "Search",
+			icon: <MingcuteSearchLine />,
+			// The query box, not the result list -- switching to this page should
+			// land the caret where the user is about to type.
+			navRef: searchNavRef,
+			content: (
+				<SearchList
+					ref={searchNavRef}
+					results={searchResults}
+					query={searchQuery}
+					onQueryChange={onSearchChange}
+					currentPath={highlightPath}
+					onSelectFile={onSelectFile}
+					placeholder={searchPlaceholder}
+					hint={searchHint}
+					emptyState={searchEmptyState}
+				/>
+			),
+		});
+	}
+
+	// `pages` carries JSX, so it is a fresh array every render. Reading it back
+	// through a ref keeps `switchPage` stable instead of re-creating it (and
+	// every handler downstream) on each keystroke.
+	pagesRef.current = pages;
+	// A host can turn Tags or Search off while that page is showing; clamp
+	// rather than stranding `activePage` past the end of the list.
+	const clampedActivePage = Math.min(activePage, pages.length - 1);
+
+	const body = (
+		<>
 			<div className="desktop-window-drag-region flex items-center justify-between px-2.5 pb-1.5 pt-[calc(var(--hubble-traffic-light-top-inset,0px)+0.375rem)] shadow-chrome-section">
 				{header ?? (
 					<span className="text-[11px] font-medium uppercase text-muted-foreground">
@@ -875,7 +1121,12 @@ export function Sidebar({
 							)}
 						</Select.Trigger>
 						<Select.Portal container={portalContainer}>
-							<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
+							<Select.Positioner
+								className="z-50"
+								align="end"
+								side="bottom"
+								sideOffset={4}
+							>
 								<Select.Popup className="w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 									<p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
 										Sort by
@@ -888,42 +1139,11 @@ export function Sidebar({
 					</Select.Root>
 				</div>
 			</div>
-			<SidebarPagerDots activePage={activePage} onSelectPage={switchPage} />
-			<div
-				data-sidebar-swipe-region
-				className="relative min-h-0 flex-1 overflow-hidden"
-				onWheel={onSwipePageWheel}
-			>
-				<div
-					className="flex h-full w-[200%] transition-transform duration-200 ease-out"
-					style={{
-						transform: `translateX(${activePage === 0 ? "0%" : "-50%"})`,
-					}}
-				>
-					<div
-						data-sidebar-page="tree"
-						className="flex h-full min-h-0 w-1/2 flex-col overflow-hidden"
-						aria-hidden={activePage !== 0}
-						inert={activePage !== 0 ? true : undefined}
-					>
-						{tree}
-					</div>
-					<div
-						data-sidebar-page="recent"
-						className="flex h-full min-h-0 w-1/2 flex-col overflow-hidden"
-						aria-hidden={activePage !== 1}
-						inert={activePage !== 1 ? true : undefined}
-					>
-						<RecentFilesList
-							ref={recentFilesNavRef}
-							files={files}
-							currentPath={highlightPath}
-							getDisplayPath={getDisplayPath}
-							onSelectFile={onSelectFile}
-						/>
-					</div>
-				</div>
-			</div>
+			<SidebarPager
+				pages={pages}
+				activePage={clampedActivePage}
+				onPageChange={switchPage}
+			/>
 			{footer ? (
 				<div
 					className={cn(
@@ -934,38 +1154,31 @@ export function Sidebar({
 					{footer}
 				</div>
 			) : null}
+		</>
+	);
+
+	// `chrome: "none"` hands panel chrome (width, background, hairline, resize
+	// edge) to the host; the kit just fills the box it is given. `min-w-0` is
+	// mandatory -- a flex item defaults to min-content width, so without it the
+	// kit refuses to shrink below the header/tab-strip and overflows the host.
+	if (chrome === "none") {
+		return (
+			<div
+				data-sidebar-body
+				className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+				style={{ inlineSize: "100%" }}
+			>
+				{body}
+			</div>
+		);
+	}
+
+	return (
+		<SidebarFrame onCollapse={onCollapse} storageScope={storageScope}>
+			{body}
 		</SidebarFrame>
 	);
-}
-
-function SidebarPagerDots({
-	activePage,
-	onSelectPage,
-}: {
-	activePage: 0 | 1;
-	onSelectPage: (page: 0 | 1) => void;
-}) {
-	return (
-		<div className="flex shrink-0 items-center justify-center gap-1.5 py-1">
-			{([0, 1] as const).map((page) => (
-				<button
-					key={page}
-					type="button"
-					aria-pressed={activePage === page}
-					aria-label={page === 0 ? "Files" : "Recent files"}
-					title={page === 0 ? "Files" : "Recent files"}
-					className={cn(
-						"size-1.5 rounded-full transition-colors",
-						activePage === page
-							? "bg-foreground/70"
-							: "bg-muted-foreground/30 hover:bg-muted-foreground/50",
-					)}
-					onClick={() => onSelectPage(page)}
-				/>
-			))}
-		</div>
-	);
-}
+});
 
 type DragItemData =
 	| { kind: "file"; path: string; parentFolderId: string | null; label: string }
@@ -1626,7 +1839,12 @@ function ActionsMenu({
 				<MingcuteMore2Line className="size-3.5" />
 			</Menu.Trigger>
 			<Menu.Portal container={portalContainer}>
-				<Menu.Positioner className="z-50" align="end" side="bottom" sideOffset={4}>
+				<Menu.Positioner
+					className="z-50"
+					align="end"
+					side="bottom"
+					sideOffset={4}
+				>
 					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						{children}
 					</Menu.Popup>

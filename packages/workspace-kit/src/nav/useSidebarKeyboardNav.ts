@@ -3,6 +3,9 @@ import { isEditableEventTarget } from "../lib/dom";
 
 export const EDITOR_INPUT_SELECTOR = "[data-editor-input]";
 
+/** Stable identity so the default doesn't re-create `onKeyDown` every render. */
+const NO_EDITABLE_KEYS: readonly string[] = [];
+
 export function useSidebarKeyboardNav<T>({
 	items,
 	onSelect,
@@ -11,6 +14,7 @@ export function useSidebarKeyboardNav<T>({
 	onCollapse,
 	navRef,
 	activeIndex = -1,
+	editableKeys = NO_EDITABLE_KEYS,
 }: {
 	items: T[];
 	onSelect: (item: T) => void;
@@ -19,6 +23,20 @@ export function useSidebarKeyboardNav<T>({
 	onCollapse?: (item: T) => void;
 	navRef: RefObject<HTMLElement | null>;
 	activeIndex?: number;
+	/**
+	 * Keys this list handles even when the keystroke came from a text input.
+	 *
+	 * Only the Search page sets it: its query box *is* the list's focus target,
+	 * so arrows and Enter there are navigation rather than typing. Everything
+	 * else -- notably the tree's inline rename box, which sits inside the same
+	 * `onKeyDown` container -- keeps the blanket bail-out below, or renaming a
+	 * file would move the selection instead of the caret.
+	 *
+	 * Space and the horizontal arrows should never be listed here: inside an
+	 * input those insert a character or move the caret, and stealing them makes
+	 * the box unusable.
+	 */
+	editableKeys?: readonly string[];
 }) {
 	const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
 	const getActionIndex = useCallback(
@@ -36,7 +54,11 @@ export function useSidebarKeyboardNav<T>({
 	const onKeyDown = useCallback(
 		(event: React.KeyboardEvent) => {
 			if (items.length === 0) return;
-			if (isEditableEventTarget(event.target)) return;
+			if (
+				isEditableEventTarget(event.target) &&
+				!editableKeys.includes(event.key)
+			)
+				return;
 
 			switch (event.key) {
 				case "ArrowDown":
@@ -97,6 +119,7 @@ export function useSidebarKeyboardNav<T>({
 			onCollapse,
 			activeIndex,
 			getActionIndex,
+			editableKeys,
 		],
 	);
 

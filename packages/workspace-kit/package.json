@@ -1,6 +1,6 @@
 {
 	"name": "@mdly/workspace-kit",
-	"version": "0.0.1",
+	"version": "0.3.0",
 	"description": "Shared Markdown editor engine, editor surface, and file-navigation UI for mdly-based products",
 	"license": "MIT",
 	"type": "module",
@@ -15,6 +15,10 @@
 		"./engine": {
 			"types": "./dist/engine/index.d.ts",
 			"default": "./dist/engine.js"
+		},
+		"./search": {
+			"types": "./dist/nav/searchScore.d.ts",
+			"default": "./dist/search.js"
 		},
 		"./style.css": "./dist/index.css"
 	},

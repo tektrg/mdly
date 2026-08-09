@@ -18,7 +18,8 @@ function MiddleTruncatedPath({ path }: { path: string }) {
 	const separator = path.includes("\\") ? "\\" : "/";
 	const segments = path.split(separator);
 	const tail = segments.pop() ?? "";
-	const head = segments.length > 0 ? `${segments.join(separator)}${separator}` : "";
+	const head =
+		segments.length > 0 ? `${segments.join(separator)}${separator}` : "";
 
 	return (
 		<span className="flex min-w-0 text-[10px] text-muted-foreground/70">

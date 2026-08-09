@@ -36,6 +36,12 @@ export default defineConfig({
 				// tree-shake the navigation/editor-surface UI out of a single
 				// pre-bundled dist file.
 				engine: resolve("./src/engine/index.ts"),
+				// Search-scoring-only entry point, for the same reason as the
+				// engine above: mdly's command palette imports these pure string
+				// functions from a plain unit test, and reaching them through the
+				// main barrel would drag Tiptap, mermaid and this package's
+				// Tailwind CSS in behind them.
+				search: resolve("./src/nav/searchScore.ts"),
 			},
 			formats: ["es"],
 			fileName: (_format, entryName) => `${entryName}.js`,

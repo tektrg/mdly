@@ -72,7 +72,47 @@ export {
 	textEndPos,
 	textStartPos,
 } from "./engine/utils.js";
-
+// ---- Popup mount-target (theming contract, Phase 2) ----
+export {
+	PortalContainerProvider,
+	type PortalContainerProviderProps,
+	usePortalContainer,
+} from "./lib/portalContainer";
+// ---- Navigation (Sidebar, Toolbar, WorkspaceSwitcher, recent files, tags, search) ----
+export {
+	buildSearchResults,
+	buildSidebarSearchIndex,
+	type SidebarSearchIndexEntry,
+	type SidebarSearchResult,
+	searchSidebarFiles,
+} from "./nav/buildSearchResults";
+export { buildTagCounts, type SidebarTag } from "./nav/buildTagCounts";
+export { SearchList } from "./nav/SearchList";
+export {
+	Sidebar,
+	type SidebarFile,
+	type SidebarFocusedItem,
+	type SidebarFolder,
+	SidebarFrame,
+	type SidebarHandle,
+	type SidebarMoveItemInput,
+	type SidebarSortMode,
+} from "./nav/Sidebar";
+// Also reachable as "@mdly/workspace-kit/search" -- a UI-free entry point for
+// consumers that want only the ranking (see vite.config.ts).
+export {
+	isSubsequence,
+	normalizeSearchText,
+	scoreText,
+} from "./nav/searchScore";
+export { TagList } from "./nav/TagList";
+export { NewNoteButton, Toolbar } from "./nav/Toolbar";
+export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
+// ---- Shared primitives ----
+export { Button, buttonVariants } from "./primitives/button";
+export { Input } from "./primitives/input";
+export { Modal } from "./primitives/modal";
+export { Separator } from "./primitives/separator";
 // ---- Editor surface (slash menu, format menu, find/replace, TOC, etc.) ----
 export {
 	EditorView,
@@ -84,29 +124,3 @@ export { LinkCreationGhostExtension } from "./ui/LinkCreationGhostExtension";
 export { SmartLinkExtension } from "./ui/SmartLinkExtension";
 export { VirtualCursor } from "./ui/VirtualCursor";
 export type { VirtualCursorMode } from "./ui/virtualCursorMode";
-
-// ---- Navigation (Sidebar, Toolbar, WorkspaceSwitcher, recent files) ----
-export {
-	Sidebar,
-	type SidebarFile,
-	type SidebarFocusedItem,
-	type SidebarFolder,
-	SidebarFrame,
-	type SidebarMoveItemInput,
-	type SidebarSortMode,
-} from "./nav/Sidebar";
-export { NewNoteButton, Toolbar } from "./nav/Toolbar";
-export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
-
-// ---- Shared primitives ----
-export { Button, buttonVariants } from "./primitives/button";
-export { Input } from "./primitives/input";
-export { Modal } from "./primitives/modal";
-export { Separator } from "./primitives/separator";
-
-// ---- Popup mount-target (theming contract, Phase 2) ----
-export {
-	PortalContainerProvider,
-	type PortalContainerProviderProps,
-	usePortalContainer,
-} from "./lib/portalContainer";

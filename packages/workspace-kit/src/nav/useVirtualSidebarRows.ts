@@ -1,4 +1,10 @@
-import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
+import {
+	type RefObject,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 
 export const SIDEBAR_VIRTUAL_ROW_HEIGHT = 28;
 

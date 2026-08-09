@@ -8,6 +8,14 @@ export type SidebarFile = {
 	path: string;
 	modifiedAt?: number;
 	pinned?: boolean;
+	/**
+	 * Tag names carried by this file, used by the Tags page (`buildTagCounts`).
+	 * The kit never derives these -- where tags come from is the host app's
+	 * domain (frontmatter, a sidecar registry, a database), and only the host
+	 * knows its own normalization rules. `readonly` so hosts can hand back a
+	 * shared frozen empty array without the kit cloning it per render.
+	 */
+	tags?: readonly string[];
 	isSymlink?: boolean;
 	symlinkTarget?: string | null;
 	symlinkTargetExists?: boolean;
