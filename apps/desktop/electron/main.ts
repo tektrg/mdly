@@ -31,6 +31,7 @@ import {
 	withMarkdownExtension,
 } from "../src/lib/filePath";
 import { collectDocumentFiles } from "./fileDiscovery";
+import { scanFrontMatterTags } from "./frontMatterTags";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import {
 	getNotionConnectionStatus,
@@ -1120,6 +1121,24 @@ function registerIpc() {
 					options.includeIgnoredWorkspaceFiles === true,
 			});
 			return listing;
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:scan-front-matter-tags",
+		async (_event, { paths }: { paths: string[] }) => {
+			// Same access boundary as reading a file directly -- the scan can only
+			// touch paths the renderer was already granted.
+			const granted = (Array.isArray(paths) ? paths : [])
+				.map((candidate) => {
+					try {
+						return assertGranted(String(candidate));
+					} catch {
+						return null;
+					}
+				})
+				.filter((path): path is string => path !== null);
+			return await scanFrontMatterTags(granted);
 		},
 	);
 

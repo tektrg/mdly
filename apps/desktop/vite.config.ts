@@ -24,7 +24,16 @@ export default defineConfig(async () => ({
 			// string aliases match by prefix, so the more specific entry has to
 			// come first or it would resolve through the bare entry instead.
 			"@mdly/workspace-kit/engine": fileURLToPath(
-				new URL("../../packages/workspace-kit/src/engine/index.ts", import.meta.url),
+				new URL(
+					"../../packages/workspace-kit/src/engine/index.ts",
+					import.meta.url,
+				),
+			),
+			"@mdly/workspace-kit/search": fileURLToPath(
+				new URL(
+					"../../packages/workspace-kit/src/nav/searchScore.ts",
+					import.meta.url,
+				),
 			),
 			"@mdly/workspace-kit": fileURLToPath(
 				new URL("../../packages/workspace-kit/src/index.ts", import.meta.url),

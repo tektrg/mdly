@@ -5,7 +5,14 @@ import {
 	SidebarFrame,
 } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
-import { memo, type ReactNode, useMemo } from "react";
+import {
+	memo,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
@@ -42,6 +49,72 @@ function SidebarComponent({
 	const currentPath = useStoreValue(currentPathStore);
 	const { workspacePath, files, folders, pinnedNotes, sortMode } = workspace;
 
+	// Tags are read out of front matter, which workspace discovery deliberately
+	// never opens files to get (ADR-0008). So the scan is deferred until the
+	// user actually opens the Tags page, and its result lives here as ephemeral
+	// navigation state rather than in the persisted store.
+	const [activeTag, setActiveTag] = useState<string | null>(null);
+	const [tagsRequested, setTagsRequested] = useState(false);
+	const [tagsByPath, setTagsByPath] = useState<Record<string, string[]>>({});
+	const [searchQuery, setSearchQuery] = useState("");
+
+	// A different workspace's tags (and query) are meaningless here; drop them
+	// and make the next visit to the Tags page rescan. Reset during render rather
+	// than in an effect so the stale state never paints for a frame -- same
+	// pattern the kit's own Sidebar uses to reset its page on a workspace change.
+	const [tagWorkspaceScope, setTagWorkspaceScope] = useState(workspacePath);
+	if (tagWorkspaceScope !== workspacePath) {
+		setTagWorkspaceScope(workspacePath);
+		setActiveTag(null);
+		setTagsRequested(false);
+		setTagsByPath({});
+		setSearchQuery("");
+	}
+
+	// Reruns when the file list changes so tags don't go stale after edits,
+	// but only once the user has shown interest in them.
+	useEffect(() => {
+		if (!tagsRequested) return;
+		let cancelled = false;
+		void desktopApi
+			.scanFrontMatterTags(files.map((file) => file.path))
+			.then((result) => {
+				if (!cancelled) setTagsByPath(result);
+			})
+			.catch(() => {
+				// A failed scan just means no tags to show -- never break the sidebar.
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [tagsRequested, files]);
+
+	const handlePageChange = useCallback((pageId: string) => {
+		if (pageId === "tags") setTagsRequested(true);
+	}, []);
+	const handleSelectTag = useCallback(
+		(name: string) =>
+			setActiveTag((current) => (current === name ? null : name)),
+		[],
+	);
+
+	// Declared up here, above the early returns, so it can be a stable callback:
+	// the kit memoizes both its file tree and its search index on this
+	// function's identity, and a fresh closure per render rebuilds both on every
+	// keystroke in the editor.
+	const relativePath = useCallback(
+		(absPath: string) => {
+			if (!workspacePath) return absPath;
+			const prefix = workspacePath.endsWith("/")
+				? workspacePath
+				: `${workspacePath}/`;
+			return absPath.startsWith(prefix)
+				? absPath.slice(prefix.length)
+				: absPath;
+		},
+		[workspacePath],
+	);
+
 	// Memoized so re-renders triggered by unrelated state (e.g. switching the
 	// current file) don't redo this O(workspace files) mapping when the file
 	// list itself hasn't changed.
@@ -51,13 +124,14 @@ function SidebarComponent({
 			path: file.path,
 			modifiedAt: file.modified_at,
 			pinned: pinnedSet.has(file.path),
+			tags: tagsByPath[file.path],
 			isSymlink: file.is_symlink,
 			symlinkTarget: file.symlink_target,
 			symlinkTargetExists: file.symlink_target_exists,
 			symlinkTargetInWorkspace: file.symlink_target_in_workspace,
 			symlinkCanonicalPath: file.symlink_canonical_path,
 		}));
-	}, [files, pinnedNotes]);
+	}, [files, pinnedNotes, tagsByPath]);
 	const sidebarFolders = useMemo(
 		() =>
 			folders.map((folder) => ({
@@ -97,12 +171,6 @@ function SidebarComponent({
 		);
 	}
 
-	const relativePath = (absPath: string) => {
-		const prefix = workspacePath.endsWith("/")
-			? workspacePath
-			: `${workspacePath}/`;
-		return absPath.startsWith(prefix) ? absPath.slice(prefix.length) : absPath;
-	};
 	const absolutePath = (displayPath: string | null) => {
 		if (!displayPath) return workspacePath;
 		const normalized = displayPath.replace(/\/+$/, "");
@@ -165,6 +233,17 @@ function SidebarComponent({
 			onMoveItem={({ item, targetFolderId }) =>
 				void moveSidebarItem(item, absolutePath(targetFolderId))
 			}
+			activeTag={activeTag}
+			onSelectTag={handleSelectTag}
+			onPageChange={handlePageChange}
+			tagsEmptyState={
+				<p className="px-2 py-3 text-[11px] text-muted-foreground">
+					No tags found in this folder's front matter.
+				</p>
+			}
+			searchQuery={searchQuery}
+			onSearchChange={setSearchQuery}
+			searchPlaceholder="Search files"
 		/>
 	);
 }

@@ -145,6 +145,12 @@ export type DesktopApi = {
 		workspacePath: string,
 		glob: string,
 	): Promise<HtmlAppFileEntry[]>;
+	/**
+	 * Maps each path to the tags in its front matter, omitting files with none.
+	 * Reads only the head of each file; workspace discovery itself never opens
+	 * files, so this is a separate, on-demand step (see ADR-0008).
+	 */
+	scanFrontMatterTags(paths: string[]): Promise<Record<string, string[]>>;
 	readWorkspaceConfig(workspacePath: string): Promise<WorkspaceConfig>;
 	writeWorkspaceConfig(
 		workspacePath: string,

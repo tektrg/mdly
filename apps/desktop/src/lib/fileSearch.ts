@@ -1,3 +1,8 @@
+// The ranking heuristics live in the kit so this palette and the kit's own
+// sidebar Search page can never start feeling different. Imported through the
+// UI-free "/search" entry point -- the main barrel would drag Tiptap, mermaid
+// and the kit's Tailwind CSS into this module's unit test.
+import { normalizeSearchText, scoreText } from "@mdly/workspace-kit/search";
 import type { FileEntry } from "../store/state";
 import {
 	basename,
@@ -96,7 +101,9 @@ export function searchFileIndex({
 	const candidates: ScoredFile[] = [];
 	for (const entry of index) {
 		if (folderPath && !pathInFolder(entry.path, folderPath)) continue;
-		const score = normalizedQuery ? scoreIndexedFile(entry, normalizedQuery) : 1;
+		const score = normalizedQuery
+			? scoreIndexedFile(entry, normalizedQuery)
+			: 1;
 		if (score <= 0) continue;
 		candidates.push({
 			path: entry.path,
@@ -141,16 +148,6 @@ function scoreIndexedFile(entry: IndexedFile, normalizedQuery: string) {
 	);
 }
 
-function scoreText(haystack: string, needle: string, exactScore: number) {
-	if (!haystack || !needle) return 0;
-	if (haystack === needle) return exactScore;
-	if (haystack.startsWith(needle)) return exactScore - 10;
-	if (startsWithPathWord(haystack, needle)) return exactScore - 16;
-	if (haystack.includes(needle)) return exactScore - 28;
-	if (isSubsequence(needle, haystack)) return exactScore - 55;
-	return 0;
-}
-
 function compareScoredFiles(a: ScoredFile, b: ScoredFile) {
 	const byScore = b.score - a.score;
 	if (byScore !== 0) return byScore;
@@ -161,24 +158,7 @@ function compareScoredFiles(a: ScoredFile, b: ScoredFile) {
 	return a.relativePath.localeCompare(b.relativePath);
 }
 
-function startsWithPathWord(haystack: string, needle: string) {
-	return haystack.split("/").some((part) => part.startsWith(needle));
-}
-
 function directoryFromRelativePath(relativePath: string) {
 	const index = relativePath.lastIndexOf("/");
 	return index >= 0 ? relativePath.slice(0, index) : "";
-}
-
-function normalizeSearchText(value: string) {
-	return value.toLocaleLowerCase().replace(/[\s_\-./\\]+/g, "");
-}
-
-function isSubsequence(needle: string, haystack: string) {
-	let index = 0;
-	for (const char of haystack) {
-		if (char === needle[index]) index += 1;
-		if (index === needle.length) return true;
-	}
-	return false;
 }
