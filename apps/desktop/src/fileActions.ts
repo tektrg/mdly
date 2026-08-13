@@ -5,7 +5,7 @@ import {
 	tiptapDocToMarkdown,
 } from "@mdly/workspace-kit/engine";
 import { desktopApi } from "./desktopApi";
-import type { NotionSearchResult } from "./desktopApi/types";
+import type { DocImportResult, NotionSearchResult } from "./desktopApi/types";
 import { dirname } from "./lib/filePath";
 import { notionMarkdownContentHash } from "./notion/contentHash";
 import { buildDocSourceMarkdown } from "./docImport/docSourceMarkdown";
@@ -44,14 +44,31 @@ export async function createMarkdownFile() {
 }
 
 export async function importDocFile(filePath: string): Promise<string | null> {
+	const result = await desktopApi.docImportConvert(filePath);
+	return landDocImport(result, {
+		origin: "file",
+		url: null,
+		path: filePath,
+	});
+}
+
+export async function importDocUrl(url: string): Promise<string | null> {
+	const result = await desktopApi.docImportConvertUrl(url);
+	return landDocImport(result, {
+		origin: "url",
+		url,
+		path: null,
+	});
+}
+
+async function landDocImport(
+	result: DocImportResult,
+	source: { origin: "url" | "file"; url: string | null; path: string | null },
+): Promise<string | null> {
 	const workspace = workspaceStore.get();
 	if (!workspace.workspacePath) return null;
 
-	const result = await desktopApi.docImportConvert(filePath);
-	const folderPath = activeFolderPath(
-		workspace.workspacePath,
-		null,
-	);
+	const folderPath = activeFolderPath(workspace.workspacePath, null);
 	const markdownPath = uniqueMarkdownPath({
 		folderPath,
 		title: result.title,
@@ -60,8 +77,9 @@ export async function importDocFile(filePath: string): Promise<string | null> {
 	});
 	const markdown = buildDocSourceMarkdown(result.markdown, {
 		kind: result.kind,
-		origin: "file",
-		path: filePath,
+		origin: source.origin,
+		url: source.url,
+		path: source.path,
 		title: result.title,
 		importedAt: new Date().toISOString(),
 		contentHash: result.contentHash,

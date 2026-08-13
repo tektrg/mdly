@@ -134,6 +134,8 @@ export type DocImportResult = {
 	contentHash: string;
 	title: string;
 	kind: string;
+	origin?: "url" | "file";
+	url?: string | null;
 };
 
 export type DocImportErrorKind =
@@ -231,6 +233,7 @@ export type DesktopApi = {
 		input: NotionDatabaseQueryInput,
 	): Promise<NotionDatabaseQueryResult>;
 	docImportConvert(filePath: string): Promise<DocImportResult>;
+		docImportConvertUrl(url: string): Promise<DocImportResult>;
 	docImportCheckConverter(): Promise<ConverterStatus>;
 	checkForUpdates(): Promise<void>;
 	installUpdate(): Promise<void>;

@@ -41,7 +41,11 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
-import { checkConverterStatus, convertDocFile } from "./docImport";
+import {
+	acquireDocSource,
+	checkConverterStatus,
+	convertDocFile,
+} from "./docImport";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
@@ -1502,14 +1506,20 @@ function registerIpc() {
 	);
 
 		ipcMain.handle("desktop:doc-import-convert", (_event, { filePath }) =>
-		convertDocFile(filePath),
+			convertDocFile(filePath),
 		);
+
+		ipcMain.handle("desktop:doc-import-convert-url", async (_event, { url }) => {
+			const acquired = await acquireDocSource(url);
+			const result = await convertDocFile(acquired.path, { title: acquired.title });
+			return { ...result, origin: "url", url, path: null };
+		});
 
 		ipcMain.handle("desktop:doc-import-check-converter", () =>
-		checkConverterStatus(),
+			checkConverterStatus(),
 		);
 
-	ipcMain.handle("desktop:check-for-updates", async () => {
+		ipcMain.handle("desktop:check-for-updates", async () => {
 		await checkForUpdates();
 	});
 
