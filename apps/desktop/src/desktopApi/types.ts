@@ -129,6 +129,27 @@ export type NotionConnectionStatus = {
 	error: string | null;
 };
 
+export type DocImportResult = {
+	markdown: string;
+	contentHash: string;
+	title: string;
+	kind: string;
+};
+
+export type DocImportErrorKind =
+	| "converter-missing"
+	| "unreadable"
+	| "scanned-pdf"
+	| "unsupported-format"
+	| "timeout"
+	| "unknown";
+
+export type ConverterStatus = {
+	available: boolean;
+	version: string | null;
+	installHint: string;
+};
+
 export type WorkspaceConfig = {
 	version: 1;
 	pinnedNotes: string[];
@@ -209,6 +230,8 @@ export type DesktopApi = {
 	queryNotionDatabase(
 		input: NotionDatabaseQueryInput,
 	): Promise<NotionDatabaseQueryResult>;
+	docImportConvert(filePath: string): Promise<DocImportResult>;
+	docImportCheckConverter(): Promise<ConverterStatus>;
 	checkForUpdates(): Promise<void>;
 	installUpdate(): Promise<void>;
 	onOpenFile(callback: (path: string) => void): Unsubscribe;

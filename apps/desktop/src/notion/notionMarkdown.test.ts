@@ -6,7 +6,7 @@ import {
 	notionMarkdownBodyForUpdate,
 	parseNotionLinkMetadata,
 	stripNotionLinkMetadata,
-	uniqueNotionMarkdownPath,
+	uniqueMarkdownPath,
 } from "./notionMarkdown";
 
 const notionPage = {
@@ -354,10 +354,10 @@ describe("notionMarkdownBodyForUpdate", () => {
 	});
 });
 
-describe("uniqueNotionMarkdownPath", () => {
+describe("uniqueMarkdownPath", () => {
 	it("creates a safe unique path in the target folder", () => {
 		expect(
-			uniqueNotionMarkdownPath({
+			uniqueMarkdownPath({
 				folderPath: "/workspace/notes",
 				title: "Roadmap / Q3",
 				existingPaths: ["/workspace/notes/Roadmap - Q3.md"],

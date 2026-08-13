@@ -41,6 +41,7 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
+import { checkConverterStatus, convertDocFile } from "./docImport";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
@@ -1499,6 +1500,14 @@ function registerIpc() {
 	ipcMain.handle("desktop:notion-query-database", (_event, input) =>
 		queryNotionDatabase(input),
 	);
+
+		ipcMain.handle("desktop:doc-import-convert", (_event, { filePath }) =>
+		convertDocFile(filePath),
+		);
+
+		ipcMain.handle("desktop:doc-import-check-converter", () =>
+		checkConverterStatus(),
+		);
 
 	ipcMain.handle("desktop:check-for-updates", async () => {
 		await checkForUpdates();

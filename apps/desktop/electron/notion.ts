@@ -1,7 +1,6 @@
-import { spawn } from "node:child_process";
-import { accessSync, constants, existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { join } from "node:path";
 import type {
 	NotionConnectionStatus,
 	NotionDatabaseQueryInput,
@@ -14,6 +13,13 @@ import type {
 	NotionSearchResult,
 } from "../src/desktopApi/types";
 import { notionMarkdownContentHash } from "../src/notion/contentHash";
+import {
+	commandPathEnv,
+	type CommandResult,
+	isExecutableFile,
+	resolveCommandPath,
+	runCommand,
+} from "./externalCommand";
 
 const notionCommand = "ntn-acct";
 const notionCommandOverrideEnv = "HUBBLE_NOTION_COMMAND";
@@ -22,50 +28,29 @@ const notionRequestTimeoutMs = 30_000;
 const defaultNotionAccount = "7lab";
 let selectedNotionAccount: string | null = null;
 
-type CommandResult = {
-	stdout: string;
-	stderr: string;
-};
-
-type ResolveNotionCommandPathOptions = {
-	pathEnv?: string;
-	configuredCommand?: string | null;
-	isExecutable?: (filePath: string) => boolean;
-};
-
 export function resolveNotionCommandPath({
 	pathEnv = process.env.PATH,
 	configuredCommand = process.env[notionCommandOverrideEnv],
 	isExecutable = isExecutableFile,
-}: ResolveNotionCommandPathOptions = {}): string | null {
-	const configured = configuredCommand?.trim();
-	if (configured) {
-		if (configured.includes("/")) return configured;
-		return (
-			findExecutableCommand(configured, pathEnv, [], isExecutable) ?? configured
-		);
-	}
-
-	return findExecutableCommand(
-		notionCommand,
+}: {
+	pathEnv?: string;
+	configuredCommand?: string | null;
+	isExecutable?: (filePath: string) => boolean;
+} = {}): string | null {
+	return resolveCommandPath({
+		commandName: notionCommand,
 		pathEnv,
-		commonNotionCommandDirs,
+		configuredCommand,
+		commonDirs: commonNotionCommandDirs,
 		isExecutable,
-	);
+	});
 }
 
 export function notionCommandPathEnv(
 	commandPath: string,
 	pathEnv = process.env.PATH,
 ): string {
-	const helperDirs = [
-		...(commandPath.includes("/") ? [dirname(commandPath)] : []),
-		...commonNotionCommandDirs,
-	];
-	return uniquePathDirs([
-		...helperDirs,
-		...(pathEnv?.split(delimiter).filter(Boolean) ?? []),
-	]).join(delimiter);
+	return commandPathEnv(commandPath, commonNotionCommandDirs, pathEnv);
 }
 
 export async function getNotionConnectionStatus(
@@ -637,104 +622,24 @@ function runNotionCommand(
 	args: string[],
 	options: { account?: string | null; stdin?: string } = {},
 ): Promise<CommandResult> {
-	return new Promise((resolve, reject) => {
-		const account = notionAccount(options.account);
-		const commandPath = resolveNotionCommandPath();
-		if (!commandPath) {
-			reject(
-				new Error(
-					`Could not find ${notionCommand}. Install it or set ${notionCommandOverrideEnv} to its full path.`,
-				),
-			);
-			return;
-		}
-		const child = spawn(commandPath, args, {
-			env: {
-				...process.env,
-				NOTION_ACCOUNT: account,
-				PATH: notionCommandPathEnv(commandPath),
-			},
-			stdio:
-				options.stdin === undefined
-					? ["ignore", "pipe", "pipe"]
-					: ["pipe", "pipe", "pipe"],
-		});
-		let stdout = "";
-		let stderr = "";
-		const timeout = setTimeout(() => {
-			child.kill("SIGTERM");
-			reject(new Error("Notion command timed out."));
-		}, notionRequestTimeoutMs);
-
-		child.stdout.setEncoding("utf8");
-		child.stderr.setEncoding("utf8");
-		child.stdout.on("data", (chunk) => {
-			stdout += chunk;
-		});
-		child.stderr.on("data", (chunk) => {
-			stderr += chunk;
-		});
-		if (options.stdin !== undefined) {
-			child.stdin.end(options.stdin);
-		}
-		child.on("error", (error) => {
-			clearTimeout(timeout);
-			reject(error);
-		});
-		child.on("close", (code) => {
-			clearTimeout(timeout);
-			if (code === 0) {
-				resolve({ stdout, stderr });
-				return;
-			}
-			reject(
-				new Error(
-					stderr.trim() ||
-						`Notion command failed with exit code ${code ?? "unknown"}.`,
-				),
-			);
-		});
+	const account = notionAccount(options.account);
+	const commandPath = resolveNotionCommandPath();
+	if (!commandPath) {
+		throw new Error(
+			`Could not find ${notionCommand}. Install it or set ${notionCommandOverrideEnv} to its full path.`,
+		);
+	}
+	return runCommand({
+		commandPath,
+		args,
+		env: {
+			NOTION_ACCOUNT: account,
+			PATH: notionCommandPathEnv(commandPath),
+		},
+		stdin: options.stdin,
+		timeoutMs: notionRequestTimeoutMs,
+		commandLabel: "Notion",
 	});
-}
-
-function findExecutableCommand(
-	command: string,
-	pathEnv: string | undefined,
-	extraDirs: string[],
-	isExecutable: (filePath: string) => boolean,
-): string | null {
-	const searchDirs = [
-		...(pathEnv?.split(delimiter).filter(Boolean) ?? []),
-		...extraDirs,
-	];
-	const seenDirs = new Set<string>();
-	for (const dir of searchDirs) {
-		if (seenDirs.has(dir)) continue;
-		seenDirs.add(dir);
-		const candidate = join(dir, command);
-		if (isExecutable(candidate)) return candidate;
-	}
-	return null;
-}
-
-function uniquePathDirs(dirs: string[]): string[] {
-	const seenDirs = new Set<string>();
-	const uniqueDirs: string[] = [];
-	for (const dir of dirs) {
-		if (seenDirs.has(dir)) continue;
-		seenDirs.add(dir);
-		uniqueDirs.push(dir);
-	}
-	return uniqueDirs;
-}
-
-function isExecutableFile(filePath: string): boolean {
-	try {
-		accessSync(filePath, constants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 function parseSearchResults(

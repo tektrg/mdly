@@ -8,6 +8,7 @@ import { desktopApi } from "./desktopApi";
 import type { NotionSearchResult } from "./desktopApi/types";
 import { dirname } from "./lib/filePath";
 import { notionMarkdownContentHash } from "./notion/contentHash";
+import { buildDocSourceMarkdown } from "./docImport/docSourceMarkdown";
 import { buildNotionDatabaseMarkdown } from "./notion/notionDatabase";
 import {
 	buildNotionLinkedMarkdown,
@@ -15,7 +16,7 @@ import {
 	notionMarkdownBodyForUpdate,
 	parseNotionLinkMetadata,
 	stripNotionLinkMetadata,
-	uniqueNotionMarkdownPath,
+	uniqueMarkdownPath,
 } from "./notion/notionMarkdown";
 import {
 	createMarkdownFileInFolder,
@@ -40,6 +41,37 @@ export async function createMarkdownFile() {
 	const workspacePath = workspaceStore.get().workspacePath;
 	if (!workspacePath) return;
 	await createMarkdownFileInFolder(workspacePath);
+}
+
+export async function importDocFile(filePath: string): Promise<string | null> {
+	const workspace = workspaceStore.get();
+	if (!workspace.workspacePath) return null;
+
+	const result = await desktopApi.docImportConvert(filePath);
+	const folderPath = activeFolderPath(
+		workspace.workspacePath,
+		null,
+	);
+	const markdownPath = uniqueMarkdownPath({
+		folderPath,
+		title: result.title,
+		existingPaths: workspace.files.map((file) => file.path),
+		fallbackFileName: "imported-document",
+	});
+	const markdown = buildDocSourceMarkdown(result.markdown, {
+		kind: result.kind,
+		origin: "file",
+		path: filePath,
+		title: result.title,
+		importedAt: new Date().toISOString(),
+		contentHash: result.contentHash,
+		converter: "anydoc",
+	});
+
+	await desktopApi.writeFileText(markdownPath, markdown);
+	await refreshFiles();
+	await loadPath(markdownPath);
+	return markdownPath;
 }
 
 export async function importNotionPage(
@@ -104,7 +136,7 @@ export async function importNotionDatabase(
 		workspace.workspacePath,
 		options?.folderPath ?? null,
 	);
-	const filePath = uniqueNotionMarkdownPath({
+	const filePath = uniqueMarkdownPath({
 		folderPath,
 		title: `${result.title} database`,
 		existingPaths: workspace.files.map((file) => file.path),
@@ -140,7 +172,7 @@ async function createNotionPageFile(
 		workspace.workspacePath,
 		options?.folderPath ?? null,
 	);
-	const filePath = uniqueNotionMarkdownPath({
+	const filePath = uniqueMarkdownPath({
 		folderPath,
 		title: result.title,
 		existingPaths: workspace.files.map((file) => file.path),

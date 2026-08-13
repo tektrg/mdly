@@ -96,19 +96,21 @@ export function notionMarkdownBodyForUpdate(markdown: string): string {
 	return parseMarkdownFrontMatter(stripNotionLinkMetadata(markdown)).body;
 }
 
-export function uniqueNotionMarkdownPath({
+export function uniqueMarkdownPath({
 	folderPath,
 	title,
 	existingPaths,
+	fallbackFileName,
 }: {
 	folderPath: string;
 	title: string;
 	existingPaths: string[];
+	fallbackFileName?: string;
 }): string {
 	const existing = new Set(
 		existingPaths.map((path) => path.toLocaleLowerCase()),
 	);
-	const baseName = markdownFileNameForTitle(title);
+	const baseName = markdownFileNameForTitle(title, fallbackFileName);
 	const stem = baseName.replace(/\.md$/i, "");
 	for (let index = 0; ; index += 1) {
 		const name = index === 0 ? baseName : `${stem}-${index + 1}.md`;
@@ -171,7 +173,7 @@ function parseYamlStringValue(raw: string): string {
 	}
 }
 
-function markdownFileNameForTitle(title: string): string {
+function markdownFileNameForTitle(title: string, fallback = "notion-page"): string {
 	const safeName = title
 		.trim()
 		.replace(/[\\/:*?"<>|]+/g, "-")
@@ -182,7 +184,7 @@ function markdownFileNameForTitle(title: string): string {
 		.replace(/[. ]+$/g, "")
 		.slice(0, 80)
 		.trim();
-	return `${safeName || "notion-page"}.md`;
+	return `${safeName || fallback}.md`;
 }
 
 function isSafeFileNameCharacter(character: string): boolean {

@@ -98,6 +98,10 @@ const desktopApi = {
 		}),
 	queryNotionDatabase: (input) =>
 		ipcRenderer.invoke("desktop:notion-query-database", input),
+		docImportConvert: (filePath) =>
+		ipcRenderer.invoke("desktop:doc-import-convert", { filePath }),
+		docImportCheckConverter: () =>
+		ipcRenderer.invoke("desktop:doc-import-check-converter"),
 	checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),
 	installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
 	onOpenFile: (callback) =>
