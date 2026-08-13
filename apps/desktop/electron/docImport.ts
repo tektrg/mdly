@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
 import { extname } from "node:path";
 import type {
 	ConverterStatus,
@@ -11,6 +12,7 @@ import {
 	resolveCommandPath,
 	runCommand,
 } from "./externalCommand";
+import { repairOfficeZipBackslashes } from "./zipRepair";
 
 const anydocCommand = "anydoc";
 const anydocCommandOverrideEnv = "HUBBLE_ANYDOC_COMMAND";
@@ -89,14 +91,23 @@ export async function convertDocFile(
 	const kind = formatKind(extname(filePath).toLowerCase());
 	const title = fileTitle(filePath);
 
+	// Repair SharePoint zip archives with backslash entry names before conversion.
+	const repairedPath = await repairOfficeZipBackslashes(filePath);
+	const convertPath = repairedPath ?? filePath;
+
 	try {
 		const { stdout } = await runCommand({
 			commandPath,
-			args: [filePath],
+			args: [convertPath],
 			env: { PATH: anydocCommandPathEnv(commandPath) },
 			timeoutMs: anydocRequestTimeoutMs,
 			commandLabel: "anydoc",
 		});
+
+		// Clean up the repaired temp file after conversion.
+		if (repairedPath) {
+			await cleanupRepairedFile(repairedPath);
+		}
 		const markdown = stdout.trimEnd();
 		return {
 			markdown,
@@ -105,7 +116,16 @@ export async function convertDocFile(
 			kind,
 		};
 	} catch (error) {
+		if (repairedPath) await cleanupRepairedFile(repairedPath);
 		throw mapDocImportError(error);
+	}
+}
+
+async function cleanupRepairedFile(filePath: string): Promise<void> {
+	try {
+		await fs.unlink(filePath);
+	} catch {
+		// Best-effort cleanup; a leftover temp file is harmless.
 	}
 }
 
