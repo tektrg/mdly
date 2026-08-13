@@ -44,12 +44,14 @@ import {
 	type SortMode,
 	showIgnoredWorkspaceFilesStore,
 	sidebarOpenStore,
+	sourceRetentionPreferenceStore,
 	switcherOpenStore,
 	themePreferenceStore,
 	viewerStore,
 	withOpenedDoc,
 	workspaceStore,
 } from "./state";
+import type { SourceRetentionPreference } from "./persistence";
 import { flushEditorDraft } from "./editorDraft";
 import { recordStormEvent } from "./stormDetector";
 
@@ -354,6 +356,12 @@ export function setShowIgnoredWorkspaceFiles(
 ) {
 	showIgnoredWorkspaceFilesStore.set(showIgnoredWorkspaceFiles);
 	void refreshFiles();
+}
+
+export function setSourceRetentionPreference(
+	sourceRetentionPreference: SourceRetentionPreference,
+) {
+	sourceRetentionPreferenceStore.set(sourceRetentionPreference);
 }
 
 export function toggleSidebar() {

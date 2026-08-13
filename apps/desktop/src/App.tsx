@@ -19,6 +19,7 @@ import {
 } from "./components/HtmlAppsCallout";
 import {
 	AppearanceSettings,
+	ImportSettings,
 	SettingsDialog,
 	WorkspaceSettings,
 } from "./components/SettingsDialog";
@@ -734,6 +735,7 @@ function App() {
 			<SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}>
 				<AppearanceSettings />
 				<WorkspaceSettings />
+				<ImportSettings />
 				{updateState ? (
 					<UpdatesSection
 						state={updateState}

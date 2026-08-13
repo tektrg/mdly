@@ -25,7 +25,12 @@ import {
 	savePathContent,
 } from "./store/actions";
 import { flushEditorDraft } from "./store/editorDraft";
-import { getBaseline, viewerStore, workspaceStore } from "./store/state";
+import {
+	getBaseline,
+	sourceRetentionPreferenceStore,
+	viewerStore,
+	workspaceStore,
+} from "./store/state";
 
 export type NotionPushResult =
 	| { kind: "pushed" }
@@ -57,7 +62,7 @@ export async function importDocUrl(url: string): Promise<string | null> {
 	return landDocImport(result, {
 		origin: "url",
 		url,
-		path: null,
+		path: result.path ?? null,
 	});
 }
 
@@ -89,7 +94,31 @@ async function landDocImport(
 	await desktopApi.writeFileText(markdownPath, markdown);
 	await refreshFiles();
 	await loadPath(markdownPath);
+
+	// Retain or discard the source document after the import has landed, so the
+	// import itself never blocks on a retention question.
+	await retainOrDiscardSource(source, markdownPath);
+
 	return markdownPath;
+}
+
+async function retainOrDiscardSource(
+	source: { origin: "url" | "file"; url: string | null; path: string | null },
+	markdownPath: string,
+) {
+	const preference = sourceRetentionPreferenceStore.get();
+
+	let keep: boolean;
+	if (preference === "ask") {
+		keep = window.confirm(
+			"Keep a copy of the original document in the workspace?\n\nKeeping it lets you re-import later, including recovering images when import fidelity improves. The original file outside the workspace is never touched.",
+		);
+	} else {
+		keep = preference === "keep";
+	}
+
+	if (!keep || !source.path) return;
+	await desktopApi.docImportRetainSource(source.path, markdownPath, true);
 }
 
 export async function importNotionPage(

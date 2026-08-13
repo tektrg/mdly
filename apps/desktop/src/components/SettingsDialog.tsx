@@ -13,14 +13,17 @@ import {
 	setContrastPreference,
 	setEditorFontPreference,
 	setShowIgnoredWorkspaceFiles,
+	setSourceRetentionPreference,
 	setThemePreference,
 } from "../store/actions";
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
 	showIgnoredWorkspaceFilesStore,
+	sourceRetentionPreferenceStore,
 	themePreferenceStore,
 } from "../store/state";
+import type { SourceRetentionPreference } from "../store/persistence";
 
 export function SettingsDialog({
 	open,
@@ -281,6 +284,59 @@ export function WorkspaceSettings() {
 					}
 					type="checkbox"
 				/>
+			</label>
+		</SettingsSection>
+	);
+}
+
+const sourceRetentionPreferenceLabels: Record<
+	SourceRetentionPreference,
+	string
+> = {
+	ask: "Ask every time",
+	keep: "Keep a copy",
+	delete: "Discard source",
+};
+
+export function ImportSettings() {
+	const sourceRetentionPreference = useStoreValue(
+		sourceRetentionPreferenceStore,
+	);
+
+	return (
+		<SettingsSection
+			title="Import"
+			description="How imported documents remember their original file."
+		>
+			<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+				<span className="flex min-w-0 flex-col gap-1">
+					<span className="text-[11px] font-medium text-foreground">
+						Keep source document
+					</span>
+					<span className="text-[11px] leading-4 text-muted-foreground">
+						Keeping the original lets you re-import later, including recovering
+						images when import fidelity improves.
+					</span>
+				</span>
+				<select
+					className="h-8 w-40 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden"
+					value={sourceRetentionPreference}
+					onChange={(event) =>
+						setSourceRetentionPreference(
+							event.currentTarget.value as SourceRetentionPreference,
+						)
+					}
+				>
+					{(
+						Object.keys(
+							sourceRetentionPreferenceLabels,
+						) as SourceRetentionPreference[]
+					).map((preference) => (
+						<option key={preference} value={preference}>
+							{sourceRetentionPreferenceLabels[preference]}
+						</option>
+					))}
+				</select>
 			</label>
 		</SettingsSection>
 	);

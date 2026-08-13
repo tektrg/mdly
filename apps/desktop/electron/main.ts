@@ -1511,9 +1511,29 @@ function registerIpc() {
 
 		ipcMain.handle("desktop:doc-import-convert-url", async (_event, { url }) => {
 			const acquired = await acquireDocSource(url);
+			grantFileWithParent(acquired.path);
 			const result = await convertDocFile(acquired.path, { title: acquired.title });
-			return { ...result, origin: "url", url, path: null };
+			return { ...result, origin: "url", url, path: acquired.path };
 		});
+
+		ipcMain.handle(
+			"desktop:doc-import-retain-source",
+			async (_event, { sourcePath, markdownFilePath, keep }) => {
+				if (keep) {
+					const assetsDir = markdownAssetFolderPath(
+						assertGranted(markdownFilePath),
+					);
+					if (!assetsDir) throw new Error("Unable to resolve asset folder");
+					await fs.mkdir(assetsDir, { recursive: true });
+					const sourceName = path.basename(sourcePath);
+					const target = path.join(assetsDir, sourceName);
+					await fs.copyFile(assertGranted(sourcePath), target);
+					grantFile(target);
+					return target;
+				}
+				return null;
+			},
+		);
 
 		ipcMain.handle("desktop:doc-import-check-converter", () =>
 			checkConverterStatus(),

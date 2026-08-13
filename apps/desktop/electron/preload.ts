@@ -102,6 +102,8 @@ const desktopApi = {
 			ipcRenderer.invoke("desktop:doc-import-convert", { filePath }),
 		docImportConvertUrl: (url) =>
 			ipcRenderer.invoke("desktop:doc-import-convert-url", { url }),
+		docImportRetainSource: (sourcePath, markdownFilePath, keep) =>
+			ipcRenderer.invoke("desktop:doc-import-retain-source", { sourcePath, markdownFilePath, keep }),
 		docImportCheckConverter: () =>
 			ipcRenderer.invoke("desktop:doc-import-check-converter"),
 	checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),

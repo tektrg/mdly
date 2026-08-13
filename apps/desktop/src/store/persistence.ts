@@ -10,6 +10,14 @@ import {
 import type { SortMode } from "./state";
 import { STORAGE_KEY } from "./storage";
 
+export type SourceRetentionPreference = "ask" | "keep" | "delete";
+
+export function isSourceRetentionPreference(
+	value: unknown,
+): value is SourceRetentionPreference {
+	return value === "ask" || value === "keep" || value === "delete";
+}
+
 type WorkspaceState = {
 	workspacePath: string | null;
 	recentWorkspaces: string[];
@@ -47,6 +55,7 @@ type UiState = {
 	contrastPreference: ContrastPreference;
 	editorFontPreference: EditorFontPreference;
 	showIgnoredWorkspaceFiles: boolean;
+	sourceRetentionPreference: SourceRetentionPreference;
 };
 
 export type DesktopState = {
@@ -69,6 +78,7 @@ type Persisted = {
 		contrastPreference?: unknown;
 		editorFontPreference?: unknown;
 		showIgnoredWorkspaceFiles?: boolean;
+		sourceRetentionPreference?: unknown;
 	};
 };
 
@@ -119,6 +129,11 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 			: "standard",
 		editorFontPreference,
 		showIgnoredWorkspaceFiles: ui?.showIgnoredWorkspaceFiles === true,
+		sourceRetentionPreference: isSourceRetentionPreference(
+			ui?.sourceRetentionPreference,
+		)
+			? ui.sourceRetentionPreference
+			: "ask",
 	};
 }
 
@@ -162,6 +177,7 @@ export function serialize(state: DesktopState): Persisted {
 			contrastPreference: state.ui.contrastPreference,
 			editorFontPreference: state.ui.editorFontPreference,
 			showIgnoredWorkspaceFiles: state.ui.showIgnoredWorkspaceFiles,
+			sourceRetentionPreference: state.ui.sourceRetentionPreference,
 		},
 	};
 }

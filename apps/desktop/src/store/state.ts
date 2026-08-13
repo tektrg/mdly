@@ -167,3 +167,6 @@ export const editorFontPreferenceStore = uiStore.select("editorFontPreference");
 export const showIgnoredWorkspaceFilesStore = uiStore.select(
 	"showIgnoredWorkspaceFiles",
 );
+export const sourceRetentionPreferenceStore = uiStore.select(
+	"sourceRetentionPreference",
+);
