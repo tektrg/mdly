@@ -8,7 +8,12 @@ import { desktopApi } from "./desktopApi";
 import type { DocImportResult, NotionSearchResult } from "./desktopApi/types";
 import { dirname } from "./lib/filePath";
 import { notionMarkdownContentHash } from "./notion/contentHash";
-import { buildDocSourceMarkdown } from "./docImport/docSourceMarkdown";
+import {
+	buildDocSourceMarkdown,
+	buildDocSourceMarkdownFromMetadata,
+	parseDocSourceMetadata,
+	type DocSourceMetadata,
+} from "./docImport/docSourceMarkdown";
 import { buildNotionDatabaseMarkdown } from "./notion/notionDatabase";
 import {
 	buildNotionLinkedMarkdown,
@@ -119,6 +124,103 @@ async function retainOrDiscardSource(
 
 	if (!keep || !source.path) return;
 	await desktopApi.docImportRetainSource(source.path, markdownPath, true);
+}
+
+export type DocReimportPrepareResult =
+	| { kind: "not-imported" }
+	| { kind: "error"; message: string }
+	| {
+			kind: "ready";
+			markdown: string;
+			contentHash: string;
+			metadata: DocSourceMetadata;
+	  };
+
+export type DocReimportResolution = "replace" | "keep-local" | "keep-both";
+
+/**
+ * Re-convert an imported document's source and return the fresh markdown, so
+ * the UI can prompt the user before anything is overwritten.
+ */
+export async function prepareDocReimport(
+	path: string,
+): Promise<DocReimportPrepareResult> {
+	const content = await desktopApi.readFileText(path);
+	const metadata = parseDocSourceMetadata(content);
+	if (!metadata) return { kind: "not-imported" };
+
+	try {
+		const fresh = await reConvertSource(metadata);
+		return {
+			kind: "ready",
+			markdown: fresh.markdown,
+			contentHash: fresh.contentHash,
+			metadata,
+		};
+	} catch (error) {
+		return {
+			kind: "error",
+			message: error instanceof Error ? error.message : String(error),
+		};
+	}
+}
+
+/**
+ * Apply a re-import resolution. Always called after the user has chosen, so it
+ * never silently discards manual edits (divergence from the Notion path).
+ */
+export async function applyDocReimport(
+	path: string,
+	resolution: DocReimportResolution,
+	fresh: { markdown: string; contentHash: string },
+): Promise<void> {
+	if (resolution === "keep-local") return;
+
+	const content = await desktopApi.readFileText(path);
+	const metadata = parseDocSourceMetadata(content);
+	if (!metadata) return;
+
+	if (resolution === "replace") {
+		const next = buildDocSourceMarkdownFromMetadata(fresh.markdown, {
+			...metadata,
+			contentHash: fresh.contentHash,
+			importedAt: new Date().toISOString(),
+		});
+		await desktopApi.writeFileText(path, next);
+		await loadPath(path);
+		return;
+	}
+
+	// keep-both: land the fresh conversion as a new file, leave the local one.
+	const workspace = workspaceStore.get();
+	const folderPath = workspace.workspacePath ?? dirname(path) ?? "";
+	if (!folderPath) return;
+	const newPath = uniqueMarkdownPath({
+		folderPath,
+		title: metadata.title,
+		existingPaths: workspace.files.map((file) => file.path),
+		fallbackFileName: "imported-document",
+	});
+	const next = buildDocSourceMarkdownFromMetadata(fresh.markdown, {
+		...metadata,
+		contentHash: fresh.contentHash,
+		importedAt: new Date().toISOString(),
+	});
+	await desktopApi.writeFileText(newPath, next);
+	await refreshFiles();
+	await loadPath(newPath);
+}
+
+async function reConvertSource(
+	metadata: DocSourceMetadata,
+): Promise<DocImportResult> {
+	if (metadata.origin === "url" && metadata.url) {
+		return desktopApi.docImportConvertUrl(metadata.url);
+	}
+	if (metadata.origin === "file" && metadata.path) {
+		return desktopApi.docImportConvert(metadata.path);
+	}
+	throw new Error("This document has no re-importable source.");
 }
 
 export async function importNotionPage(
@@ -256,6 +358,11 @@ async function linkedNotionPagePath(
 export function currentNotionLinkStatus() {
 	const current = viewerStore.get();
 	return current.currentPath ? parseNotionLinkMetadata(current.content) : null;
+}
+
+export function currentDocImportStatus() {
+	const current = viewerStore.get();
+	return current.currentPath ? parseDocSourceMetadata(current.content) : null;
 }
 
 export function hasLocalChangesSinceLastNotionSync() {

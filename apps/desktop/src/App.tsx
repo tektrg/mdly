@@ -24,6 +24,7 @@ import {
 	WorkspaceSettings,
 } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
+import { ReimportDocDialog } from "./components/ReimportDocDialog";
 import { Toolbar } from "./components/Toolbar";
 import {
 	SidebarUpdateCallout,
@@ -33,12 +34,16 @@ import { WelcomeScreen } from "./components/WelcomeScreen";
 import { desktopApi } from "./desktopApi";
 import type { DesktopUpdateState } from "./desktopApi/types";
 import {
+	applyDocReimport,
 	createMarkdownFile,
+	currentDocImportStatus,
 	currentNotionLinkStatus,
 	importNotionDatabase,
 	openOrImportNotionPage,
+	prepareDocReimport,
 	pushCurrentNotionPage,
 	refreshCurrentNotionPage,
+	type DocReimportResolution,
 } from "./fileActions";
 import { basename, joinPath } from "./lib/filePath";
 import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
@@ -182,6 +187,12 @@ function App() {
 	const [htmlAppsCalloutVisible, setHtmlAppsCalloutVisible] = useState(false);
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
+	const [reimportOpen, setReimportOpen] = useState(false);
+	const [reimportFresh, setReimportFresh] = useState<{
+		markdown: string;
+		contentHash: string;
+	} | null>(null);
+	const [reimportError, setReimportError] = useState<string | null>(null);
 	// Keep code-split panels mounted once opened so close animations still play.
 	const [commandBarMounted, setCommandBarMounted] = useState(false);
 	const [notionDialogMounted, setNotionDialogMounted] = useState(false);
@@ -238,6 +249,7 @@ function App() {
 		: isNotionDatabase
 			? "database"
 			: "none";
+	const docImported = currentDocImportStatus() !== null;
 
 	useEffect(() => {
 		return syncThemePreference(themePreference);
@@ -312,6 +324,49 @@ function App() {
 			});
 		}
 	}, [forceRefreshNotionPage]);
+
+	const reimportDoc = useCallback(async () => {
+		const path = state.currentPath;
+		if (!path) return;
+		const prepared = await prepareDocReimport(path);
+		if (prepared.kind === "not-imported") {
+			toast.error("This file has no import source");
+			return;
+		}
+		if (prepared.kind === "error") {
+			toast.error("Re-import failed", { description: prepared.message });
+			return;
+		}
+		setReimportFresh({
+			markdown: prepared.markdown,
+			contentHash: prepared.contentHash,
+		});
+		setReimportError(null);
+		setReimportOpen(true);
+	}, [state.currentPath]);
+
+	const resolveReimport = useCallback(
+		async (resolution: DocReimportResolution) => {
+			const path = state.currentPath;
+			setReimportOpen(false);
+			if (!path || !reimportFresh) return;
+			try {
+				await applyDocReimport(path, resolution, reimportFresh);
+				if (resolution !== "keep-local") {
+					toast.success(
+						resolution === "replace"
+							? "Re-imported from source"
+							: "Saved re-import as a new file",
+					);
+				}
+			} catch (error) {
+				toast.error("Re-import failed", {
+					description: error instanceof Error ? error.message : String(error),
+				});
+			}
+		},
+		[state.currentPath, reimportFresh],
+	);
 
 	const openNotionInBrowser = useCallback(async () => {
 		const url = notionBrowserUrlForMarkdown(viewerStore.get().content);
@@ -694,7 +749,9 @@ function App() {
 				onPushNotionPage={pushNotionPage}
 				onRefreshNotionPage={refreshNotionPage}
 				onMoveCurrentFile={openMoveCurrentFileCommandBar}
+				onReimportDoc={() => void reimportDoc()}
 				notionSyncMode={notionSyncMode}
+				docImported={docImported}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<Sidebar
@@ -758,6 +815,12 @@ function App() {
 					/>
 				</Suspense>
 			) : null}
+				<ReimportDocDialog
+				open={reimportOpen}
+				onOpenChange={setReimportOpen}
+				onResolve={(resolution) => void resolveReimport(resolution)}
+				error={reimportError}
+				/>
 			{commandBarMounted ? (
 				<Suspense fallback={null}>
 					<CommandBar

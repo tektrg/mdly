@@ -17,8 +17,10 @@ export function Toolbar({
 	onOpenNotionInBrowser,
 	onPushNotionPage,
 	onRefreshNotionPage,
+	onReimportDoc,
 	onMoveCurrentFile,
 	notionSyncMode,
+	docImported,
 }: {
 	scrollContainer: HTMLDivElement | null;
 	showSidebarBadge?: boolean;
@@ -26,8 +28,10 @@ export function Toolbar({
 	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
+	onReimportDoc: () => void;
 	onMoveCurrentFile: () => void;
 	notionSyncMode: NotionSyncMode;
+	docImported: boolean;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
 	const currentPath = useStoreValue(currentPathStore);
@@ -41,8 +45,10 @@ export function Toolbar({
 				onOpenNotionInBrowser={onOpenNotionInBrowser}
 				onPushNotionPage={onPushNotionPage}
 				onRefreshNotionPage={onRefreshNotionPage}
+				onReimportDoc={onReimportDoc}
 				onMoveFile={onMoveCurrentFile}
 				notionSyncMode={notionSyncMode}
+				docImported={docImported}
 			/>
 		</div>
 	);
@@ -54,16 +60,20 @@ function NoteActionsMenu({
 	onOpenNotionInBrowser,
 	onPushNotionPage,
 	onRefreshNotionPage,
+	onReimportDoc,
 	onMoveFile,
 	notionSyncMode,
+	docImported,
 }: {
 	path: string | null;
 	onOpenNotionPage: () => void;
 	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
 	onRefreshNotionPage: () => void;
+	onReimportDoc: () => void;
 	onMoveFile: () => void;
 	notionSyncMode: NotionSyncMode;
+	docImported: boolean;
 }) {
 	async function revealFile() {
 		if (!path) return;
@@ -134,6 +144,18 @@ function NoteActionsMenu({
 								>
 									<MingcuteLinkLine className="size-3 shrink-0" />
 									<span className="min-w-0 flex-1">Refresh from Notion</span>
+								</Menu.Item>
+							</>
+						) : null}
+						{docImported ? (
+							<>
+								<Menu.Separator className="my-1 h-px bg-border" />
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onReimportDoc}
+								>
+									<MingcuteLinkLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">Re-import from source</span>
 								</Menu.Item>
 							</>
 						) : null}
