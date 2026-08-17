@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
+import type { InAppHistoryCause } from "../desktopApi/types";
 import { classifyFileChange } from "../externalFileChange";
 import {
 	absoluteWorkspacePath,
@@ -28,6 +29,8 @@ import type {
 	EditorFontPreference,
 	ThemePreference,
 } from "../lib/theme";
+import { flushEditorDraft } from "./editorDraft";
+import type { SourceRetentionPreference } from "./persistence";
 import {
 	applyFileAction,
 	appStore,
@@ -51,8 +54,6 @@ import {
 	withOpenedDoc,
 	workspaceStore,
 } from "./state";
-import type { SourceRetentionPreference } from "./persistence";
-import { flushEditorDraft } from "./editorDraft";
 import { recordStormEvent } from "./stormDetector";
 
 const REFRESH_FILES_DEBOUNCE_MS = 250;
@@ -452,13 +453,26 @@ export function updateEditorContent(path: string, content: string) {
 export async function savePathContent(
 	path: string,
 	content: string,
-	options?: { force?: boolean },
+	options?: { force?: boolean; historyCause?: InAppHistoryCause },
 ) {
 	flushEditorDraft();
 	const current = viewerStore.get();
 	const force = options?.force === true;
+	// An automatic idle/forced history cut (tagged with `historyCause`) is not
+	// a deliberate user decision the way rename/move/delete/"Keep My Edits"
+	// are — those are the only other `force: true` callers. It must not use
+	// `force` to silently win an unresolved external-change conflict; instead
+	// it defers (no write, no revision) until the conflict banner is resolved
+	// through its own buttons, which still call savePathContent with `force`
+	// and no `historyCause` and so are unaffected by this guard.
+	const isAutomaticHistoryCut = options?.historyCause !== undefined;
 	if (current.currentPath !== path) return;
-	if (!force && current.externalChange.kind === "conflict") return;
+	if (
+		current.externalChange.kind === "conflict" &&
+		(!force || isAutomaticHistoryCut)
+	) {
+		return;
+	}
 	if (!force && current.content === content && content === getBaseline(current))
 		return;
 
@@ -485,7 +499,15 @@ export async function savePathContent(
 	}
 
 	try {
-		await desktopApi.writeFileText(path, content);
+		// Ordinary saves keep the exact 2-argument call other tests/consumers
+		// already assert on; only a tagged cut adds the options argument.
+		if (options?.historyCause) {
+			await desktopApi.writeFileText(path, content, {
+				historyCause: options.historyCause,
+			});
+		} else {
+			await desktopApi.writeFileText(path, content);
+		}
 		touchFile(path);
 		viewerStore.set((state) => {
 			if (state.currentPath !== path) return state;
@@ -1012,7 +1034,11 @@ export async function forceKeepLocalEdits() {
 export const loadPath = latest(async ({ isStale }, path: string) => {
 	// Persist unsaved edits of the outgoing file before switching. The editor's
 	// unmount save fires after currentPath has already moved on, so
-	// savePathContent's path guard would silently drop it.
+	// savePathContent's path guard would silently drop it. This is also the
+	// one place a workspace switch's forced history cut (R17) can actually
+	// land: it runs before currentPath moves, at the file's correct path, so
+	// tagging it with historyCause records a revision for an edit that would
+	// otherwise never get one on a file-to-file switch.
 	flushEditorDraft();
 	const previous = viewerStore.get();
 	if (
@@ -1022,7 +1048,9 @@ export const loadPath = latest(async ({ isStale }, path: string) => {
 		previous.externalChange.kind === "none" &&
 		previous.content !== previous.diskContent
 	) {
-		await savePathContent(previous.currentPath, previous.content);
+		await savePathContent(previous.currentPath, previous.content, {
+			historyCause: "idle-session",
+		});
 	}
 
 	const timer = window.setTimeout(() => {

@@ -1,4 +1,20 @@
 import {
+	type CutCause,
+	type CutPolicy,
+	createCutPolicy,
+} from "@mdly/doc-history";
+import type { Editor } from "@tiptap/core";
+import { TaskItem } from "@tiptap/extension-list";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import {
+	EditorContent,
+	type EditorOptions,
+	type JSONContent,
+	useEditor,
+} from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
 	combineMarkdownFrontMatter,
 	HeadingExtension,
 	hasLinkedNotionFrontMatter,
@@ -14,17 +30,6 @@ import {
 	tableExtensions,
 	tiptapDocToMarkdown,
 } from "../engine/index.js";
-import type { Editor } from "@tiptap/core";
-import { TaskItem } from "@tiptap/extension-list";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import {
-	EditorContent,
-	type EditorOptions,
-	type JSONContent,
-	useEditor,
-} from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CODE_BLOCK_COPY_EVENT, HubbleCodeBlock } from "./CodeBlockExtension";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FindReplaceExtension } from "./FindReplaceExtension";
@@ -112,6 +117,24 @@ export type EditorViewProps = {
 	registerDraftFlush?: (flush: () => void) => (() => void) | void;
 	onLocalChange: (path: string, markdown: string) => void;
 	onSave: (path: string, markdown: string) => void | Promise<void>;
+	/**
+	 * Fires a local-document-history cut distinct from the 500ms autosave
+	 * above: once after `idleCutMs` of no typing, and again every
+	 * `forcedCutMs` during a long uninterrupted typing session, plus once
+	 * more when this file closes/the host unmounts with an unflushed pending
+	 * save. Reuses the same force-save write path as `onSave` — callers
+	 * should route this to a history-tagged save, not a second disk-write
+	 * mechanism. Omit to leave history-cut timers disabled entirely.
+	 */
+	onIdleOrForcedCut?: (
+		path: string,
+		markdown: string,
+		cause: CutCause,
+	) => void | Promise<void>;
+	/** Idle-cut window; defaults to 3 minutes. Exposed for tests only. */
+	idleCutMs?: number;
+	/** Forced-cut ceiling; defaults to 30 minutes. Exposed for tests only. */
+	forcedCutMs?: number;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 	onOpenExternalLink: (href: string) => void | Promise<void>;
 	onOpenWikiLink: (target: string) => void | Promise<void>;
@@ -137,6 +160,9 @@ export function EditorView({
 	registerDraftFlush,
 	onLocalChange,
 	onSave,
+	onIdleOrForcedCut,
+	idleCutMs,
+	forcedCutMs,
 	onScrollContainerChange,
 	onOpenExternalLink,
 	onOpenWikiLink,
@@ -181,6 +207,8 @@ export function EditorView({
 	pathRef.current = path;
 	const onLocalChangeRef = useRef(onLocalChange);
 	onLocalChangeRef.current = onLocalChange;
+	const onIdleOrForcedCutRef = useRef(onIdleOrForcedCut);
+	onIdleOrForcedCutRef.current = onIdleOrForcedCut;
 
 	// Serializes the pending doc (if any) to markdown and syncs the internal
 	// refs. Safe to call after the editor is destroyed because it works from
@@ -208,6 +236,34 @@ export function EditorView({
 		const markdown = serializePendingDraft();
 		if (markdown !== null) onLocalChangeRef.current(pathRef.current, markdown);
 	}, [serializePendingDraft]);
+	const flushDraftRef = useRef(flushDraft);
+	flushDraftRef.current = flushDraft;
+
+	// Idle (3min, resettable) / forced (30min ceiling) history-cut timers,
+	// distinct from the 500ms autosave debounce below (R15, R16). Created
+	// once per mount; `idleCutMs`/`forcedCutMs` are read only at creation
+	// (test-only overrides, not expected to change while mounted).
+	const cutPolicyRef = useRef<CutPolicy | null>(null);
+	if (!cutPolicyRef.current) {
+		cutPolicyRef.current = createCutPolicy(
+			(cause) => {
+				// Flush any not-yet-serialized draft first so a cut taken inside the
+				// 500ms autosave window still includes the just-typed edit (R34).
+				flushDraftRef.current();
+				void onIdleOrForcedCutRef.current?.(
+					pathRef.current,
+					latestMarkdownRef.current,
+					cause,
+				);
+			},
+			{ idleMs: idleCutMs, forcedMs: forcedCutMs },
+		);
+	}
+	useEffect(() => {
+		return () => {
+			cutPolicyRef.current?.dispose();
+		};
+	}, []);
 
 	useEffect(() => {
 		const unregister = registerDraftFlush?.(flushDraft);
@@ -333,10 +389,12 @@ export function EditorView({
 				if (markdown === null || !hasRecentUserEditIntent()) return;
 				onLocalChangeRef.current(pathRef.current, markdown);
 				scheduleSave();
+				cutPolicyRef.current?.onEdit();
 				return;
 			}
 			if (!hasRecentUserEditIntent()) return;
 			scheduleSave();
+			cutPolicyRef.current?.onEdit();
 		},
 		editorProps: {
 			...editorProps,
@@ -407,6 +465,23 @@ export function EditorView({
 				saveTimerRef.current = null;
 				flushDraft();
 				void onSave(path, latestMarkdownRef.current);
+				// This cleanup fires both on a path change (opening a different
+				// file/workspace) and on true unmount (closing the file) — intended
+				// as a forced-cut moment for whatever edit the 500ms autosave
+				// debounce had not yet caught (R17). NOTE: for a path change driven
+				// by the app's `loadPath` (its only file-to-file switch path),
+				// `currentPath` has already moved to the new path by the time this
+				// runs, so both calls above are no-ops there (their consumers guard
+				// on `currentPath === path`) — `loadPath`'s own proactive
+				// outgoing-file save (in `apps/desktop/src/store/actions.ts`) is what
+				// actually captures that edit's history, tagged with
+				// `historyCause: 'idle-session'`. This effect still does real work
+				// for a true component unmount that isn't a `loadPath` switch.
+				void onIdleOrForcedCutRef.current?.(
+					path,
+					latestMarkdownRef.current,
+					"forced",
+				);
 			}
 		};
 	}, [path, onSave, flushDraft]);

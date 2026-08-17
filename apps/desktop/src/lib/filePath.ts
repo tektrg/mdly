@@ -33,7 +33,7 @@ export function hasDocumentExtension(path: string): boolean {
 }
 
 export function isHiddenSidebarFolderName(name: string): boolean {
-	return name === ".hubble" || name.endsWith(".assets");
+	return name === ".hubble" || name === ".mdly" || name.endsWith(".assets");
 }
 
 export function withMarkdownExtension(path: string): string {

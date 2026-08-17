@@ -26,6 +26,9 @@ importers:
       '@hubble.md/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@mdly/doc-history':
+        specifier: workspace:*
+        version: link:../../packages/doc-history
       '@mdly/workspace-kit':
         specifier: workspace:*
         version: link:../../packages/workspace-kit
@@ -368,6 +371,22 @@ importers:
         specifier: ~5.8.3
         version: 5.8.3
 
+  packages/doc-history:
+    dependencies:
+      diff:
+        specifier: ^8.0.3
+        version: 8.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.5.0)(happy-dom@20.10.3)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.13(@types/node@25.5.0)(typescript@5.8.3))(yaml@2.9.0)
+
   packages/runtime: {}
 
   packages/sync:
@@ -434,6 +453,9 @@ importers:
       '@floating-ui/dom':
         specifier: ^1.7.5
         version: 1.7.6
+      '@mdly/doc-history':
+        specifier: workspace:*
+        version: link:../doc-history
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)

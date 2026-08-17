@@ -184,6 +184,21 @@ function MarkdownEditor({
 		},
 		[],
 	);
+	const handleIdleOrForcedCut = useCallback<
+		NonNullable<EditorViewProps["onIdleOrForcedCut"]>
+	>(
+		(cutPath, markdown) =>
+			// Both the 3-minute idle timer and the 30-minute-ceiling/file-close
+			// forced cut map to the 'idle-session' history cause: the locked
+			// revision schema (R3) has no separate 'forced' value, and both are
+			// equally an automatic session-boundary capture, distinct from an
+			// explicit manual save.
+			savePathContent(cutPath, markdown, {
+				force: true,
+				historyCause: "idle-session",
+			}),
+		[],
+	);
 	// Diagnostic: attach the transaction-storm detector to the live editor so a
 	// background-OOM loop names its driver on disk. No-ops without the bridge.
 	const stormProbeDisposeRef = useRef<(() => void) | null>(null);
@@ -206,6 +221,7 @@ function MarkdownEditor({
 			registerDraftFlush={registerEditorDraftFlush}
 			onLocalChange={updateEditorContent}
 			onSave={savePathContent}
+			onIdleOrForcedCut={handleIdleOrForcedCut}
 			onScrollContainerChange={onScrollContainerChange}
 			onOpenExternalLink={desktopApi.openExternalUrl}
 			onOpenNotionMentionLink={openNotionMentionLink}

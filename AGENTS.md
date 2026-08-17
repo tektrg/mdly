@@ -29,3 +29,33 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 ### Review readiness
 
 Use `.agents/skills/review-readiness` before handing code to a human reviewer.
+
+### Deliver — standard shipping loop
+
+The reusable workflow at `.claude/workflows/deliver.js` is the standard loop for shipping any
+change in this monorepo (Electron desktop, web apps, or a published package): oracle-first,
+grep-grounded wiring, verified via Vitest and a manual desktop dev-app pass (this repo has no
+code-intel tool and no e2e harness — don't invent either). Tracking is local-only, never wired
+to an external tracker.
+
+Invoke (requires ultracode / explicit opt-in — it fans out subagents):
+`Workflow({ name: "deliver", args: { item, kind: "feature"|"fix", stage: "plan"|"validate" } })`
+
+Loop: run `stage:"plan"` (defines oracles, designs + door-census, writes the frozen charter +
+living test plan + coverage ledger) → **implement inline** in the main loop (delegate to a
+FRESH agent, not a fork; verify real changes with `git status` before trusting the report) →
+run `stage:"validate"` with `changedFiles` + the plan's `spec` (proves wiring live, QA reviews,
+emits a verification checklist you then drive inline). Strategic forks halt the run and bubble
+up as decisions to ask the user. Use `size:"small"` for one-line fixes.
+
+**Artifacts live one level up, not in this repo.** This repo is the public `tektrg/mdly`
+checkout; delivery scratch (charter, test plan, status, coverage) must never enter its git
+history. Everything is written under the parent `markdown-lite-mac` project's PARA `memory/`
+tree instead: `../memory/Projects/deliver-<slug>/charter.md` (frozen ask + numbered rules
+R1..Rn), `test-plan.md` (living case checklist), `status.md` (live stage), `coverage.json`
+(machine-readable rule ledger). The index `../memory/Projects/ACTIVE-DELIVERY.md` is
+**generated** by `../scripts/gen-active-delivery-index.py` — never hand-edit it; close a
+delivery by prefixing its `status.md` Stage with `DONE —` and re-running the script.
+
+Known limitation: verification for anything UI-visible in the Electron desktop app is a manual
+dev-app pass, not an automated check — there is no e2e harness in this repo.

@@ -125,6 +125,56 @@ describe("desktop savePathContent", () => {
 		expect(viewerStore.get().diskContent).toBe("draft 2");
 		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 	});
+
+	it("does not let an automatic idle/forced history cut silently win an unresolved external-change conflict", async () => {
+		const api = createDesktopApi();
+		const { appStore, savePathContent, viewerStore } =
+			await loadStoreActions(api);
+		const path = "/workspace/note.md";
+
+		appStore.set((current) => ({
+			...current,
+			document: {
+				...current.document,
+				currentPath: path,
+				lastOpenedPath: path,
+				content: "my local edit",
+				diskContent: "before",
+				externalChange: { kind: "conflict", diskContent: "changed outside" },
+				status: "ready",
+				error: null,
+			},
+		}));
+
+		// The idle/forced cut always calls savePathContent with force: true and
+		// a historyCause, exactly like DocumentViewer's handleIdleOrForcedCut.
+		await savePathContent(path, "my local edit", {
+			force: true,
+			historyCause: "idle-session",
+		});
+
+		expect(api.writeFileText).not.toHaveBeenCalled();
+		expect(viewerStore.get().externalChange).toEqual({
+			kind: "conflict",
+			diskContent: "changed outside",
+		});
+
+		// Resolving the conflict through "Keep My Edits" (force: true, no
+		// historyCause) still works exactly as before this fix.
+		await savePathContent(path, "my local edit", { force: true });
+		expect(api.writeFileText).toHaveBeenCalledWith(path, "my local edit");
+		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
+
+		// Once resolved, a subsequent idle/forced cut behaves normally again.
+		api.writeFileText.mockClear();
+		await savePathContent(path, "later edit", {
+			force: true,
+			historyCause: "idle-session",
+		});
+		expect(api.writeFileText).toHaveBeenCalledWith(path, "later edit", {
+			historyCause: "idle-session",
+		});
+	});
 });
 
 describe("desktop sidebar discovery preferences", () => {
@@ -1007,6 +1057,53 @@ describe("desktop moveMarkdownFileToFolder", () => {
 describe("desktop loadPath", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
+	});
+
+	it("records a history revision for the outgoing file's unsaved edit on a workspace/file switch (R17)", async () => {
+		// EditorView's own unmount-cleanup forced cut always no-ops for this
+		// switch (savePathContent's currentPath guard has already flipped to the
+		// new path by the time it runs) — loadPath's own proactive outgoing-file
+		// save is the only place this edit can be tagged with history, since it
+		// runs before currentPath moves.
+		const api = createDesktopApi();
+		const outgoingPath = "/workspace/a.md";
+		const nextPath = "/workspace/b.md";
+		api.readFileText.mockImplementation(async (path: string) =>
+			path === nextPath ? "b content" : "before",
+		);
+		const { appStore, loadPath, viewerStore } = await loadStoreActions(api);
+
+		appStore.set((current) => ({
+			...current,
+			workspace: {
+				...current.workspace,
+				workspacePath: "/workspace",
+				files: [
+					{ path: outgoingPath, modified_at: 1 },
+					{ path: nextPath, modified_at: 1 },
+				],
+			},
+			document: {
+				...current.document,
+				currentPath: outgoingPath,
+				lastOpenedPath: outgoingPath,
+				content: "unsaved edit on a.md",
+				diskContent: "before",
+				externalChange: { kind: "none" },
+				status: "ready",
+				error: null,
+			},
+		}));
+
+		await loadPath(nextPath);
+
+		expect(api.writeFileText).toHaveBeenCalledWith(
+			outgoingPath,
+			"unsaved edit on a.md",
+			{ historyCause: "idle-session" },
+		);
+		expect(viewerStore.get().currentPath).toBe(nextPath);
+		expect(viewerStore.get().content).toBe("b content");
 	});
 
 	it("refreshes the sidebar when a selected file no longer exists", async () => {

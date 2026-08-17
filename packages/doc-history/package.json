@@ -1,0 +1,43 @@
+{
+	"name": "@mdly/doc-history",
+	"version": "0.0.1",
+	"description": "Local, filesystem-interface-based version history store for mdly documents",
+	"license": "MIT",
+	"author": "tektrg",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tektrg/mdly.git",
+		"directory": "packages/doc-history"
+	},
+	"bugs": "https://github.com/tektrg/mdly/issues",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./node": {
+			"types": "./dist/fs-node.d.ts",
+			"default": "./dist/fs-node.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"diff": "^8.0.3"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
+	}
+}

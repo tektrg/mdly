@@ -27,9 +27,19 @@ import type {
 } from "../src/desktopApi/types";
 import {
 	hasDocumentExtension,
+	hasMarkdownExtension,
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
+import {
+	createSelfWriteEchoTracker,
+	type InAppHistoryCause,
+	loadOrCreateActorId,
+	recordDeleteHistory,
+	recordExternalWriteHistory,
+	recordInAppWriteHistory,
+	recordRenameHistory,
+} from "./docHistoryWiring";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
@@ -155,6 +165,30 @@ const watchers = new Map<string, FSWatcher>();
 const grantedFiles = new Set<string>();
 const grantedRoots = new Set<string>();
 let grantsLoaded = false;
+const historyEchoTracker = createSelfWriteEchoTracker();
+let actorIdPromise: Promise<string> | null = null;
+
+const IN_APP_HISTORY_CAUSES = new Set<InAppHistoryCause>([
+	"idle-session",
+	"manual",
+	"import",
+	"restore",
+]);
+
+function isInAppHistoryCause(value: unknown): value is InAppHistoryCause {
+	return (
+		typeof value === "string" &&
+		IN_APP_HISTORY_CAUSES.has(value as InAppHistoryCause)
+	);
+}
+
+/** Loaded once per process and cached — persisted next to `grants.json`. */
+function getActorId(): Promise<string> {
+	if (!actorIdPromise) {
+		actorIdPromise = loadOrCreateActorId(app.getPath("userData"));
+	}
+	return actorIdPromise;
+}
 
 const ignoreConfigFiles = [".gitignore", ".ignore"];
 const ignoredWorkspaceDirs = new Set([
@@ -1204,10 +1238,23 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:write-file-text",
-		async (_event, { path: filePath, content }) => {
+		async (_event, { path: filePath, content, historyCause }) => {
 			const resolved = assertGranted(filePath);
 			await fs.mkdir(path.dirname(resolved), { recursive: true });
-			await fs.writeFile(resolved, String(content));
+			const text = String(content);
+			await fs.writeFile(resolved, text);
+			// Never affects the write above (R29) — recordInAppWriteHistory
+			// swallows its own errors.
+			if (isInAppHistoryCause(historyCause)) {
+				await recordInAppWriteHistory({
+					absoluteFilePath: resolved,
+					content: text,
+					grantedRoots,
+					actorId: await getActorId(),
+					historyCause,
+					echoTracker: historyEchoTracker,
+				});
+			}
 		},
 	);
 
@@ -1220,6 +1267,13 @@ function registerIpc() {
 			await fs.mkdir(path.dirname(to), { recursive: true });
 			await fs.rename(from, to);
 			grantFileWithParent(to);
+			// Never affects the rename above (R31) — recordRenameHistory
+			// swallows its own errors.
+			await recordRenameHistory({
+				fromAbsolutePath: from,
+				toAbsolutePath: to,
+				grantedRoots,
+			});
 		},
 	);
 
@@ -1314,8 +1368,17 @@ function registerIpc() {
 	ipcMain.handle(
 		"desktop:delete-file",
 		async (_event, { path: filePath, options }) => {
-			await fs.rm(assertGranted(filePath), {
+			const resolved = assertGranted(filePath);
+			await fs.rm(resolved, {
 				recursive: options?.recursive === true,
+			});
+			// Never affects the delete above (R33) — recordDeleteHistory swallows
+			// its own errors. Breaks the deleted path's document-id binding so a
+			// later unrelated file written to this same path doesn't silently
+			// continue the deleted document's revision log.
+			await recordDeleteHistory({
+				absoluteFilePath: resolved,
+				grantedRoots,
 			});
 		},
 	);
@@ -1417,8 +1480,28 @@ function registerIpc() {
 						emit(changedPath);
 					}
 				};
-				watcher.on("add", emitFile);
-				watcher.on("change", emitFile);
+				// Markdown adds/changes additionally cut external-write history
+				// (R13). `emit()` (the existing UI-refresh signal) always runs
+				// first and is never delayed/duplicated/swallowed by this (R30) —
+				// history recording is fire-and-forget and swallows its own
+				// errors. `unlink` intentionally stays on the plain `emitFile`:
+				// an outside tool's atomic temp-file-then-rename save reports as
+				// unlink immediately followed by add, and recording history off
+				// the transient unlink would read a momentarily-missing file and
+				// could misfire (R35) — recordExternalWriteHistory itself also
+				// no-ops when the read fails, as defense in depth.
+				const emitFileAndRecordHistory = (changedPath: string) => {
+					emitFile(changedPath);
+					if (hasMarkdownExtension(changedPath)) {
+						void recordExternalWriteHistory({
+							absoluteFilePath: path.resolve(changedPath),
+							grantedRoots,
+							echoTracker: historyEchoTracker,
+						});
+					}
+				};
+				watcher.on("add", emitFileAndRecordHistory);
+				watcher.on("change", emitFileAndRecordHistory);
 				watcher.on("unlink", emitFile);
 				watcher.on("addDir", emit);
 				watcher.on("unlinkDir", emit);
