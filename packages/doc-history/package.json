@@ -11,6 +11,7 @@
 	},
 	"bugs": "https://github.com/tektrg/mdly/issues",
 	"type": "module",
+	"sideEffects": false,
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"exports": {
