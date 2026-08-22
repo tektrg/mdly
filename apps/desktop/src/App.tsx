@@ -13,6 +13,8 @@ import {
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { DocumentViewer } from "./components/DocumentViewer";
+import { ExternalChangeReviewDialog } from "./components/ExternalChangeReviewDialog";
+import { RevisionHistoryDialog } from "./components/RevisionHistoryDialog";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
@@ -67,6 +69,7 @@ import {
 	refreshFiles,
 	refreshFilesDebounced,
 	reloadFromDiskConflict,
+	resolveExternalChangeReview,
 	restorePersistedWorkspace,
 	setSidebarOpen,
 	setWorkspaceSwitcherOpen,
@@ -877,10 +880,33 @@ function ReadyDocument({
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
 }) {
 	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
-	const hasConflict = useStoreValue(
+	const diskContent = useStoreValue(
 		viewerStore,
-		(viewer) => viewer.externalChange.kind === "conflict",
+		(viewer) => viewer.diskContent,
 	);
+	const externalChange = useStoreValue(
+		viewerStore,
+		(viewer) => viewer.externalChange,
+	);
+	const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
+	const [historyOpen, setHistoryOpen] = useState(false);
+
+	// The whole-file conflict banner and the pending-review badge are
+	// mutually exclusive by construction (ExternalChange is a tagged union
+	// with exactly one active kind at a time -- state.ts), so exactly one of
+	// them, or neither, ever shows for a given document (R14).
+	const hasConflict = externalChange.kind === "conflict";
+	const hasReview = externalChange.kind === "review";
+
+	// A review belongs to the document it was raised for -- close its panel
+	// (and the history dialog) rather than let either leak onto whatever note
+	// this component next renders for (R27's per-document scoping precedent).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
+	useEffect(() => {
+		setReviewPanelOpen(false);
+		setHistoryOpen(false);
+	}, [currentPath]);
+
 	return (
 		<div className="flex h-full min-h-0 flex-col">
 			{hasConflict && (
@@ -889,12 +915,51 @@ function ReadyDocument({
 					onReloadFromDisk={reloadFromDiskConflict}
 				/>
 			)}
+			{hasReview && (
+				<ExternalChangeReviewBadge onReview={() => setReviewPanelOpen(true)} />
+			)}
 			<DocumentViewer
 				path={currentPath}
 				content={content}
 				notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 				onScrollContainerChange={onScrollContainerChange}
+				onOpenRevisionHistory={() => setHistoryOpen(true)}
 			/>
+			{hasReview && (
+				<ExternalChangeReviewDialog
+					open={reviewPanelOpen}
+					onOpenChange={setReviewPanelOpen}
+					oldText={diskContent}
+					newText={externalChange.diskContent}
+					onConfirm={(mergedText) => resolveExternalChangeReview(mergedText)}
+				/>
+			)}
+			<RevisionHistoryDialog
+				open={historyOpen}
+				onOpenChange={setHistoryOpen}
+				path={currentPath}
+				currentContent={content}
+			/>
+		</div>
+	);
+}
+
+function ExternalChangeReviewBadge({ onReview }: { onReview: () => void }) {
+	return (
+		// pt-11 clears the fixed, full-width WindowDragRegion (index.css's
+		// .desktop-window-drag-strip, 2.75rem tall) -- without it this being the
+		// pane's first child put "Review changes" directly under the drag strip,
+		// where the OS treats every click as a window-drag gesture instead of a
+		// button press.
+		<div className="border-b border-border bg-muted/40 pt-11">
+			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+				<p className="m-0 text-sm text-muted-foreground">
+					changed outside the app — review
+				</p>
+				<Button size="sm" variant="outline" onClick={onReview}>
+					Review changes
+				</Button>
+			</div>
 		</div>
 	);
 }
@@ -907,7 +972,10 @@ function ExternalChangeBanner({
 	onKeepMyEdits: () => void;
 }) {
 	return (
-		<div className="border-b border-border bg-muted/40">
+		// pt-11: same drag-strip clearance as ExternalChangeReviewBadge above --
+		// this banner is the pane's other possible first child (R14: the two are
+		// mutually exclusive) and hit the identical unclickable-button bug.
+		<div className="border-b border-border bg-muted/40 pt-11">
 			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
 				<p className="m-0 text-sm text-muted-foreground">
 					File changed on disk. Reload it or keep your editor edits.

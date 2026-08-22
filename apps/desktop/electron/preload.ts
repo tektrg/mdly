@@ -32,10 +32,18 @@ const desktopApi = {
 		}),
 	readFileText: (path) =>
 		ipcRenderer.invoke("desktop:read-file-text", { path }),
-	writeFileText: (path, content) =>
-		ipcRenderer.invoke("desktop:write-file-text", { path, content }),
+	writeFileText: (path, content, options) =>
+		ipcRenderer.invoke("desktop:write-file-text", {
+			path,
+			content,
+			historyCause: options?.historyCause,
+		}),
 	renameFile: (fromPath, toPath) =>
 		ipcRenderer.invoke("desktop:rename-file", { fromPath, toPath }),
+	getRevisionHistory: (path) =>
+		ipcRenderer.invoke("desktop:get-revision-history", { path }),
+	readRevisionContent: (path, revisionId) =>
+		ipcRenderer.invoke("desktop:read-revision-content", { path, revisionId }),
 	renameSymlinkTarget: (linkPath, nextName) =>
 		ipcRenderer.invoke("desktop:rename-symlink-target", {
 			linkPath,

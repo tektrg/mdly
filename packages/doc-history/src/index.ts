@@ -9,8 +9,20 @@ export {
 	DEFAULT_FORCED_CUT_MS,
 	DEFAULT_IDLE_CUT_MS,
 } from "./cutPolicy.js";
-export type { DiffRegion, DiffRegionType } from "./diff/regionDiff.js";
-export { diffRegions, mergeAcceptingAllRegions } from "./diff/regionDiff.js";
+export type {
+	ChangedGroup,
+	ChangeGroup,
+	ChangeGroupDecisions,
+	DiffRegion,
+	DiffRegionType,
+	UnchangedGroup,
+} from "./diff/regionDiff.js";
+export {
+	diffRegions,
+	groupChangeRegions,
+	mergeAcceptingAllRegions,
+	mergeSelectedRegions,
+} from "./diff/regionDiff.js";
 export type { Compressor, DocHistoryFileSystem } from "./fs.js";
 export { contentHash, textToBytes } from "./hash.js";
 export type {

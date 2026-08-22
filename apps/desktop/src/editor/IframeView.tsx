@@ -1,4 +1,7 @@
-import { hasMarkdownExtension, withMarkdownExtension } from "@mdly/workspace-kit";
+import {
+	hasMarkdownExtension,
+	withMarkdownExtension,
+} from "@mdly/workspace-kit";
 import type { CSSProperties } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { z } from "zod/v4";
@@ -11,7 +14,12 @@ import {
 	touchFile,
 } from "../store/actions";
 import { flushEditorDraft } from "../store/editorDraft";
-import { cleanFileState, getBaseline, viewerStore } from "../store/state";
+import {
+	cleanFileState,
+	getBaseline,
+	isUnresolvedExternalChange,
+	viewerStore,
+} from "../store/state";
 import {
 	applyPatchToMarkdown,
 	type HtmlAppFilePatch,
@@ -309,7 +317,7 @@ async function createMarkdownFile(
  * Applies a patch from an HTML app to a Markdown file. If the file is already
  * open, use the editor state so we do not overwrite unsaved user edits.
  */
-async function applyMarkdownPatch(
+export async function applyMarkdownPatch(
 	absolutePath: string,
 	patch: HtmlAppFilePatch,
 ) {
@@ -321,9 +329,11 @@ async function applyMarkdownPatch(
 	const hasBody = hasOwn(patch, "body");
 
 	if (isCurrent) {
+		// A pending review (like a real conflict) must not be silently
+		// clobbered by an HTML-embed's programmatic patch (R22).
 		const isDirty =
 			current.content !== getBaseline(current) ||
-			current.externalChange.kind === "conflict";
+			isUnresolvedExternalChange(current.externalChange.kind);
 		if (hasBody && isDirty) {
 			throw new Error(
 				"Cannot update body while the open file has unsaved edits.",

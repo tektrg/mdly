@@ -85,7 +85,7 @@ default theme. **The kit must define a fallback value for both, or the property
 list is incomplete for a host with no Tailwind present** — SpeechToDo's renderer
 has no Tailwind toolchain by design (see plan). This is a Phase 2 exit blocker.
 
-Full property list (68 total):
+Full property list (72 total):
 
 **Color — semantic surface/foreground**
 `--background`, `--foreground`, `--muted`, `--muted-foreground`, `--popover`,
@@ -95,6 +95,11 @@ Full property list (68 total):
 (added Phase 2 — the sidebar's rename-conflict-error tooltip, previously a
 hardcoded `oklch()` literal; deliberately not reusing `--destructive-foreground`,
 which is a different value and a different semantic role — shadcn button text).
+`--diff-added`, `--diff-added-foreground`, `--diff-removed`,
+`--diff-removed-foreground` (added Slice 3 —
+`packages/workspace-kit/src/history/DiffReviewPanel.tsx` and
+`RevisionTimeline.tsx`'s per-region diff highlighting; no existing semantic
+color already meant "incoming (disk) text" vs. "pre-edit text" specifically).
 `--card` and `--input` were already named as kit-read properties in Decision 2's
 collision table above; `--primary` and `--secondary` are genuinely read via the
 kit's own Tailwind `@theme` mapping (`bg-primary`/`bg-secondary`, used in

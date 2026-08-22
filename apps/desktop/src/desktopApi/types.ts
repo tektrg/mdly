@@ -158,6 +158,54 @@ export type WorkspaceConfig = {
 	pinnedNotes: string[];
 };
 
+/**
+ * Tags an in-app save so `@mdly/doc-history` can cut a version alongside the
+ * real write. Undefined by default so ordinary writes are unaffected.
+ * `'external-write'` is deliberately excluded — that cause is reserved for
+ * the active-file watcher hook.
+ */
+export type InAppHistoryCause =
+	| "idle-session"
+	| "manual"
+	| "import"
+	| "restore";
+
+export type WriteFileTextOptions = {
+	historyCause?: InAppHistoryCause;
+};
+
+export type HistoryRevisionAuthorKind = "human" | "agent" | "external";
+
+export type HistoryRevisionAuthor = {
+	kind: HistoryRevisionAuthorKind;
+	id: string;
+	label?: string;
+};
+
+/** Mirrors `@mdly/doc-history`'s `RevisionCause` (kept as a local literal union, matching this file's existing `InAppHistoryCause` convention, rather than importing the package into the renderer-facing IPC contract). */
+export type HistoryRevisionCause =
+	| "external-write"
+	| "idle-session"
+	| "manual"
+	| "import"
+	| "restore";
+
+/** Mirrors `@mdly/doc-history`'s `Revision` shape (the "public, 7-field revision shape"). */
+export type HistoryRevision = {
+	id: string;
+	hash: string;
+	at: number;
+	by: HistoryRevisionAuthor;
+	cause: HistoryRevisionCause;
+	bytes: number;
+	prev: string | null;
+};
+
+export type ReadRevisionContentResult =
+	| { status: "ok"; content: string }
+	| { status: "unavailable" }
+	| { status: "not-found" };
+
 export type DesktopApi = {
 	platform: DesktopPlatform;
 	homeDir: string;
@@ -181,9 +229,20 @@ export type DesktopApi = {
 		config: WorkspaceConfig,
 	): Promise<void>;
 	readFileText(path: string): Promise<string>;
-	writeFileText(path: string, content: string): Promise<void>;
+	writeFileText(
+		path: string,
+		content: string,
+		options?: WriteFileTextOptions,
+	): Promise<void>;
 	renameFile(fromPath: string, toPath: string): Promise<void>;
 	renameSymlinkTarget(linkPath: string, nextName: string): Promise<void>;
+	/** Read-only: never appends to the note's history log (R19). Returned oldest-first, in the log's own reconstructed `prev`-chain edit order — never re-sorted by `at` (R9); the UI reverses for its newest-first display (R8). */
+	getRevisionHistory(path: string): Promise<HistoryRevision[]>;
+	/** Read-only: never appends to the note's history log (R19). */
+	readRevisionContent(
+		path: string,
+		revisionId: string,
+	): Promise<ReadRevisionContentResult>;
 	pathExists(path: string): Promise<boolean>;
 	persistPastedImage(
 		input: PersistPastedImageInput,

@@ -39,11 +39,14 @@ export function DocumentViewer({
 	content,
 	notionDatabaseRefreshToken = 0,
 	onScrollContainerChange,
+	onOpenRevisionHistory,
 }: {
 	path: string;
 	content: string;
 	notionDatabaseRefreshToken?: number;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
+	/** Opt-in revision-timeline entry point (R8); omit for non-Markdown views. */
+	onOpenRevisionHistory?: (path: string) => void;
 }) {
 	if (hasHtmlExtension(path)) {
 		return (
@@ -74,6 +77,7 @@ export function DocumentViewer({
 			path={path}
 			initialMarkdown={content}
 			onScrollContainerChange={onScrollContainerChange}
+			onOpenRevisionHistory={onOpenRevisionHistory}
 		/>
 	);
 }
@@ -114,10 +118,12 @@ function MarkdownEditor({
 	path,
 	initialMarkdown,
 	onScrollContainerChange,
+	onOpenRevisionHistory,
 }: {
 	path: string;
 	initialMarkdown: string;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
+	onOpenRevisionHistory?: (path: string) => void;
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const notionAccount =
@@ -228,6 +234,7 @@ function MarkdownEditor({
 			onOpenWikiLink={openWikiLink}
 			onMessage={showEditorMessage}
 			onEditorReady={handleEditorReady}
+			onOpenRevisionHistory={onOpenRevisionHistory}
 		/>
 	);
 }

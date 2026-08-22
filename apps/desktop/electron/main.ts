@@ -33,12 +33,15 @@ import {
 } from "../src/lib/filePath";
 import {
 	createSelfWriteEchoTracker,
+	getHistoryStoreForWorkspace,
 	type InAppHistoryCause,
 	loadOrCreateActorId,
 	recordDeleteHistory,
 	recordExternalWriteHistory,
 	recordInAppWriteHistory,
 	recordRenameHistory,
+	resolveHistoryWorkspaceRoot,
+	toWorkspaceRelativePath,
 } from "./docHistoryWiring";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { scanFrontMatterTags } from "./frontMatterTags";
@@ -1255,6 +1258,40 @@ function registerIpc() {
 					echoTracker: historyEchoTracker,
 				});
 			}
+		},
+	);
+
+	// Read-only history lookups (R19): thin wrappers over already-tested
+	// `@mdly/doc-history` functions. Never call a write path (recordRevision /
+	// appendLogEntry) from here.
+	ipcMain.handle(
+		"desktop:get-revision-history",
+		async (_event, { path: filePath }) => {
+			const resolved = assertGranted(filePath);
+			const workspaceRoot = resolveHistoryWorkspaceRoot(resolved, grantedRoots);
+			if (!workspaceRoot) return [];
+			const relativePath = toWorkspaceRelativePath(workspaceRoot, resolved);
+			return await getHistoryStoreForWorkspace(
+				workspaceRoot,
+			).getRevisionHistory(relativePath);
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:read-revision-content",
+		async (_event, { path: filePath, revisionId }) => {
+			const resolved = assertGranted(filePath);
+			const workspaceRoot = resolveHistoryWorkspaceRoot(resolved, grantedRoots);
+			if (!workspaceRoot) return { status: "not-found" as const };
+			const relativePath = toWorkspaceRelativePath(workspaceRoot, resolved);
+			const result = await getHistoryStoreForWorkspace(
+				workspaceRoot,
+			).readRevisionContent(relativePath, String(revisionId));
+			if (result.status !== "ok") return result;
+			return {
+				status: "ok" as const,
+				content: new TextDecoder().decode(result.bytes),
+			};
 		},
 	);
 

@@ -72,6 +72,20 @@ export {
 	textEndPos,
 	textStartPos,
 } from "./engine/utils.js";
+// ---- History (diff review + revision timeline, on top of @mdly/doc-history) ----
+export {
+	DiffReviewPanel,
+	type DiffReviewPanelProps,
+} from "./history/DiffReviewPanel";
+export {
+	type ReadRevisionContentResult,
+	type Revision,
+	type RevisionAuthor,
+	type RevisionAuthorKind,
+	type RevisionCause,
+	RevisionTimeline,
+	type RevisionTimelineProps,
+} from "./history/RevisionTimeline";
 // ---- Popup mount-target (theming contract, Phase 2) ----
 export {
 	PortalContainerProvider,

@@ -26,6 +26,13 @@
 	 * semantic role (a filled error tooltip surface, not button text). */
 	--destructive-surface: oklch(0.78 0.11 4);
 	--destructive-surface-foreground: oklch(0.18 0.02 4);
+	/* Slice 3 (workspace-kit history/DiffReviewPanel.tsx, RevisionTimeline.tsx):
+	 * incoming-vs-original region highlighting. New tokens -- no existing
+	 * semantic color already means "added" or "removed" text specifically. */
+	--diff-added: oklch(0.94 0.05 145);
+	--diff-added-foreground: oklch(0.32 0.09 145);
+	--diff-removed: oklch(0.95 0.03 20);
+	--diff-removed-foreground: oklch(0.4 0.15 25);
 	--border: oklch(0.9 0.004 95);
 	--input: oklch(0.91 0.004 95);
 	--ring: var(--brand-accent);
@@ -101,6 +108,10 @@
 	 * it, so this tooltip follows the same existing precedent). */
 	--destructive-surface: oklch(0.32 0.1 20);
 	--destructive-surface-foreground: oklch(0.94 0.02 20);
+	--diff-added: oklch(0.32 0.06 145);
+	--diff-added-foreground: oklch(0.85 0.08 145);
+	--diff-removed: oklch(0.32 0.08 20);
+	--diff-removed-foreground: oklch(0.85 0.08 20);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 14%);
 	--ring: color-mix(in oklab, var(--brand) 68%, white);
@@ -273,6 +284,10 @@
 	--color-destructive: var(--destructive);
 	--color-destructive-surface: var(--destructive-surface);
 	--color-destructive-surface-foreground: var(--destructive-surface-foreground);
+	--color-diff-added: var(--diff-added);
+	--color-diff-added-foreground: var(--diff-added-foreground);
+	--color-diff-removed: var(--diff-removed);
+	--color-diff-removed-foreground: var(--diff-removed-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);

@@ -42,6 +42,7 @@ import {
 	type FolderEntry,
 	getBaseline,
 	isInWorkspace,
+	isUnresolvedExternalChange,
 	LOADING_DELAY_MS,
 	MAX_RECENT,
 	type SortMode,
@@ -133,6 +134,22 @@ function moveAffectsPath(path: string, sourcePath: string, isFolder: boolean) {
 	return isFolder
 		? pathStartsWithFolder(path, sourcePath)
 		: pathEquals(path, sourcePath);
+}
+
+/**
+ * True when the currently-open document has a pending "review" (not
+ * "conflict") external change. A rename/move's pre-move force-save must skip
+ * entirely in this case: while a review is pending, `current.content` is the
+ * frozen pre-edit baseline (see `getBaseline`), not the file's real most-
+ * recent bytes — those are already on disk as the not-yet-reviewed external
+ * edit. Force-saving the stale baseline over it would silently destroy that
+ * external edit before the rename/move even happens. This is deliberately
+ * narrower than `isUnresolvedExternalChange`: a real "conflict" keeps its
+ * existing force-save-wins behavior (the user's local edits are the ones that
+ * should survive there) — only "review" has no local edit worth preserving.
+ */
+function hasPendingExternalReview(state: { externalChange: { kind: string } }) {
+	return state.externalChange.kind === "review";
 }
 
 function setViewerCleanContent(path: string, content: string) {
@@ -432,9 +449,11 @@ export function updateEditorContent(path: string, content: string) {
 
 	viewerStore.set((state) => {
 		if (state.currentPath !== path) return state;
+		const externalChange = state.externalChange;
 		if (
-			state.externalChange.kind === "conflict" &&
-			content === state.externalChange.diskContent
+			isUnresolvedExternalChange(externalChange.kind) &&
+			"diskContent" in externalChange &&
+			content === externalChange.diskContent
 		) {
 			return {
 				...state,
@@ -461,14 +480,15 @@ export async function savePathContent(
 	// An automatic idle/forced history cut (tagged with `historyCause`) is not
 	// a deliberate user decision the way rename/move/delete/"Keep My Edits"
 	// are — those are the only other `force: true` callers. It must not use
-	// `force` to silently win an unresolved external-change conflict; instead
-	// it defers (no write, no revision) until the conflict banner is resolved
-	// through its own buttons, which still call savePathContent with `force`
-	// and no `historyCause` and so are unaffected by this guard.
+	// `force` to silently win an unresolved external change (a real conflict
+	// or a pending review); instead it defers (no write, no revision) until
+	// the conflict banner / review panel is resolved through its own buttons,
+	// which still call savePathContent with `force` and no `historyCause` and
+	// so are unaffected by this guard.
 	const isAutomaticHistoryCut = options?.historyCause !== undefined;
 	if (current.currentPath !== path) return;
 	if (
-		current.externalChange.kind === "conflict" &&
+		isUnresolvedExternalChange(current.externalChange.kind) &&
 		(!force || isAutomaticHistoryCut)
 	) {
 		return;
@@ -489,7 +509,9 @@ export async function savePathContent(
 			if (action !== "none") {
 				viewerStore.set((state) => {
 					if (state.currentPath !== path) return state;
-					return applyFileAction(state, currentDiskContent, action);
+					return applyFileAction(state, currentDiskContent, action, {
+						isVersionableMarkdownFile: hasMarkdownExtension(path),
+					});
 				});
 				return;
 			}
@@ -511,7 +533,8 @@ export async function savePathContent(
 		touchFile(path);
 		viewerStore.set((state) => {
 			if (state.currentPath !== path) return state;
-			if (!force && state.externalChange.kind === "conflict") return state;
+			if (!force && isUnresolvedExternalChange(state.externalChange.kind))
+				return state;
 			// Only write the saved text back into live editor content if the user
 			// has not typed more while the save was in flight. Otherwise, just
 			// move the saved baseline forward and keep the newer editor text.
@@ -566,7 +589,7 @@ export async function renameMarkdownFile(path: string, nextName: string) {
 	const symlinkFile = filesBeforeRename.find((file) => file.path === path);
 	if (symlinkFile?.is_symlink && symlinkFile.symlink_target_exists !== false) {
 		try {
-			if (isCurrentFile) {
+			if (isCurrentFile && !hasPendingExternalReview(current)) {
 				await savePathContent(path, current.content, { force: true });
 			}
 			await desktopApi.renameSymlinkTarget(path, nextNameWithExt);
@@ -585,7 +608,7 @@ export async function renameMarkdownFile(path: string, nextName: string) {
 	if (nextPath === path) return;
 
 	try {
-		if (isCurrentFile) {
+		if (isCurrentFile && !hasPendingExternalReview(current)) {
 			await savePathContent(path, current.content, { force: true });
 		}
 		pendingRenames.set(path, nextPath);
@@ -715,7 +738,7 @@ export async function moveSidebarItem(
 	});
 
 	try {
-		if (currentAffected && currentPath) {
+		if (currentAffected && currentPath && !hasPendingExternalReview(current)) {
 			await savePathContent(currentPath, current.content, { force: true });
 		}
 		await desktopApi.renameFile(sourcePath, nextPath);
@@ -800,7 +823,7 @@ export async function moveMarkdownFileToFolder(
 		: [{ fromPath: sourcePath, toPath: nextPath }];
 
 	try {
-		if (isCurrentFile) {
+		if (isCurrentFile && !hasPendingExternalReview(current)) {
 			await savePathContent(sourcePath, current.content, { force: true });
 		}
 		pendingRenames.set(sourcePath, nextPath);
@@ -997,11 +1020,30 @@ export async function deleteFolder(path: string) {
 	}
 }
 
+/**
+ * Tracks the one write-back `resolveExternalChangeReview` is currently
+ * waiting on, so the file watcher's own echo of that exact write — which can
+ * reach the renderer before the write's own success handler runs — is
+ * recognized as our own write rather than misclassified as a fresh external
+ * edit that re-opens the just-resolved review (R12/QA1a). Renderer-side
+ * (rather than depending on watcher/IPC ordering) because a same-process
+ * write's on-disk change and its own promise resolution are not guaranteed to
+ * reach the renderer in a fixed order.
+ */
+let pendingSelfWrite: { path: string; content: string } | null = null;
+
 export function handleExternalFileChange(
 	path: string,
 	nextDiskContent: string,
 ) {
 	flushEditorDraft();
+	if (
+		pendingSelfWrite &&
+		pendingSelfWrite.path === path &&
+		pendingSelfWrite.content === nextDiskContent
+	) {
+		return;
+	}
 	viewerStore.set((state) => {
 		if (state.currentPath !== path) return state;
 		const action = classifyFileChange({
@@ -1009,7 +1051,12 @@ export function handleExternalFileChange(
 			baseline: getBaseline(state),
 			diskContent: nextDiskContent,
 		});
-		return applyFileAction(state, nextDiskContent, action);
+		// R15: non-history-tracked (non-Markdown) files never raise the review
+		// badge — they keep the exact silent-reload behavior this app had before
+		// the review feature existed.
+		return applyFileAction(state, nextDiskContent, action, {
+			isVersionableMarkdownFile: hasMarkdownExtension(path),
+		});
 	});
 }
 
@@ -1031,6 +1078,95 @@ export async function forceKeepLocalEdits() {
 	await savePathContent(current.currentPath, current.content, { force: true });
 }
 
+/**
+ * Applies the user's per-region accept/reject picks for a pending "review"
+ * external change: writes the merged text directly (bypassing
+ * `savePathContent`'s guards, which exist for the ordinary save path, not
+ * this one-off resolution write), tagged `historyCause: "manual"` so the
+ * write cuts its own revision (R7). No-ops if there is no pending review for
+ * the current document.
+ *
+ * Returns whether the merge actually landed on disk, so the review dialog
+ * (which awaits this) knows whether it is safe to close — on `false` the
+ * pending review and the user's picks are left exactly as they were, so the
+ * dialog stays open and the user can retry.
+ */
+export async function resolveExternalChangeReview(
+	mergedText: string,
+): Promise<boolean> {
+	flushEditorDraft();
+	const current = viewerStore.get();
+	const path = current.currentPath;
+	if (!path || current.externalChange.kind !== "review") return false;
+
+	if (current.content !== getBaseline(current)) {
+		// The editor stays fully live while the review badge is showing, so the
+		// user may have typed local edits since the review started. The merge
+		// was computed only from the frozen oldText/newText (the pre-edit
+		// baseline and the external content) — applying it now would silently
+		// discard whatever the user just typed. Mirrors the dirty-check
+		// `IframeView.applyMarkdownPatch` already uses for the same reason.
+		toast.error("You have unsaved edits since this review started", {
+			description:
+				"Save or discard your edits, then reopen the review to apply it.",
+		});
+		return false;
+	}
+	const expectedDiskContent = current.externalChange.diskContent;
+
+	let latestDiskContent: string;
+	try {
+		latestDiskContent = await desktopApi.readFileText(path);
+	} catch (err) {
+		// Covers R26 (renamed/deleted mid-review): the read fails, the pending
+		// review/picks are left exactly as they were, and the caller can retry.
+		const message = handleFileError(err);
+		toast.error("Failed to apply reviewed changes", { description: message });
+		return false;
+	}
+
+	if (latestDiskContent !== expectedDiskContent) {
+		// A third writer raced in between the user finishing their picks and
+		// this write landing (R24): the merge was computed against
+		// `expectedDiskContent`, which is now stale, so applying it would
+		// silently discard the newer edit. Re-point the pending review at the
+		// newer disk content instead of writing over it.
+		viewerStore.set((state) => {
+			if (state.currentPath !== path) return state;
+			if (state.externalChange.kind !== "review") return state;
+			return {
+				...state,
+				externalChange: { kind: "review", diskContent: latestDiskContent },
+			};
+		});
+		toast.error("This note changed again before your review was applied", {
+			description: "Review the latest changes and try again.",
+		});
+		return false;
+	}
+
+	pendingSelfWrite = { path, content: mergedText };
+	try {
+		await desktopApi.writeFileText(path, mergedText, {
+			historyCause: "manual",
+		});
+	} catch (err) {
+		// R23: a failed write-back preserves the pending review/picks and
+		// surfaces an error rather than silently discarding them.
+		pendingSelfWrite = null;
+		const message = handleFileError(err);
+		toast.error("Failed to apply reviewed changes", { description: message });
+		return false;
+	}
+	touchFile(path);
+	viewerStore.set((state) => {
+		if (state.currentPath !== path) return state;
+		return { ...state, ...cleanFileState(mergedText) };
+	});
+	pendingSelfWrite = null;
+	return true;
+}
+
 export const loadPath = latest(async ({ isStale }, path: string) => {
 	// Persist unsaved edits of the outgoing file before switching. The editor's
 	// unmount save fires after currentPath has already moved on, so
@@ -1045,7 +1181,7 @@ export const loadPath = latest(async ({ isStale }, path: string) => {
 		previous.currentPath &&
 		previous.currentPath !== path &&
 		previous.status === "ready" &&
-		previous.externalChange.kind === "none" &&
+		!isUnresolvedExternalChange(previous.externalChange.kind) &&
 		previous.content !== previous.diskContent
 	) {
 		await savePathContent(previous.currentPath, previous.content, {

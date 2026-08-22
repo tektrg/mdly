@@ -43,6 +43,14 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
+	/* Slice 3 -- packages/workspace-kit/src/history/DiffReviewPanel.tsx and
+	 * RevisionTimeline.tsx's per-region diff highlighting (R2, R21). New,
+	 * additive tokens -- no existing semantic color fit "incoming (disk) vs.
+	 * pre-edit text" without overloading --destructive/--accent's own roles. */
+	--color-diff-added: var(--diff-added);
+	--color-diff-added-foreground: var(--diff-added-foreground);
+	--color-diff-removed: var(--diff-removed);
+	--color-diff-removed-foreground: var(--diff-removed-foreground);
 	/* R30: sidebar's own color family (active-row highlight, drag-preview
 	 * gradient stops, chrome sidebar surface) -- confirmed missing here, which
 	 * is why bg-sidebar/bg-sidebar-accent/etc compiled to nothing in this
@@ -92,11 +100,20 @@
 @theme {
 	--radius-sm: 0.25rem;
 	--radius-md: 0.375rem;
-	--shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+	--shadow-lg:
+		0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 	--shadow-chip: 0 2px 8px rgb(15 23 42 / 0.045);
 	--destructive-surface: oklch(0.78 0.11 4);
 	--destructive-surface-foreground: oklch(0.18 0.02 4);
 	--radius-row: 0.375rem;
 	--font-size-sidebar: 0.8125rem;
 	--row-pad-block: 0.25rem;
+	/* Slice 3 diff-review colors (R21) -- same "no host to fall back on"
+	 * treatment as the tokens above; real values also live in
+	 * packages/ui/src/theme.css for mdly's own apps, which (being unlayered)
+	 * always win over these. */
+	--diff-added: oklch(0.94 0.05 145);
+	--diff-added-foreground: oklch(0.32 0.09 145);
+	--diff-removed: oklch(0.95 0.03 20);
+	--diff-removed-foreground: oklch(0.4 0.15 25);
 }

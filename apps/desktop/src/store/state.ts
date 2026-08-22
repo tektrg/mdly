@@ -2,8 +2,8 @@ import { store } from "@simplestack/store";
 import type { FileAction } from "../externalFileChange";
 import { localStoragePersist } from "../lib/localStoragePersist";
 import { type DesktopState, getInitialState, serialize } from "./persistence";
-import { recordStormEvent } from "./stormDetector";
 import { STORAGE_KEY } from "./storage";
+import { recordStormEvent } from "./stormDetector";
 
 export type SortMode = "alpha" | "recent";
 
@@ -20,9 +20,22 @@ export type FileEntry = {
 export type FolderEntry = FileEntry;
 
 type ViewerStatus = "idle" | "loading" | "ready" | "error";
-type ExternalChange =
+export type ExternalChange =
 	| { kind: "none" }
-	| { kind: "conflict"; diskContent: string };
+	| { kind: "conflict"; diskContent: string }
+	// A clean (no unsaved local edits) external edit, pending the user's
+	// per-region accept/reject review. Unlike "conflict", this never wins a
+	// force-save and never counts as a baseline shift (see `getBaseline`).
+	| { kind: "review"; diskContent: string };
+
+/** True for any external-change kind that must not be silently overwritten —
+ * a real edit conflict or a pending review. Sweep this helper (rather than a
+ * hardcoded `=== "conflict"` check) across every guard site that already
+ * treats "conflict" as "don't blindly clobber," so "review" gets the same
+ * protection. */
+export function isUnresolvedExternalChange(kind: ExternalChange["kind"]) {
+	return kind === "conflict" || kind === "review";
+}
 
 type DocumentState = {
 	currentPath: string | null;
@@ -61,6 +74,15 @@ export function cleanFileState(content: string) {
 	};
 }
 
+/**
+ * Deliberately does NOT treat "review" like "conflict" here — the reference
+ * point a second external edit is compared against must stay the true
+ * pre-edit original while a review is pending. Shifting it to the pending
+ * review's own disk snapshot would make a second external write (arriving
+ * before the first review is resolved) misclassify as a true edit conflict
+ * instead of correctly refreshing the pending review (see charter's
+ * "Rejected" approach).
+ */
 export function getBaseline(state: DocumentState) {
 	return state.externalChange.kind === "conflict"
 		? state.externalChange.diskContent
@@ -71,15 +93,51 @@ export function applyFileAction(
 	state: DocumentState,
 	diskContent: string,
 	action: FileAction,
+	options?: { isVersionableMarkdownFile?: boolean },
 ): DocumentState {
+	// R15: files doc-history doesn't track (non-Markdown files) must keep
+	// today's exact silent-reload behavior — no review badge, no diff, no
+	// timeline. Defaults to true so callers that never pass a path-derived
+	// value (there are none left in this codebase, but this keeps the
+	// function safe to call generically) keep the review behavior.
+	const isVersionableMarkdownFile = options?.isVersionableMarkdownFile ?? true;
 	switch (action) {
 		case "none":
-			return state;
+			// Disk content already matches the frozen baseline. Usually a genuine
+			// no-op — but if a review was pending, this means a later external
+			// write brought the file back to exactly the pre-review original, so
+			// the pending review is moot and must not be left stale (R32).
+			return state.externalChange.kind === "review"
+				? { ...state, externalChange: NO_CONFLICT }
+				: state;
 		case "match":
-		case "reload":
 			return {
 				...state,
 				...cleanFileState(diskContent),
+			};
+		case "reload":
+			if (!isVersionableMarkdownFile) {
+				// Non-Markdown (or otherwise not history-tracked) files never get
+				// the review badge — silently swap in the new content exactly as
+				// this app did before the review feature existed (R15).
+				return {
+					...state,
+					...cleanFileState(diskContent),
+				};
+			}
+			// Editor has no local edits, so this is a genuine external change. Show
+			// a "review" badge instead of silently swapping content in — content
+			// and diskContent (the frozen baseline) stay untouched so a SECOND
+			// external edit arriving before this one is reviewed still compares
+			// against the true original and refreshes the pending review (R11)
+			// rather than misclassifying as a conflict. (`diskContent` can never
+			// equal `state.diskContent` here — that exact case is already routed
+			// to the "none" branch above, which handles R32's stale-revert case.)
+			return {
+				...state,
+				status: "ready",
+				error: null,
+				externalChange: { kind: "review", diskContent },
 			};
 		case "conflict":
 			return {

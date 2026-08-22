@@ -9,6 +9,7 @@ const isExternal = (id: string) =>
 	!id.startsWith(".") &&
 	!id.startsWith("\0") &&
 	!id.startsWith("~icons/") &&
+	!id.startsWith("@mdly/doc-history") &&
 	!isAbsolute(id);
 
 export default defineConfig({

@@ -1,10 +1,11 @@
-import { getCaretFormattingState } from "../engine/index.js";
 import type { Editor } from "@tiptap/core";
 import { useEffect, useState } from "react";
 import MingcuteBoldLine from "~icons/mingcute/bold-line";
+import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteItalicLine from "~icons/mingcute/italic-line";
 import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteStrikethroughLine from "~icons/mingcute/strikethrough-line";
+import { getCaretFormattingState } from "../engine/index.js";
 import { fileNameFromPath } from "../lib/filePath";
 import { Button } from "../primitives/button";
 
@@ -24,10 +25,13 @@ export function FormattingStatusBar({
 	editor,
 	path,
 	scrollContainer,
+	onOpenRevisionHistory,
 }: {
 	editor: Editor | null;
 	path: string;
 	scrollContainer: HTMLDivElement | null;
+	/** Opt-in (see `EditorViewProps.onOpenRevisionHistory`); omit to render no history affordance. */
+	onOpenRevisionHistory?: (path: string) => void;
 }) {
 	const [countMode, setCountMode] = useState<CountMode>("words");
 	const [paletteState, setPaletteState] = useState<PaletteState>({
@@ -100,13 +104,26 @@ export function FormattingStatusBar({
 
 	return (
 		<div className="pointer-events-none absolute inset-0 z-[4] text-[12px]">
-			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)]">
+			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
 				<span
 					className={`${floatingChipClass} max-w-[min(34rem,100%)] truncate rounded-full px-3 py-1`}
 					title={fileName}
 				>
 					{fileName}
 				</span>
+				{onOpenRevisionHistory && (
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						data-revision-history-trigger
+						className={`${floatingChipClass} pointer-events-auto rounded-full hover:bg-accent`}
+						aria-label="View revision history"
+						title="View revision history"
+						onClick={() => onOpenRevisionHistory(path)}
+					>
+						<MingcuteHistoryLine className="size-3.5" />
+					</Button>
+				)}
 			</div>
 			<div className="absolute bottom-3 start-3 flex items-center gap-2">
 				<Button

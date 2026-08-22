@@ -114,7 +114,7 @@ export type EditorViewProps = {
 	 * deferred off the keystroke path, so callers that read the last
 	 * onLocalChange value as the live draft must invoke the flush first.
 	 */
-	registerDraftFlush?: (flush: () => void) => (() => void) | void;
+	registerDraftFlush?: (flush: () => void) => (() => void) | undefined;
 	onLocalChange: (path: string, markdown: string) => void;
 	onSave: (path: string, markdown: string) => void | Promise<void>;
 	/**
@@ -140,6 +140,14 @@ export type EditorViewProps = {
 	onOpenWikiLink: (target: string) => void | Promise<void>;
 	onOpenNotionMentionLink?: (href: string) => void | Promise<void>;
 	onMessage?: (message: string, type: "success" | "error") => void;
+	/**
+	 * Opt-in revision-timeline entry point (same convention as
+	 * `onIdleOrForcedCut`): when provided, the status bar renders a small
+	 * "History" affordance for `path` that calls this back on click. Omitting
+	 * it renders nothing extra -- `apps/www` and `apps/notion-web` don't wire
+	 * it, so they're unaffected by its existence.
+	 */
+	onOpenRevisionHistory?: (path: string) => void;
 	/**
 	 * Called with the live editor instance once it is created (and with null on
 	 * teardown). Lets a host attach editor-level observers (e.g. diagnostics)
@@ -169,6 +177,7 @@ export function EditorView({
 	onOpenNotionMentionLink,
 	onMessage,
 	onEditorReady,
+	onOpenRevisionHistory,
 }: EditorViewProps) {
 	const initialFrontMatter = useMemo(
 		() => parseMarkdownFrontMatter(initialMarkdown),
@@ -571,6 +580,7 @@ export function EditorView({
 				editor={editor}
 				path={path}
 				scrollContainer={editorViewportEl}
+				onOpenRevisionHistory={onOpenRevisionHistory}
 			/>
 		</div>
 	);
