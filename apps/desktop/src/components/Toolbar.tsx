@@ -1,16 +1,30 @@
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
+import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
-import { currentPathStore, workspacePathStore } from "../store/state";
+import {
+	forceKeepLocalEdits,
+	reloadFromDiskConflict,
+	resolveExternalChangeReview,
+} from "../store/actions";
+import { currentPathStore, viewerStore, workspacePathStore } from "../store/state";
+import { ExternalChangeReviewDialog } from "./ExternalChangeReviewDialog";
 
 type NotionSyncMode = "none" | "page" | "database";
+
+// Shared segment style for the title-bar pill: flat until hovered, no radius
+// or border of its own -- the pill's outer rounded-full + overflow-hidden
+// clips every segment (including the "..." trigger) to one continuous shape.
+const PILL_SEGMENT_CLASS =
+	"pointer-events-auto rounded-none text-muted-foreground hover:bg-accent hover:text-foreground";
 
 export function Toolbar({
 	onOpenNotionPage,
@@ -19,6 +33,7 @@ export function Toolbar({
 	onRefreshNotionPage,
 	onReimportDoc,
 	onMoveCurrentFile,
+	onOpenRevisionHistory,
 	notionSyncMode,
 	docImported,
 }: {
@@ -30,28 +45,102 @@ export function Toolbar({
 	onRefreshNotionPage: () => void;
 	onReimportDoc: () => void;
 	onMoveCurrentFile: () => void;
+	onOpenRevisionHistory: () => void;
 	notionSyncMode: NotionSyncMode;
 	docImported: boolean;
 }) {
 	const workspacePath = useStoreValue(workspacePathStore);
 	const currentPath = useStoreValue(currentPathStore);
+	const diskContent = useStoreValue(viewerStore, (viewer) => viewer.diskContent);
+	const externalChange = useStoreValue(
+		viewerStore,
+		(viewer) => viewer.externalChange,
+	);
+	const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
+
+	// The whole-file conflict case and the pending-review case are mutually
+	// exclusive by construction (ExternalChange is a tagged union with exactly
+	// one active kind at a time -- state.ts), so exactly one of them, or
+	// neither, ever shows for a given document (R14).
+	const hasConflict = externalChange.kind === "conflict";
+	const hasReview = externalChange.kind === "review";
+
+	// A review belongs to the document it was raised for -- close its panel
+	// rather than let it leak onto whatever note this component next renders
+	// for (R27's per-document scoping precedent).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
+	useEffect(() => {
+		setReviewPanelOpen(false);
+	}, [currentPath]);
+
 	if (!workspacePath) return null;
 
 	return (
 		<div className="desktop-window-no-drag pointer-events-none fixed end-3 top-3 z-30">
-			<NoteActionsMenu
-				path={currentPath ?? null}
-				onOpenNotionPage={onOpenNotionPage}
-				onOpenNotionInBrowser={onOpenNotionInBrowser}
-				onPushNotionPage={onPushNotionPage}
-				onRefreshNotionPage={onRefreshNotionPage}
-				onReimportDoc={onReimportDoc}
-				onMoveFile={onMoveCurrentFile}
-				notionSyncMode={notionSyncMode}
-				docImported={docImported}
-			/>
+			<div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-border/50 bg-background/78 shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md">
+				{hasConflict && (
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							className={PILL_SEGMENT_CLASS}
+							onClick={reloadFromDiskConflict}
+						>
+							Reload from disk
+						</Button>
+						<PillDivider />
+						<Button
+							variant="ghost"
+							size="sm"
+							className={PILL_SEGMENT_CLASS}
+							onClick={() => void forceKeepLocalEdits()}
+						>
+							Keep my edits
+						</Button>
+						<PillDivider />
+					</>
+				)}
+				{hasReview && (
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							className={PILL_SEGMENT_CLASS}
+							onClick={() => setReviewPanelOpen(true)}
+						>
+							Review changes…
+						</Button>
+						<PillDivider />
+					</>
+				)}
+				<NoteActionsMenu
+					path={currentPath ?? null}
+					onOpenNotionPage={onOpenNotionPage}
+					onOpenNotionInBrowser={onOpenNotionInBrowser}
+					onPushNotionPage={onPushNotionPage}
+					onRefreshNotionPage={onRefreshNotionPage}
+					onReimportDoc={onReimportDoc}
+					onMoveFile={onMoveCurrentFile}
+					onOpenRevisionHistory={onOpenRevisionHistory}
+					notionSyncMode={notionSyncMode}
+					docImported={docImported}
+				/>
+			</div>
+			{hasReview && (
+				<ExternalChangeReviewDialog
+					open={reviewPanelOpen}
+					onOpenChange={setReviewPanelOpen}
+					oldText={diskContent}
+					newText={externalChange.diskContent}
+					onConfirm={(mergedText) => resolveExternalChangeReview(mergedText)}
+				/>
+			)}
 		</div>
 	);
+}
+
+function PillDivider() {
+	return <div aria-hidden="true" className="h-4 w-px shrink-0 bg-border/60" />;
 }
 
 function NoteActionsMenu({
@@ -62,6 +151,7 @@ function NoteActionsMenu({
 	onRefreshNotionPage,
 	onReimportDoc,
 	onMoveFile,
+	onOpenRevisionHistory,
 	notionSyncMode,
 	docImported,
 }: {
@@ -72,6 +162,7 @@ function NoteActionsMenu({
 	onRefreshNotionPage: () => void;
 	onReimportDoc: () => void;
 	onMoveFile: () => void;
+	onOpenRevisionHistory: () => void;
 	notionSyncMode: NotionSyncMode;
 	docImported: boolean;
 }) {
@@ -101,7 +192,7 @@ function NoteActionsMenu({
 					<Button
 						variant="ghost"
 						size="icon-sm"
-						className="pointer-events-auto rounded-full border border-border/50 bg-background/78 text-muted-foreground shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md hover:bg-accent"
+						className={PILL_SEGMENT_CLASS}
 						aria-label="Note actions"
 						title="Note actions"
 					/>
@@ -186,6 +277,13 @@ function NoteActionsMenu({
 									<MingcuteCopy2Line className="size-3 shrink-0" />
 									<span className="min-w-0 flex-1">Copy file path</span>
 									<ShortcutHint>⌘⇧C</ShortcutHint>
+								</Menu.Item>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									onClick={onOpenRevisionHistory}
+								>
+									<MingcuteHistoryLine className="size-3 shrink-0" />
+									<span className="min-w-0 flex-1">View revision history</span>
 								</Menu.Item>
 							</>
 						) : null}

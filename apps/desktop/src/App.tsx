@@ -13,7 +13,6 @@ import {
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { ExternalChangeReviewDialog } from "./components/ExternalChangeReviewDialog";
 import { RevisionHistoryDialog } from "./components/RevisionHistoryDialog";
 import {
 	HtmlAppsDialog,
@@ -59,7 +58,6 @@ import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
 import { SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
 	createWorkspaceWithSidebar,
-	forceKeepLocalEdits,
 	getPendingRenameTarget,
 	handleExternalFileChange,
 	loadPath,
@@ -68,8 +66,6 @@ import {
 	openWorkspaceWithSidebar,
 	refreshFiles,
 	refreshFilesDebounced,
-	reloadFromDiskConflict,
-	resolveExternalChangeReview,
 	restorePersistedWorkspace,
 	setSidebarOpen,
 	setWorkspaceSwitcherOpen,
@@ -191,6 +187,7 @@ function App() {
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
 	const [reimportOpen, setReimportOpen] = useState(false);
+	const [historyOpen, setHistoryOpen] = useState(false);
 	const [reimportFresh, setReimportFresh] = useState<{
 		markdown: string;
 		contentHash: string;
@@ -753,6 +750,7 @@ function App() {
 				onRefreshNotionPage={refreshNotionPage}
 				onMoveCurrentFile={openMoveCurrentFileCommandBar}
 				onReimportDoc={() => void reimportDoc()}
+				onOpenRevisionHistory={() => setHistoryOpen(true)}
 				notionSyncMode={notionSyncMode}
 				docImported={docImported}
 			/>
@@ -762,13 +760,7 @@ function App() {
 					onMoveFile={openMoveFileCommandBar}
 					footer={sidebarFooter}
 				/>
-				{/* pt-11 clears the fixed, full-width WindowDragRegion (index.css's
-				.desktop-window-drag-strip, 2.75rem tall): every direct descendant
-				here -- the review/conflict banners, the editor's own floating
-				status-bar chips (History icon), the Open-file button -- would
-				otherwise render inside the drag strip's hit-test region and have
-				its clicks swallowed as a window-drag gesture instead of a press. */}
-				<section className="flex-1 overflow-hidden pt-11" aria-live="polite">
+				<section className="flex-1 overflow-hidden" aria-live="polite">
 					{state.status === "loading" && <p>Loading…</p>}
 					{state.status === "error" && (
 						<p>{state.error ?? "Failed to open file."}</p>
@@ -794,6 +786,8 @@ function App() {
 							currentPath={state.currentPath}
 							notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 							onScrollContainerChange={setScrollContainerEl}
+							historyOpen={historyOpen}
+							onHistoryOpenChange={setHistoryOpen}
 						/>
 					)}
 				</section>
@@ -880,113 +874,41 @@ function ReadyDocument({
 	currentPath,
 	notionDatabaseRefreshToken,
 	onScrollContainerChange,
+	historyOpen,
+	onHistoryOpenChange,
 }: {
 	currentPath: string;
 	notionDatabaseRefreshToken: number;
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
+	historyOpen: boolean;
+	onHistoryOpenChange: (open: boolean) => void;
 }) {
 	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
-	const diskContent = useStoreValue(
-		viewerStore,
-		(viewer) => viewer.diskContent,
-	);
-	const externalChange = useStoreValue(
-		viewerStore,
-		(viewer) => viewer.externalChange,
-	);
-	const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
-	const [historyOpen, setHistoryOpen] = useState(false);
 
-	// The whole-file conflict banner and the pending-review badge are
-	// mutually exclusive by construction (ExternalChange is a tagged union
-	// with exactly one active kind at a time -- state.ts), so exactly one of
-	// them, or neither, ever shows for a given document (R14).
-	const hasConflict = externalChange.kind === "conflict";
-	const hasReview = externalChange.kind === "review";
-
-	// A review belongs to the document it was raised for -- close its panel
-	// (and the history dialog) rather than let either leak onto whatever note
-	// this component next renders for (R27's per-document scoping precedent).
+	// The history dialog belongs to the document it was opened for -- close it
+	// rather than let it leak onto whatever note this component next renders
+	// for (R27's per-document scoping precedent). The review/conflict pill
+	// lives in the title bar (Toolbar) now and resets itself the same way,
+	// keyed off its own currentPath subscription.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
 	useEffect(() => {
-		setReviewPanelOpen(false);
-		setHistoryOpen(false);
+		onHistoryOpenChange(false);
 	}, [currentPath]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			{hasConflict && (
-				<ExternalChangeBanner
-					onKeepMyEdits={() => void forceKeepLocalEdits()}
-					onReloadFromDisk={reloadFromDiskConflict}
-				/>
-			)}
-			{hasReview && (
-				<ExternalChangeReviewBadge onReview={() => setReviewPanelOpen(true)} />
-			)}
 			<DocumentViewer
 				path={currentPath}
 				content={content}
 				notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 				onScrollContainerChange={onScrollContainerChange}
-				onOpenRevisionHistory={() => setHistoryOpen(true)}
 			/>
-			{hasReview && (
-				<ExternalChangeReviewDialog
-					open={reviewPanelOpen}
-					onOpenChange={setReviewPanelOpen}
-					oldText={diskContent}
-					newText={externalChange.diskContent}
-					onConfirm={(mergedText) => resolveExternalChangeReview(mergedText)}
-				/>
-			)}
 			<RevisionHistoryDialog
 				open={historyOpen}
-				onOpenChange={setHistoryOpen}
+				onOpenChange={onHistoryOpenChange}
 				path={currentPath}
 				currentContent={content}
 			/>
-		</div>
-	);
-}
-
-function ExternalChangeReviewBadge({ onReview }: { onReview: () => void }) {
-	return (
-		<div className="border-b border-border bg-muted/40">
-			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-				<p className="m-0 text-sm text-muted-foreground">
-					changed outside the app — review
-				</p>
-				<Button size="sm" variant="outline" onClick={onReview}>
-					Review changes
-				</Button>
-			</div>
-		</div>
-	);
-}
-
-function ExternalChangeBanner({
-	onReloadFromDisk,
-	onKeepMyEdits,
-}: {
-	onReloadFromDisk: () => void;
-	onKeepMyEdits: () => void;
-}) {
-	return (
-		<div className="border-b border-border bg-muted/40">
-			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
-				<p className="m-0 text-sm text-muted-foreground">
-					File changed on disk. Reload it or keep your editor edits.
-				</p>
-				<div className="flex shrink-0 items-center gap-2">
-					<Button size="sm" variant="outline" onClick={onReloadFromDisk}>
-						Reload from disk
-					</Button>
-					<Button size="sm" onClick={onKeepMyEdits}>
-						Keep my edits
-					</Button>
-				</div>
-			</div>
 		</div>
 	);
 }
