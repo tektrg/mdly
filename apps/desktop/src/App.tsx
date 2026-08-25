@@ -762,7 +762,13 @@ function App() {
 					onMoveFile={openMoveFileCommandBar}
 					footer={sidebarFooter}
 				/>
-				<section className="flex-1 overflow-hidden" aria-live="polite">
+				{/* pt-11 clears the fixed, full-width WindowDragRegion (index.css's
+				.desktop-window-drag-strip, 2.75rem tall): every direct descendant
+				here -- the review/conflict banners, the editor's own floating
+				status-bar chips (History icon), the Open-file button -- would
+				otherwise render inside the drag strip's hit-test region and have
+				its clicks swallowed as a window-drag gesture instead of a press. */}
+				<section className="flex-1 overflow-hidden pt-11" aria-live="polite">
 					{state.status === "loading" && <p>Loading…</p>}
 					{state.status === "error" && (
 						<p>{state.error ?? "Failed to open file."}</p>
@@ -946,12 +952,7 @@ function ReadyDocument({
 
 function ExternalChangeReviewBadge({ onReview }: { onReview: () => void }) {
 	return (
-		// pt-11 clears the fixed, full-width WindowDragRegion (index.css's
-		// .desktop-window-drag-strip, 2.75rem tall) -- without it this being the
-		// pane's first child put "Review changes" directly under the drag strip,
-		// where the OS treats every click as a window-drag gesture instead of a
-		// button press.
-		<div className="border-b border-border bg-muted/40 pt-11">
+		<div className="border-b border-border bg-muted/40">
 			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
 				<p className="m-0 text-sm text-muted-foreground">
 					changed outside the app — review
@@ -972,10 +973,7 @@ function ExternalChangeBanner({
 	onKeepMyEdits: () => void;
 }) {
 	return (
-		// pt-11: same drag-strip clearance as ExternalChangeReviewBadge above --
-		// this banner is the pane's other possible first child (R14: the two are
-		// mutually exclusive) and hit the identical unclickable-button bug.
-		<div className="border-b border-border bg-muted/40 pt-11">
+		<div className="border-b border-border bg-muted/40">
 			<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
 				<p className="m-0 text-sm text-muted-foreground">
 					File changed on disk. Reload it or keep your editor edits.
