@@ -42,7 +42,11 @@ export function DiffGroupsView({
 						{group.value}
 					</span>
 				) : (
-					<span key={group.id} className="inline-block w-full align-top">
+					<span
+						key={group.id}
+						data-region-id={group.id}
+						className="inline-block w-full align-top"
+					>
 						{group.oldText.length > 0 && (
 							<span
 								data-region-type="removed"

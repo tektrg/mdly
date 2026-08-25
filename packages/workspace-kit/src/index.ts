@@ -72,6 +72,7 @@ export {
 	textEndPos,
 	textStartPos,
 } from "./engine/utils.js";
+export { DiffChangeRail } from "./history/DiffChangeRail";
 // ---- History (diff review + revision timeline, on top of @mdly/doc-history) ----
 export {
 	DiffReviewPanel,
@@ -79,13 +80,17 @@ export {
 } from "./history/DiffReviewPanel";
 export {
 	type ReadRevisionContentResult,
+	RevisionDiffView,
+	type RevisionDiffViewProps,
+} from "./history/RevisionDiffView";
+export {
 	type Revision,
 	type RevisionAuthor,
 	type RevisionAuthorKind,
 	type RevisionCause,
-	RevisionTimeline,
-	type RevisionTimelineProps,
-} from "./history/RevisionTimeline";
+	RevisionList,
+	type RevisionListProps,
+} from "./history/RevisionList";
 // ---- Popup mount-target (theming contract, Phase 2) ----
 export {
 	PortalContainerProvider,
@@ -127,6 +132,7 @@ export { Button, buttonVariants } from "./primitives/button";
 export { Input } from "./primitives/input";
 export { Modal } from "./primitives/modal";
 export { Separator } from "./primitives/separator";
+export { SidePanel } from "./primitives/sidePanel";
 // ---- Editor surface (slash menu, format menu, find/replace, TOC, etc.) ----
 export {
 	EditorView,

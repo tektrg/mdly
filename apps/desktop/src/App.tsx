@@ -1,4 +1,5 @@
 import { Button } from "@hubble.md/ui";
+import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
 import {
@@ -13,11 +14,13 @@ import {
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { DocumentViewer } from "./components/DocumentViewer";
-import { RevisionHistoryDialog } from "./components/RevisionHistoryDialog";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
+import { ImportDocDialog } from "./components/ImportDocDialog";
+import { ReimportDocDialog } from "./components/ReimportDocDialog";
+import { RevisionHistoryPanel } from "./components/RevisionHistoryPanel";
 import {
 	AppearanceSettings,
 	ImportSettings,
@@ -25,7 +28,6 @@ import {
 	WorkspaceSettings,
 } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
-import { ReimportDocDialog } from "./components/ReimportDocDialog";
 import { Toolbar } from "./components/Toolbar";
 import {
 	SidebarUpdateCallout,
@@ -33,18 +35,18 @@ import {
 } from "./components/UpdatesSection";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { desktopApi } from "./desktopApi";
-import type { DesktopUpdateState } from "./desktopApi/types";
+import type { DesktopUpdateState, HistoryRevision } from "./desktopApi/types";
 import {
 	applyDocReimport,
 	createMarkdownFile,
 	currentDocImportStatus,
 	currentNotionLinkStatus,
+	type DocReimportResolution,
 	importNotionDatabase,
 	openOrImportNotionPage,
 	prepareDocReimport,
 	pushCurrentNotionPage,
 	refreshCurrentNotionPage,
-	type DocReimportResolution,
 } from "./fileActions";
 import { basename, joinPath } from "./lib/filePath";
 import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
@@ -187,7 +189,12 @@ function App() {
 	const [notionDialogOpen, setNotionDialogOpen] = useState(false);
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
 	const [reimportOpen, setReimportOpen] = useState(false);
+	const [importDocOpen, setImportDocOpen] = useState(false);
 	const [historyOpen, setHistoryOpen] = useState(false);
+	// The revision currently swapped into the main document pane as a diff
+	// (see `ReadyDocument`), or null when the live editor is showing.
+	const [viewingRevision, setViewingRevision] =
+		useState<HistoryRevision | null>(null);
 	const [reimportFresh, setReimportFresh] = useState<{
 		markdown: string;
 		contentHash: string;
@@ -682,6 +689,7 @@ function App() {
 				setWorkspaceSwitcherOpen(true),
 			),
 			desktopApi.onMenuSyncWorkspace(() => void refreshFiles()),
+			desktopApi.onMenuImportDocument(() => setImportDocOpen(true)),
 		];
 		return () => {
 			for (const dispose of disposers) dispose();
@@ -788,6 +796,8 @@ function App() {
 							onScrollContainerChange={setScrollContainerEl}
 							historyOpen={historyOpen}
 							onHistoryOpenChange={setHistoryOpen}
+							viewingRevision={viewingRevision}
+							onViewingRevisionChange={setViewingRevision}
 						/>
 					)}
 				</section>
@@ -818,12 +828,13 @@ function App() {
 					/>
 				</Suspense>
 			) : null}
-				<ReimportDocDialog
+			<ImportDocDialog open={importDocOpen} onOpenChange={setImportDocOpen} />
+			<ReimportDocDialog
 				open={reimportOpen}
 				onOpenChange={setReimportOpen}
 				onResolve={(resolution) => void resolveReimport(resolution)}
 				error={reimportError}
-				/>
+			/>
 			{commandBarMounted ? (
 				<Suspense fallback={null}>
 					<CommandBar
@@ -876,38 +887,60 @@ function ReadyDocument({
 	onScrollContainerChange,
 	historyOpen,
 	onHistoryOpenChange,
+	viewingRevision,
+	onViewingRevisionChange,
 }: {
 	currentPath: string;
 	notionDatabaseRefreshToken: number;
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
 	historyOpen: boolean;
 	onHistoryOpenChange: (open: boolean) => void;
+	viewingRevision: HistoryRevision | null;
+	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
 }) {
 	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
 
-	// The history dialog belongs to the document it was opened for -- close it
-	// rather than let it leak onto whatever note this component next renders
-	// for (R27's per-document scoping precedent). The review/conflict pill
-	// lives in the title bar (Toolbar) now and resets itself the same way,
-	// keyed off its own currentPath subscription.
+	// The history panel and any revision it's showing a diff for belong to the
+	// document they were opened for -- close/clear them rather than let them
+	// leak onto whatever note this component next renders for (R27's
+	// per-document scoping precedent). The review/conflict pill lives in the
+	// title bar (Toolbar) now and resets itself the same way, keyed off its
+	// own currentPath subscription.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
 	useEffect(() => {
 		onHistoryOpenChange(false);
+		onViewingRevisionChange(null);
 	}, [currentPath]);
 
 	return (
 		<div className="flex h-full min-h-0 flex-col">
-			<DocumentViewer
-				path={currentPath}
-				content={content}
-				notionDatabaseRefreshToken={notionDatabaseRefreshToken}
-				onScrollContainerChange={onScrollContainerChange}
-			/>
-			<RevisionHistoryDialog
+			{viewingRevision ? (
+				<RevisionDiffView
+					revision={viewingRevision}
+					currentContent={content}
+					onReadRevisionContent={(revisionId) =>
+						desktopApi.readRevisionContent(currentPath, revisionId)
+					}
+					onBack={() => onViewingRevisionChange(null)}
+				/>
+			) : (
+				<DocumentViewer
+					path={currentPath}
+					content={content}
+					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+					onScrollContainerChange={onScrollContainerChange}
+				/>
+			)}
+			<RevisionHistoryPanel
 				open={historyOpen}
-				onOpenChange={onHistoryOpenChange}
+				onOpenChange={(open) => {
+					onHistoryOpenChange(open);
+					// Nothing left to browse the diff from once the panel closes.
+					if (!open) onViewingRevisionChange(null);
+				}}
 				path={currentPath}
-				currentContent={content}
+				selectedRevisionId={viewingRevision?.id ?? null}
+				onSelectRevision={onViewingRevisionChange}
 			/>
 		</div>
 	);

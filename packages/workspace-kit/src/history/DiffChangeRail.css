@@ -1,0 +1,43 @@
+/*
+ * Visual family match with `TableOfContents.css`'s heading rail (small pill
+ * dashes on a vertical rail, active dash wider + brand-colored), but
+ * unscoped from `[data-hubble-editor]` since this rail lives in the revision
+ * diff pane, not the ProseMirror editor.
+ */
+.diffChangeRail {
+	position: absolute;
+	inset-block: 0.5rem;
+	inset-inline-end: 0.35rem;
+	inline-size: 0.75rem;
+	pointer-events: none;
+}
+
+.diffChangeRailDash {
+	position: absolute;
+	inset-inline-end: 0;
+	display: block;
+	inline-size: 0.45rem;
+	block-size: 2px;
+	border: 0;
+	padding: 0;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--muted-foreground) 32%, transparent);
+	opacity: 0.75;
+	transform: translateY(-50%);
+	cursor: pointer;
+	pointer-events: auto;
+	transition:
+		inline-size 160ms var(--ease-snappy),
+		background-color 160ms var(--ease-snappy),
+		opacity 160ms var(--ease-snappy);
+}
+
+.diffChangeRailDash:hover {
+	opacity: 1;
+}
+
+.diffChangeRailDash[data-active="true"] {
+	inline-size: 0.775rem;
+	background: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	opacity: 1;
+}
