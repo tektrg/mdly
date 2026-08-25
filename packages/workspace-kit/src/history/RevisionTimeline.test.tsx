@@ -155,4 +155,25 @@ describe("RevisionTimeline", () => {
 		).map((el) => el.getAttribute("data-region-type"));
 		expect(regionTypes).toEqual(["unchanged", "removed", "added", "unchanged"]);
 	});
+
+	// Regression guard: a long revision list must not be able to push the
+	// selected diff out of the dialog's visible area (a selected revision's
+	// diff going missing behind a tall, unbounded list, with no visible
+	// scrollbar hinting there's more below). The list needs its own bounded,
+	// independently-scrolling region so the diff pane always keeps space.
+	it("caps the revision list to its own scrollable region instead of letting it grow unbounded", () => {
+		const revisions: Revision[] = Array.from({ length: 20 }, (_, i) =>
+			revision({ id: `r${i}`, at: i, cause: "external-write" }),
+		);
+
+		render({
+			revisions,
+			currentContent: "current",
+			onReadRevisionContent: vi.fn(),
+		});
+
+		const list = container.querySelector("[data-revision-list]");
+		expect(list?.className).toMatch(/\boverflow-y-auto\b/);
+		expect(list?.className).toMatch(/\bmax-h-/);
+	});
 });

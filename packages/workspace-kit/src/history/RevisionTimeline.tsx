@@ -115,9 +115,18 @@ export function RevisionTimeline({
 	};
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-3">
+		// h-full (not flex-1): this component's host (RevisionHistoryDialog's
+		// Modal) sizes its content slot via flexbox, but that slot itself is a
+		// plain block element, so a `flex-1` here has no flex container to size
+		// against and is silently ignored -- h-full resolves against the slot's
+		// definite flex-computed height instead. Capping the list below (rather
+		// than leaving it to grow with revision count) is what guarantees the
+		// diff pane always keeps its own visible space: a long list pushing the
+		// diff below one shared scroll region, with no scrollbar visible until
+		// touched, is exactly how a selected revision's diff went missing (R10).
+		<div className="flex h-full min-h-0 flex-col gap-3">
 			<ul
-				className="m-0 flex list-none flex-col gap-0.5 p-0"
+				className="m-0 flex max-h-56 list-none flex-col gap-0.5 overflow-y-auto p-0"
 				data-revision-list
 			>
 				{revisions.map((revision) => (
