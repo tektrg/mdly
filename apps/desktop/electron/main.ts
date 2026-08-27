@@ -31,6 +31,7 @@ import {
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
+import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import {
 	createSelfWriteEchoTracker,
 	getHistoryStoreForWorkspace,
@@ -43,9 +44,14 @@ import {
 	resolveHistoryWorkspaceRoot,
 	toWorkspaceRelativePath,
 } from "./docHistoryWiring";
+import {
+	acquireDocSource,
+	checkConverterStatus,
+	convertDocFile,
+} from "./docImport";
+import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { scanFrontMatterTags } from "./frontMatterTags";
-import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -54,11 +60,6 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
-import {
-	acquireDocSource,
-	checkConverterStatus,
-	convertDocFile,
-} from "./docImport";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
@@ -461,7 +462,11 @@ function isWithin(rootPath: string, candidatePath: string): boolean {
  */
 function isIgnoredWorkspacePath(candidatePath: string, root: string): boolean {
 	const relative = path.relative(root, candidatePath);
-	if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
+	if (
+		relative === "" ||
+		relative.startsWith("..") ||
+		path.isAbsolute(relative)
+	) {
 		return false;
 	}
 	return relative
@@ -473,7 +478,11 @@ function toIgnorePath(input: string): string {
 	return input.split(path.sep).join("/");
 }
 
-function isIgnoredByRules(candidatePath: string, rules: IgnoreRule[], root: string) {
+function isIgnoredByRules(
+	candidatePath: string,
+	rules: IgnoreRule[],
+	root: string,
+) {
 	if (isIgnoredWorkspacePath(candidatePath, root)) return true;
 
 	let ignored = false;
@@ -699,6 +708,12 @@ function buildMenu() {
 					label: "Open...",
 					accelerator: "CmdOrCtrl+O",
 					click: () => sendToRenderer("desktop:menu-open-file"),
+				},
+				{
+					id: "import-document",
+					label: "Import Document...",
+					enabled: menuState.hasWorkspace,
+					click: () => sendToRenderer("desktop:menu-import-document"),
 				},
 				{
 					id: "open-workspace",
@@ -1442,10 +1457,15 @@ function registerIpc() {
 					? options.defaultPath
 					: undefined,
 			title: "Open Markdown file",
-			filters: [
-				{ name: "Documents", extensions: ["md", "markdown", "mdown", "html"] },
-				{ name: "Text", extensions: ["txt", "text"] },
-			],
+			filters: Array.isArray(options.filters)
+				? options.filters
+				: [
+						{
+							name: "Documents",
+							extensions: ["md", "markdown", "mdown", "html"],
+						},
+						{ name: "Text", extensions: ["txt", "text"] },
+					],
 		});
 		const selected = result.filePaths[0] ?? null;
 		if (selected) grantFileWithParent(selected);
@@ -1625,41 +1645,43 @@ function registerIpc() {
 		queryNotionDatabase(input),
 	);
 
-		ipcMain.handle("desktop:doc-import-convert", (_event, { filePath }) =>
-			convertDocFile(filePath),
-		);
+	ipcMain.handle("desktop:doc-import-convert", (_event, { filePath }) =>
+		convertDocFile(filePath),
+	);
 
-		ipcMain.handle("desktop:doc-import-convert-url", async (_event, { url }) => {
-			const acquired = await acquireDocSource(url);
-			grantFileWithParent(acquired.path);
-			const result = await convertDocFile(acquired.path, { title: acquired.title });
-			return { ...result, origin: "url", url, path: acquired.path };
+	ipcMain.handle("desktop:doc-import-convert-url", async (_event, { url }) => {
+		const acquired = await acquireDocSource(url);
+		grantFileWithParent(acquired.path);
+		const result = await convertDocFile(acquired.path, {
+			title: acquired.title,
 		});
+		return { ...result, origin: "url", url, path: acquired.path };
+	});
 
-		ipcMain.handle(
-			"desktop:doc-import-retain-source",
-			async (_event, { sourcePath, markdownFilePath, keep }) => {
-				if (keep) {
-					const assetsDir = markdownAssetFolderPath(
-						assertGranted(markdownFilePath),
-					);
-					if (!assetsDir) throw new Error("Unable to resolve asset folder");
-					await fs.mkdir(assetsDir, { recursive: true });
-					const sourceName = path.basename(sourcePath);
-					const target = path.join(assetsDir, sourceName);
-					await fs.copyFile(assertGranted(sourcePath), target);
-					grantFile(target);
-					return target;
-				}
-				return null;
-			},
-		);
+	ipcMain.handle(
+		"desktop:doc-import-retain-source",
+		async (_event, { sourcePath, markdownFilePath, keep }) => {
+			if (keep) {
+				const assetsDir = markdownAssetFolderPath(
+					assertGranted(markdownFilePath),
+				);
+				if (!assetsDir) throw new Error("Unable to resolve asset folder");
+				await fs.mkdir(assetsDir, { recursive: true });
+				const sourceName = path.basename(sourcePath);
+				const target = path.join(assetsDir, sourceName);
+				await fs.copyFile(assertGranted(sourcePath), target);
+				grantFile(target);
+				return target;
+			}
+			return null;
+		},
+	);
 
-		ipcMain.handle("desktop:doc-import-check-converter", () =>
-			checkConverterStatus(),
-		);
+	ipcMain.handle("desktop:doc-import-check-converter", () =>
+		checkConverterStatus(),
+	);
 
-		ipcMain.handle("desktop:check-for-updates", async () => {
+	ipcMain.handle("desktop:check-for-updates", async () => {
 		await checkForUpdates();
 	});
 
@@ -1713,6 +1735,11 @@ if (!singleInstanceLock) {
 	});
 
 	app.whenReady().then(async () => {
+		// Fire-and-forget: warms the login-shell PATH (nvm/rvm/homebrew dirs a
+		// GUI-launched app doesn't inherit) before the user opens an import
+		// dialog. Slow (~1-8s on a heavy shell profile), so never awaited here;
+		// anydoc/ntn-acct callers await the same cached promise for correctness.
+		void ensureLoginShellPathMerged();
 		await clearDevHttpCache();
 		await loadGrants();
 		if (launchWorkspacePath) grantRoot(launchWorkspacePath);

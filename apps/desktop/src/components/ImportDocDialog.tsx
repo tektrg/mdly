@@ -58,6 +58,12 @@ export function ImportDocDialog({
 		try {
 			const filePath = await desktopApi.openFilePicker({
 				defaultPath: desktopApi.homeDir,
+				filters: [
+					{
+						name: "Documents",
+						extensions: ["docx", "doc", "pptx", "xlsx", "csv", "pdf", "odt"],
+					},
+				],
 			});
 			if (!filePath) {
 				setStatus("idle");

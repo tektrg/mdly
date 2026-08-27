@@ -6,7 +6,7 @@ import {
 } from "@mdly/workspace-kit/engine";
 import { desktopApi } from "./desktopApi";
 import type { DocImportResult, NotionSearchResult } from "./desktopApi/types";
-import { dirname } from "./lib/filePath";
+import { basename, dirname, joinPath, markdownAssetFolderPath } from "./lib/filePath";
 import { notionMarkdownContentHash } from "./notion/contentHash";
 import {
 	buildDocSourceMarkdown,
@@ -93,7 +93,7 @@ async function landDocImport(
 		title: result.title,
 		importedAt: new Date().toISOString(),
 		contentHash: result.contentHash,
-		converter: "anydoc",
+		converter: result.converter,
 	});
 
 	await desktopApi.writeFileText(markdownPath, markdown);
@@ -150,7 +150,7 @@ export async function prepareDocReimport(
 	if (!metadata) return { kind: "not-imported" };
 
 	try {
-		const fresh = await reConvertSource(metadata);
+		const fresh = await reConvertSource(metadata, path);
 		return {
 			kind: "ready",
 			markdown: fresh.markdown,
@@ -213,14 +213,37 @@ export async function applyDocReimport(
 
 async function reConvertSource(
 	metadata: DocSourceMetadata,
+	markdownPath: string,
 ): Promise<DocImportResult> {
-	if (metadata.origin === "url" && metadata.url) {
-		return desktopApi.docImportConvertUrl(metadata.url);
-	}
-	if (metadata.origin === "file" && metadata.path) {
-		return desktopApi.docImportConvert(metadata.path);
+	try {
+		if (metadata.origin === "url" && metadata.url) {
+			return await desktopApi.docImportConvertUrl(metadata.url);
+		}
+		if (metadata.origin === "file" && metadata.path) {
+			return await desktopApi.docImportConvert(metadata.path);
+		}
+	} catch (primaryError) {
+		const retained = await convertRetainedSource(metadata, markdownPath);
+		if (retained) return retained;
+		throw primaryError;
 	}
 	throw new Error("This document has no re-importable source.");
+}
+
+/**
+ * Fall back to the retained source copy saved by the "keep" preference, so
+ * re-import still works after the original file moves or the share link dies.
+ */
+async function convertRetainedSource(
+	metadata: DocSourceMetadata,
+	markdownPath: string,
+): Promise<DocImportResult | null> {
+	const assetsDir = markdownAssetFolderPath(markdownPath);
+	const sourceName = metadata.path ? basename(metadata.path) : null;
+	if (!assetsDir || !sourceName) return null;
+	const retainedPath = joinPath(assetsDir, sourceName);
+	if (!(await desktopApi.pathExists(retainedPath))) return null;
+	return desktopApi.docImportConvert(retainedPath);
 }
 
 export async function importNotionPage(

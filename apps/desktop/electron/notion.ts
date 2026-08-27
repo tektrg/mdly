@@ -16,6 +16,7 @@ import { notionMarkdownContentHash } from "../src/notion/contentHash";
 import {
 	commandPathEnv,
 	type CommandResult,
+	ensureLoginShellPathMerged,
 	isExecutableFile,
 	resolveCommandPath,
 	runCommand,
@@ -618,10 +619,11 @@ function availableNotionAccounts(): string[] {
 		.sort((left, right) => left.localeCompare(right));
 }
 
-function runNotionCommand(
+async function runNotionCommand(
 	args: string[],
 	options: { account?: string | null; stdin?: string } = {},
 ): Promise<CommandResult> {
+	await ensureLoginShellPathMerged();
 	const account = notionAccount(options.account);
 	const commandPath = resolveNotionCommandPath();
 	if (!commandPath) {

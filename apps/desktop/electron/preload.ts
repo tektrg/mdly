@@ -106,14 +106,18 @@ const desktopApi = {
 		}),
 	queryNotionDatabase: (input) =>
 		ipcRenderer.invoke("desktop:notion-query-database", input),
-		docImportConvert: (filePath) =>
-			ipcRenderer.invoke("desktop:doc-import-convert", { filePath }),
-		docImportConvertUrl: (url) =>
-			ipcRenderer.invoke("desktop:doc-import-convert-url", { url }),
-		docImportRetainSource: (sourcePath, markdownFilePath, keep) =>
-			ipcRenderer.invoke("desktop:doc-import-retain-source", { sourcePath, markdownFilePath, keep }),
-		docImportCheckConverter: () =>
-			ipcRenderer.invoke("desktop:doc-import-check-converter"),
+	docImportConvert: (filePath) =>
+		ipcRenderer.invoke("desktop:doc-import-convert", { filePath }),
+	docImportConvertUrl: (url) =>
+		ipcRenderer.invoke("desktop:doc-import-convert-url", { url }),
+	docImportRetainSource: (sourcePath, markdownFilePath, keep) =>
+		ipcRenderer.invoke("desktop:doc-import-retain-source", {
+			sourcePath,
+			markdownFilePath,
+			keep,
+		}),
+	docImportCheckConverter: () =>
+		ipcRenderer.invoke("desktop:doc-import-check-converter"),
 	checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),
 	installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
 	onOpenFile: (callback) =>
@@ -127,6 +131,8 @@ const desktopApi = {
 		subscribe("desktop:menu-open-folder", callback),
 	onMenuOpenSettings: (callback) =>
 		subscribe("desktop:menu-open-settings", callback),
+	onMenuImportDocument: (callback) =>
+		subscribe("desktop:menu-import-document", callback),
 	onMenuShowWorkspaceSwitcher: (callback) =>
 		subscribe("desktop:menu-show-workspace-switcher", callback),
 	onMenuSyncWorkspace: (callback) =>

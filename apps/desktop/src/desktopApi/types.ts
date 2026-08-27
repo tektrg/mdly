@@ -134,6 +134,7 @@ export type DocImportResult = {
 	contentHash: string;
 	title: string;
 	kind: string;
+	converter: string;
 	origin?: "url" | "file";
 	url?: string | null;
 	path?: string | null;
@@ -250,7 +251,10 @@ export type DesktopApi = {
 	deleteFile(path: string, options?: { recursive?: boolean }): Promise<void>;
 	readBinaryFile(path: string): Promise<number[]>;
 	writeBinaryFile(path: string, bytes: number[]): Promise<void>;
-	openFilePicker(options: { defaultPath?: string }): Promise<string | null>;
+	openFilePicker(options: {
+		defaultPath?: string;
+		filters?: { name: string; extensions: string[] }[];
+	}): Promise<string | null>;
 	openFolderPicker(): Promise<string | null>;
 	createFolderPicker(): Promise<string | null>;
 	saveMarkdownFilePicker(options: {
@@ -293,8 +297,12 @@ export type DesktopApi = {
 		input: NotionDatabaseQueryInput,
 	): Promise<NotionDatabaseQueryResult>;
 	docImportConvert(filePath: string): Promise<DocImportResult>;
-		docImportConvertUrl(url: string): Promise<DocImportResult>;
-		docImportRetainSource(sourcePath: string, markdownFilePath: string, keep: boolean): Promise<string | null>;
+	docImportConvertUrl(url: string): Promise<DocImportResult>;
+	docImportRetainSource(
+		sourcePath: string,
+		markdownFilePath: string,
+		keep: boolean,
+	): Promise<string | null>;
 	docImportCheckConverter(): Promise<ConverterStatus>;
 	checkForUpdates(): Promise<void>;
 	installUpdate(): Promise<void>;
@@ -306,6 +314,7 @@ export type DesktopApi = {
 	onMenuOpenFile(callback: () => void): Unsubscribe;
 	onMenuOpenFolder(callback: () => void): Unsubscribe;
 	onMenuOpenSettings(callback: () => void): Unsubscribe;
+	onMenuImportDocument(callback: () => void): Unsubscribe;
 	onMenuShowWorkspaceSwitcher(callback: () => void): Unsubscribe;
 	onMenuSyncWorkspace(callback: () => void): Unsubscribe;
 	onWindowFocus(callback: () => void): Unsubscribe;

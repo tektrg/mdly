@@ -94,6 +94,70 @@ export function isExecutableFile(filePath: string): boolean {
 	}
 }
 
+/**
+ * GUI-launched apps (Dock/Finder) inherit macOS's bare default PATH, not the
+ * directories a login shell adds via .zshrc/.bashrc (nvm, rvm, homebrew, etc.).
+ * A tool installed only under one of those (e.g. `npm install -g` under nvm)
+ * is invisible to the packaged app even though the terminal finds it fine.
+ * Markers guard against shell startup banners (nvm/rvm noise) polluting stdout.
+ */
+function resolveLoginShellPath(
+	shell = process.env.SHELL || "/bin/zsh",
+	timeoutMs = 15_000,
+): Promise<string | null> {
+	return new Promise((resolve) => {
+		const marker = "__HUBBLE_PATH__";
+		let child: ReturnType<typeof spawn>;
+		try {
+			child = spawn(shell, ["-ilc", `echo ${marker}$PATH${marker}`], {
+				stdio: ["ignore", "pipe", "ignore"],
+			});
+		} catch {
+			resolve(null);
+			return;
+		}
+		let stdout = "";
+		const timeout = setTimeout(() => {
+			child.kill("SIGKILL");
+			resolve(null);
+		}, timeoutMs);
+		child.stdout?.setEncoding("utf8");
+		child.stdout?.on("data", (chunk) => {
+			stdout += chunk;
+		});
+		child.on("error", () => {
+			clearTimeout(timeout);
+			resolve(null);
+		});
+		child.on("close", () => {
+			clearTimeout(timeout);
+			const match = new RegExp(`${marker}([\\s\\S]*?)${marker}`).exec(stdout);
+			resolve(match ? match[1].trim() : null);
+		});
+	});
+}
+
+let mergedLoginShellPath: Promise<void> | null = null;
+
+/**
+ * Merges the login shell's PATH into process.env.PATH, once per app run.
+ * Every command resolver here reads process.env.PATH lazily, so this single
+ * merge fixes PATH visibility for anydoc, ntn-acct, and any future shell-out.
+ */
+export function ensureLoginShellPathMerged(): Promise<void> {
+	if (!mergedLoginShellPath) {
+		mergedLoginShellPath = resolveLoginShellPath().then((loginPath) => {
+			if (!loginPath) return;
+			const currentDirs = process.env.PATH?.split(delimiter).filter(Boolean) ?? [];
+			const loginDirs = loginPath.split(delimiter).filter(Boolean);
+			process.env.PATH = uniquePathDirs([...currentDirs, ...loginDirs]).join(
+				delimiter,
+			);
+		});
+	}
+	return mergedLoginShellPath;
+}
+
 export function runCommand({
 	commandPath,
 	args,

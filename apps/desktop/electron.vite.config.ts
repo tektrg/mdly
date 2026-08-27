@@ -45,6 +45,7 @@ export default defineConfig({
 					"@tiptap/core",
 					"@tiptap/extension-list",
 					"@mdly/workspace-kit",
+					"@mdly/workspace-kit/file-discovery",
 					"@mdly/doc-history",
 					"@mdly/doc-history/node",
 					"diff",
@@ -102,7 +103,10 @@ export default defineConfig({
 				// The shared UI/workspace-kit packages are built by their own
 				// watchers. Watching their generated dist here causes noisy HMR
 				// reloads and can catch either package mid-rebuild.
-				ignored: ["**/packages/ui/dist/**", "**/packages/workspace-kit/dist/**"],
+				ignored: [
+					"**/packages/ui/dist/**",
+					"**/packages/workspace-kit/dist/**",
+				],
 			},
 		},
 		build: {

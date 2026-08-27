@@ -43,7 +43,10 @@ type DocumentState = {
 	lastOpenedPath: string | null;
 	content: string;
 	diskContent: string;
-	externalChange: { kind: "none" } | { kind: "conflict"; diskContent: string };
+	externalChange:
+		| { kind: "none" }
+		| { kind: "conflict"; diskContent: string }
+		| { kind: "review"; diskContent: string };
 	status: "idle" | "loading" | "ready" | "error";
 	error: string | null;
 };

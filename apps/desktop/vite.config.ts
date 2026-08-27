@@ -35,6 +35,12 @@ export default defineConfig(async () => ({
 					import.meta.url,
 				),
 			),
+			"@mdly/workspace-kit/file-discovery": fileURLToPath(
+				new URL(
+					"../../packages/workspace-kit/src/file-discovery.ts",
+					import.meta.url,
+				),
+			),
 			"@mdly/workspace-kit": fileURLToPath(
 				new URL("../../packages/workspace-kit/src/index.ts", import.meta.url),
 			),

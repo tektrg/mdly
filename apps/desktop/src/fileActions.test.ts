@@ -28,6 +28,21 @@ function createDesktopApi() {
 			contentHash: "pushed-hash",
 		})),
 		openExternalUrl: vi.fn(async (_url: string) => {}),
+		docImportConvert: vi.fn(async (_path: string) => ({
+			markdown: "# Converted",
+			contentHash: "converted-hash",
+			title: "report",
+			kind: "docx",
+			converter: "anydoc@1.0.0",
+		})),
+		docImportConvertUrl: vi.fn(async (_url: string) => ({
+			markdown: "# Url",
+			contentHash: "url-hash",
+			title: "report",
+			kind: "docx",
+			converter: "anydoc@1.0.0",
+		})),
+		pathExists: vi.fn(async (_path: string) => true),
 	};
 }
 
@@ -861,3 +876,72 @@ describe("Notion file actions", () => {
 		expect(api.writeFileText).not.toHaveBeenCalled();
 	});
 });
+
+
+describe("Doc re-import", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const importedMarkdown = [
+		"---",
+		"source:",
+		'  object: "document"',
+		'  kind: "docx"',
+		'  origin: "file"',
+		'  url: ""',
+		'  path: "/originals/report.docx"',
+		'  title: "Report"',
+		'  imported_at: "2026-08-11T10:00:00.000Z"',
+		'  content_hash: "old-hash"',
+		'  converter: "anydoc@1.0.0"',
+		'  sync: "imported"',
+		"---",
+		"# Report",
+	].join("\n");
+
+	it("falls back to the retained source copy when the original is gone", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue(importedMarkdown);
+		api.docImportConvert.mockImplementation(async (path: string) => {
+			if (path === "/originals/report.docx") {
+				throw new Error("Could not read the original file.");
+			}
+			return {
+				markdown: "# Retained",
+				contentHash: "retained-hash",
+				title: "report",
+				kind: "docx",
+				converter: "anydoc@1.0.0",
+			};
+		});
+		api.pathExists.mockResolvedValue(true);
+
+		const { prepareDocReimport } = await loadFileActions(api);
+		const result = await prepareDocReimport("/workspace/report.md");
+
+		expect(result.kind).toBe("ready");
+		if (result.kind !== "ready") return;
+		expect(result.markdown).toBe("# Retained");
+		expect(api.docImportConvert).toHaveBeenCalledWith(
+			"/workspace/report.assets/report.docx",
+		);
+	});
+
+	it("returns the primary error when no retained copy exists", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue(importedMarkdown);
+		api.docImportConvert.mockRejectedValue(
+			new Error("Could not read the original file."),
+		);
+		api.pathExists.mockResolvedValue(false);
+
+		const { prepareDocReimport } = await loadFileActions(api);
+		const result = await prepareDocReimport("/workspace/report.md");
+
+		expect(result.kind).toBe("error");
+		if (result.kind !== "error") return;
+		expect(result.message).toContain("original file");
+	});
+});
+

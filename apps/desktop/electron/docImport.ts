@@ -9,6 +9,7 @@ import type {
 } from "../src/desktopApi/types";
 import {
 	commandPathEnv,
+	ensureLoginShellPathMerged,
 	isExecutableFile,
 	resolveCommandPath,
 	runCommand,
@@ -52,6 +53,7 @@ export function anydocCommandPathEnv(
 }
 
 export async function checkConverterStatus(): Promise<ConverterStatus> {
+	await ensureLoginShellPathMerged();
 	const commandPath = resolveAnyDocCommandPath();
 	if (!commandPath) {
 		return {
@@ -61,6 +63,14 @@ export async function checkConverterStatus(): Promise<ConverterStatus> {
 		};
 	}
 
+	return {
+		available: true,
+		version: await resolveAnyDocVersion(commandPath),
+		installHint: "",
+	};
+}
+
+async function resolveAnyDocVersion(commandPath: string): Promise<string | null> {
 	try {
 		const { stdout } = await runCommand({
 			commandPath,
@@ -68,17 +78,9 @@ export async function checkConverterStatus(): Promise<ConverterStatus> {
 			timeoutMs: 10_000,
 			commandLabel: "anydoc",
 		});
-		return {
-			available: true,
-			version: stdout.trim() || null,
-			installHint: "",
-		};
+		return stdout.trim() || null;
 	} catch {
-		return {
-			available: true,
-			version: null,
-			installHint: "",
-		};
+		return null;
 	}
 }
 
@@ -86,11 +88,13 @@ export async function convertDocFile(
 	filePath: string,
 	options?: { title?: string },
 ): Promise<DocImportResult> {
+	await ensureLoginShellPathMerged();
 	const commandPath = resolveAnyDocCommandPath();
 	if (!commandPath) {
 		throw docImportError("converter-missing");
 	}
 
+	const version = await resolveAnyDocVersion(commandPath);
 	const kind = formatKind(extname(filePath).toLowerCase());
 	const title = options?.title ?? fileTitle(filePath);
 
@@ -117,6 +121,7 @@ export async function convertDocFile(
 			contentHash: docMarkdownContentHash(markdown),
 			title,
 			kind,
+			converter: version ? `anydoc@${version}` : "anydoc",
 		};
 	} catch (error) {
 		if (repairedPath) await cleanupRepairedFile(repairedPath);
@@ -153,10 +158,11 @@ export async function acquireDocSource(
 		throw docImportError("unsupported-format");
 	}
 
+	const requestUrl = withSharePointDownloadParam(url);
+
 	let response: Response;
 	try {
-		response = await fetch(url, {
-			redirect: "follow",
+		response = await fetchFollowingRedirectsWithCookies(requestUrl, {
 			headers: {
 				accept:
 					"application/octet-stream, application/pdf, application/zip, */*",
@@ -194,8 +200,9 @@ export async function acquireDocSource(
 		throw docImportError("unreadable");
 	}
 
-	const ext = extFromUrl(url, response.headers.get("content-type"));
-	const title = titleFromUrl(url, ext);
+	const namingUrl = documentNamingUrl(url, response.url);
+	const ext = extFromUrl(namingUrl, response.headers.get("content-type"));
+	const title = titleFromUrl(namingUrl, ext);
 	const tmpDir = join(tmpdir(), "hubble-doc-acquire");
 	await fs.mkdir(tmpDir, { recursive: true });
 	const acquiredPath = join(tmpDir, `${randomUUID()}${ext}`);
@@ -209,7 +216,69 @@ export async function acquireDocSource(
 	};
 }
 
-function isLoginWall(response: Response): boolean {
+const maxAcquireRedirects = 10;
+
+/**
+ * SharePoint/OneDrive share links (e.g. "...sharepoint.com/:w:/g/...") open
+ * the Office web viewer by default, which returns an HTML page rather than
+ * the file. Appending "download=1" makes them redirect straight to the raw
+ * file instead.
+ */
+export function withSharePointDownloadParam(url: string): string {
+	const parsed = new URL(url);
+	const isSharePointOrOneDrive =
+		/\.sharepoint\.com$/i.test(parsed.hostname) ||
+		/^(1drv\.ms|onedrive\.live\.com)$/i.test(parsed.hostname);
+	if (!isSharePointOrOneDrive || parsed.searchParams.has("download")) {
+		return url;
+	}
+	parsed.searchParams.set("download", "1");
+	return parsed.toString();
+}
+
+/**
+ * Follows redirects manually (rather than fetch's built-in "follow") so that
+ * Set-Cookie headers from one hop are forwarded as Cookie headers on the
+ * next. SharePoint's anonymous share links hand out a session cookie on the
+ * first redirect and reject the final request without it, which fetch's
+ * automatic redirect handling silently drops.
+ */
+async function fetchFollowingRedirectsWithCookies(
+	url: string,
+	init: { headers: Record<string, string>; signal: AbortSignal },
+): Promise<Response> {
+	const cookies = new Map<string, string>();
+	let currentUrl = url;
+
+	for (let redirectCount = 0; redirectCount <= maxAcquireRedirects; redirectCount++) {
+		const cookieHeader = [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
+		const response = await fetch(currentUrl, {
+			...init,
+			redirect: "manual",
+			headers: cookieHeader ? { ...init.headers, cookie: cookieHeader } : init.headers,
+		});
+
+		for (const setCookie of response.headers.getSetCookie()) {
+			const [pair] = setCookie.split(";");
+			const separatorIndex = pair.indexOf("=");
+			if (separatorIndex > 0) {
+				cookies.set(pair.slice(0, separatorIndex).trim(), pair.slice(separatorIndex + 1).trim());
+			}
+		}
+
+		const isRedirect = response.status >= 300 && response.status < 400;
+		const location = response.headers.get("location");
+		if (!isRedirect || !location) return response;
+
+		currentUrl = new URL(location, currentUrl).toString();
+	}
+
+	throw Object.assign(new Error("Too many redirects while downloading the document."), {
+		kind: "unknown" as DocImportErrorKind,
+	});
+}
+
+export function isLoginWall(response: Response): boolean {
 	const status = response.status;
 	if (status === 401 || status === 403) return true;
 
@@ -261,6 +330,32 @@ function extFromContentType(contentType: string | null): string | null {
 	}
 }
 
+/** File extensions that mark a URL as a web app page, not a document. */
+const webAppUrlExtensions = new Set([
+	".aspx",
+	".ashx",
+	".asp",
+	".html",
+	".htm",
+	".php",
+	".jsp",
+	".cfm",
+]);
+
+/**
+ * Choose which URL to derive the document name from. Share-link download flows
+ * (e.g. SharePoint) redirect to the document's real location — the final URL's
+ * filename is the document's actual name, whereas the original share link's
+ * basename is often an opaque token (e.g. ".../:w:/g/.../<GUID>"). Prefer the
+ * final URL when its basename looks like a real document, otherwise fall back
+ * to the original URL.
+ */
+export function documentNamingUrl(originalUrl: string, finalUrl: string): string {
+	const ext = extname(new URL(finalUrl).pathname).toLowerCase();
+	if (ext && !webAppUrlExtensions.has(ext)) return finalUrl;
+	return originalUrl;
+}
+
 function titleFromUrl(url: string, ext: string): string {
 	const pathname = new URL(url).pathname;
 	const name = basename(pathname) || "document";
@@ -274,7 +369,7 @@ export function docMarkdownContentHash(markdown: string): string {
 	return createHash("sha256").update(markdown).digest("hex");
 }
 
-function mapDocImportError(error: unknown): DocImportError & Error {
+export function mapDocImportError(error: unknown): DocImportError & Error {
 	const message = error instanceof Error ? error.message : String(error);
 
 	if (/timed out/i.test(message)) {
