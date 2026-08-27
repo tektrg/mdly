@@ -122,6 +122,14 @@ async function loadAutoUpdater(): Promise<
 const devAppName = isDev ? process.env.HUBBLE_DESKTOP_DEV_APP_NAME : undefined;
 const appName = devAppName ?? "mdly";
 const debugPort = process.env.HUBBLE_DESKTOP_DEBUG_PORT ?? "9222";
+
+// Home URL of the packaged renderer. Served from the privileged `app://` scheme
+// (registered above) so the page has a real tuple origin and a secure context,
+// instead of file://'s opaque "null" origin.
+const rendererAppUrl = "app://mdly/index.html";
+// Directory the packaged renderer build is copied to inside the app bundle.
+// __dirname is out/main at runtime, so the renderer lives one level up.
+const rendererDir = path.join(__dirname, "../renderer");
 const updateFeedUrl = process.env.HUBBLE_DESKTOP_UPDATE_URL;
 const supportsAutoUpdates = false;
 const devHttpCacheSizeBytes = 10 * 1024 * 1024;
@@ -610,6 +618,18 @@ function assetContentType(filePath: string): string {
 			return "image/png";
 		case ".webp":
 			return "image/webp";
+		case ".woff":
+			return "font/woff";
+		case ".woff2":
+			return "font/woff2";
+		case ".ttf":
+			return "font/ttf";
+		case ".mp4":
+			return "video/mp4";
+		case ".ico":
+			return "image/x-icon";
+		case ".map":
+			return "application/json; charset=utf-8";
 		default:
 			return "application/octet-stream";
 	}
@@ -1142,7 +1162,7 @@ async function createWindow() {
 	if (isDev && process.env.ELECTRON_RENDERER_URL) {
 		await window.loadURL(process.env.ELECTRON_RENDERER_URL);
 	} else {
-		await window.loadFile(path.join(__dirname, "../renderer/index.html"));
+		await window.loadURL(rendererAppUrl);
 	}
 }
 
@@ -1709,6 +1729,20 @@ protocol.registerSchemesAsPrivileged([
 			standard: true,
 		},
 	},
+	// The renderer's home origin. Packaged mdly serves the UI from this
+	// privileged scheme instead of file:// so the page gets a real tuple origin
+	// (app://mdly) and a secure context — file:// reports an opaque "null"
+	// origin, which the WebMCP relay rejects (see docs/plans/local-doc-comments.md,
+	// slice 3).
+	{
+		scheme: "app",
+		privileges: {
+			secure: true,
+			supportFetchAPI: true,
+			corsEnabled: true,
+			standard: true,
+		},
+	},
 ]);
 
 const singleInstanceLock = app.requestSingleInstanceLock();
@@ -1751,6 +1785,39 @@ if (!singleInstanceLock) {
 			// scripts, stylesheets, images, and fetches resolve to granted files.
 			// Disable caching because these files are edited directly in workspaces.
 			return responseForAsset(filePath);
+		});
+		// The renderer's own scheme. Unlike hubble-asset, this serves fixed app
+		// files from the packaged renderer dir — no grant check, but never outside
+		// that dir. Content-hashed assets are immutable, so they cache long;
+		// index.html and anything else revalidates on every load.
+		protocol.handle("app", (request) => {
+			const url = new URL(request.url);
+			const relativePath = decodeURIComponent(
+				url.pathname === "/" ? "/index.html" : url.pathname,
+			).replace(/^\/+/, "");
+			const filePath = path.join(rendererDir, relativePath);
+			if (
+				!filePath.startsWith(`${rendererDir}${path.sep}`) &&
+				filePath !== rendererDir
+			) {
+				return new Response("Not found", { status: 404 });
+			}
+			try {
+				const body = fsSync.readFileSync(filePath);
+				const isHashedAsset = /\/assets\/.+\.(?:js|css|ttf|woff2?|png|svg|mp4)$/.test(
+					url.pathname,
+				);
+				return new Response(body, {
+					headers: {
+						"content-type": assetContentType(filePath),
+						"cache-control": isHashedAsset
+							? "public, max-age=31536000, immutable"
+							: "no-cache",
+					},
+				});
+			} catch {
+				return new Response("Not found", { status: 404 });
+			}
 		});
 		registerIpc();
 		buildMenu();
