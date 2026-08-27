@@ -1,6 +1,6 @@
 # Plan: Local Document History (versions + diff)
 
-**Status:** Approved, not started — 2026-08-14
+**Status:** Approved — progress tracked per slice below. (2026-08-14 not-started → 2026-08-27: slices 1 and 3 shipped, slice 2 pending.)
 **Scope of this doc:** slices 1–3, all in this repo. A second consumer adopts the
 same packages afterwards (see *Second-consumer constraints*).
 
@@ -118,6 +118,14 @@ Undo covers that window; history does not.
 
 Each slice is independently shippable. 1 and 2 land together — there is no reason
 to ship a store with no way to read it.
+
+**Status per slice (updated 2026-08-27):**
+
+| Slice | State |
+|---|---|
+| 1 — store (`@mdly/doc-history`) | **Shipped** (`packages/doc-history` exists) |
+| 2 — read side + CLI (`history`/`diff`/`restore`) | **Not done.** `packages/cli` still knows only `cloud` |
+| 3 — diff UI in the kit | **Shipped** (`packages/workspace-kit/src/history/`) |
 
 ### Slice 1 — the store *(size: M)*
 
