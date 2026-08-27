@@ -43,6 +43,9 @@ export default defineConfig({
 				// main barrel would drag Tiptap, mermaid and this package's
 				// Tailwind CSS in behind them.
 				search: resolve("./src/nav/searchScore.ts"),
+				// Node-only filesystem traversal. Kept outside the UI barrel so
+				// renderer consumers never bundle fs/path or ignore rules.
+				"file-discovery": resolve("./src/file-discovery.ts"),
 			},
 			formats: ["es"],
 			fileName: (_format, entryName) => `${entryName}.js`,

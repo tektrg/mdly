@@ -727,6 +727,12 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 					const canTogglePinnedFile = isPinnedFile && onTogglePinnedFile;
 					const isPinnedSectionEnd =
 						isPinnedFile && rows[index + 1]?.kind !== "file";
+					// A row standing for more than one file gets a small
+					// "stacked pages" glyph (see SidebarFile.stackCount).
+					// It's a hint, not a count — the glyph is the same
+					// whether the row stands for two files or twenty.
+					const hasStack =
+						row.kind === "file" && (row.file.stackCount ?? 0) > 0;
 					if (row.kind === "section") {
 						return (
 							<div
@@ -800,6 +806,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 												]
 											: "rounded-[var(--radius-row)]",
 										isRenaming && "relative z-30",
+										hasStack && "hover:z-10",
 										isPinnedSectionEnd && "mb-3",
 										activeDragLabel && isActive && !dropGroup && "grayscale",
 										isDragging && "opacity-50",
@@ -901,6 +908,22 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 													: "bg-linear-to-r from-transparent from-0% via-accent via-25% to-accent",
 											)}
 										/>
+									)}
+									{hasStack && (
+										// A row standing for more than one file. Idle it
+										// looks like any other row — no hint at all. On
+										// hover, 2 fixed card-edge slivers fan out below
+										// it, the same whether it stands for two files or
+										// twenty (stackCount is a presence signal, not a
+										// number to display).
+										<span aria-hidden="true" data-sidebar-stack-effect className="contents">
+											<span
+												className="pointer-events-none absolute inset-x-2 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] delay-75 duration-180 ease-snappy group-hover/sidebar-row:translate-y-2 group-hover/sidebar-row:opacity-70 motion-reduce:transition-none"
+											/>
+											<span
+												className="pointer-events-none absolute inset-x-1 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] duration-180 ease-snappy group-hover/sidebar-row:translate-y-1 group-hover/sidebar-row:opacity-100 motion-reduce:transition-none"
+											/>
+										</span>
 									)}
 									<div className="absolute inset-y-0 end-0.5 flex items-center gap-0.5">
 										{row.kind === "folder" &&

@@ -90,25 +90,49 @@ function SidebarPagerTabs({
 	onSelectPage: (page: number) => void;
 }) {
 	return (
-		<div className="flex shrink-0 items-center justify-center gap-4 py-1">
-			{pages.map((page, index) => (
-				<button
-					key={page.id}
-					type="button"
-					aria-pressed={activePage === index}
-					aria-label={page.label}
-					title={page.label}
-					className={cn(
-						"flex size-3.5 items-center justify-center rounded-[var(--radius-row)] text-[8px] transition-colors",
-						activePage === index
-							? "bg-sidebar-accent text-sidebar-accent-foreground"
-							: "text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground",
-					)}
-					onClick={() => onSelectPage(index)}
-				>
-					{page.icon}
-				</button>
-			))}
+		<div className="flex shrink-0 items-center justify-center gap-3 py-1">
+			{pages.map((page, index) => {
+				const isActive = activePage === index;
+				return (
+					<button
+						key={page.id}
+						type="button"
+						aria-pressed={isActive}
+						aria-label={page.label}
+						title={page.label}
+						className={cn(
+							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+							isActive
+								? "bg-sidebar-accent text-sidebar-accent-foreground"
+								: "text-muted-foreground/60 hover:text-foreground",
+						)}
+						onClick={() => onSelectPage(index)}
+					>
+						{/* Inactive state: dot (hides on hover/active) */}
+						<span
+							aria-hidden="true"
+							className={cn(
+								"absolute size-1.5 rounded-full bg-current transition-all duration-200 ease-out",
+								isActive
+									? "scale-0 opacity-0"
+									: "scale-100 opacity-60 group-hover:scale-0 group-hover:opacity-0 group-focus-visible:scale-0 group-focus-visible:opacity-0",
+							)}
+						/>
+						{/* Icon (shows on active, or on hover when inactive without background highlight) */}
+						<span
+							aria-hidden="true"
+							className={cn(
+								"flex items-center justify-center text-[13px] transition-all duration-200 ease-out",
+								isActive
+									? "scale-100 opacity-100"
+									: "scale-50 opacity-0 pointer-events-none group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100",
+							)}
+						>
+							{page.icon}
+						</span>
+					</button>
+				);
+			})}
 		</div>
 	);
 }

@@ -152,28 +152,19 @@ export const SearchList = forwardRef<
 					aria-activedescendant={
 						focusedIndex !== null ? `${listId}-o${focusedIndex}` : undefined
 					}
-					aria-label={placeholder ?? "Search files"}
-					placeholder={placeholder ?? "Search files"}
-					// The (optional) trailing hint/clear button is overlaid on top of
-					// the input rather than laid out as a flex sibling, so it reads as
-					// part of one text box instead of a control bracketing it. No
-					// extra outline/ring classes here -- the ghost variant already
-					// zeroes those, and re-stating "outline-none" would win a
-					// tailwind-merge conflict against the base primitive's
-					// "outline-hidden" and let the browser's native focus ring show
-					// through instead of suppressing it.
-					className="h-7 pr-9"
+					placeholder={placeholder}
 					value={query}
 					onChange={handleChange}
 					onKeyDown={handleKeyDown}
+					className="h-7 w-full pe-7 ps-2 text-[length:var(--font-size-sidebar)]"
 				/>
-				<div className="pointer-events-none absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center">
+				<div className="pointer-events-none absolute inset-y-0 end-4 flex items-center">
 					{query ? (
 						<button
 							type="button"
 							aria-label="Clear search"
-							className="pointer-events-auto flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 outline-hidden hover:bg-accent hover:text-muted-foreground"
 							onClick={clearQuery}
+							className="pointer-events-auto inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground/70 hover:text-foreground"
 						>
 							<MingcuteCloseLine className="size-3" />
 						</button>

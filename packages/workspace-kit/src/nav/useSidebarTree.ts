@@ -16,6 +16,17 @@ export type SidebarFile = {
 	 * shared frozen empty array without the kit cloning it per render.
 	 */
 	tags?: readonly string[];
+	/**
+	 * How many ADDITIONAL files this row stands for, beyond itself. When set
+	 * above 0 the row is drawn stacked, hinting that opening it reveals more
+	 * than one document.
+	 *
+	 * Deliberately semantic-free: the kit never decides what makes files
+	 * belong together (a host may group by frontmatter, a naming convention,
+	 * a registry, a database), only how a grouped row looks. Same division as
+	 * `tags` above.
+	 */
+	stackCount?: number;
 	isSymlink?: boolean;
 	symlinkTarget?: string | null;
 	symlinkTargetExists?: boolean;

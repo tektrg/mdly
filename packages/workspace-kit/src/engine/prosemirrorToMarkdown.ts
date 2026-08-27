@@ -285,72 +285,92 @@ function listItemToMarkdown(item: JSONContent, number?: number): string {
 	return `${prefix} ${content}`;
 }
 
-function inlineToMarkdown(nodes: JSONContent[]): string {
-	let result = "";
-	for (let i = 0; i < nodes.length; ) {
-		const attrs = getLinkAttrs(nodes[i]);
-		const key = linkKey(attrs);
-		if (!attrs || !key) {
-			result += nodeToMarkdown(nodes[i]);
-			i += 1;
-			continue;
-		}
+/** Marks that wrap a run of neighbouring inline nodes, outermost first. */
+const RUN_MARKS = [
+	{ type: "bold", delimiter: "**" },
+	{ type: "italic", delimiter: "*" },
+	{ type: "strike", delimiter: "~~" },
+] as const;
 
-		let j = i;
-		const grouped: JSONContent[] = [];
-		while (j < nodes.length && linkKey(getLinkAttrs(nodes[j])) === key) {
-			grouped.push(removeLinkMark(nodes[j]));
-			j += 1;
-		}
-		const text = grouped.map(nodeToMarkdown).join("");
-		if (attrs.kind === "notionMention") {
-			result += `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
-		} else if (attrs.kind === "wiki") {
-			const target = attrs.target || attrs.href;
-			const defaultText = wikiDisplayNameForTarget(target);
-			result +=
-				text === defaultText
-					? `[[${target}]]`
-					: `[[${target}|${escapeWikiAlias(text)}]]`;
-		} else {
-			result += `[${text}](${attrs.href})`;
-		}
-		i = j;
+function markTypesOf(node: JSONContent): Set<string> {
+	const types = new Set<string>();
+	for (const mark of node.marks ?? []) {
+		if (mark.type) types.add(mark.type);
 	}
-	return result;
+	return types;
 }
 
-function inlineToTableMarkdown(nodes: JSONContent[]): string {
+/**
+ * `** bold **` is not bold — CommonMark rejects a delimiter run that hugs
+ * whitespace — so push any edge whitespace outside the pair.
+ */
+function wrapDelimited(text: string, delimiter: string): string {
+	const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(text);
+	if (!match) return text;
+	const [, leading, core, trailing] = match;
+	if (!core) return text;
+	return `${leading}${delimiter}${core}${delimiter}${trailing}`;
+}
+
+/**
+ * Serialize a run of inline nodes, emitting each formatting delimiter ONCE
+ * around the longest stretch of neighbours that shares it.
+ *
+ * TipTap splits a bold sentence containing inline code into three text nodes
+ * ("Rule: run " / "realpath" / " on the file"). Wrapping each node on its own
+ * closes and immediately reopens the bold pair at every seam, and the `****`
+ * that produces is not a valid delimiter run — CommonMark renders it as
+ * literal asterisks. Grouping first is what keeps ``**a `b` c**`` intact.
+ *
+ * Links are grouped the same way, but rank below the formatting marks so bold
+ * that runs past a link still emits one pair around the whole span.
+ */
+function runToMarkdown(
+	nodes: JSONContent[],
+	leafToMarkdown: (node: JSONContent) => string,
+	applied: ReadonlySet<string> = new Set(),
+): string {
 	let result = "";
 	for (let i = 0; i < nodes.length; ) {
-		const attrs = getLinkAttrs(nodes[i]);
-		const key = linkKey(attrs);
-		if (!attrs || !key) {
-			result += nodeToTableMarkdown(nodes[i]);
-			i += 1;
+		const types = markTypesOf(nodes[i]);
+		const runMark = RUN_MARKS.find(
+			(candidate) => types.has(candidate.type) && !applied.has(candidate.type),
+		);
+
+		if (runMark) {
+			let end = i + 1;
+			while (end < nodes.length && markTypesOf(nodes[end]).has(runMark.type)) {
+				end += 1;
+			}
+			const inner = runToMarkdown(
+				nodes.slice(i, end),
+				leafToMarkdown,
+				new Set([...applied, runMark.type]),
+			);
+			result += wrapDelimited(inner, runMark.delimiter);
+			i = end;
 			continue;
 		}
 
-		let j = i;
-		const grouped: JSONContent[] = [];
-		while (j < nodes.length && linkKey(getLinkAttrs(nodes[j])) === key) {
-			grouped.push(removeLinkMark(nodes[j]));
-			j += 1;
+		const attrs = getLinkAttrs(nodes[i]);
+		const key = linkKey(attrs);
+		if (attrs && key) {
+			let end = i;
+			const grouped: JSONContent[] = [];
+			while (end < nodes.length && linkKey(getLinkAttrs(nodes[end])) === key) {
+				grouped.push(removeLinkMark(nodes[end]));
+				end += 1;
+			}
+			result += linkToMarkdown(
+				attrs,
+				runToMarkdown(grouped, leafToMarkdown, applied),
+			);
+			i = end;
+			continue;
 		}
-		const text = grouped.map(nodeToTableMarkdown).join("");
-		if (attrs.kind === "notionMention") {
-			result += `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
-		} else if (attrs.kind === "wiki") {
-			const target = attrs.target || attrs.href;
-			const defaultText = wikiDisplayNameForTarget(target);
-			result +=
-				text === defaultText
-					? `[[${target}]]`
-					: `[[${target}|${escapeWikiAlias(text)}]]`;
-		} else {
-			result += `[${text}](${attrs.href})`;
-		}
-		i = j;
+
+		result += leafToMarkdown(nodes[i]);
+		i += 1;
 	}
 	return result;
 }
@@ -359,51 +379,38 @@ function escapeWikiAlias(alias: string) {
 	return alias.split("|").join("\\|");
 }
 
-type JSONMark = NonNullable<JSONContent["marks"]>[number];
-
-function dedupeMarksByType(marks: JSONMark[]): JSONMark[] {
-	const seen = new Set<string>();
-	const result: JSONMark[] = [];
-	for (const mark of marks) {
-		if (!mark.type || seen.has(mark.type)) continue;
-		seen.add(mark.type);
-		result.push(mark);
+function linkToMarkdown(attrs: LinkAttrs, text: string): string {
+	if (attrs.kind === "notionMention") {
+		return `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
 	}
-	return result;
+	if (attrs.kind === "wiki") {
+		const target = attrs.target || attrs.href;
+		const defaultText = wikiDisplayNameForTarget(target);
+		return text === defaultText
+			? `[[${target}]]`
+			: `[[${target}|${escapeWikiAlias(text)}]]`;
+	}
+	return `[${text}](${attrs.href})`;
 }
 
-function nodeToMarkdown(node: JSONContent): string {
-	if (!node.type) return "";
+function inlineToMarkdown(nodes: JSONContent[]): string {
+	return runToMarkdown(nodes, leafToMarkdown);
+}
 
+function inlineToTableMarkdown(nodes: JSONContent[]): string {
+	return runToMarkdown(nodes, leafToTableMarkdown);
+}
+
+/**
+ * One inline node once every run-level mark is already open around it. Only
+ * `code` is left, and it is always innermost: ``**`x`**`` is bold code, while
+ * `` `**x**` `` is a code span with two literal asterisks in it.
+ */
+function leafToMarkdown(node: JSONContent): string {
 	switch (node.type) {
 		case "text": {
-			let text = node.text ?? "";
-
-			// Apply marks in the correct order for Markdown. Dedup by type so a
-			// text node that somehow carries duplicate marks (e.g. `["bold","bold"]`)
-			// is wrapped once, never `****x****`/`******x******`.
-			const marks = dedupeMarksByType(node.marks ?? []);
-
-			for (const mark of marks) {
-				switch (mark.type) {
-					case "code":
-						text = `\`${text}\``;
-						break;
-					case "bold":
-						text = `**${text}**`;
-						break;
-					case "italic":
-						text = `*${text}*`;
-						break;
-					case "strike":
-						text = `~~${text}~~`;
-						break;
-					case "link":
-						break;
-				}
-			}
-
-			return text;
+			const text = node.text ?? "";
+			return markTypesOf(node).has("code") ? `\`${text}\`` : text;
 		}
 
 		case "hardBreak": {
@@ -415,35 +422,11 @@ function nodeToMarkdown(node: JSONContent): string {
 	}
 }
 
-function nodeToTableMarkdown(node: JSONContent): string {
-	if (!node.type) return "";
-
+function leafToTableMarkdown(node: JSONContent): string {
 	switch (node.type) {
 		case "text": {
-			const marks = dedupeMarksByType(node.marks ?? []);
-			if (marks.some((mark) => mark.type === "code")) {
-				return `\`${(node.text ?? "").split("|").join("\\|")}\``;
-			}
-
-			let text = (node.text ?? "").split("|").join("\\|");
-			for (const mark of marks) {
-				switch (mark.type) {
-					case "bold":
-						text = `**${text}**`;
-						break;
-					case "italic":
-						text = `*${text}*`;
-						break;
-					case "strike":
-						text = `~~${text}~~`;
-						break;
-					case "code":
-					case "link":
-						break;
-				}
-			}
-
-			return text;
+			const text = (node.text ?? "").split("|").join("\\|");
+			return markTypesOf(node).has("code") ? `\`${text}\`` : text;
 		}
 
 		case "hardBreak": {

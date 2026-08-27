@@ -432,6 +432,88 @@ ArrowDown/ArrowUp/Enter). Space and the horizontal arrows must never be listed:
 inside an input they belong to the caret. A regression test asserts the rename
 box still keeps Space.
 
+## Decision 8 — A row may stand for several files: `stackCount` (2026-08-17)
+
+SpeechToDo groups a plain document with the files generated from it
+(`notes.md` + `notes.summary.md`), shows them as tabs, and hides the generated
+ones from the tree. The remaining row then silently under-reports what it
+opens, and the kit had no per-file-row affordance of any kind — no badge, no
+trailing slot, no subtitle. Decision 7's rule applies verbatim, so this is a
+kit prop:
+
+```ts
+SidebarFile.stackCount?: number   // ADDITIONAL files this row stands for
+```
+
+Above 0, the kit draws a small "stacked pages" glyph in the row's actions
+corner — present at rest, yielding to the real hover actions the moment they
+appear. Tried two chrome-only treatments first (a hairline rule below the row,
+then soft-shadow slivers off its right edge) and dropped both: at sidebar-row
+scale a decoration that isn't a recognizable glyph reads as a rendering
+artifact, not a signal. A glyph is the count — the same icon whether the row
+stands for two files or twenty; `stackCount`'s only job is presence, not a
+number to display.
+
+**Semantic-free on purpose, exactly as `tags` is.** The kit never decides what
+makes files belong together; a host may group by frontmatter, a naming
+convention, a registry or a database. The kit owns only how a grouped row
+looks. This is why the field is a plain count and not, say, `derivedFiles`.
+
+**Why a count rather than a render-prop.** A host-rendered node cannot express
+this: the stacking is a treatment of the row element itself, and Decision 2
+forbids host CSS reaching into kit markup. `renderTagIcon`'s render-prop shape
+is right for *content* a host supplies, wrong for *chrome* the kit draws.
+
+Additive, default-absent ⇒ **minor bump (0.4.0 → 0.5.0)**. mdly passes no
+`stackCount` and is unchanged, with a guard test asserting a row without it
+renders no stack icon.
+
+### Agreed but NOT built: per-row metadata (`renderFileAccessory`)
+Both products want frontmatter/file properties shown under a row's name. The
+seam is agreed here so it is not re-litigated: a `renderFileAccessory?: (file:
+SidebarFile) => ReactNode` render-prop, rendered under the label and allowed to
+wrap — the `renderTagIcon` shape, correct this time because the accessory is
+host-supplied *content*.
+
+It is unbuilt because of a **host-side** cost, not a kit one: SpeechToDo's
+workspace scan is `stat()`-only and never opens files, so listing frontmatter
+means a new read pass over every `.md`. Whoever builds it should reuse the
+kit's existing `parseMarkdownFrontMatter` / `FileProperty` (already exported,
+currently unused by SpeechToDo, which instead carries four partial
+re-implementations of the same regex) and follow mdly's precedent of deferring
+the scan until the view that needs it is opened.
+
+## Decision 9 — `stackCount`'s row treatment moves from idle glyph to hover-only animation (2026-08-23)
+
+Decision 8's glyph is always visible at rest and fades away on hover so the row's
+real actions can use that corner. SpeechToDo's product call: a grouped row should
+look identical to any other row at rest — no icon, no idle hint at all — and only
+reveal that it stands for more than one file on hover, as two thin card-edge
+slivers fanning out below the row (a "peeking card stack" look), with a subtle
+180ms transition. This is a deliberate reversal of Decision 8's own premise, not
+an oversight: Decision 8 explicitly rejected always-visible chrome-only
+treatments (a hairline rule; soft-shadow slivers) as unrecognizable at rest and
+landed on a literal icon *because of* that idle-visibility requirement. Moving
+the same shape of visual (a shadow/edge treatment) behind a hover reveal makes it
+legible again — motion draws the eye where a static sliver at this scale could
+not — while trading away at-rest discoverability. That trade-off is the point:
+a clean idle sidebar mattered more than always-on scannability of grouping.
+
+`stackCount`'s contract is unchanged — still a plain presence count, semantic-free,
+kit-owned rendering (Decision 8's framing holds). Only the kit's internal
+treatment of an already-shipped prop changed, so this is a **patch, not minor,
+bump (0.5.0 → 0.5.1)** — contrast with Decisions 7/8, which bumped minor because
+they added a new prop to the public contract; nothing here does.
+
+Renders as two `<span>` layers (`data-sidebar-stack-effect`, renamed from
+Decision 8's `data-sidebar-stack-icon` — it's no longer an icon), retracted and
+transparent at rest, translating out below the row's own bottom edge on
+`group-hover/sidebar-row`. Fixed at exactly 2 layers regardless of the real
+count, same "presence not a number" principle as the glyph it replaces. The row
+itself gains `hover:z-10` so the peeking layers paint above the next row instead
+of underneath it — rows sit with zero gap in the list, so without this the
+lower layer would be invisible, hidden by the next row's own background.
+
 ## Consequences
 - SpeechToDo's build must vendor the five extra editor-surface dependencies
   listed in Decision 1, plus `@dnd-kit/core` from Decision 4, not just `@base-ui/react`.

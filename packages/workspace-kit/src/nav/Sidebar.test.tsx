@@ -703,6 +703,31 @@ describe("Sidebar symlink activation", () => {
 		]);
 	});
 
+	it("draws no stack effect when a file carries no stackCount", async () => {
+		// The guard for mdly: every existing host omits stackCount, so a row
+		// must render exactly as it did before the prop existed.
+		await renderSidebar({ files: [{ path: "/workspace/a.md" }] });
+
+		expect(hasStackEffect("a.md")).toBe(false);
+	});
+
+	it("draws a stack effect on a row that stands for more files", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/a.md", stackCount: 1 }],
+		});
+
+		expect(hasStackEffect("a.md")).toBe(true);
+	});
+
+	it("draws the same fixed 2-layer stack effect however many files a row stands for", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/a.md", stackCount: 47 }],
+		});
+
+		expect(hasStackEffect("a.md")).toBe(true);
+		expect(stackEffectLayerCount("a.md")).toBe(2);
+	});
+
 	it("keeps the kit's own panel chrome when no chrome prop is given", async () => {
 		await renderSidebar({ files: [{ path: "/workspace/a.md" }] });
 
@@ -902,5 +927,21 @@ describe("Sidebar symlink activation", () => {
 		return Array.from(container.querySelectorAll("button")).find((candidate) =>
 			candidate.textContent?.includes(label),
 		);
+	}
+
+	/** Decorative layers drawn behind a row to show it stands for several files. */
+	function hasStackEffect(label: string) {
+		const row = Array.from(
+			container.querySelectorAll<HTMLElement>('[role="treeitem"]'),
+		).find((candidate) => candidate.textContent?.includes(label));
+		return Boolean(row?.querySelector("[data-sidebar-stack-effect]"));
+	}
+
+	/** Number of card-edge slivers drawn inside the stack effect. */
+	function stackEffectLayerCount(label: string) {
+		const row = Array.from(
+			container.querySelectorAll<HTMLElement>('[role="treeitem"]'),
+		).find((candidate) => candidate.textContent?.includes(label));
+		return row?.querySelectorAll("[data-sidebar-stack-effect] > span").length ?? 0;
 	}
 });
