@@ -113,10 +113,14 @@ export function useCommentThreads(
 				cancelled = true;
 			};
 		}
-		editor.on("update", resolveAll);
+		// "transaction" (not "update") -- external content reloads apply via
+		// `setContent(doc, { emitUpdate: false })`, which suppresses "update"
+		// but still dispatches a transaction, so anchors must re-resolve there
+		// too or highlights go stale against the old document.
+		editor.on("transaction", resolveAll);
 		return () => {
 			cancelled = true;
-			editor.off("update", resolveAll);
+			editor.off("transaction", resolveAll);
 		};
 	}, [readRevisionContent, rawThreads, editor, flattenDocument]);
 

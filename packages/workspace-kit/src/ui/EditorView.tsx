@@ -621,6 +621,7 @@ export function EditorView({
 							editor={editor}
 							viewportRef={editorViewportRef}
 							onOpenThread={commentOptions.onOpenThread}
+							onPanelOpenChange={commentOptions.onPanelOpenChange}
 						/>
 					</>
 				) : null}

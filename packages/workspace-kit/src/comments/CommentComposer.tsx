@@ -22,10 +22,12 @@ export function CommentComposer({
 	editor,
 	viewportRef,
 	onOpenThread,
+	onPanelOpenChange,
 }: {
 	editor: Editor | null;
 	viewportRef: RefObject<HTMLElement | null>;
 	onOpenThread: (anchor: TextAnchor, text: string) => Promise<void>;
+	onPanelOpenChange?: (open: boolean) => void;
 }) {
 	const [position, setPosition] = useState<Position | null>(null);
 	const [composing, setComposing] = useState(false);
@@ -57,11 +59,11 @@ export function CommentComposer({
 			}
 		};
 		editor.on("selectionUpdate", update);
-		editor.on("update", update);
+		editor.on("transaction", update);
 		scrollContainer?.addEventListener("scroll", update, { passive: true });
 		return () => {
 			editor.off("selectionUpdate", update);
-			editor.off("update", update);
+			editor.off("transaction", update);
 			scrollContainer?.removeEventListener("scroll", update);
 		};
 	}, [editor, viewportRef]);
@@ -92,6 +94,7 @@ export function CommentComposer({
 				setDraft("");
 				setComposing(false);
 				setSubmitting(false);
+				onPanelOpenChange?.(true);
 			},
 			() => {
 				setSubmitting(false);

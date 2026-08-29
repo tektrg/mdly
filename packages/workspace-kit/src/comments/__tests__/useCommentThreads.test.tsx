@@ -161,4 +161,56 @@ describe("useCommentThreads", () => {
 		expect(movedRange).toEqual({ from: 7, to: 13 });
 		expect(options.getThreads).toHaveBeenCalledTimes(1);
 	});
+
+	// External-file-reload re-resolution: EditorView applies a reloaded file
+	// via `setContent(doc, { emitUpdate: false })`, which suppresses the
+	// editor's "update" event by design. The hook must still re-resolve
+	// anchors off the "transaction" that setContent still dispatches, or
+	// highlights go stale against the file's old text.
+	it("re-resolves after an external reload applied with emitUpdate: false", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "TARGET", mode: "quote" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads[0]?.anchorResolution.range).toEqual({
+			from: 0,
+			to: 6,
+		});
+
+		act(() => {
+			editor.commands.setContent(
+				{
+					type: "doc",
+					content: [
+						{
+							type: "paragraph",
+							content: [{ type: "text", text: "PREFIX TARGET rest of the line" }],
+						},
+					],
+				} satisfies JSONContent,
+				{ emitUpdate: false },
+			);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads[0]?.anchorResolution.range).toEqual({
+			from: 7,
+			to: 13,
+		});
+	});
 });

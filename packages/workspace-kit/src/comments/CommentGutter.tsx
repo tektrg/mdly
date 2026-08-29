@@ -56,9 +56,12 @@ export function CommentGutter({
 		};
 
 		update();
-		editor.on("update", update);
+		// "transaction" (not "update") -- external reloads apply via
+		// setContent(doc, { emitUpdate: false }), which still dispatches a
+		// transaction, so markers must re-resolve there too.
+		editor.on("transaction", update);
 		return () => {
-			editor.off("update", update);
+			editor.off("transaction", update);
 		};
 	}, [editor, containerRef, threads]);
 

@@ -42,9 +42,11 @@ function createEditor() {
 function Harness({
 	editor,
 	onOpenThread,
+	onPanelOpenChange,
 }: {
 	editor: Editor;
 	onOpenThread: (anchor: unknown, text: string) => Promise<void>;
+	onPanelOpenChange?: (open: boolean) => void;
 }) {
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	return (
@@ -53,6 +55,7 @@ function Harness({
 				editor={editor}
 				viewportRef={viewportRef}
 				onOpenThread={onOpenThread}
+				onPanelOpenChange={onPanelOpenChange}
 			/>
 		</div>
 	);
@@ -159,6 +162,51 @@ describe("CommentComposer", () => {
 		// Compose box collapses back to a bare trigger once submitted.
 		expect(container.querySelector("[data-comment-composer]")).toBeNull();
 		expect(container.querySelector("[data-comment-composer-trigger]")).not.toBeNull();
+	});
+
+	it("opens the panel once a new thread is created from the composer", async () => {
+		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+		const onPanelOpenChange = vi.fn();
+		const editor = createEditor();
+		act(() => {
+			root.render(
+				<Harness
+					editor={editor}
+					onOpenThread={onOpenThread}
+					onPanelOpenChange={onPanelOpenChange}
+				/>,
+			);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		act(() => {
+			const textarea = container.querySelector<HTMLTextAreaElement>(
+				"[data-comment-composer-textarea]",
+			);
+			nativeValueSetter?.call(textarea, "why bold?");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		expect(onPanelOpenChange).not.toHaveBeenCalled();
+
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				?.click();
+		});
+
+		expect(onPanelOpenChange).toHaveBeenCalledWith(true);
 	});
 
 	it("positions the trigger relative to the scrolled viewport, not the unscrolled one", () => {
