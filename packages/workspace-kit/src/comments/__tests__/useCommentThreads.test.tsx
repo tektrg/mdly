@@ -40,6 +40,7 @@ function baseOptions(overrides: Partial<CommentOptions> = {}): CommentOptions {
 	return {
 		currentAuthor: { kind: "human", id: "u1" },
 		docId: "doc-1",
+		headRevisionId: null,
 		getThreads: vi.fn().mockResolvedValue([]),
 		readRevisionContent: vi.fn().mockResolvedValue(null),
 		onOpenThread: vi.fn(),

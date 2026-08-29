@@ -6,6 +6,7 @@ import { act, useRef } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tiptapDocToMarkdown } from "../../engine/index.js";
 import { CommentComposer } from "../CommentComposer";
 
 (
@@ -43,10 +44,14 @@ function Harness({
 	editor,
 	onOpenThread,
 	onPanelOpenChange,
+	headRevisionId = null,
+	readRevisionContent = () => Promise.resolve(null),
 }: {
 	editor: Editor;
 	onOpenThread: (anchor: unknown, text: string) => Promise<void>;
 	onPanelOpenChange?: (open: boolean) => void;
+	headRevisionId?: string | null;
+	readRevisionContent?: (revisionId: string) => Promise<string | null>;
 }) {
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	return (
@@ -54,6 +59,8 @@ function Harness({
 			<CommentComposer
 				editor={editor}
 				viewportRef={viewportRef}
+				headRevisionId={headRevisionId}
+				readRevisionContent={readRevisionContent}
 				onOpenThread={onOpenThread}
 				onPanelOpenChange={onPanelOpenChange}
 			/>
@@ -162,6 +169,113 @@ describe("CommentComposer", () => {
 		// Compose box collapses back to a bare trigger once submitted.
 		expect(container.querySelector("[data-comment-composer]")).toBeNull();
 		expect(container.querySelector("[data-comment-composer-trigger]")).not.toBeNull();
+	});
+
+	// R10: a new comment on a note whose live text is byte-identical to its
+	// head revision gets the more durable 'revision' anchor mode, not always
+	// 'quote'.
+	it("submits a revision-mode anchor when the live body matches the head revision", async () => {
+		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+		const editor = createEditor();
+		const currentBody = tiptapDocToMarkdown(editor.getJSON() as JSONContent);
+		const readRevisionContent = vi
+			.fn()
+			.mockImplementation((revisionId: string) =>
+				Promise.resolve(revisionId === "rev-1" ? currentBody : "different text"),
+			);
+		act(() => {
+			root.render(
+				<Harness
+					editor={editor}
+					onOpenThread={onOpenThread}
+					headRevisionId="rev-1"
+					readRevisionContent={readRevisionContent}
+				/>,
+			);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		act(() => {
+			const textarea = container.querySelector<HTMLTextAreaElement>(
+				"[data-comment-composer-textarea]",
+			);
+			nativeValueSetter?.call(textarea, "matches head revision");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				?.click();
+		});
+
+		expect(readRevisionContent).toHaveBeenCalledWith("rev-1");
+		const [anchor] = onOpenThread.mock.calls[0] as [
+			{ mode: string; revisionId?: string },
+			string,
+		];
+		expect(anchor.mode).toBe("revision");
+		expect(anchor.revisionId).toBe("rev-1");
+	});
+
+	it("falls back to quote mode when the live body differs from the head revision", async () => {
+		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+		const editor = createEditor();
+		const readRevisionContent = vi
+			.fn()
+			.mockResolvedValue("this is not the current body");
+		act(() => {
+			root.render(
+				<Harness
+					editor={editor}
+					onOpenThread={onOpenThread}
+					headRevisionId="rev-1"
+					readRevisionContent={readRevisionContent}
+				/>,
+			);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		act(() => {
+			const textarea = container.querySelector<HTMLTextAreaElement>(
+				"[data-comment-composer-textarea]",
+			);
+			nativeValueSetter?.call(textarea, "still unsaved");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				?.click();
+		});
+
+		const [anchor] = onOpenThread.mock.calls[0] as [
+			{ mode: string; revisionId?: string },
+			string,
+		];
+		expect(anchor.mode).toBe("quote");
+		expect(anchor.revisionId).toBeUndefined();
 	});
 
 	it("opens the panel once a new thread is created from the composer", async () => {

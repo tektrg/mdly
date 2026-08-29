@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { type RefObject, useEffect, useState } from "react";
-import { buildQuoteAnchor } from "./buildAnchor.js";
+import { buildCommentAnchor } from "./buildAnchor.js";
 import "./CommentComposer.css";
 import type { TextAnchor } from "./types.js";
 
@@ -21,11 +21,16 @@ interface Position {
 export function CommentComposer({
 	editor,
 	viewportRef,
+	headRevisionId,
+	readRevisionContent,
 	onOpenThread,
 	onPanelOpenChange,
 }: {
 	editor: Editor | null;
 	viewportRef: RefObject<HTMLElement | null>;
+	/** Head revision id for the open doc, so a new comment on unchanged saved text gets D1's `revision` mode instead of always `quote`. Null when the doc has no saved revision yet. */
+	headRevisionId: string | null;
+	readRevisionContent: (revisionId: string) => Promise<string | null>;
 	onOpenThread: (anchor: TextAnchor, text: string) => Promise<void>;
 	onPanelOpenChange?: (open: boolean) => void;
 }) {
@@ -87,19 +92,23 @@ export function CommentComposer({
 	const submit = () => {
 		const text = draft.trim();
 		if (!text || submitting) return;
-		const anchor = buildQuoteAnchor(editor.state.doc, position.from, position.to);
 		setSubmitting(true);
-		onOpenThread(anchor, text).then(
-			() => {
-				setDraft("");
-				setComposing(false);
-				setSubmitting(false);
-				onPanelOpenChange?.(true);
-			},
-			() => {
-				setSubmitting(false);
-			},
-		);
+		buildCommentAnchor(editor.state.doc, position.from, position.to, {
+			headRevisionId,
+			readRevisionContent,
+		})
+			.then((anchor) => onOpenThread(anchor, text))
+			.then(
+				() => {
+					setDraft("");
+					setComposing(false);
+					setSubmitting(false);
+					onPanelOpenChange?.(true);
+				},
+				() => {
+					setSubmitting(false);
+				},
+			);
 	};
 
 	return (
