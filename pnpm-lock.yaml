@@ -554,6 +554,9 @@ importers:
       '@iconify-json/mingcute':
         specifier: ^1.2.7
         version: 1.2.7
+      '@mdly/doc-comments':
+        specifier: workspace:*
+        version: link:../doc-comments
       '@mdly/doc-history':
         specifier: workspace:*
         version: link:../doc-history

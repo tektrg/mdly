@@ -69,6 +69,7 @@
 	},
 	"devDependencies": {
 		"@iconify-json/mingcute": "^1.2.7",
+		"@mdly/doc-comments": "workspace:*",
 		"@mdly/doc-history": "workspace:*",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/hast": "^3.0.4",

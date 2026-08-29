@@ -1,0 +1,53 @@
+/*
+ * Visual family match with `history/DiffChangeRail.css`'s rail (small
+ * absolutely-positioned markers pinned to the trailing edge of a container),
+ * kept self-contained here rather than imported from `history/` per the
+ * slice's "no cross-feature imports" constraint. `.pm-comment-mark` styles
+ * the inline ProseMirror decoration (see `CommentExtension.ts`); the rest
+ * styles the gutter markers rendered alongside it.
+ */
+.pm-comment-mark {
+	background: color-mix(in oklab, var(--brand) 22%, transparent);
+	border-radius: 2px;
+	box-shadow: inset 0 -2px 0 0 color-mix(in oklab, var(--brand) 55%, transparent);
+}
+
+.pm-comment-mark-resolved {
+	background: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
+	box-shadow: inset 0 -2px 0 0 color-mix(in oklab, var(--muted-foreground) 40%, transparent);
+}
+
+.commentGutter {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-end: 0.35rem;
+	inline-size: 0.75rem;
+	pointer-events: none;
+}
+
+.commentGutterMarker {
+	position: absolute;
+	inset-inline-end: 0;
+	display: block;
+	inline-size: 0.6rem;
+	block-size: 0.6rem;
+	border: 0;
+	padding: 0;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	opacity: 0.85;
+	transform: translateY(-50%);
+	cursor: pointer;
+	pointer-events: auto;
+	transition:
+		opacity 160ms var(--ease-snappy),
+		background-color 160ms var(--ease-snappy);
+}
+
+.commentGutterMarker:hover {
+	opacity: 1;
+}
+
+.commentGutterMarker[data-resolved="true"] {
+	background: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
+}
