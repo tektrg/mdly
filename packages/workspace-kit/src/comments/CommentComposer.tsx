@@ -20,11 +20,11 @@ interface Position {
  */
 export function CommentComposer({
 	editor,
-	containerRef,
+	viewportRef,
 	onOpenThread,
 }: {
 	editor: Editor | null;
-	containerRef: RefObject<HTMLElement | null>;
+	viewportRef: RefObject<HTMLElement | null>;
 	onOpenThread: (anchor: TextAnchor, text: string) => Promise<void>;
 }) {
 	const [position, setPosition] = useState<Position | null>(null);
@@ -34,9 +34,10 @@ export function CommentComposer({
 
 	useEffect(() => {
 		if (!editor) return;
+		const scrollContainer = viewportRef.current;
 		const update = () => {
 			const { from, to } = editor.state.selection;
-			const container = containerRef.current;
+			const container = scrollContainer;
 			if (from === to || !container) {
 				setPosition(null);
 				setComposing(false);
@@ -48,8 +49,8 @@ export function CommentComposer({
 				setPosition({
 					from,
 					to,
-					top: coords.bottom - containerRect.top,
-					left: coords.left - containerRect.left,
+					top: coords.bottom - containerRect.top + container.scrollTop,
+					left: coords.left - containerRect.left + container.scrollLeft,
 				});
 			} catch {
 				setPosition(null);
@@ -57,11 +58,13 @@ export function CommentComposer({
 		};
 		editor.on("selectionUpdate", update);
 		editor.on("update", update);
+		scrollContainer?.addEventListener("scroll", update, { passive: true });
 		return () => {
 			editor.off("selectionUpdate", update);
 			editor.off("update", update);
+			scrollContainer?.removeEventListener("scroll", update);
 		};
-	}, [editor, containerRef]);
+	}, [editor, viewportRef]);
 
 	if (!editor || !position) return null;
 

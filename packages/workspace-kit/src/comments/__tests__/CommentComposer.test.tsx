@@ -46,12 +46,12 @@ function Harness({
 	editor: Editor;
 	onOpenThread: (anchor: unknown, text: string) => Promise<void>;
 }) {
-	const containerRef = useRef<HTMLDivElement | null>(null);
+	const viewportRef = useRef<HTMLDivElement | null>(null);
 	return (
-		<div ref={containerRef}>
+		<div ref={viewportRef}>
 			<CommentComposer
 				editor={editor}
-				containerRef={containerRef}
+				viewportRef={viewportRef}
 				onOpenThread={onOpenThread}
 			/>
 		</div>
@@ -159,5 +159,60 @@ describe("CommentComposer", () => {
 		// Compose box collapses back to a bare trigger once submitted.
 		expect(container.querySelector("[data-comment-composer]")).toBeNull();
 		expect(container.querySelector("[data-comment-composer-trigger]")).not.toBeNull();
+	});
+
+	it("positions the trigger relative to the scrolled viewport, not the unscrolled one", () => {
+		const editor = createEditor();
+		vi.spyOn(editor.view, "coordsAtPos").mockReturnValue({
+			top: 10,
+			bottom: 20,
+			left: 5,
+			right: 5,
+		});
+
+		act(() => {
+			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+		});
+
+		const viewport = container.firstElementChild as HTMLDivElement;
+		vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue({
+			top: 100,
+			left: 50,
+			bottom: 0,
+			right: 0,
+			width: 0,
+			height: 0,
+			x: 0,
+			y: 0,
+			toJSON: () => {},
+		});
+		Object.defineProperty(viewport, "scrollTop", {
+			value: 40,
+			writable: true,
+		});
+		Object.defineProperty(viewport, "scrollLeft", {
+			value: 15,
+			writable: true,
+		});
+
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+
+		const trigger = container.querySelector<HTMLButtonElement>(
+			"[data-comment-composer-trigger]",
+		);
+		expect(trigger?.style.top).toBe("-40px");
+		expect(trigger?.style.left).toBe("-30px");
+
+		Object.defineProperty(viewport, "scrollTop", { value: 90 });
+		act(() => {
+			viewport.dispatchEvent(new Event("scroll"));
+		});
+
+		expect(
+			container.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.style.top,
+		).toBe("10px");
 	});
 });

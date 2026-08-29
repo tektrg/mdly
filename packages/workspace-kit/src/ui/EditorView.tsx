@@ -27,20 +27,32 @@ import {
 	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
 	StrikethroughShortcutExtension,
+	ToggleSummaryExtension,
 	tableExtensions,
 	tiptapDocToMarkdown,
 } from "../engine/index.js";
 import { CODE_BLOCK_COPY_EVENT, HubbleCodeBlock } from "./CodeBlockExtension";
+import {
+	CommentComposer,
+	CommentExtension,
+	CommentGutter,
+	type CommentOptions,
+	setCommentThreads,
+	ThreadPanel,
+	useCommentThreads,
+} from "../comments/index.js";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FindReplaceExtension } from "./FindReplaceExtension";
 import { LinkClickExtension } from "./LinkClickExtension";
 import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
 import { MermaidBlockViewExtension } from "./MermaidBlockView";
+import { handleMarkdownTextPaste } from "./markdownPaste";
 import { createNotionHtmlBlockViewExtension } from "./NotionHtmlBlockView";
 import { SlashCommandMenu } from "./SlashCommandMenu";
 import { SmartLinkExtension } from "./SmartLinkExtension";
 import { TableOfContents } from "./TableOfContents";
+import { ToggleBlockViewExtension } from "./ToggleBlockView";
 import { VirtualCursor } from "./VirtualCursor";
 import "./EditorView.css";
 import {
@@ -59,6 +71,11 @@ const DEFAULT_SAVE_DEBOUNCE_MS = 500;
 const USER_EDIT_INTENT_WINDOW_MS = 1000;
 const EDITOR_FONT_ATTRIBUTE_STYLE = "font-family: var(--editor-font-family);";
 const defaultExtraExtensions: NonNullable<EditorOptions["extensions"]> = [];
+// `resolveAnchor` (inside useCommentThreads) already diffs the flattened text
+// it's given against `readRevisionContent`'s own flattened text using the
+// same function on both sides, so identity keeps both sides consistent
+// without EditorView needing its own text-flattening algorithm.
+const identityFlattenDocument = (docBody: string) => docBody;
 type EditorAttributes = NonNullable<
 	NonNullable<EditorOptions["editorProps"]>["attributes"]
 >;
@@ -154,6 +171,14 @@ export type EditorViewProps = {
 	 * without EditorView needing to depend on host-specific modules.
 	 */
 	onEditorReady?: (editor: Editor | null) => void;
+	/**
+	 * Opt-in comment thread UI (same convention as `onOpenRevisionHistory`):
+	 * when provided, renders the comment mark/gutter/panel/selection-composer
+	 * and keeps them synced to the live editor draft. Omitting it renders
+	 * nothing extra -- hosts that don't pass it are unaffected by its
+	 * existence.
+	 */
+	commentOptions?: CommentOptions;
 };
 
 export function EditorView({
@@ -178,7 +203,9 @@ export function EditorView({
 	onMessage,
 	onEditorReady,
 	onOpenRevisionHistory,
+	commentOptions,
 }: EditorViewProps) {
+	const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 	const initialFrontMatter = useMemo(
 		() => parseMarkdownFrontMatter(initialMarkdown),
 		[initialMarkdown],
@@ -357,6 +384,7 @@ export function EditorView({
 			}),
 			HubbleCodeBlock,
 			FindReplaceExtension,
+			CommentExtension,
 			LinkExtension,
 			SmartLinkExtension,
 			LinkClickExtension.configure({
@@ -372,6 +400,8 @@ export function EditorView({
 			NotionEmptyBlockExtension,
 			createNotionHtmlBlockViewExtension({ onOpenExternalLink }),
 			MermaidBlockViewExtension,
+			ToggleBlockViewExtension,
+			ToggleSummaryExtension,
 			...listExtensions,
 			...tableExtensions,
 			...extensions,
@@ -411,8 +441,9 @@ export function EditorView({
 			handlePaste: (view, event, slice): boolean => {
 				if (editorProps?.handlePaste?.(view, event, slice)) return true;
 				const currentEditor = editorRef.current;
-				if (!currentEditor || !onPaste) return false;
-				return onPaste(currentEditor, event);
+				if (!currentEditor) return false;
+				if (onPaste?.(currentEditor, event)) return true;
+				return handleMarkdownTextPaste(currentEditor, event);
 			},
 			handleDrop: (view, event, slice, moved): boolean => {
 				if (editorProps?.handleDrop?.(view, event, slice, moved)) return true;
@@ -423,6 +454,16 @@ export function EditorView({
 		},
 	});
 	editorRef.current = editor;
+
+	const { resolvedThreads, error: commentsError } = useCommentThreads(
+		commentOptions,
+		editor,
+		identityFlattenDocument,
+	);
+	useEffect(() => {
+		if (!editor) return;
+		setCommentThreads(editor, resolvedThreads);
+	}, [editor, resolvedThreads]);
 
 	const onEditorReadyRef = useRef(onEditorReady);
 	onEditorReadyRef.current = onEditorReady;
@@ -565,6 +606,24 @@ export function EditorView({
 				<SlashCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<TableOfContents editor={editor} scrollContainer={editorViewportEl} />
+				{commentOptions ? (
+					<>
+						<CommentGutter
+							editor={editor}
+							containerRef={editorRootRef}
+							threads={resolvedThreads}
+							onSelectThread={(threadId) => {
+								setFocusedThreadId(threadId);
+								commentOptions.onPanelOpenChange?.(true);
+							}}
+						/>
+						<CommentComposer
+							editor={editor}
+							viewportRef={editorViewportRef}
+							onOpenThread={commentOptions.onOpenThread}
+						/>
+					</>
+				) : null}
 			</div>
 			<FindReplaceBar
 				editor={editor}
@@ -582,6 +641,19 @@ export function EditorView({
 				scrollContainer={editorViewportEl}
 				onOpenRevisionHistory={onOpenRevisionHistory}
 			/>
+			{commentOptions ? (
+				<ThreadPanel
+					threads={resolvedThreads}
+					currentAuthor={commentOptions.currentAuthor}
+					focusedThreadId={focusedThreadId}
+					open={commentOptions.panelOpen}
+					onOpenChange={commentOptions.onPanelOpenChange}
+					onReply={commentOptions.onReply}
+					onResolve={commentOptions.onResolve}
+					onReopen={commentOptions.onReopen}
+					error={commentsError}
+				/>
+			) : null}
 		</div>
 	);
 }
