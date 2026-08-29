@@ -1,0 +1,41 @@
+{
+	"name": "@mdly/doc-comments",
+	"version": "0.0.1",
+	"description": "Local, filesystem-interface-based comment store for mdly documents",
+	"license": "MIT",
+	"author": "tektrg",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tektrg/mdly.git",
+		"directory": "packages/doc-comments"
+	},
+	"bugs": "https://github.com/tektrg/mdly/issues",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@mdly/doc-history": "workspace:*",
+		"diff": "^8.0.3"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
+	}
+}

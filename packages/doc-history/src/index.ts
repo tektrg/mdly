@@ -25,6 +25,12 @@ export {
 } from "./diff/regionDiff.js";
 export type { Compressor, DocHistoryFileSystem } from "./fs.js";
 export { contentHash, textToBytes } from "./hash.js";
+export type { JsonlEntry } from "./jsonlLog.js";
+export {
+	appendJsonlLine,
+	findJsonlSiblingPaths,
+	readMergedJsonlEntries,
+} from "./jsonlLog.js";
 export type {
 	DocHistoryStore,
 	HistoryStoreOptions,
