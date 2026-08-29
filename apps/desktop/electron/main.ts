@@ -31,6 +31,13 @@ import {
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
+import {
+	listCommentThreadsForPath,
+	openCommentThreadForPath,
+	reopenCommentThreadForPath,
+	replyToCommentThreadForPath,
+	resolveCommentThreadForPath,
+} from "./comments";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import {
 	createSelfWriteEchoTracker,
@@ -1327,6 +1334,84 @@ function registerIpc() {
 				status: "ok" as const,
 				content: new TextDecoder().decode(result.bytes),
 			};
+		},
+	);
+
+	// Local document comments (desktop wiring for @mdly/doc-comments, Slice 3).
+	// The main process has no live-editor-draft concept, so anchor resolution
+	// happens client-side in the kit -- these handlers only persist/read the
+	// append-only comment event log. `desktop:comment-list-threads` folds both
+	// `docId` resolution and the current user's author identity into its
+	// response rather than adding two more channels -- `CommentOptions.docId`/
+	// `.currentAuthor` are both needed synchronously by the renderer before it
+	// can render `<EditorView commentOptions>` at all.
+	ipcMain.handle(
+		"desktop:comment-list-threads",
+		async (_event, { path: filePath }) => {
+			const resolved = assertGranted(filePath);
+			const { docId, threads } = await listCommentThreadsForPath(
+				resolved,
+				grantedRoots,
+			);
+			return {
+				docId,
+				threads,
+				currentAuthor: { kind: "human" as const, id: await getActorId() },
+			};
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:comment-open-thread",
+		async (_event, { path: filePath, anchor, text }) => {
+			const resolved = assertGranted(filePath);
+			await openCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: { kind: "human", id: await getActorId() },
+				anchor,
+				text: String(text),
+			});
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:comment-reply",
+		async (_event, { path: filePath, threadId, text }) => {
+			const resolved = assertGranted(filePath);
+			await replyToCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: { kind: "human", id: await getActorId() },
+				threadId: String(threadId),
+				text: String(text),
+			});
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:comment-resolve",
+		async (_event, { path: filePath, threadId }) => {
+			const resolved = assertGranted(filePath);
+			await resolveCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: { kind: "human", id: await getActorId() },
+				threadId: String(threadId),
+			});
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:comment-reopen",
+		async (_event, { path: filePath, threadId }) => {
+			const resolved = assertGranted(filePath);
+			await reopenCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: { kind: "human", id: await getActorId() },
+				threadId: String(threadId),
+			});
 		},
 	);
 

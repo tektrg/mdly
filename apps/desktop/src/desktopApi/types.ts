@@ -207,6 +207,61 @@ export type ReadRevisionContentResult =
 	| { status: "unavailable" }
 	| { status: "not-found" };
 
+/** Mirrors `@mdly/workspace-kit`'s `CommentAuthor` (itself a local mirror of `@mdly/doc-comments`'s `CommentAuthor`, which is `HistoryRevisionAuthor`'s shape under a different name -- same kind/id/label triple). */
+export type CommentAuthor = HistoryRevisionAuthor;
+
+/** Mirrors `@mdly/workspace-kit`'s `TextAnchor` (rendered-text-space comment anchor). */
+export type CommentTextAnchor = {
+	from: number;
+	to: number;
+	quote: string;
+	mode: "revision" | "quote";
+	revisionId?: string;
+	contextBefore?: string;
+	contextAfter?: string;
+};
+
+export type CommentThreadEventKind =
+	| "thread-opened"
+	| "replied"
+	| "resolved"
+	| "reopened";
+
+/** Mirrors `@mdly/workspace-kit`'s `CommentThreadEvent`. */
+export type CommentThreadEvent = {
+	id: string;
+	kind: CommentThreadEventKind;
+	by: CommentAuthor;
+	text?: string;
+	prev: string | null;
+};
+
+/** Mirrors `@mdly/workspace-kit`'s `CommentThread`. */
+export type CommentThread = {
+	id: string;
+	opener: {
+		id: string;
+		by: CommentAuthor;
+		anchor: CommentTextAnchor;
+		text: string;
+	};
+	events: CommentThreadEvent[];
+	state: "open" | "resolved";
+};
+
+/**
+ * `desktop:comment-list-threads` folds `docId` resolution and the current
+ * user's stable author identity into this response rather than exposing two
+ * more IPC channels -- both are needed by the renderer before it can build a
+ * `CommentOptions` object (its `docId`/`currentAuthor` fields aren't
+ * promises).
+ */
+export type CommentThreadListResult = {
+	docId: string;
+	currentAuthor: CommentAuthor;
+	threads: CommentThread[];
+};
+
 export type DesktopApi = {
 	platform: DesktopPlatform;
 	homeDir: string;
@@ -244,6 +299,20 @@ export type DesktopApi = {
 		path: string,
 		revisionId: string,
 	): Promise<ReadRevisionContentResult>;
+	/** Read-only: never appends to the comment log. */
+	listCommentThreads(path: string): Promise<CommentThreadListResult>;
+	openCommentThread(
+		path: string,
+		anchor: CommentTextAnchor,
+		text: string,
+	): Promise<void>;
+	replyToCommentThread(
+		path: string,
+		threadId: string,
+		text: string,
+	): Promise<void>;
+	resolveCommentThread(path: string, threadId: string): Promise<void>;
+	reopenCommentThread(path: string, threadId: string): Promise<void>;
 	pathExists(path: string): Promise<boolean>;
 	persistPastedImage(
 		input: PersistPastedImageInput,

@@ -1,4 +1,5 @@
 import {
+	type CommentOptions,
 	EditorView,
 	type EditorViewProps,
 	type WikiTarget,
@@ -39,11 +40,15 @@ export function DocumentViewer({
 	content,
 	notionDatabaseRefreshToken = 0,
 	onScrollContainerChange,
+	commentsOpen,
+	onCommentsOpenChange,
 }: {
 	path: string;
 	content: string;
 	notionDatabaseRefreshToken?: number;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
+	commentsOpen: boolean;
+	onCommentsOpenChange: (open: boolean) => void;
 }) {
 	if (hasHtmlExtension(path)) {
 		return (
@@ -74,6 +79,8 @@ export function DocumentViewer({
 			path={path}
 			initialMarkdown={content}
 			onScrollContainerChange={onScrollContainerChange}
+			commentsOpen={commentsOpen}
+			onCommentsOpenChange={onCommentsOpenChange}
 		/>
 	);
 }
@@ -114,10 +121,14 @@ function MarkdownEditor({
 	path,
 	initialMarkdown,
 	onScrollContainerChange,
+	commentsOpen,
+	onCommentsOpenChange,
 }: {
 	path: string;
 	initialMarkdown: string;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
+	commentsOpen: boolean;
+	onCommentsOpenChange: (open: boolean) => void;
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const notionAccount =
@@ -210,6 +221,48 @@ function MarkdownEditor({
 			? observeEditorTransactionStorms(editor)
 			: null;
 	}, []);
+
+	// `CommentOptions.docId`/`.currentAuthor` aren't promises, so both must be
+	// resolved before `commentOptions` can be built at all -- resolved via one
+	// `listCommentThreads` call (folds docId + author identity into a single
+	// response instead of two more IPC round-trips). `path` is a stable key
+	// here: DocumentViewer remounts this component (via its `key`) on every
+	// path change, so this effect only ever runs once per mount.
+	const [commentIdentity, setCommentIdentity] = useState<{
+		docId: string;
+		currentAuthor: CommentOptions["currentAuthor"];
+	} | null>(null);
+	useEffect(() => {
+		let active = true;
+		void desktopApi.listCommentThreads(path).then(({ docId, currentAuthor }) => {
+			if (active) setCommentIdentity({ docId, currentAuthor });
+		});
+		return () => {
+			active = false;
+		};
+	}, [path]);
+	const commentOptions = useMemo<CommentOptions | undefined>(() => {
+		if (!commentIdentity) return undefined;
+		return {
+			currentAuthor: commentIdentity.currentAuthor,
+			docId: commentIdentity.docId,
+			getThreads: (_docId) =>
+				desktopApi.listCommentThreads(path).then((result) => result.threads),
+			readRevisionContent: (revisionId) =>
+				desktopApi
+					.readRevisionContent(path, revisionId)
+					.then((result) => (result.status === "ok" ? result.content : null)),
+			onOpenThread: (anchor, text) =>
+				desktopApi.openCommentThread(path, anchor, text),
+			onReply: (threadId, text) =>
+				desktopApi.replyToCommentThread(path, threadId, text),
+			onResolve: (threadId) => desktopApi.resolveCommentThread(path, threadId),
+			onReopen: (threadId) => desktopApi.reopenCommentThread(path, threadId),
+			panelOpen: commentsOpen,
+			onPanelOpenChange: onCommentsOpenChange,
+		};
+	}, [commentIdentity, path, commentsOpen, onCommentsOpenChange]);
+
 	return (
 		<EditorView
 			path={path}
@@ -228,6 +281,7 @@ function MarkdownEditor({
 			onOpenWikiLink={openWikiLink}
 			onMessage={showEditorMessage}
 			onEditorReady={handleEditorReady}
+			commentOptions={commentOptions}
 		/>
 	);
 }

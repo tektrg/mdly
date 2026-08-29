@@ -44,6 +44,16 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:get-revision-history", { path }),
 	readRevisionContent: (path, revisionId) =>
 		ipcRenderer.invoke("desktop:read-revision-content", { path, revisionId }),
+	listCommentThreads: (path) =>
+		ipcRenderer.invoke("desktop:comment-list-threads", { path }),
+	openCommentThread: (path, anchor, text) =>
+		ipcRenderer.invoke("desktop:comment-open-thread", { path, anchor, text }),
+	replyToCommentThread: (path, threadId, text) =>
+		ipcRenderer.invoke("desktop:comment-reply", { path, threadId, text }),
+	resolveCommentThread: (path, threadId) =>
+		ipcRenderer.invoke("desktop:comment-resolve", { path, threadId }),
+	reopenCommentThread: (path, threadId) =>
+		ipcRenderer.invoke("desktop:comment-reopen", { path, threadId }),
 	renameSymlinkTarget: (linkPath, nextName) =>
 		ipcRenderer.invoke("desktop:rename-symlink-target", {
 			linkPath,

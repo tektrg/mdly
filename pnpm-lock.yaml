@@ -29,6 +29,9 @@ importers:
       '@mcp-b/global':
         specifier: 5.0.1
         version: 5.0.1
+      '@mdly/doc-comments':
+        specifier: workspace:*
+        version: link:../../packages/doc-comments
       '@mdly/doc-history':
         specifier: workspace:*
         version: link:../../packages/doc-history

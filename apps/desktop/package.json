@@ -30,6 +30,7 @@
 		"@hubble.md/runtime": "workspace:*",
 		"@hubble.md/ui": "workspace:*",
 		"@mcp-b/global": "5.0.1",
+		"@mdly/doc-comments": "workspace:*",
 		"@mdly/doc-history": "workspace:*",
 		"@mdly/workspace-kit": "workspace:*",
 		"@simplestack/store": "^0.7.5",
