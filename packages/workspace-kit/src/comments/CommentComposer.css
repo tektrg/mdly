@@ -61,6 +61,12 @@
 	opacity: 0.5;
 }
 
+.comment-composer-error {
+	margin: 0;
+	color: var(--destructive);
+	font-size: 11px;
+}
+
 .comment-composer-actions {
 	display: flex;
 	align-items: center;

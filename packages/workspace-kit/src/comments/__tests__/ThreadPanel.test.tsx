@@ -115,6 +115,101 @@ describe("ThreadPanel", () => {
 		expect(textareaAfter?.disabled).toBe(false);
 	});
 
+	// R13: a failed write on any of the three in-panel actions must surface
+	// visibly, not fail silently.
+	it("shows a visible error when a reply fails, and clears it on retry", async () => {
+		const onReply = vi.fn().mockRejectedValue(new Error("disk full"));
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={onReply}
+					onResolve={vi.fn()}
+					onReopen={vi.fn()}
+				/>,
+			);
+		});
+
+		const textarea = document.querySelector<HTMLTextAreaElement>(
+			"[data-reply-textarea]",
+		);
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		act(() => {
+			nativeValueSetter?.call(textarea, "why bold?");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		await act(async () => {
+			document.querySelector<HTMLButtonElement>("[data-reply-button]")?.click();
+		});
+
+		expect(
+			document.querySelector("[data-thread-action-error]")?.textContent,
+		).toContain("disk full");
+
+		act(() => {
+			nativeValueSetter?.call(textarea, "why bold? v2");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		expect(document.querySelector("[data-thread-action-error]")).toBeNull();
+	});
+
+	it("shows a visible error when Resolve fails", async () => {
+		const onResolve = vi.fn().mockRejectedValue(new Error("EACCES"));
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={onResolve}
+					onReopen={vi.fn()}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			document.querySelector<HTMLButtonElement>("[data-resolve-button]")?.click();
+		});
+
+		expect(
+			document.querySelector("[data-thread-action-error]")?.textContent,
+		).toContain("EACCES");
+	});
+
+	it("shows a visible error when Reopen fails", async () => {
+		const onReopen = vi.fn().mockRejectedValue(new Error("EACCES"));
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread({ state: "resolved" })]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={onReopen}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			document.querySelector<HTMLButtonElement>("[data-reopen-button]")?.click();
+		});
+
+		expect(
+			document.querySelector("[data-thread-action-error]")?.textContent,
+		).toContain("EACCES");
+	});
+
 	it("renders an explicit empty state, never a blank panel", () => {
 		expect(() => {
 			act(() => {

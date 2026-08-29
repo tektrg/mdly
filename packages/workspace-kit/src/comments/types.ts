@@ -96,8 +96,8 @@ export interface CommentOptions {
 	currentAuthor: CommentAuthor;
 	/** docId for the currently open document (host resolves this, e.g. via doc-history's resolveOrAssignDocId). */
 	docId: string;
-	/** Id of the doc's most recent saved revision, or null if it has none yet. Lets a new comment on unchanged saved text get D1/R10's `revision` anchor mode instead of always `quote`. */
-	headRevisionId: string | null;
+	/** Resolves the doc's current most-recent saved revision id (or null if it has none yet), fresh on every call -- never cache this, the editor mints new revisions mid-session on its own. Lets a new comment on unchanged saved text get D1/R10's `revision` anchor mode instead of always `quote`. */
+	getHeadRevisionId: () => Promise<string | null>;
 	/** Fetches the current raw thread list for docId. Called on mount and whenever refreshSignal changes. */
 	getThreads: (docId: string) => Promise<CommentThread[]>;
 	/** Reads a past revision's raw markdown body by revisionId, or null if unavailable. Host-injected (only the desktop main process can read revision blobs). */

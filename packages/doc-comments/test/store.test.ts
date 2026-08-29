@@ -106,7 +106,7 @@ describe("commentStore", () => {
 			expect(await readCommentEvents(fs, WORKSPACE, DOC_ID)).toEqual([]);
 		});
 
-		it("QA2 — a failed append surfaces a visible error, never a partial write", async () => {
+		it("QA2 — a failed append rejects with the underlying error and writes zero lines, never a partial write (R13 store half; the caller surfacing that rejection visibly is the kit UI's job, covered in workspace-kit's own tests)", async () => {
 			const failingFs: MemoryFileSystem = {
 				...fs,
 				appendText: async () => {

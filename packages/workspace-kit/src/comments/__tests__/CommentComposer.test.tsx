@@ -44,13 +44,13 @@ function Harness({
 	editor,
 	onOpenThread,
 	onPanelOpenChange,
-	headRevisionId = null,
+	getHeadRevisionId = () => Promise.resolve(null),
 	readRevisionContent = () => Promise.resolve(null),
 }: {
 	editor: Editor;
 	onOpenThread: (anchor: unknown, text: string) => Promise<void>;
 	onPanelOpenChange?: (open: boolean) => void;
-	headRevisionId?: string | null;
+	getHeadRevisionId?: () => Promise<string | null>;
 	readRevisionContent?: (revisionId: string) => Promise<string | null>;
 }) {
 	const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -59,7 +59,7 @@ function Harness({
 			<CommentComposer
 				editor={editor}
 				viewportRef={viewportRef}
-				headRevisionId={headRevisionId}
+				getHeadRevisionId={getHeadRevisionId}
 				readRevisionContent={readRevisionContent}
 				onOpenThread={onOpenThread}
 				onPanelOpenChange={onPanelOpenChange}
@@ -188,7 +188,7 @@ describe("CommentComposer", () => {
 				<Harness
 					editor={editor}
 					onOpenThread={onOpenThread}
-					headRevisionId="rev-1"
+					getHeadRevisionId={() => Promise.resolve("rev-1")}
 					readRevisionContent={readRevisionContent}
 				/>,
 			);
@@ -239,7 +239,7 @@ describe("CommentComposer", () => {
 				<Harness
 					editor={editor}
 					onOpenThread={onOpenThread}
-					headRevisionId="rev-1"
+					getHeadRevisionId={() => Promise.resolve("rev-1")}
 					readRevisionContent={readRevisionContent}
 				/>,
 			);
@@ -276,6 +276,121 @@ describe("CommentComposer", () => {
 		];
 		expect(anchor.mode).toBe("quote");
 		expect(anchor.revisionId).toBeUndefined();
+	});
+
+	// R10 regression guard: `getHeadRevisionId` must be re-resolved on every
+	// submit, never cached across the composer's lifetime -- the editor mints
+	// a new head revision mid-session on its own (idle/forced cuts), so a
+	// value snapshotted once would go stale.
+	it("resolves getHeadRevisionId fresh on every submit rather than caching it", async () => {
+		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+		const editor = createEditor();
+		let currentHeadRevisionId = "rev-1";
+		const getHeadRevisionId = vi
+			.fn()
+			.mockImplementation(() => Promise.resolve(currentHeadRevisionId));
+		const readRevisionContent = vi
+			.fn()
+			.mockImplementation(() => Promise.resolve("never matches"));
+		act(() => {
+			root.render(
+				<Harness
+					editor={editor}
+					onOpenThread={onOpenThread}
+					getHeadRevisionId={getHeadRevisionId}
+					readRevisionContent={readRevisionContent}
+				/>,
+			);
+		});
+
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		const openAndSubmit = async (text: string) => {
+			act(() => {
+				editor.commands.setTextSelection({ from: 1, to: 6 });
+			});
+			act(() => {
+				container
+					.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+					?.click();
+			});
+			act(() => {
+				const textarea = container.querySelector<HTMLTextAreaElement>(
+					"[data-comment-composer-textarea]",
+				);
+				nativeValueSetter?.call(textarea, text);
+				textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+			await act(async () => {
+				container
+					.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+					?.click();
+			});
+		};
+
+		await openAndSubmit("first comment");
+		expect(readRevisionContent).toHaveBeenLastCalledWith("rev-1");
+
+		// A revision cut happens mid-session -- the head moves to "rev-2" with
+		// no re-mount and no new prop passed down, only the callback's own
+		// return value changing.
+		currentHeadRevisionId = "rev-2";
+		await openAndSubmit("second comment");
+
+		expect(getHeadRevisionId).toHaveBeenCalledTimes(2);
+		expect(readRevisionContent).toHaveBeenLastCalledWith("rev-2");
+	});
+
+	// R13: a failed write (e.g. a read-only workspace) must surface visibly
+	// in the composer, not fail silently while quietly re-enabling Submit.
+	it("shows a visible error and keeps the draft when onOpenThread rejects", async () => {
+		const onOpenThread = vi.fn().mockRejectedValue(new Error("EACCES"));
+		const editor = createEditor();
+		act(() => {
+			root.render(<Harness editor={editor} onOpenThread={onOpenThread} />);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+		const nativeValueSetter = Object.getOwnPropertyDescriptor(
+			window.HTMLTextAreaElement.prototype,
+			"value",
+		)?.set;
+		act(() => {
+			const textarea = container.querySelector<HTMLTextAreaElement>(
+				"[data-comment-composer-textarea]",
+			);
+			nativeValueSetter?.call(textarea, "why bold?");
+			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				?.click();
+		});
+
+		expect(
+			container.querySelector("[data-comment-composer-error]")?.textContent,
+		).toContain("EACCES");
+		// The compose box stays open with the draft intact so the user can retry.
+		expect(container.querySelector("[data-comment-composer]")).not.toBeNull();
+		expect(
+			container.querySelector<HTMLTextAreaElement>(
+				"[data-comment-composer-textarea]",
+			)?.value,
+		).toBe("why bold?");
+		expect(
+			container.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				?.disabled,
+		).toBe(false);
 	});
 
 	it("opens the panel once a new thread is created from the composer", async () => {

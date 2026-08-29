@@ -49,18 +49,25 @@ function extractBody(rawFileContent: string): string {
  * valid against that saved revision by construction, per R10/R11), else
  * `quote` against the live draft. Falls back to quote mode whenever there is
  * no head revision yet, or its content can't be read (evicted/undownloaded).
+ *
+ * `getHeadRevisionId` is resolved fresh here rather than taking a snapshotted
+ * id: the editor mints a new revision mid-session on its own (idle/forced
+ * cuts), so a value cached at mount would go stale and silently under-use
+ * revision mode for the rest of the session.
  */
 export async function buildCommentAnchor(
 	doc: ProseMirrorNode,
 	from: number,
 	to: number,
 	revisionContext: {
-		headRevisionId: string | null;
+		getHeadRevisionId: () => Promise<string | null>;
 		readRevisionContent: (revisionId: string) => Promise<string | null>;
 	} | null,
 ): Promise<TextAnchor> {
 	const quoteAnchor = buildQuoteAnchor(doc, from, to);
-	const headRevisionId = revisionContext?.headRevisionId;
+	if (!revisionContext) return quoteAnchor;
+
+	const headRevisionId = await revisionContext.getHeadRevisionId();
 	if (!headRevisionId) return quoteAnchor;
 
 	const rawRevisionContent =

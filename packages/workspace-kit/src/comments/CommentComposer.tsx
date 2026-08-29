@@ -21,15 +21,15 @@ interface Position {
 export function CommentComposer({
 	editor,
 	viewportRef,
-	headRevisionId,
+	getHeadRevisionId,
 	readRevisionContent,
 	onOpenThread,
 	onPanelOpenChange,
 }: {
 	editor: Editor | null;
 	viewportRef: RefObject<HTMLElement | null>;
-	/** Head revision id for the open doc, so a new comment on unchanged saved text gets D1's `revision` mode instead of always `quote`. Null when the doc has no saved revision yet. */
-	headRevisionId: string | null;
+	/** Resolves the open doc's current head revision id, so a new comment on unchanged saved text gets D1's `revision` mode instead of always `quote`. Resolves to null when the doc has no saved revision yet. */
+	getHeadRevisionId: () => Promise<string | null>;
 	readRevisionContent: (revisionId: string) => Promise<string | null>;
 	onOpenThread: (anchor: TextAnchor, text: string) => Promise<void>;
 	onPanelOpenChange?: (open: boolean) => void;
@@ -38,6 +38,7 @@ export function CommentComposer({
 	const [composing, setComposing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const [submitting, setSubmitting] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -82,7 +83,10 @@ export function CommentComposer({
 				data-comment-composer-trigger
 				className="comment-composer-trigger"
 				style={{ position: "absolute", top: position.top, left: position.left }}
-				onClick={() => setComposing(true)}
+				onClick={() => {
+					setComposing(true);
+					setError(null);
+				}}
 			>
 				Comment
 			</button>
@@ -93,8 +97,9 @@ export function CommentComposer({
 		const text = draft.trim();
 		if (!text || submitting) return;
 		setSubmitting(true);
+		setError(null);
 		buildCommentAnchor(editor.state.doc, position.from, position.to, {
-			headRevisionId,
+			getHeadRevisionId,
 			readRevisionContent,
 		})
 			.then((anchor) => onOpenThread(anchor, text))
@@ -105,8 +110,9 @@ export function CommentComposer({
 					setSubmitting(false);
 					onPanelOpenChange?.(true);
 				},
-				() => {
+				(err: unknown) => {
 					setSubmitting(false);
+					setError(err instanceof Error ? err.message : String(err));
 				},
 			);
 	};
@@ -122,8 +128,16 @@ export function CommentComposer({
 				value={draft}
 				disabled={submitting}
 				placeholder="Add a comment..."
-				onChange={(event) => setDraft(event.target.value)}
+				onChange={(event) => {
+					setDraft(event.target.value);
+					setError(null);
+				}}
 			/>
+			{error ? (
+				<p className="comment-composer-error" data-comment-composer-error>
+					{error}
+				</p>
+			) : null}
 			<div className="comment-composer-actions">
 				<button
 					type="button"
@@ -132,6 +146,7 @@ export function CommentComposer({
 					onClick={() => {
 						setComposing(false);
 						setDraft("");
+						setError(null);
 					}}
 				>
 					Cancel

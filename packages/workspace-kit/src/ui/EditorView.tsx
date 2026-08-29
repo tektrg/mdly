@@ -620,7 +620,7 @@ export function EditorView({
 						<CommentComposer
 							editor={editor}
 							viewportRef={editorViewportRef}
-							headRevisionId={commentOptions.headRevisionId}
+							getHeadRevisionId={commentOptions.getHeadRevisionId}
 							readRevisionContent={commentOptions.readRevisionContent}
 							onOpenThread={commentOptions.onOpenThread}
 							onPanelOpenChange={commentOptions.onPanelOpenChange}

@@ -225,34 +225,22 @@ function MarkdownEditor({
 	// `CommentOptions.docId`/`.currentAuthor` aren't promises, so both must be
 	// resolved before `commentOptions` can be built at all -- resolved via one
 	// `listCommentThreads` call (folds docId + author identity into a single
-	// response instead of two more IPC round-trips), alongside the doc's head
-	// revision id for R10's anchor-mode decision. `path` is a stable key here:
-	// DocumentViewer remounts this component (via its `key`) on every path
-	// change, so this effect only ever runs once per mount. A rejection still
-	// resolves `commentIdentity` (see .catch below) so the comment surface
-	// mounts into a visible error state (R20) instead of never mounting.
+	// response instead of two more IPC round-trips). `path` is a stable key
+	// here: DocumentViewer remounts this component (via its `key`) on every
+	// path change, so this effect only ever runs once per mount. A rejection
+	// still resolves `commentIdentity` (see .catch below) so the comment
+	// surface mounts into a visible error state (R20) instead of never
+	// mounting.
 	const [commentIdentity, setCommentIdentity] = useState<{
 		docId: string;
 		currentAuthor: CommentOptions["currentAuthor"];
-		headRevisionId: string | null;
 	} | null>(null);
 	useEffect(() => {
 		let active = true;
-		Promise.all([
-			desktopApi.listCommentThreads(path),
-			// Best-effort: a doc with no saved revision yet (or a history read
-			// error) just means new comments fall back to quote mode (R10),
-			// not that the whole comment surface should fail to mount.
-			desktopApi.getRevisionHistory(path).catch(() => []),
-		])
-			.then(([{ docId, currentAuthor }, history]) => {
-				if (!active) return;
-				setCommentIdentity({
-					docId,
-					currentAuthor,
-					headRevisionId:
-						history.length > 0 ? history[history.length - 1].id : null,
-				});
+		desktopApi
+			.listCommentThreads(path)
+			.then(({ docId, currentAuthor }) => {
+				if (active) setCommentIdentity({ docId, currentAuthor });
 			})
 			.catch((err: unknown) => {
 				if (!active) return;
@@ -267,7 +255,6 @@ function MarkdownEditor({
 				setCommentIdentity({
 					docId: path,
 					currentAuthor: { kind: "human", id: "unknown" },
-					headRevisionId: null,
 				});
 			});
 		return () => {
@@ -279,7 +266,17 @@ function MarkdownEditor({
 		return {
 			currentAuthor: commentIdentity.currentAuthor,
 			docId: commentIdentity.docId,
-			headRevisionId: commentIdentity.headRevisionId,
+			// Resolved fresh at comment time (R10), never cached -- the editor
+			// mints new revisions mid-session on its own (idle/forced cuts), so
+			// a value snapshotted here would go stale and under-use revision
+			// mode for the rest of the session.
+			getHeadRevisionId: () =>
+				desktopApi
+					.getRevisionHistory(path)
+					.then((history) =>
+						history.length > 0 ? history[history.length - 1].id : null,
+					)
+					.catch(() => null),
 			getThreads: (_docId) =>
 				desktopApi.listCommentThreads(path).then((result) => result.threads),
 			readRevisionContent: (revisionId) =>

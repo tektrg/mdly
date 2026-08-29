@@ -56,13 +56,37 @@ function ThreadItem({
 	onReopen: (threadId: string) => Promise<void>;
 }) {
 	const [draft, setDraft] = useState("");
+	const [actionError, setActionError] = useState<string | null>(null);
 	const isResolved = thread.state === "resolved";
 	const isOrphaned = thread.anchorResolution.status === "orphaned";
+
+	const describeError = (err: unknown): string =>
+		err instanceof Error ? err.message : String(err);
 
 	const submitReply = () => {
 		const text = draft.trim();
 		if (!text) return;
-		onReply(thread.id, text).then(() => setDraft(""));
+		onReply(thread.id, text).then(
+			() => {
+				setDraft("");
+				setActionError(null);
+			},
+			(err: unknown) => setActionError(describeError(err)),
+		);
+	};
+
+	const handleResolve = () => {
+		onResolve(thread.id).then(
+			() => setActionError(null),
+			(err: unknown) => setActionError(describeError(err)),
+		);
+	};
+
+	const handleReopen = () => {
+		onReopen(thread.id).then(
+			() => setActionError(null),
+			(err: unknown) => setActionError(describeError(err)),
+		);
 	};
 
 	return (
@@ -106,8 +130,17 @@ function ThreadItem({
 				disabled={isResolved}
 				placeholder={isResolved ? "Reopen to reply" : "Reply..."}
 				value={draft}
-				onChange={(event) => setDraft(event.target.value)}
+				onChange={(event) => {
+					setDraft(event.target.value);
+					setActionError(null);
+				}}
 			/>
+
+			{actionError ? (
+				<p className="m-0 text-destructive text-xs" data-thread-action-error>
+					{actionError}
+				</p>
+			) : null}
 
 			<div className="flex items-center gap-2">
 				{isResolved ? (
@@ -117,7 +150,7 @@ function ThreadItem({
 						size="sm"
 						data-reopen-button
 						data-thread-id={thread.id}
-						onClick={() => onReopen(thread.id)}
+						onClick={handleReopen}
 					>
 						Reopen to reply
 					</Button>
@@ -138,7 +171,7 @@ function ThreadItem({
 							size="sm"
 							data-resolve-button
 							data-thread-id={thread.id}
-							onClick={() => onResolve(thread.id)}
+							onClick={handleResolve}
 						>
 							Resolve
 						</Button>
