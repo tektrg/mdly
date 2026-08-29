@@ -48,6 +48,7 @@ export default defineConfig({
 					"@mdly/workspace-kit/file-discovery",
 					"@mdly/doc-history",
 					"@mdly/doc-history/node",
+					"@mdly/doc-comments",
 					"diff",
 					"ignore",
 					"zod",
