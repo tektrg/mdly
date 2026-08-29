@@ -1,0 +1,99 @@
+/*
+ * Selection-triggered popup (trigger button + draft textarea), positioned
+ * absolutely by CommentComposer.tsx via inline top/left. Visual family
+ * matches CommentGutter.css's markers and the SidePanel used by
+ * ThreadPanel.tsx.
+ */
+.comment-composer-trigger {
+	z-index: 30;
+	display: inline-flex;
+	align-items: center;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--popover);
+	color: var(--popover-foreground);
+	padding: 0.2rem 0.55rem;
+	font-size: 12px;
+	line-height: 1.4;
+	box-shadow: 0 2px 8px color-mix(in oklab, var(--foreground) 12%, transparent);
+	cursor: pointer;
+	transition: background-color 160ms var(--ease-snappy);
+}
+
+.comment-composer-trigger:hover {
+	background: var(--muted);
+}
+
+.comment-composer {
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+	inline-size: 16rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--popover);
+	color: var(--popover-foreground);
+	padding: 0.5rem;
+	box-shadow: 0 4px 16px color-mix(in oklab, var(--foreground) 16%, transparent);
+}
+
+.comment-composer textarea {
+	block-size: 3.5rem;
+	resize: none;
+	border: 1px solid var(--input);
+	border-radius: 4px;
+	background: var(--card);
+	color: inherit;
+	padding: 0.35rem 0.5rem;
+	font-size: 12px;
+	font-family: inherit;
+	outline: none;
+}
+
+.comment-composer textarea:focus-visible {
+	border-color: var(--ring);
+	box-shadow: 0 0 0 1px color-mix(in oklab, var(--ring) 40%, transparent);
+}
+
+.comment-composer textarea:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+.comment-composer-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.4rem;
+}
+
+.comment-composer-actions button {
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--secondary);
+	color: var(--secondary-foreground);
+	padding: 0.2rem 0.6rem;
+	font-size: 12px;
+	cursor: pointer;
+	transition: background-color 160ms var(--ease-snappy);
+}
+
+.comment-composer-actions button:hover:not(:disabled) {
+	background: color-mix(in oklab, var(--secondary) 80%, var(--foreground) 8%);
+}
+
+.comment-composer-actions button:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+
+.comment-composer-actions button[data-comment-composer-submit] {
+	border-color: var(--primary);
+	background: var(--primary);
+	color: var(--primary-foreground);
+}
+
+.comment-composer-actions button[data-comment-composer-submit]:hover:not(:disabled) {
+	background: color-mix(in oklab, var(--primary) 88%, var(--foreground) 8%);
+}

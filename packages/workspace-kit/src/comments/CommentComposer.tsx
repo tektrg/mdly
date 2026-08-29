@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import { type RefObject, useEffect, useState } from "react";
 import { buildQuoteAnchor } from "./buildAnchor.js";
+import "./CommentComposer.css";
 import type { TextAnchor } from "./types.js";
 
 interface Position {
