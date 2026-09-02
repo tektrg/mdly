@@ -227,9 +227,11 @@ export async function startAgentMcpServer(
 			sessionIdGenerator: undefined,
 			enableJsonResponse: true,
 		});
+		// Teardown must never turn into an unhandled rejection that takes the
+		// whole main process down; a failed close is already best-effort.
 		res.on("close", () => {
-			void transport.close();
-			void mcpServer.close();
+			transport.close().catch(() => {});
+			mcpServer.close().catch(() => {});
 		});
 
 		void mcpServer

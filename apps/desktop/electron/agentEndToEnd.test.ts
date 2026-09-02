@@ -219,6 +219,49 @@ describe("Slice 4 Plug A end-to-end", () => {
 		expect(await readCommentLog()).toBe(logBefore);
 	});
 
+	it("refuses a symlink inside the workspace that points outside it", async () => {
+		// The containment check is a string comparison, but every read follows
+		// symlinks — so without resolving them, a link planted in a granted root
+		// turns `create_thread` into a read oracle for any file this OS user can
+		// open, reachable by anything holding the loopback token.
+		const secretDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdly-secret-"));
+		const secret = path.join(secretDir, "secret.md");
+		await fs.writeFile(secret, "# Secret\n\nthe api key is hunter2\n");
+		const planted = path.join(workspace, "innocent.md");
+		await fs.symlink(secret, planted);
+
+		try {
+			const escaped = await rpc("tools/call", {
+				name: "create_thread",
+				arguments: { path: planted, quote: "hunter2", text: "what is this?" },
+			});
+			expect(textOf(escaped.body)).toMatch(/outside every granted/i);
+			// The refusal must not have leaked the file's contents on the way out.
+			expect(textOf(escaped.body)).not.toContain("hunter2 ");
+
+			const read = await rpc("tools/call", {
+				name: "list_threads",
+				arguments: { scope: "workspace", state: "all" },
+			});
+			expect(textOf(read.body)).not.toContain("api key");
+		} finally {
+			await fs.rm(planted, { force: true });
+			await fs.rm(secretDir, { recursive: true, force: true });
+		}
+	});
+
+	it("still accepts a granted root that is itself reached through a symlink", async () => {
+		// macOS hands out /tmp paths that are really /private/tmp, so resolving
+		// only the target and not the root would reject legitimate workspaces.
+		const realRoot = await fs.realpath(workspace);
+		expect(realRoot).not.toBe("");
+		const listed = await rpc("tools/call", {
+			name: "list_threads",
+			arguments: { scope: "workspace", state: "all" },
+		});
+		expect(textOf(listed.body)).not.toMatch(/outside every granted/i);
+	});
+
 	it("produces a connect command a user can paste", () => {
 		expect(agentMcpConnectCommand(server.url, TOKEN)).toBe(
 			`claude mcp add --transport http mdly ${server.url} --header "Authorization: Bearer ${TOKEN}"`,

@@ -161,10 +161,68 @@ interface ResolvedAgentPath {
  *   the app already trusts) before it is returned — nothing downstream ever
  *   sees a path this check didn't clear.
  */
-function resolveAgentPath(
+/**
+ * Resolves symlinks in `target`. A path that doesn't exist yet resolves
+ * through its nearest existing ancestor, with the missing tail rejoined, so
+ * this works for writes to files that aren't there yet.
+ */
+async function realPath(target: string): Promise<string> {
+	const missingTail: string[] = [];
+	let current = target;
+	for (;;) {
+		try {
+			const resolved = await fs.realpath(current);
+			return missingTail.length > 0
+				? nodePath.join(resolved, ...missingTail.reverse())
+				: resolved;
+		} catch {
+			const parent = nodePath.dirname(current);
+			// Reached the filesystem root without resolving anything.
+			if (parent === current) return target;
+			missingTail.push(nodePath.basename(current));
+			current = parent;
+		}
+	}
+}
+
+/**
+ * The string-level containment check above is not sufficient on its own: a
+ * symlink planted inside a granted root points anywhere, and every read here
+ * follows symlinks. Without this, `create_thread` doubles as a file-content
+ * oracle for anything the OS user can read — the quote has to match, but the
+ * saved anchor context leaks the surrounding text back out through
+ * `read_thread`. That is reachable by any local process holding the loopback
+ * token, not just the trusted renderer, which is what makes it worth closing
+ * here rather than inheriting.
+ *
+ * Both sides are resolved, because a granted root can legitimately BE a
+ * symlink (`/tmp` -> `/private/tmp` on macOS); comparing a resolved target
+ * against an unresolved root would reject perfectly valid paths.
+ */
+async function assertRealPathInsideRoots(
+	absolutePath: string,
+	roots: string[],
+): Promise<void> {
+	const realTarget = await realPath(absolutePath);
+	for (const root of roots) {
+		const realRoot = await realPath(root);
+		const relative = nodePath.relative(realRoot, realTarget);
+		if (
+			relative === "" ||
+			(!relative.startsWith("..") && !nodePath.isAbsolute(relative))
+		) {
+			return;
+		}
+	}
+	throw new Error(
+		`"${absolutePath}" resolves, through a symlink, outside every granted workspace root.`,
+	);
+}
+
+async function resolveAgentPath(
 	path: string | undefined,
 	ctx: AgentToolContext,
-): ResolvedAgentPath {
+): Promise<ResolvedAgentPath> {
 	const roots = [...ctx.grantedRoots];
 
 	let candidate = path;
@@ -185,6 +243,7 @@ function resolveAgentPath(
 			`"${absolutePath}" is outside every granted workspace root.`,
 		);
 	}
+	await assertRealPathInsideRoots(absolutePath, roots);
 	return { absolutePath, workspaceRoot };
 }
 
@@ -529,7 +588,10 @@ export async function listAgentThreads(
 	params: ListAgentThreadsParams,
 	ctx: AgentToolContext,
 ): Promise<ListAgentThreadsResult> {
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	const scope = params.scope ?? "workspace";
 	const stateFilter = params.state ?? "open";
 
@@ -555,7 +617,10 @@ export async function readAgentThread(
 	params: ReadAgentThreadParams,
 	ctx: AgentToolContext,
 ): Promise<ReadAgentThreadResult> {
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	const threads = await resolveThreadsForDocument(absolutePath, ctx);
 	const thread = threads.find((candidate) => candidate.id === params.threadId);
 	if (!thread) {
@@ -580,7 +645,10 @@ export async function createAgentThread(
 	assertNonEmptyText(params.quote, "`quote`");
 	assertNonEmptyText(params.text, "`text`");
 
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	const relativePath = toWorkspaceRelativePath(workspaceRoot, absolutePath);
 	const body = await readSavedDocumentBodyOrThrow(absolutePath, relativePath);
 	const anchor = anchorForUniqueQuote(body, params.quote, relativePath);
@@ -601,7 +669,10 @@ export async function replyToAgentThread(
 	ctx: AgentToolContext,
 ): Promise<void> {
 	assertNonEmptyText(params.text, "`text`");
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	await findThreadOrThrow(absolutePath, workspaceRoot, ctx, params.threadId);
 
 	await replyToCommentThreadForPath({
@@ -619,7 +690,10 @@ export async function resolveAgentThread(
 	params: AgentThreadIdParams,
 	ctx: AgentToolContext,
 ): Promise<void> {
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	await findThreadOrThrow(absolutePath, workspaceRoot, ctx, params.threadId);
 
 	await resolveCommentThreadForPath({
@@ -636,7 +710,10 @@ export async function reopenAgentThread(
 	params: AgentThreadIdParams,
 	ctx: AgentToolContext,
 ): Promise<void> {
-	const { absolutePath, workspaceRoot } = resolveAgentPath(params.path, ctx);
+	const { absolutePath, workspaceRoot } = await resolveAgentPath(
+		params.path,
+		ctx,
+	);
 	await findThreadOrThrow(absolutePath, workspaceRoot, ctx, params.threadId);
 
 	await reopenCommentThreadForPath({
