@@ -18,6 +18,35 @@ import type { AnchorResolution, CommentOptions, CommentThread } from "./types.js
 
 export type ResolvedThread = CommentThread & { anchorResolution: AnchorResolution };
 
+function sameAnchorResolution(a: AnchorResolution, b: AnchorResolution): boolean {
+	return (
+		a.status === b.status &&
+		a.method === b.method &&
+		a.range?.from === b.range?.from &&
+		a.range?.to === b.range?.to
+	);
+}
+
+function sameResolvedThreads(a: ResolvedThread[], b: ResolvedThread[]): boolean {
+	if (a.length !== b.length) return false;
+	return a.every((thread, index) => {
+		const next = b[index];
+		// `state`/`events` are compared by reference, not just `id`: both sides
+		// of this comparison are built from the same `rawThreads` closure
+		// within one resolveAll() run, so an untouched thread keeps the exact
+		// same `state`/`events` references, while an actual re-fetch (a
+		// resolve/reopen/reply landing) always produces fresh ones -- so this
+		// guard only ever swallows a resolve when nothing about the thread,
+		// including its resolved/open state, could have changed.
+		return (
+			thread.id === next.id &&
+			thread.state === next.state &&
+			thread.events === next.events &&
+			sameAnchorResolution(thread.anchorResolution, next.anchorResolution)
+		);
+	});
+}
+
 export interface UseCommentThreadsResult {
 	resolvedThreads: ResolvedThread[];
 	refetch: () => void;
@@ -63,7 +92,19 @@ export function useCommentThreads(
 		getThreads(docId)
 			.then((threads) => {
 				if (cancelled) return;
-				setRawThreads(threads);
+				// Host-supplied `getThreads` (backed by `@mdly/doc-comments`'s store,
+				// whose own `CommentThread.events` doc comment says "thread-opened
+				// first, then replies/resolves/reopens") crosses into this kit's
+				// local `CommentThread` type here, whose `events` field is documented
+				// the opposite way -- "every reply/resolve/reopen event AFTER the
+				// opener" (see types.ts). Normalize at this boundary so the panel
+				// and any other consumer never renders the opener twice.
+				setRawThreads(
+					threads.map((thread) => ({
+						...thread,
+						events: thread.events.filter((event) => event.id !== thread.opener.id),
+					})),
+				);
 				setError(null);
 			})
 			.catch((err: unknown) => {
@@ -103,7 +144,11 @@ export function useCommentThreads(
 					return { ...thread, anchorResolution };
 				}),
 			).then((resolved) => {
-				if (!cancelled) setResolvedThreads(resolved);
+				if (!cancelled) {
+					setResolvedThreads((previous) =>
+						sameResolvedThreads(previous, resolved) ? previous : resolved,
+					);
+				}
 			});
 		};
 

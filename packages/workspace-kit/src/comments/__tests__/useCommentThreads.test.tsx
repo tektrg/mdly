@@ -214,4 +214,123 @@ describe("useCommentThreads", () => {
 			to: 13,
 		});
 	});
+
+	it("keeps the same resolvedThreads reference across a transaction that cannot affect any anchor", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "TARGET", mode: "quote" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const beforeThreads = latest?.resolvedThreads;
+
+		act(() => {
+			editor.view.dispatch(
+				editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 1)),
+			);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).toBe(beforeThreads);
+	});
+
+	// The store behind a real `getThreads` (`@mdly/doc-comments`) documents its
+	// own `events` field as "thread-opened first, then replies/resolves/
+	// reopens" -- i.e. it includes the opener. This kit's `CommentThread.events`
+	// is documented the opposite way: "every event AFTER the opener". A host
+	// passing the store's raw shape straight through must not leak the opener
+	// into `events`, or every consumer (ThreadPanel, the paragraph/gutter
+	// markers) renders the opener's text twice.
+	it("strips the opener event out of `events` when a host's getThreads includes it there too", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "event-open",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "TARGET", mode: "quote" },
+				text: "why?",
+			},
+			events: [
+				{
+					id: "event-open",
+					kind: "thread-opened",
+					by: { kind: "human", id: "u1" },
+					text: "why?",
+					prev: null,
+				},
+				{
+					id: "event-reply",
+					kind: "replied",
+					by: { kind: "human", id: "u2" },
+					text: "because",
+					prev: "event-open",
+				},
+			],
+			state: "open",
+		};
+		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const events = latest?.resolvedThreads[0]?.events;
+		expect(events).toHaveLength(1);
+		expect(events?.[0]?.id).toBe("event-reply");
+	});
+
+	it("still produces a new resolvedThreads reference when a thread's state changes with its anchor unchanged", async () => {
+		const openThread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "TARGET", mode: "quote" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const getThreads = vi.fn().mockResolvedValue([openThread]);
+		const options = baseOptions({ getThreads });
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const beforeThreads = latest?.resolvedThreads;
+		expect(beforeThreads?.[0]?.state).toBe("open");
+
+		const resolvedThread: CommentThread = {
+			...openThread,
+			state: "resolved",
+			events: [{ id: "event-1", kind: "resolved", by: { kind: "human", id: "u1" }, prev: null }],
+		};
+		getThreads.mockResolvedValue([resolvedThread]);
+
+		act(() => {
+			latest?.refetch();
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).not.toBe(beforeThreads);
+		expect(latest?.resolvedThreads[0]?.state).toBe("resolved");
+	});
 });
