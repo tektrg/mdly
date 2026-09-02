@@ -8,16 +8,22 @@
 	z-index: 30;
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
 	border: 1px solid var(--border);
-	border-radius: 6px;
+	border-radius: 999px;
 	background: var(--popover);
 	color: var(--popover-foreground);
-	padding: 0.2rem 0.55rem;
-	font-size: 12px;
-	line-height: 1.4;
+	padding: 0;
 	box-shadow: 0 2px 8px color-mix(in oklab, var(--foreground) 12%, transparent);
 	cursor: pointer;
 	transition: background-color 160ms var(--ease-snappy);
+}
+
+.comment-composer-trigger svg {
+	inline-size: 0.85rem;
+	block-size: 0.85rem;
 }
 
 .comment-composer-trigger:hover {

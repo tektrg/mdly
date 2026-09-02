@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { type RefObject, useEffect, useState } from "react";
+import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
 import "./CommentGutter.css";
 import type { ResolvedThread } from "./useCommentThreads.js";
 
@@ -80,7 +81,9 @@ export function CommentGutter({
 					style={{ insetBlockStart: `${marker.top}px` }}
 					aria-label="Open comment thread"
 					onClick={() => onSelectThread(marker.threadId)}
-				/>
+				>
+					<MingcuteMessage3Line aria-hidden="true" />
+				</button>
 			))}
 		</div>
 	);

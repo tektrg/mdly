@@ -28,20 +28,29 @@
 .commentGutterMarker {
 	position: absolute;
 	inset-inline-end: 0;
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	inline-size: 0.6rem;
 	block-size: 0.6rem;
 	border: 0;
 	padding: 0;
 	border-radius: 999px;
-	background: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	background: color-mix(in oklab, var(--brand) 18%, transparent);
+	color: color-mix(in oklab, var(--brand) 68%, var(--foreground));
 	opacity: 0.85;
 	transform: translateY(-50%);
 	cursor: pointer;
 	pointer-events: auto;
 	transition:
 		opacity 160ms var(--ease-snappy),
-		background-color 160ms var(--ease-snappy);
+		background-color 160ms var(--ease-snappy),
+		color 160ms var(--ease-snappy);
+}
+
+.commentGutterMarker svg {
+	inline-size: 0.46rem;
+	block-size: 0.46rem;
 }
 
 .commentGutterMarker:hover {
@@ -49,5 +58,6 @@
 }
 
 .commentGutterMarker[data-resolved="true"] {
-	background: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
+	background: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
+	color: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
 }

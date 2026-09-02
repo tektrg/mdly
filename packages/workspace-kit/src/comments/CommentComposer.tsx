@@ -1,5 +1,6 @@
 import type { Editor } from "@tiptap/core";
 import { type RefObject, useEffect, useState } from "react";
+import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
 import { buildCommentAnchor } from "./buildAnchor.js";
 import "./CommentComposer.css";
 import type { TextAnchor } from "./types.js";
@@ -83,12 +84,14 @@ export function CommentComposer({
 				data-comment-composer-trigger
 				className="comment-composer-trigger"
 				style={{ position: "absolute", top: position.top, left: position.left }}
+				aria-label="Comment"
+				title="Comment"
 				onClick={() => {
 					setComposing(true);
 					setError(null);
 				}}
 			>
-				Comment
+				<MingcuteMessage3Line aria-hidden="true" />
 			</button>
 		);
 	}

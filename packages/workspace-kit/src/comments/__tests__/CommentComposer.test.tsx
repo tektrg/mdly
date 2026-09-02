@@ -117,6 +117,25 @@ describe("CommentComposer", () => {
 		).toBe(true);
 	});
 
+	// The trigger renders an icon only (no visible text) -- its accessible
+	// name must come from aria-label/title instead, or it's silently
+	// unlabeled for screen readers.
+	it("labels the icon-only trigger with an accessible name", () => {
+		const editor = createEditor();
+		act(() => {
+			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+
+		const trigger = container.querySelector<HTMLButtonElement>(
+			"[data-comment-composer-trigger]",
+		);
+		expect(trigger?.getAttribute("aria-label")).toBe("Comment");
+		expect(trigger?.textContent?.trim()).toBe("");
+	});
+
 	it("submits a quote-mode anchor built from the exact selection and clears the draft", async () => {
 		const onOpenThread = vi.fn().mockResolvedValue(undefined);
 		const editor = createEditor();
