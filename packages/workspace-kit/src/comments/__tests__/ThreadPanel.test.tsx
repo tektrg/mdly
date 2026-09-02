@@ -210,6 +210,168 @@ describe("ThreadPanel", () => {
 		).toContain("EACCES");
 	});
 
+	it("calls onJumpToThread when the thread body is clicked, but not when the reply controls are clicked", async () => {
+		const onJumpToThread = vi.fn();
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn().mockResolvedValue(undefined)}
+					onResolve={vi.fn().mockResolvedValue(undefined)}
+					onReopen={vi.fn()}
+					onJumpToThread={onJumpToThread}
+				/>,
+			);
+		});
+
+		act(() => {
+			document.querySelector<HTMLElement>("[data-thread-jump-target]")?.click();
+		});
+		expect(onJumpToThread).toHaveBeenCalledWith("thread-1");
+
+		onJumpToThread.mockClear();
+		act(() => {
+			document.querySelector<HTMLTextAreaElement>("[data-reply-textarea]")?.click();
+		});
+		expect(onJumpToThread).not.toHaveBeenCalled();
+
+		// Reply/Resolve are siblings of the jump-target wrapper (open thread).
+		onJumpToThread.mockClear();
+		act(() => {
+			document.querySelector<HTMLButtonElement>("[data-reply-button]")?.click();
+		});
+		act(() => {
+			document.querySelector<HTMLButtonElement>("[data-resolve-button]")?.click();
+		});
+		expect(onJumpToThread).not.toHaveBeenCalled();
+	});
+
+	it("is keyboard-reachable: Enter on the jump target calls onJumpToThread", () => {
+		const onJumpToThread = vi.fn();
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={vi.fn()}
+					onJumpToThread={onJumpToThread}
+				/>,
+			);
+		});
+
+		const jumpTarget = document.querySelector<HTMLElement>(
+			"[data-thread-jump-target]",
+		);
+		expect(jumpTarget?.getAttribute("tabIndex")).toBe("0");
+		act(() => {
+			jumpTarget?.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(onJumpToThread).toHaveBeenCalledWith("thread-1");
+	});
+
+	it("is not a tab stop when onJumpToThread is omitted", () => {
+		// SidePanel portals to document.body by default (no
+		// PortalContainerProvider in this test), so its content never becomes a
+		// descendant of the mount container -- query `document` directly, same
+		// as every other test in this file.
+		const localContainer = document.createElement("div");
+		document.body.append(localContainer);
+		const localRoot = createRoot(localContainer);
+		act(() => {
+			localRoot.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={vi.fn()}
+				/>,
+			);
+		});
+		expect(
+			document
+				.querySelector<HTMLElement>("[data-thread-jump-target]")
+				?.getAttribute("tabIndex"),
+		).toBe("-1");
+		act(() => localRoot.unmount());
+		localContainer.remove();
+	});
+
+	it("does not call onJumpToThread when the Reopen control is clicked on a resolved thread", async () => {
+		const onJumpToThread = vi.fn();
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread({ state: "resolved" })]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={vi.fn().mockResolvedValue(undefined)}
+					onJumpToThread={onJumpToThread}
+				/>,
+			);
+		});
+
+		await act(async () => {
+			document.querySelector<HTMLButtonElement>("[data-reopen-button]")?.click();
+		});
+		expect(onJumpToThread).not.toHaveBeenCalled();
+	});
+
+	it("scrolls the focused thread into view within the panel's own list", () => {
+		const threads = [makeThread({ id: "thread-1" }), makeThread({ id: "thread-2" })];
+		const renderWith = (focusedThreadId?: string) => {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={threads}
+						currentAuthor={AUTHOR}
+						focusedThreadId={focusedThreadId}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+					/>,
+				);
+			});
+		};
+
+		// Mount first with nothing focused, then patch the already-existing DOM
+		// node's own `scrollIntoView` (an instance-level override rather than a
+		// prototype patch, since happy-dom's element instances don't reliably
+		// pick up a prototype-level stub set up beforehand) before the rerender
+		// that focuses it -- this is also the realistic desktop path: the panel
+		// is already open, and a second gutter/paragraph marker click changes
+		// which thread is focused.
+		renderWith(undefined);
+		const target = document.querySelector<HTMLElement>(
+			'[data-comment-thread-list] [data-thread-id="thread-2"]',
+		);
+		expect(target).not.toBeNull();
+		const scrollIntoView = vi.fn();
+		if (target) target.scrollIntoView = scrollIntoView;
+
+		renderWith("thread-2");
+
+		expect(scrollIntoView).toHaveBeenCalledWith(
+			expect.objectContaining({ block: "nearest" }),
+		);
+	});
+
 	it("renders an explicit empty state, never a blank panel", () => {
 		expect(() => {
 			act(() => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../primitives/button.js";
 import { SidePanel } from "../primitives/sidePanel.js";
 import type { CommentAuthor, CommentThreadEvent } from "./types.js";
@@ -42,18 +42,21 @@ function ThreadLogLine({
 	);
 }
 
-function ThreadItem({
+/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen) inline, without duplicating it. */
+export function ThreadItem({
 	thread,
 	focused,
 	onReply,
 	onResolve,
 	onReopen,
+	onJumpToThread,
 }: {
 	thread: ResolvedThread;
 	focused: boolean;
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onJumpToThread?: (threadId: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
 	const [actionError, setActionError] = useState<string | null>(null);
@@ -97,31 +100,46 @@ function ThreadItem({
 			data-thread-focused={focused}
 			data-thread-state={thread.state}
 		>
-			<div className="flex items-center gap-2">
-				{isOrphaned ? (
-					<span
-						className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-						data-orphaned-badge
-					>
-						orphaned
-					</span>
-				) : null}
-			</div>
-			<ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-				<ThreadLogLine
-					by={thread.opener.by}
-					verb="opened"
-					text={thread.opener.text}
-				/>
-				{thread.events.map((event) => (
+			<div
+				className="flex cursor-pointer flex-col gap-2 rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring/40"
+				data-thread-jump-target
+				data-thread-id={thread.id}
+				role="button"
+				tabIndex={onJumpToThread ? 0 : -1}
+				aria-label="Scroll to this comment in the document"
+				onClick={() => onJumpToThread?.(thread.id)}
+				onKeyDown={(event) => {
+					if (event.key !== "Enter" && event.key !== " ") return;
+					event.preventDefault();
+					onJumpToThread?.(thread.id);
+				}}
+			>
+				<div className="flex items-center gap-2">
+					{isOrphaned ? (
+						<span
+							className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+							data-orphaned-badge
+						>
+							orphaned
+						</span>
+					) : null}
+				</div>
+				<ul className="m-0 flex list-none flex-col gap-1.5 p-0">
 					<ThreadLogLine
-						key={event.id}
-						by={event.by}
-						verb={eventVerb(event.kind)}
-						text={event.text}
+						by={thread.opener.by}
+						verb="opened"
+						text={thread.opener.text}
 					/>
-				))}
-			</ul>
+					{thread.events.map((event) => (
+						<ThreadLogLine
+							key={event.id}
+							by={event.by}
+							verb={eventVerb(event.kind)}
+							text={event.text}
+						/>
+					))}
+				</ul>
+			</div>
 
 			<textarea
 				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -191,6 +209,7 @@ export function ThreadPanel(props: {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
 }) {
 	const {
@@ -201,8 +220,10 @@ export function ThreadPanel(props: {
 		onReply,
 		onResolve,
 		onReopen,
+		onJumpToThread,
 		error,
 	} = props;
+	const listRef = useRef<HTMLUListElement | null>(null);
 
 	// Controlled when the host passes both `open` and `onOpenChange` (so it
 	// can coordinate "only one right-edge panel open at a time" against its
@@ -212,6 +233,21 @@ export function ThreadPanel(props: {
 	const isControlled = open !== undefined && onOpenChange !== undefined;
 	const resolvedOpen = isControlled ? open : internalOpen;
 	const handleOpenChange = isControlled ? onOpenChange : setInternalOpen;
+
+	// Scrolls the focused thread into view within the panel's own list --
+	// covers both the paragraph-marker/gutter-marker "select" path (which
+	// sets focusedThreadId and opens the panel in the same tick) and simply
+	// reopening the panel while a thread is already focused. Deliberately not
+	// keyed on `threads` itself: that array gets a new reference on nearly
+	// every editor keystroke (useCommentThreads re-resolves on every
+	// "transaction"), which would otherwise re-trigger a scroll on every
+	// keystroke while the panel is open.
+	useEffect(() => {
+		if (!resolvedOpen || !focusedThreadId) return;
+		listRef.current
+			?.querySelector<HTMLElement>(`[data-thread-id="${focusedThreadId}"]`)
+			?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+	}, [resolvedOpen, focusedThreadId]);
 
 	return (
 		<SidePanel open={resolvedOpen} onOpenChange={handleOpenChange} title="Comments">
@@ -231,6 +267,7 @@ export function ThreadPanel(props: {
 				</p>
 			) : (
 				<ul
+					ref={listRef}
 					className="m-0 flex min-h-0 flex-1 list-none flex-col gap-2 overflow-y-auto p-0"
 					data-comment-thread-list
 				>
@@ -242,6 +279,7 @@ export function ThreadPanel(props: {
 							onReply={onReply}
 							onResolve={onResolve}
 							onReopen={onReopen}
+							onJumpToThread={onJumpToThread}
 						/>
 					))}
 				</ul>

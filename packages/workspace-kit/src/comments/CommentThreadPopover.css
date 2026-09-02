@@ -1,0 +1,16 @@
+/*
+ * Floating popup shown when a highlighted comment-mark span is clicked
+ * directly in the document (CommentThreadPopover.tsx). Visual family matches
+ * CommentComposer.css's positioning approach (absolute, positioned inline by
+ * the component); the thread content itself reuses ThreadPanel.tsx's own
+ * ThreadItem styling rather than restyling it here.
+ */
+.comment-thread-popover {
+	z-index: 30;
+	inline-size: 18rem;
+	max-inline-size: calc(100vw - 2rem);
+	border-radius: 8px;
+	background: var(--popover);
+	color: var(--popover-foreground);
+	box-shadow: 0 4px 16px color-mix(in oklab, var(--foreground) 16%, transparent);
+}

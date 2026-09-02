@@ -7,7 +7,9 @@ export {
 } from "./CommentExtension.js";
 export { CommentComposer } from "./CommentComposer.js";
 export { CommentGutter } from "./CommentGutter.js";
-export { ThreadPanel } from "./ThreadPanel.js";
+export { CommentParagraphMarker } from "./CommentParagraphMarker.js";
+export { CommentThreadPopover } from "./CommentThreadPopover.js";
+export { ThreadItem, ThreadPanel } from "./ThreadPanel.js";
 export type {
 	AnchorResolution,
 	AnchorStatus,
