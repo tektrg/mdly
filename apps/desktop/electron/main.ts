@@ -32,6 +32,13 @@ import {
 	withMarkdownExtension,
 } from "../src/lib/filePath";
 import {
+	readAgentAccessEnabled,
+	readOrCreateAgentAccessToken,
+	writeAgentAccessEnabled,
+} from "./agentAccess";
+import type { AgentToolContext } from "./agentToolContract";
+import { AGENT_TOOL_DESCRIPTORS, AGENT_TOOLS } from "./agentTools";
+import {
 	listCommentThreadsForPath,
 	openCommentThreadForPath,
 	reopenCommentThreadForPath,
@@ -59,6 +66,11 @@ import {
 import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { scanFrontMatterTags } from "./frontMatterTags";
+import {
+	agentMcpConnectCommand,
+	type RunningAgentMcpServer,
+	startAgentMcpServer,
+} from "./mcpServer";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -594,6 +606,93 @@ function firstExistingFileArg(args: string[]): string | null {
 
 function sendToRenderer(channel: string, ...args: unknown[]) {
 	mainWindow?.webContents.send(channel, ...args);
+}
+
+// --- Slice 4: agent access to document comments -------------------------
+// Two transports publish the SAME tool table (`agentTools.ts`): the loopback
+// MCP server below, and the renderer's WebMCP bridge via the
+// `desktop:agent-*` channels. Everything they need from the running app is
+// funnelled through one `AgentToolContext` so neither transport reaches into
+// main-process state directly.
+
+/** The note the human currently has open, pushed by the renderer. Lets a tool default its `path` to what the user is looking at, and lets every read tell the agent where the user's attention is. */
+let agentOpenDocumentPath: string | null = null;
+let agentMcpServer: RunningAgentMcpServer | null = null;
+let agentAccessTokenPromise: Promise<string> | null = null;
+/**
+ * Resolved once at startup so `agentToolContext()` can stay synchronous —
+ * `startAgentMcpServer` calls it per tool invocation and must not await.
+ */
+let agentActorId = "";
+
+function getAgentAccessToken(): Promise<string> {
+	if (!agentAccessTokenPromise) {
+		agentAccessTokenPromise = readOrCreateAgentAccessToken(
+			app.getPath("userData"),
+		);
+	}
+	return agentAccessTokenPromise;
+}
+
+/**
+ * Built fresh per invocation, never snapshotted: `grantedRoots` and the open
+ * document both change while the server is running, and a stale context would
+ * let a tool write outside the user's current grants.
+ */
+function agentToolContext(): AgentToolContext {
+	return {
+		grantedRoots,
+		actorId: agentActorId,
+		openDocumentPath: agentOpenDocumentPath,
+		// This is what makes an agent's comment appear in the open panel live
+		// rather than on the next incidental reload.
+		notifyCommentsChanged: (absoluteFilePath: string) =>
+			sendToRenderer("desktop:comments-changed", absoluteFilePath),
+	};
+}
+
+async function isAgentAccessEnabled(): Promise<boolean> {
+	return readAgentAccessEnabled(app.getPath("userData"));
+}
+
+/** Idempotent: safe to call on launch and again whenever the setting is turned back on. */
+async function startAgentMcpServerIfEnabled(): Promise<void> {
+	if (agentMcpServer) return;
+	if (!(await isAgentAccessEnabled())) return;
+	try {
+		agentMcpServer = await startAgentMcpServer({
+			tools: AGENT_TOOLS,
+			getContext: agentToolContext,
+			token: await getAgentAccessToken(),
+			appVersion: app.getVersion(),
+		});
+		console.log(`[agent-mcp] listening on ${agentMcpServer.url}`);
+	} catch (error) {
+		// A busy port or a bad bind must never take the app down with it —
+		// comments still work fully without the agent surface.
+		console.error("[agent-mcp] failed to start", error);
+		agentMcpServer = null;
+	}
+}
+
+async function stopAgentMcpServer(): Promise<void> {
+	const server = agentMcpServer;
+	agentMcpServer = null;
+	await server?.stop();
+}
+
+async function readAgentAccessState() {
+	const enabled = await isAgentAccessEnabled();
+	const mcpUrl = agentMcpServer?.url ?? null;
+	if (!enabled || !mcpUrl) {
+		return { enabled, mcpUrl: null, connectCommand: null };
+	}
+	const token = await getAgentAccessToken();
+	return {
+		enabled,
+		mcpUrl,
+		connectCommand: agentMcpConnectCommand(mcpUrl, token),
+	};
 }
 
 function assetPathFromUrl(url: URL): string {
@@ -1415,6 +1514,66 @@ function registerIpc() {
 		},
 	);
 
+	// Slice 4: agent access. The renderer's WebMCP bridge reaches the tools
+	// through these two channels; the loopback MCP server calls the very same
+	// `AGENT_TOOLS` array directly. One tool table, two transports.
+	ipcMain.handle("desktop:agent-list-tools", async () => {
+		if (!(await isAgentAccessEnabled())) return [];
+		return AGENT_TOOL_DESCRIPTORS;
+	});
+
+	ipcMain.handle("desktop:agent-call-tool", async (_event, { name, input }) => {
+		// Re-checked per call, not just at registration time: turning the
+		// setting off must stop tools working immediately, even if a stale
+		// registration is still live in the page.
+		if (!(await isAgentAccessEnabled())) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: "Agent access is turned off in mdly settings.",
+					},
+				],
+				isError: true,
+			};
+		}
+		const tool = AGENT_TOOLS.find((candidate) => candidate.name === name);
+		if (!tool) {
+			return {
+				content: [{ type: "text", text: `Unknown tool: ${String(name)}` }],
+				isError: true,
+			};
+		}
+		return tool.execute(
+			(input ?? {}) as Record<string, unknown>,
+			agentToolContext(),
+		);
+	});
+
+	ipcMain.handle("desktop:agent-get-access-state", () =>
+		readAgentAccessState(),
+	);
+
+	ipcMain.handle(
+		"desktop:agent-set-access-enabled",
+		async (_event, { enabled }) => {
+			await writeAgentAccessEnabled(app.getPath("userData"), Boolean(enabled));
+			// The toggle must take effect without an app restart, so the
+			// listener starts/stops here rather than only at launch.
+			if (enabled) await startAgentMcpServerIfEnabled();
+			else await stopAgentMcpServer();
+			return readAgentAccessState();
+		},
+	);
+
+	ipcMain.handle("desktop:set-open-document", (_event, { path: filePath }) => {
+		// Not grant-checked on purpose: this only records which note the user is
+		// looking at so tools can default to it. Every tool re-validates the
+		// path it ends up using against `grantedRoots` before touching disk.
+		agentOpenDocumentPath =
+			typeof filePath === "string" && filePath.length > 0 ? filePath : null;
+	});
+
 	ipcMain.handle(
 		"desktop:rename-file",
 		async (_event, { fromPath, toPath }) => {
@@ -1863,6 +2022,14 @@ if (!singleInstanceLock) {
 		await loadGrants();
 		if (launchWorkspacePath) grantRoot(launchWorkspacePath);
 		await saveGrants();
+		// Slice 4: resolve the device id once so the agent tool context can stay
+		// synchronous, then bring the loopback MCP server up if the user has
+		// agent access on. Both are fire-and-forget: a failure here must never
+		// block the window from opening.
+		void getActorId().then((actorId) => {
+			agentActorId = actorId;
+			void startAgentMcpServerIfEnabled();
+		});
 		protocol.handle("hubble-asset", (request) => {
 			const url = new URL(request.url);
 			const filePath = assertGranted(assetPathFromUrl(url));
@@ -1918,5 +2085,11 @@ if (!singleInstanceLock) {
 		if (BrowserWindow.getAllWindows().length === 0) {
 			void createWindow();
 		}
+	});
+
+	// Release the loopback port so the next launch gets the fixed default
+	// back instead of silently falling through to a random one.
+	app.on("before-quit", () => {
+		void stopAgentMcpServer();
 	});
 }

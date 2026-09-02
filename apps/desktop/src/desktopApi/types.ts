@@ -262,6 +262,48 @@ export type CommentThreadListResult = {
 	threads: CommentThread[];
 };
 
+/**
+ * Slice 4 (agent access to comments). These mirror
+ * `electron/agentToolContract.ts` -- the main process is the single source of
+ * truth for the tool table, and the renderer only republishes it to WebMCP, so
+ * these types exist to type that pass-through and must stay structurally
+ * identical to the contract's.
+ */
+export type AgentToolAnnotations = {
+	readOnlyHint?: boolean;
+	/** Mandatory on anything returning comment or document text -- that text is model-read and is a prompt-injection vector by construction. */
+	untrustedContentHint?: boolean;
+};
+
+export type AgentToolDescriptor = {
+	name: string;
+	description: string;
+	inputSchema: {
+		type: "object";
+		properties: Record<string, unknown>;
+		required?: string[];
+		additionalProperties?: boolean;
+	};
+	annotations: AgentToolAnnotations;
+};
+
+export type AgentToolResult = {
+	content: Array<{ type: "text"; text: string }>;
+	structuredContent?: Record<string, unknown>;
+	isError?: boolean;
+};
+
+/**
+ * `connectCommand` is the ready-to-paste `claude mcp add ...` line for the
+ * loopback MCP server, folded in here so Settings never has to assemble a URL
+ * and a bearer token itself. Null whenever the server is not listening.
+ */
+export type AgentAccessState = {
+	enabled: boolean;
+	mcpUrl: string | null;
+	connectCommand: string | null;
+};
+
 export type DesktopApi = {
 	platform: DesktopPlatform;
 	homeDir: string;
@@ -313,6 +355,16 @@ export type DesktopApi = {
 	): Promise<void>;
 	resolveCommentThread(path: string, threadId: string): Promise<void>;
 	reopenCommentThread(path: string, threadId: string): Promise<void>;
+	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
+	listAgentTools(): Promise<AgentToolDescriptor[]>;
+	callAgentTool(
+		name: string,
+		input: Record<string, unknown>,
+	): Promise<AgentToolResult>;
+	getAgentAccessState(): Promise<AgentAccessState>;
+	setAgentAccessEnabled(enabled: boolean): Promise<AgentAccessState>;
+	/** Tells the main process which note is open, so an agent tool can default its `path` to it and every read can report where the user's attention is. */
+	setOpenDocumentPath(path: string | null): Promise<void>;
 	pathExists(path: string): Promise<boolean>;
 	persistPastedImage(
 		input: PersistPastedImageInput,
@@ -388,4 +440,6 @@ export type DesktopApi = {
 	onMenuSyncWorkspace(callback: () => void): Unsubscribe;
 	onWindowFocus(callback: () => void): Unsubscribe;
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
+	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */
+	onCommentsChanged(callback: (path: string) => void): Unsubscribe;
 };

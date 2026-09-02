@@ -54,6 +54,15 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:comment-resolve", { path, threadId }),
 	reopenCommentThread: (path, threadId) =>
 		ipcRenderer.invoke("desktop:comment-reopen", { path, threadId }),
+	listAgentTools: () => ipcRenderer.invoke("desktop:agent-list-tools"),
+	callAgentTool: (name, input) =>
+		ipcRenderer.invoke("desktop:agent-call-tool", { name, input }),
+	getAgentAccessState: () =>
+		ipcRenderer.invoke("desktop:agent-get-access-state"),
+	setAgentAccessEnabled: (enabled) =>
+		ipcRenderer.invoke("desktop:agent-set-access-enabled", { enabled }),
+	setOpenDocumentPath: (path) =>
+		ipcRenderer.invoke("desktop:set-open-document", { path }),
 	renameSymlinkTarget: (linkPath, nextName) =>
 		ipcRenderer.invoke("desktop:rename-symlink-target", {
 			linkPath,
@@ -152,6 +161,8 @@ const desktopApi = {
 		subscribe("desktop:fullscreen-change", (isFullScreen: boolean) =>
 			callback(isFullScreen),
 		),
+	onCommentsChanged: (callback) =>
+		subscribe("desktop:comments-changed", (path: string) => callback(path)),
 } satisfies DesktopApi;
 
 contextBridge.exposeInMainWorld("desktopApi", desktopApi);

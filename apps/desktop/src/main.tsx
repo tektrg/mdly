@@ -6,14 +6,15 @@ import "./components/toast.css";
 import "./index.css";
 import { applyStoredAppearancePreferences } from "./lib/theme";
 import { STORAGE_KEY } from "./store/storage";
-import { setupWebmcpSpikeProbe } from "./webmcp";
+import { setupWebmcpBridge } from "./webmcp";
 
 applyStoredAppearancePreferences(STORAGE_KEY);
 
-// WebMCP spike: register the origin-probe tool and connect the local relay
-// embed. Non-fatal if the polyfill is unavailable (e.g. a browser without
-// WebMCP support); the app runs fine without it.
-void setupWebmcpSpikeProbe();
+// WebMCP bridge (Slice 4): publish the agent comment tools and connect the
+// local relay embed. Registers nothing when the user has agent access turned
+// off, and is non-fatal if the polyfill is unavailable (e.g. a browser without
+// WebMCP support); the app runs fine without it either way.
+void setupWebmcpBridge();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>

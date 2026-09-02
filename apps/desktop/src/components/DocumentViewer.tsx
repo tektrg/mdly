@@ -261,6 +261,30 @@ function MarkdownEditor({
 			active = false;
 		};
 	}, [path]);
+	// Slice 4: an agent writing a comment through the WebMCP bridge or the local
+	// MCP server appends to the log behind this editor's back. `CommentOptions`
+	// has always accepted a `refreshSignal` for exactly this, but nothing ever
+	// sent one -- so an agent's comment would sit invisible until the document
+	// happened to reload for an unrelated reason. The main process now pushes a
+	// change event after every agent write; bumping this counter is what makes
+	// the panel update live while the user watches.
+	const [commentRefreshSignal, setCommentRefreshSignal] = useState(0);
+	useEffect(() => {
+		return desktopApi.onCommentsChanged((changedPath) => {
+			if (changedPath !== path) return;
+			setCommentRefreshSignal((signal) => signal + 1);
+		});
+	}, [path]);
+	// Tell the backend which note is open so an agent tool can default to it,
+	// and so every agent read can report where the user's attention is. Cleared
+	// on unmount: with no editor mounted there is no open document, and a stale
+	// value would silently aim an agent's write at a note the user has closed.
+	useEffect(() => {
+		void desktopApi.setOpenDocumentPath(path);
+		return () => {
+			void desktopApi.setOpenDocumentPath(null);
+		};
+	}, [path]);
 	const commentOptions = useMemo<CommentOptions | undefined>(() => {
 		if (!commentIdentity) return undefined;
 		return {
@@ -289,10 +313,17 @@ function MarkdownEditor({
 				desktopApi.replyToCommentThread(path, threadId, text),
 			onResolve: (threadId) => desktopApi.resolveCommentThread(path, threadId),
 			onReopen: (threadId) => desktopApi.reopenCommentThread(path, threadId),
+			refreshSignal: commentRefreshSignal,
 			panelOpen: commentsOpen,
 			onPanelOpenChange: onCommentsOpenChange,
 		};
-	}, [commentIdentity, path, commentsOpen, onCommentsOpenChange]);
+	}, [
+		commentIdentity,
+		path,
+		commentRefreshSignal,
+		commentsOpen,
+		onCommentsOpenChange,
+	]);
 
 	return (
 		<EditorView

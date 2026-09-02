@@ -13,6 +13,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
+import { AgentAccessSettings } from "./components/AgentAccessSettings";
 import { DocumentViewer } from "./components/DocumentViewer";
 import {
 	HtmlAppsDialog,
@@ -806,6 +807,7 @@ function App() {
 				<AppearanceSettings />
 				<WorkspaceSettings />
 				<ImportSettings />
+				<AgentAccessSettings />
 				{updateState ? (
 					<UpdatesSection
 						state={updateState}
