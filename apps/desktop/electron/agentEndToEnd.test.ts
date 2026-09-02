@@ -262,6 +262,102 @@ describe("Slice 4 Plug A end-to-end", () => {
 		expect(textOf(listed.body)).not.toMatch(/outside every granted/i);
 	});
 
+	it("refuses, rather than falls open, when it cannot resolve where a path points", async () => {
+		// The guard walks up to the nearest existing ancestor for paths that
+		// don't exist yet. If it treated EVERY failure as "doesn't exist", an
+		// attacker who owns the workspace files could force EACCES with a
+		// chmod and get the unresolved path waved through — the string-only
+		// check all over again. So anything other than ENOENT/ENOTDIR must
+		// refuse.
+		const secretDir = await fs.mkdtemp(path.join(os.tmpdir(), "mdly-secret-"));
+		const secret = path.join(secretDir, "secret.md");
+		await fs.writeFile(secret, "# Secret\n\nthe api key is swordfish\n");
+		const blockedDir = path.join(workspace, "blocked");
+		await fs.mkdir(blockedDir);
+		const planted = path.join(blockedDir, "innocent.md");
+		await fs.symlink(secret, planted);
+		await fs.chmod(blockedDir, 0o000);
+
+		// Running as root (or on a filesystem ignoring modes) defeats the
+		// setup, not the guard — skip rather than assert something false.
+		let permissionsHold = true;
+		try {
+			await fs.readdir(blockedDir);
+			permissionsHold = false;
+		} catch {
+			/* expected: the directory is unreadable */
+		}
+
+		try {
+			if (permissionsHold) {
+				const blocked = await rpc("tools/call", {
+					name: "create_thread",
+					arguments: {
+						path: planted,
+						quote: "swordfish",
+						text: "what is this?",
+					},
+				});
+				const message = textOf(blocked.body);
+				expect(message).toMatch(/refusing to touch it|outside every granted/i);
+				expect(message).not.toContain("api key");
+			}
+		} finally {
+			await fs.chmod(blockedDir, 0o755);
+			await fs.rm(blockedDir, { recursive: true, force: true });
+			await fs.rm(secretDir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps listing the workspace when one document's log cannot be read", async () => {
+		// `list_threads` defaults to the whole workspace, so one bad entry
+		// must degrade that answer, not erase it.
+		const commentsDir = path.join(workspace, ".mdly", "comments");
+		const before = new Set(await fs.readdir(commentsDir));
+
+		const second = path.join(workspace, "second.md");
+		await fs.writeFile(second, "# Second\n\nA uniquely phrased sentence.\n");
+		const created = await rpc("tools/call", {
+			name: "create_thread",
+			arguments: {
+				path: second,
+				quote: "uniquely phrased",
+				text: "still visible?",
+			},
+		});
+		expect(textOf(created.body)).not.toMatch(/error/i);
+
+		const after = await fs.readdir(commentsDir);
+		const brokenLogs = [...before];
+		expect(after.length).toBeGreaterThan(brokenLogs.length);
+
+		let permissionsHold = true;
+		for (const name of brokenLogs) {
+			await fs.chmod(path.join(commentsDir, name), 0o000);
+			try {
+				await fs.readFile(path.join(commentsDir, name), "utf8");
+				permissionsHold = false;
+			} catch {
+				/* expected: unreadable */
+			}
+		}
+
+		try {
+			if (permissionsHold) {
+				const listed = await rpc("tools/call", {
+					name: "list_threads",
+					arguments: { scope: "workspace", state: "all" },
+				});
+				expect(textOf(listed.body)).toContain("still visible?");
+				expect(textOf(listed.body)).not.toMatch(/EACCES|permission denied/i);
+			}
+		} finally {
+			for (const name of brokenLogs) {
+				await fs.chmod(path.join(commentsDir, name), 0o644);
+			}
+		}
+	});
+
 	it("produces a connect command a user can paste", () => {
 		expect(agentMcpConnectCommand(server.url, TOKEN)).toBe(
 			`claude mcp add --transport http mdly ${server.url} --header "Authorization: Bearer ${TOKEN}"`,

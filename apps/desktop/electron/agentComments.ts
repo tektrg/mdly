@@ -175,10 +175,29 @@ async function realPath(target: string): Promise<string> {
 			return missingTail.length > 0
 				? nodePath.join(resolved, ...missingTail.reverse())
 				: resolved;
-		} catch {
+		} catch (error) {
+			const code = (error as NodeJS.ErrnoException).code;
+			// ONLY "this component isn't there yet" is safe to walk past. Any
+			// other failure (EACCES, ELOOP, ENAMETOOLONG, EIO) means we could
+			// not learn where the path really points, and returning the
+			// unresolved path would fail OPEN — straight back to the
+			// string-only check this replaced. That matters because an
+			// attacker who owns the workspace files can force EACCES on
+			// demand by chmod-ing a directory, so a swallowed error here is a
+			// deterministic bypass, not a rare edge case.
+			if (code !== "ENOENT" && code !== "ENOTDIR") {
+				throw new Error(
+					`Cannot verify where "${target}" really points (${code ?? "unknown error"}); refusing to touch it.`,
+				);
+			}
 			const parent = nodePath.dirname(current);
-			// Reached the filesystem root without resolving anything.
-			if (parent === current) return target;
+			// Walked to the filesystem root without resolving anything: also
+			// fail closed rather than trusting the literal path.
+			if (parent === current) {
+				throw new Error(
+					`Cannot verify where "${target}" really points; refusing to touch it.`,
+				);
+			}
 			missingTail.push(nodePath.basename(current));
 			current = parent;
 		}
@@ -198,6 +217,16 @@ async function realPath(target: string): Promise<string> {
  * Both sides are resolved, because a granted root can legitimately BE a
  * symlink (`/tmp` -> `/private/tmp` on macOS); comparing a resolved target
  * against an unresolved root would reject perfectly valid paths.
+ *
+ * KNOWN RESIDUAL (deliberate, not an oversight): this checks a path and the
+ * read reopens that same path later, so a file swapped for a symlink in
+ * between is followed — a time-of-check/time-of-use gap. Closing it properly
+ * means holding an fd across the check and the read, which is a change to
+ * the shared comment-store read path rather than to this function. The gap
+ * requires an attacker who can already write into the granted workspace at a
+ * precise moment, and yields the same slow quote-matching oracle rather than
+ * arbitrary reads. Recorded here so the next reader does not mistake this
+ * function for a complete defence.
  */
 async function assertRealPathInsideRoots(
 	absolutePath: string,
@@ -544,14 +573,26 @@ async function allDocumentThreads(
 			workspaceRoot,
 			...relativePath.split("/"),
 		);
-		documents.push(
-			await documentThreadsForPath(
-				absolutePath,
-				workspaceRoot,
-				ctx,
-				stateFilter,
-			),
-		);
+		// Isolated per document on purpose: a single unreadable or
+		// out-of-root entry (a tampered or half-written history index) must
+		// not take down `list_threads` for the entire workspace, which is the
+		// default scope. Skipping the bad document degrades the answer;
+		// throwing would erase it.
+		try {
+			documents.push(
+				await documentThreadsForPath(
+					absolutePath,
+					workspaceRoot,
+					ctx,
+					stateFilter,
+				),
+			);
+		} catch (error) {
+			console.error(
+				`[agent-comments] skipped "${relativePath}" while listing the workspace:`,
+				error,
+			);
+		}
 	}
 	return documents;
 }
