@@ -1,6 +1,8 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
+import type { ResolvedThread } from "../comments/index.js";
 import "./TableOfContents.css";
 
 const SCROLL_CONTEXT_BLOCK_OFFSET = 96;
@@ -16,11 +18,16 @@ type TableOfContentsHeading = {
 type TableOfContentsProps = {
 	editor: Editor | null;
 	scrollContainer: HTMLDivElement | null;
+	/** Opt-in (same convention as `EditorView`'s other opt-in props): when
+	 * provided, each heading whose section contains a non-orphaned comment
+	 * gets a small indicator. Omit to render exactly as before. */
+	threads?: ResolvedThread[];
 };
 
 export function TableOfContents({
 	editor,
 	scrollContainer,
+	threads,
 }: TableOfContentsProps) {
 	const [headings, setHeadings] = useState<TableOfContentsHeading[]>([]);
 	const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
@@ -78,6 +85,39 @@ export function TableOfContents({
 			window.removeEventListener("resize", updateActiveHeading);
 		};
 	}, [editor, headings, scrollContainer]);
+
+	// Section = from this heading's position up to (not including) the next
+	// heading's position; `headings` is already in document order from
+	// `collectTableOfContentsHeadings`'s `doc.descendants` walk, so "last
+	// heading whose pos <= range.from" is equivalent to an interval match.
+	// Maps heading id -> whether every comment in that section is resolved,
+	// mirroring the resolved/unresolved dimming `CommentGutter` and
+	// `CommentParagraphMarker` already show -- a heading with any open
+	// comment reads as "needs attention", not just "has comments".
+	const headingCommentState = useMemo(() => {
+		if (!threads || threads.length === 0 || headings.length === 0) {
+			return new Map<string, boolean>();
+		}
+		const state = new Map<string, boolean>();
+		for (const thread of threads) {
+			if (thread.anchorResolution.status === "orphaned") continue;
+			const range = thread.anchorResolution.range;
+			if (!range) continue;
+			let matched: TableOfContentsHeading | undefined;
+			for (const heading of headings) {
+				if (heading.pos > range.from) break;
+				matched = heading;
+			}
+			if (!matched) continue;
+			const isResolved = thread.state === "resolved";
+			const current = state.get(matched.id);
+			state.set(
+				matched.id,
+				current === undefined ? isResolved : current && isResolved,
+			);
+		}
+		return state;
+	}, [threads, headings]);
 
 	if (!editor || headings.length === 0) return null;
 
@@ -143,7 +183,17 @@ export function TableOfContents({
 								onMouseDown={(event) => event.preventDefault()}
 								onClick={() => scrollToHeading(heading)}
 							>
-								{heading.title}
+								<span className="editorTableOfContentsItemLabel">
+									{heading.title}
+								</span>
+								{headingCommentState.has(heading.id) ? (
+									<MingcuteMessage3Line
+										className="editorTableOfContentsCommentBadge"
+										aria-hidden="true"
+										data-comment-indicator
+										data-resolved={headingCommentState.get(heading.id)}
+									/>
+								) : null}
 							</button>
 						</li>
 					))}

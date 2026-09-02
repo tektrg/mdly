@@ -104,7 +104,9 @@
 }
 
 [data-hubble-editor] .editorTableOfContentsItem {
-	display: block;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
 	inline-size: 100%;
 	border: 0;
 	border-radius: var(--radius-inner);
@@ -114,13 +116,30 @@
 	font-size: 0.875rem;
 	line-height: 1.22;
 	text-align: start;
-	overflow-wrap: anywhere;
 	padding-block: 0.22rem;
 	padding-inline: calc((var(--toc-level, 1) - 1) * 1.1rem) 0.4rem;
 	cursor: pointer;
 	transition:
 		background-color 140ms var(--ease-snappy),
 		color 140ms var(--ease-snappy);
+}
+
+[data-hubble-editor] .editorTableOfContentsItemLabel {
+	flex: 1 1 auto;
+	overflow-wrap: anywhere;
+}
+
+[data-hubble-editor] .editorTableOfContentsCommentBadge {
+	flex: 0 0 auto;
+	inline-size: 0.7rem;
+	block-size: 0.7rem;
+	color: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	opacity: 0.85;
+}
+
+[data-hubble-editor] .editorTableOfContentsCommentBadge[data-resolved="true"] {
+	color: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
+	opacity: 0.7;
 }
 
 [data-hubble-editor] .editorTableOfContentsItem[data-level="1"] {

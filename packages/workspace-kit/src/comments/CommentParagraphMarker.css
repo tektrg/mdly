@@ -1,0 +1,55 @@
+/*
+ * Inline-in-content markers, one per textblock containing an anchored
+ * comment (not one per thread -- see `CommentParagraphMarker.tsx`'s R17
+ * note). Absolutely positioned against the same container `CommentGutter`
+ * uses, via `coordsAtPos` on the block's end position, so it tracks
+ * scroll/reflow the same way.
+ */
+.commentParagraphMarkers {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	block-size: 0;
+	pointer-events: none;
+}
+
+.commentParagraphMarker {
+	position: absolute;
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	transform: translate(0.35rem, -50%);
+	border: 0;
+	padding: 0.05rem 0.3rem;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--brand) 18%, transparent);
+	color: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	opacity: 0.85;
+	cursor: pointer;
+	pointer-events: auto;
+	transition:
+		opacity 160ms var(--ease-snappy),
+		background-color 160ms var(--ease-snappy),
+		color 160ms var(--ease-snappy);
+}
+
+.commentParagraphMarker svg {
+	inline-size: 0.7rem;
+	block-size: 0.7rem;
+}
+
+.commentParagraphMarker:hover {
+	opacity: 1;
+}
+
+.commentParagraphMarker[data-resolved="true"] {
+	background: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
+	color: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
+}
+
+.commentParagraphMarkerCount {
+	font-size: 0.6rem;
+	font-weight: 600;
+	line-height: 1;
+}
