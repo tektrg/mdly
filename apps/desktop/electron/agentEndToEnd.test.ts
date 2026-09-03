@@ -1,5 +1,5 @@
 /**
- * End-to-end proof for Slice 4's Plug A: the REAL six-tool table
+ * End-to-end proof for Slice 4's Plug A: the REAL seven-tool table
  * (`AGENT_TOOLS`) served over the REAL loopback MCP server, spoken to over the
  * REAL MCP wire protocol, against a REAL workspace on disk.
  *
@@ -96,12 +96,13 @@ describe("Slice 4 Plug A end-to-end", () => {
 		expect(res.status).toBe(401);
 	});
 
-	it("publishes all six tools with their safety annotations intact", async () => {
+	it("publishes all seven tools with their safety annotations intact", async () => {
 		const { body } = await rpc("tools/list", {});
 		const tools = (body as { result: { tools: { name: string }[] } }).result
 			.tools;
 		expect(tools.map((t) => t.name).sort()).toEqual([
 			"create_thread",
+			"list_documents",
 			"list_threads",
 			"read_thread",
 			"reopen",
@@ -110,7 +111,7 @@ describe("Slice 4 Plug A end-to-end", () => {
 		]);
 		// The whole point of the slice's safety posture: comment text is
 		// model-read, so anything returning it must stay flagged across the wire.
-		for (const name of ["list_threads", "read_thread"]) {
+		for (const name of ["list_documents", "list_threads", "read_thread"]) {
 			const tool = tools.find((t) => t.name === name) as unknown as {
 				annotations: Record<string, boolean>;
 			};
@@ -174,6 +175,20 @@ describe("Slice 4 Plug A end-to-end", () => {
 			arguments: { thread_id: threadId },
 		});
 		expect(textOf(reopened.body)).not.toMatch(/error/i);
+	});
+
+	it("list_documents finds the seeded document over the wire", async () => {
+		// The prior test opened and reopened a thread on `release-notes.md`, so
+		// the workspace's comment-log index has a real entry to rank and return.
+		const listed = await rpc("tools/call", {
+			name: "list_documents",
+			arguments: { state: "all" },
+		});
+		const text = textOf(listed.body);
+		expect(text).not.toMatch(/error/i);
+		expect(text).toContain("release-notes.md");
+		// Comment previews cross back wrapped, same as list_threads/read_thread.
+		expect(text).toContain("untrusted-content");
 	});
 
 	it("writes agent-authored comments to the workspace sidecar, never the note", async () => {
@@ -310,8 +325,9 @@ describe("Slice 4 Plug A end-to-end", () => {
 	});
 
 	it("keeps listing the workspace when one document's log cannot be read", async () => {
-		// `list_threads` defaults to the whole workspace, so one bad entry
-		// must degrade that answer, not erase it.
+		// `list_threads` defaults to the open document only now, so this
+		// exercises the whole-workspace sweep explicitly (`scope: "workspace"`):
+		// one bad entry must degrade that answer, not erase it.
 		const commentsDir = path.join(workspace, ".mdly", "comments");
 		const before = new Set(await fs.readdir(commentsDir));
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	createAgentThread,
+	listAgentDocuments,
 	listAgentThreads,
 	reopenAgentThread,
 	replyToAgentThread,
@@ -56,6 +57,21 @@ async function commentLogLineCount(relativePath: string): Promise<number> {
 	} catch {
 		return 0;
 	}
+}
+
+async function commentLogPath(relativePath: string): Promise<string> {
+	const docId = await resolveCommentDocId(tmpDir, relativePath);
+	return path.join(tmpDir, ".mdly", "comments", `${docId}.jsonl`);
+}
+
+/** Sets a note's comment-log mtime deliberately, so `list_documents`'s recency ranking has something controllable to sort by. */
+async function touchCommentLog(
+	relativePath: string,
+	timeMs: number,
+): Promise<void> {
+	const logPath = await commentLogPath(relativePath);
+	const when = new Date(timeMs);
+	await fs.utimes(logPath, when, when);
 }
 
 // R23-style desktop wiring proof for Slice 4: every behaviour is exercised
@@ -261,14 +277,308 @@ describe("agentComments", () => {
 		expect(result.isError).toBe(true);
 		expect(await commentLogLineCount(relativePath)).toBe(0);
 	});
+
+	it("list_threads with no scope now returns ONLY the open document; scope: workspace still returns the whole workspace", async () => {
+		const openPath = "open.md";
+		const openAbsolute = await writeNote(
+			openPath,
+			"The open note has a distinct phrase.\n",
+		);
+		const otherPath = "other.md";
+		await writeNote(
+			otherPath,
+			"A different note has a distinct phrase as well.\n",
+		);
+
+		const notified: string[] = [];
+		const ctx = makeCtx(openAbsolute, notified);
+
+		await createAgentThread(
+			{ path: openPath, quote: "distinct phrase", text: "on the open note" },
+			ctx,
+		);
+		await createAgentThread(
+			{
+				path: otherPath,
+				quote: "distinct phrase as well",
+				text: "on the other note",
+			},
+			ctx,
+		);
+
+		// FALSIFICATION: against the old default (`scope ?? "workspace"`), this
+		// assertion fails — it would see both documents, not just the open one.
+		const defaultScoped = await listAgentThreads({ state: "all" }, ctx);
+		expect(defaultScoped.documents.map((document) => document.path)).toEqual([
+			openPath,
+		]);
+
+		const wholeWorkspace = await listAgentThreads(
+			{ state: "all", scope: "workspace" },
+			ctx,
+		);
+		const paths = wholeWorkspace.documents.map((document) => document.path);
+		expect(paths).toContain(openPath);
+		expect(paths).toContain(otherPath);
+	});
+});
+
+describe("listAgentDocuments", () => {
+	it("ranks by comment-log recency, newest first", async () => {
+		const aPath = "a.md";
+		const bPath = "b.md";
+		const cPath = "c.md";
+		await writeNote(aPath, "Alpha note with a findable phrase.\n");
+		await writeNote(bPath, "Bravo note with another findable phrase.\n");
+		await writeNote(cPath, "Charlie note with yet another findable phrase.\n");
+
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: aPath, quote: "findable phrase", text: "on a" },
+			ctx,
+		);
+		await createAgentThread(
+			{ path: bPath, quote: "another findable phrase", text: "on b" },
+			ctx,
+		);
+		await createAgentThread(
+			{ path: cPath, quote: "yet another findable phrase", text: "on c" },
+			ctx,
+		);
+
+		// Deliberately out of creation order: c newest, then a, then b oldest.
+		const now = Date.now();
+		await touchCommentLog(cPath, now);
+		await touchCommentLog(aPath, now - 60_000);
+		await touchCommentLog(bPath, now - 120_000);
+
+		const { documents } = await listAgentDocuments({ state: "all" }, ctx);
+		expect(documents.map((document) => document.relativePath)).toEqual([
+			cPath,
+			aPath,
+			bPath,
+		]);
+	});
+
+	it("honours `limit` and reports `truncated: true` when candidates remain", async () => {
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		for (let i = 0; i < 5; i++) {
+			const relativePath = `note-${i}.md`;
+			await writeNote(relativePath, `Note number ${i} has a unique phrase.\n`);
+			await createAgentThread(
+				{ path: relativePath, quote: "unique phrase", text: `comment ${i}` },
+				ctx,
+			);
+		}
+
+		const { documents, truncated } = await listAgentDocuments(
+			{ state: "all", limit: 2 },
+			ctx,
+		);
+		expect(documents).toHaveLength(2);
+		expect(truncated).toBe(true);
+	});
+
+	it("skips a document whose note was deleted (log present, no current path)", async () => {
+		const keptPath = "kept.md";
+		await writeNote(keptPath, "This note stays and has a unique phrase.\n");
+		const deletedPath = "gone.md";
+		const deletedAbsolute = await writeNote(
+			deletedPath,
+			"This note will be deleted, also unique.\n",
+		);
+
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: keptPath, quote: "unique phrase", text: "still here" },
+			ctx,
+		);
+		await createAgentThread(
+			{ path: deletedPath, quote: "also unique", text: "stray comment" },
+			ctx,
+		);
+
+		await fs.rm(deletedAbsolute);
+		await getHistoryStoreForWorkspace(tmpDir).forgetDocumentAtPath(deletedPath);
+
+		const { documents } = await listAgentDocuments({ state: "all" }, ctx);
+		const paths = documents.map((document) => document.relativePath);
+		expect(paths).toContain(keptPath);
+		expect(paths).not.toContain(deletedPath);
+	});
+
+	it("excludes a document whose only thread is resolved under state: open, includes it under state: all", async () => {
+		const relativePath = "note.md";
+		await writeNote(relativePath, "A note with a resolvable phrase.\n");
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: relativePath, quote: "resolvable phrase", text: "please look" },
+			ctx,
+		);
+
+		const { documents: beforeResolve } = await listAgentThreads(
+			{ scope: "open", state: "all", path: relativePath },
+			ctx,
+		);
+		const threadId = beforeResolve[0].threads[0].threadId;
+		await resolveAgentThread({ path: relativePath, threadId }, ctx);
+
+		const openOnly = await listAgentDocuments({ state: "open" }, ctx);
+		expect(
+			openOnly.documents.map((document) => document.relativePath),
+		).not.toContain(relativePath);
+
+		const all = await listAgentDocuments({ state: "all" }, ctx);
+		expect(all.documents.map((document) => document.relativePath)).toContain(
+			relativePath,
+		);
+	});
+
+	it("reports isOpenDocument true for ctx.openDocumentPath and false otherwise", async () => {
+		const openPath = "open.md";
+		const openAbsolute = await writeNote(
+			openPath,
+			"The open note has a locatable phrase.\n",
+		);
+		const otherPath = "other.md";
+		await writeNote(
+			otherPath,
+			"The other note has a different locatable phrase.\n",
+		);
+
+		const notified: string[] = [];
+		const ctx = makeCtx(openAbsolute, notified);
+		await createAgentThread(
+			{ path: openPath, quote: "locatable phrase", text: "on open" },
+			ctx,
+		);
+		await createAgentThread(
+			{
+				path: otherPath,
+				quote: "different locatable phrase",
+				text: "on other",
+			},
+			ctx,
+		);
+
+		const { documents } = await listAgentDocuments({ state: "all" }, ctx);
+		const openDoc = documents.find(
+			(document) => document.relativePath === openPath,
+		);
+		const otherDoc = documents.find(
+			(document) => document.relativePath === otherPath,
+		);
+		expect(openDoc?.isOpenDocument).toBe(true);
+		expect(otherDoc?.isOpenDocument).toBe(false);
+	});
+
+	it("counts openThreads and resolvedThreads correctly on a document holding one of each", async () => {
+		const relativePath = "note.md";
+		await writeNote(
+			relativePath,
+			"This note has a first phrase and a second phrase.\n",
+		);
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: relativePath, quote: "first phrase", text: "comment one" },
+			ctx,
+		);
+		await createAgentThread(
+			{ path: relativePath, quote: "second phrase", text: "comment two" },
+			ctx,
+		);
+
+		const { documents: beforeResolve } = await listAgentThreads(
+			{ scope: "open", state: "all", path: relativePath },
+			ctx,
+		);
+		const firstThreadId = beforeResolve[0].threads[0].threadId;
+		await resolveAgentThread(
+			{ path: relativePath, threadId: firstThreadId },
+			ctx,
+		);
+
+		const { documents } = await listAgentDocuments({ state: "all" }, ctx);
+		const doc = documents.find(
+			(document) => document.relativePath === relativePath,
+		);
+		expect(doc?.openThreads).toBe(1);
+		expect(doc?.resolvedThreads).toBe(1);
+	});
+
+	it("works with NO open document and NO path (the core requirement)", async () => {
+		const relativePath = "note.md";
+		await writeNote(relativePath, "A note with a standalone phrase.\n");
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: relativePath, quote: "standalone phrase", text: "hello" },
+			ctx,
+		);
+
+		const result = await listAgentDocuments({}, ctx);
+		expect(result.openDocument).toBeNull();
+		expect(result.documents.map((document) => document.relativePath)).toContain(
+			relativePath,
+		);
+	});
+
+	it("skips a corrupt (unreadable) comment log without failing the whole listing", async () => {
+		const brokenPath = "broken.md";
+		await writeNote(brokenPath, "A note whose log will be made unreadable.\n");
+		const okPath = "ok.md";
+		await writeNote(okPath, "A note whose log stays readable.\n");
+
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+		await createAgentThread(
+			{ path: brokenPath, quote: "made unreadable", text: "on broken" },
+			ctx,
+		);
+		await createAgentThread(
+			{ path: okPath, quote: "stays readable", text: "on ok" },
+			ctx,
+		);
+
+		const brokenLogPath = await commentLogPath(brokenPath);
+		await fs.chmod(brokenLogPath, 0o000);
+
+		// Running as root (or on a filesystem ignoring modes) defeats the setup,
+		// not the code under test — skip the assertion rather than assert
+		// something false, mirroring `agentEndToEnd.test.ts`'s own guard.
+		let permissionsHold = true;
+		try {
+			await fs.readFile(brokenLogPath, "utf8");
+			permissionsHold = false;
+		} catch {
+			/* expected: unreadable */
+		}
+
+		try {
+			if (permissionsHold) {
+				const { documents } = await listAgentDocuments({ state: "all" }, ctx);
+				const paths = documents.map((document) => document.relativePath);
+				expect(paths).toContain(okPath);
+				expect(paths).not.toContain(brokenPath);
+			}
+		} finally {
+			await fs.chmod(brokenLogPath, 0o644);
+		}
+	});
 });
 
 describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
-	it("has at least the two read-only tools", () => {
+	it("has at least the three read-only tools", () => {
 		const readOnly = AGENT_TOOL_DESCRIPTORS.filter(
 			(descriptor) => descriptor.annotations.readOnlyHint,
 		);
 		expect(readOnly.map((descriptor) => descriptor.name).sort()).toEqual([
+			"list_documents",
 			"list_threads",
 			"read_thread",
 		]);

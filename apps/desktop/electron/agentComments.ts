@@ -111,6 +111,39 @@ export interface ListAgentThreadsResult {
 	documents: AgentDocumentThreads[];
 }
 
+export interface ListAgentDocumentsParams {
+	state?: AgentThreadStateFilter;
+	limit?: number;
+}
+
+export interface AgentDocumentSummary {
+	/** ABSOLUTE path — the agent passes this straight back as `path` to `list_threads`. */
+	path: string;
+	/** Path relative to its workspace root, for display. */
+	relativePath: string;
+	workspaceRoot: string;
+	/** True when this is the note the human currently has open. */
+	isOpenDocument: boolean;
+	openThreads: number;
+	resolvedThreads: number;
+	/** ISO timestamp — newest mtime of the note's comment log(s). */
+	lastActivity: string;
+	/** Newest matching thread, trimmed for browsing. `text` truncated to 200 chars with a trailing "…". */
+	latestComment: {
+		threadId: string;
+		quote: string;
+		text: string;
+		by: RevisionAuthor;
+	} | null;
+}
+
+export interface ListAgentDocumentsResult {
+	openDocument: AgentOpenDocument | null;
+	documents: AgentDocumentSummary[];
+	/** True when candidates remained unexamined — the caller can raise `limit`. */
+	truncated: boolean;
+}
+
 export interface ReadAgentThreadParams {
 	path?: string;
 	threadId: string;
@@ -597,6 +630,165 @@ async function allDocumentThreads(
 	return documents;
 }
 
+interface CommentLogCandidate {
+	root: string;
+	docId: string;
+	mtimeMs: number;
+}
+
+/**
+ * Cheap first pass for `listAgentDocuments`: stats every comment-log file
+ * across every granted root (never parses one) to find, per `(root, docId)`,
+ * the newest mtime among its sibling fork/conflict logs. This is what keeps
+ * the whole tool's cost proportional to the number of comment-log FILES, not
+ * to the cost of parsing them.
+ */
+async function collectCommentLogCandidates(
+	roots: readonly string[],
+): Promise<CommentLogCandidate[]> {
+	const candidates: CommentLogCandidate[] = [];
+	for (const root of roots) {
+		const dir = commentsDirPath(root);
+		const names = await agentFileSystem.listDir(dir);
+		const newestMtimeByDocId = new Map<string, number>();
+		for (const name of names) {
+			const docId = docIdFromCommentLogFileName(name);
+			if (!docId) continue;
+			try {
+				const stat = await fs.stat(nodePath.join(dir, name));
+				const existing = newestMtimeByDocId.get(docId);
+				if (existing === undefined || stat.mtimeMs > existing) {
+					newestMtimeByDocId.set(docId, stat.mtimeMs);
+				}
+			} catch {
+				// Vanished or unreadable between listDir and stat — not this
+				// function's job to explain; the candidate is just dropped.
+			}
+		}
+		for (const [docId, mtimeMs] of newestMtimeByDocId) {
+			candidates.push({ root, docId, mtimeMs });
+		}
+	}
+	return candidates;
+}
+
+/** Truncates a preview string to `maxLength`, appending an ellipsis when it does. */
+function truncateForPreview(text: string, maxLength: number): string {
+	return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
+/**
+ * A cheap, recency-ranked index of notes that have comments — the entry
+ * point for an agent that hasn't been told which note to look at yet.
+ *
+ * Unlike `listAgentThreads`'s `scope: "workspace"`, which parses every
+ * comment log in the workspace and returns every message in full, this
+ * scales with `limit`, not with the number of commented notes: it only stats
+ * comment-log files to rank candidates by recency
+ * (`collectCommentLogCandidates`), then parses full thread data for just the
+ * newest few candidates until `limit` qualifying documents are found or the
+ * candidate budget below is exhausted.
+ */
+export async function listAgentDocuments(
+	params: ListAgentDocumentsParams,
+	ctx: AgentToolContext,
+): Promise<ListAgentDocumentsResult> {
+	const stateFilter = params.state ?? "open";
+	const limit = Math.min(50, Math.max(1, params.limit ?? 10));
+	const maxCandidatesToExamine = Math.max(limit * 4, 40);
+
+	const candidates = await collectCommentLogCandidates([...ctx.grantedRoots]);
+	candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+	// Memoized per root, computed lazily — only roots that actually surface a
+	// candidate ever pay for the path-index read.
+	const pathIndexByRoot = new Map<string, Map<string, string>>();
+	async function currentPathFor(
+		root: string,
+		docId: string,
+	): Promise<string | undefined> {
+		let byDocId = pathIndexByRoot.get(root);
+		if (!byDocId) {
+			byDocId = await currentPathByDocId(root);
+			pathIndexByRoot.set(root, byDocId);
+		}
+		return byDocId.get(docId);
+	}
+
+	const documents: AgentDocumentSummary[] = [];
+	let index = 0;
+	for (; index < candidates.length; index++) {
+		if (documents.length >= limit) break;
+		if (index >= maxCandidatesToExamine) break;
+
+		const candidate = candidates[index];
+		const relativePath = await currentPathFor(candidate.root, candidate.docId);
+		if (!relativePath) continue; // note deleted — log outlived its path-index entry
+
+		const absolutePath = nodePath.join(
+			candidate.root,
+			...relativePath.split("/"),
+		);
+		// Isolated per candidate, matching `allDocumentThreads`'s rationale: one
+		// corrupt log or an unresolvable symlink must not erase the rest of the
+		// index, just that one entry.
+		try {
+			const resolved = await resolveAgentPath(absolutePath, ctx);
+			const documentThreads = await documentThreadsForPath(
+				resolved.absolutePath,
+				resolved.workspaceRoot,
+				ctx,
+				"all",
+			);
+			const matching = documentThreads.threads.filter((thread) =>
+				matchesStateFilter(thread.state, stateFilter),
+			);
+			if (matching.length === 0) continue;
+
+			// `documentThreadsForPath` preserves the store's own thread order,
+			// which is append-based (oldest opener first) — so the LAST matching
+			// thread is the newest one.
+			const latestThread = matching[matching.length - 1];
+			// The preview quotes the thread's OPENING message, not its most
+			// recent event: a resolve/reopen event carries no text, while the
+			// opener is guaranteed non-empty (`assertNonEmptyText` enforces this
+			// at creation time) — so this is never a blank preview.
+			const openingMessage = latestThread.messages[0];
+
+			documents.push({
+				path: resolved.absolutePath,
+				relativePath: documentThreads.path,
+				workspaceRoot: resolved.workspaceRoot,
+				isOpenDocument: resolved.absolutePath === ctx.openDocumentPath,
+				openThreads: documentThreads.threads.filter(
+					(thread) => thread.state === "open",
+				).length,
+				resolvedThreads: documentThreads.threads.filter(
+					(thread) => thread.state === "resolved",
+				).length,
+				lastActivity: new Date(candidate.mtimeMs).toISOString(),
+				latestComment: {
+					threadId: latestThread.threadId,
+					quote: latestThread.quote,
+					text: truncateForPreview(openingMessage?.text ?? "", 200),
+					by: latestThread.openedBy,
+				},
+			});
+		} catch (error) {
+			console.error(
+				`[agent-comments] skipped "${relativePath}" while listing documents:`,
+				error,
+			);
+		}
+	}
+
+	return {
+		openDocument: describeOpenDocument(ctx),
+		documents,
+		truncated: index < candidates.length,
+	};
+}
+
 /** E: `commentStore.ts` does not validate `threadId` — an unknown id silently appends a detached, invisible event chain. Every write against an existing thread must confirm it exists first. Throws a message naming both the id and the document, since an agent will hallucinate a thread id eventually. */
 async function findThreadOrThrow(
 	absolutePath: string,
@@ -624,7 +816,7 @@ function assertNonEmptyText(value: string, fieldDescription: string): void {
 	}
 }
 
-/** Lists comment threads. Defaults to unresolved threads across the whole workspace; see `AgentThreadScope`/`AgentThreadStateFilter` for the other options. */
+/** Lists comment threads. Defaults to unresolved threads on the currently open document; pass `scope: "workspace"` for a full sweep, or use `listAgentDocuments` to find which notes have comments cheaply first. See `AgentThreadScope`/`AgentThreadStateFilter` for the other options. */
 export async function listAgentThreads(
 	params: ListAgentThreadsParams,
 	ctx: AgentToolContext,
@@ -633,7 +825,7 @@ export async function listAgentThreads(
 		params.path,
 		ctx,
 	);
-	const scope = params.scope ?? "workspace";
+	const scope = params.scope ?? "open";
 	const stateFilter = params.state ?? "open";
 
 	const documents =
