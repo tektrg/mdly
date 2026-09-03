@@ -1,6 +1,6 @@
 import os from "node:os";
 import { contextBridge, ipcRenderer } from "electron";
-import type { DesktopApi } from "../src/desktopApi/types";
+import type { CloudSyncStatus, DesktopApi } from "../src/desktopApi/types";
 
 function subscribe<T extends unknown[]>(
 	channel: string,
@@ -13,6 +13,7 @@ function subscribe<T extends unknown[]>(
 }
 
 let nextWatchId = 0;
+let nextCloudSyncWatchId = 0;
 
 const desktopApi = {
 	platform: process.platform,
@@ -30,6 +31,38 @@ const desktopApi = {
 			workspacePath,
 			config,
 		}),
+	getCloudSyncState: (workspacePath) =>
+		ipcRenderer.invoke("desktop:cloud-sync-get-state", { workspacePath }),
+	enableCloudSync: (workspacePath, options) =>
+		ipcRenderer.invoke("desktop:cloud-sync-enable", {
+			workspacePath,
+			...options,
+		}),
+	disableCloudSync: (workspacePath) =>
+		ipcRenderer.invoke("desktop:cloud-sync-disable", { workspacePath }),
+	setCloudSyncExcludedFolders: (workspacePath, folders) =>
+		ipcRenderer.invoke("desktop:cloud-sync-set-excluded-folders", {
+			workspacePath,
+			folders,
+		}),
+	onCloudSyncStatusChange: async (workspacePath, callback) => {
+		const watchId = String(++nextCloudSyncWatchId);
+		const unsubscribeEvents = subscribe(
+			`desktop:cloud-sync-status:${watchId}`,
+			(state: { status: CloudSyncStatus; detail: string | null }) =>
+				callback(state.status, state.detail),
+		);
+		await ipcRenderer.invoke("desktop:cloud-sync-watch-status", {
+			watchId,
+			workspacePath,
+		});
+		return () => {
+			unsubscribeEvents();
+			void ipcRenderer.invoke("desktop:cloud-sync-unwatch-status", {
+				watchId,
+			});
+		};
+	},
 	readFileText: (path) =>
 		ipcRenderer.invoke("desktop:read-file-text", { path }),
 	writeFileText: (path, content, options) =>

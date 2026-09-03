@@ -1,4 +1,4 @@
-import type { RemoteAsset, RemoteFile } from "./types.js";
+import type { AuthorizedUrl, RemoteAsset, RemoteFile } from "./types.js";
 
 /** Backend-agnostic interface for sync operations. */
 export interface SyncBackend {
@@ -36,6 +36,6 @@ export interface SyncBackend {
 		deviceId: string;
 	}): Promise<void>;
 
-	generateAssetUploadUrl(): Promise<string>;
-	getAssetDownloadUrl(storageId: string): Promise<string | null>;
+	generateAssetUploadUrl(): Promise<AuthorizedUrl>;
+	getAssetDownloadUrl(storageId: string): Promise<AuthorizedUrl | null>;
 }

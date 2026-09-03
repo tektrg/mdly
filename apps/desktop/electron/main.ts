@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import hubbleRuntime from "@hubble.md/runtime/global.js?raw";
 import htmlAppTheme from "@hubble.md/runtime/html-app-theme.css?raw";
+import { createMacKeychainCredentialStore } from "@mdly/cloudflare-client/keychain";
 import tailwindRuntime from "@tailwindcss/browser?raw";
 import alpineRuntime from "alpinejs/dist/cdn.min.js?raw";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -38,6 +39,18 @@ import {
 } from "./agentAccess";
 import type { AgentToolContext } from "./agentToolContract";
 import { AGENT_TOOL_DESCRIPTORS, AGENT_TOOLS } from "./agentTools";
+import {
+	type CloudSyncWiringDeps,
+	disableCloudSyncForWorkspace,
+	enableCloudSyncForWorkspace,
+	onCloudSyncStatusChange,
+	readCloudSyncWorkspaceState,
+	readRawWorkspaceConfigFile,
+	resumeCloudSyncForGrantedRoots,
+	retryPendingCloudSyncDeletions,
+	setCloudSyncExcludedFolders,
+	stopAllCloudSync,
+} from "./cloudSyncWiring";
 import {
 	listCommentThreadsForPath,
 	openCommentThreadForPath,
@@ -193,11 +206,26 @@ let updateState: DesktopUpdateState = {
 	lastCheckedAt: null,
 };
 const watchers = new Map<string, FSWatcher>();
+const cloudSyncStatusUnsubscribers = new Map<string, () => void>();
 const grantedFiles = new Set<string>();
 const grantedRoots = new Set<string>();
 let grantsLoaded = false;
 const historyEchoTracker = createSelfWriteEchoTracker();
 let actorIdPromise: Promise<string> | null = null;
+
+// Cloud Sync (Stage 4, R19-R30): one shared Keychain-backed credential store
+// (R20) for the app's whole lifetime, and a deps factory that always reuses
+// THIS process's `grantedRoots`/`historyEchoTracker` singletons — never a
+// second `SelfWriteEchoTracker` instance — so a cloud pull is recorded in the
+// exact same tracker the active-file watcher already checks (R21).
+const cloudSyncKeychain = createMacKeychainCredentialStore();
+function cloudSyncDeps(): CloudSyncWiringDeps {
+	return {
+		echoTracker: historyEchoTracker,
+		grantedRoots,
+		keychain: cloudSyncKeychain,
+	};
+}
 
 const IN_APP_HISTORY_CAUSES = new Set<InAppHistoryCause>([
 	"idle-session",
@@ -1364,13 +1392,81 @@ function registerIpc() {
 		async (_event, { workspacePath, config }) => {
 			const configPath = workspaceConfigPath(workspacePath);
 			await fs.mkdir(path.dirname(configPath), { recursive: true });
-			await fs.writeFile(
-				configPath,
-				`${JSON.stringify(normalizeWorkspaceConfig(config), null, 2)}\n`,
-			);
+			// Stage 4 finding: `.hubble/config.json` is shared with
+			// `@hubble.md/sync`'s `cloudSync` field, but `normalizeWorkspaceConfig`
+			// only knows about `version`/`pinnedNotes` and rebuilds the file from
+			// scratch. Left alone, any pin/unpin write from the renderer would
+			// silently erase Cloud Sync's config out from under it (breaking
+			// R27's "survives quitting and relaunching"). Re-merge whatever
+			// `cloudSync` value is already on disk before writing.
+			const raw = await readRawWorkspaceConfigFile(workspacePath);
+			const normalized = normalizeWorkspaceConfig(config);
+			const merged =
+				raw.cloudSync !== undefined
+					? { ...normalized, cloudSync: raw.cloudSync }
+					: normalized;
+			await fs.writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`);
 			grantFile(configPath);
 		},
 	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-get-state",
+		async (_event, { workspacePath }) =>
+			readCloudSyncWorkspaceState(resolvePath(workspacePath)),
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-enable",
+		async (_event, { workspacePath, workspaceName, deploymentUrl, password }) =>
+			enableCloudSyncForWorkspace(
+				{
+					workspaceRoot: resolvePath(workspacePath),
+					workspaceName,
+					deploymentUrl,
+					password,
+				},
+				cloudSyncDeps(),
+			),
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-disable",
+		async (_event, { workspacePath }) =>
+			disableCloudSyncForWorkspace(resolvePath(workspacePath), cloudSyncDeps()),
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-set-excluded-folders",
+		async (_event, { workspacePath, folders }) =>
+			setCloudSyncExcludedFolders(
+				resolvePath(workspacePath),
+				folders,
+				cloudSyncDeps(),
+			),
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-watch-status",
+		(_event, { watchId, workspacePath }) => {
+			const resolved = resolvePath(workspacePath);
+			const unsubscribe = onCloudSyncStatusChange(
+				resolved,
+				(status, detail) => {
+					sendToRenderer(`desktop:cloud-sync-status:${watchId}`, {
+						status,
+						detail,
+					});
+				},
+			);
+			cloudSyncStatusUnsubscribers.set(String(watchId), unsubscribe);
+		},
+	);
+
+	ipcMain.handle("desktop:cloud-sync-unwatch-status", (_event, { watchId }) => {
+		cloudSyncStatusUnsubscribers.get(String(watchId))?.();
+		cloudSyncStatusUnsubscribers.delete(String(watchId));
+	});
 
 	ipcMain.handle(
 		"desktop:read-file-text",
@@ -1742,7 +1838,17 @@ function registerIpc() {
 			title: "Open Folder",
 		});
 		const selected = result.filePaths[0] ?? null;
-		if (selected) grantRoot(selected);
+		if (selected) {
+			grantRoot(selected);
+			// A folder opened at runtime (as opposed to at launch, already
+			// covered above) may already carry a `cloudSync` config — e.g. a
+			// workspace another device already opted in — so resume for it here
+			// too (R27, R29).
+			void resumeCloudSyncForGrantedRoots(
+				[resolvePath(selected)],
+				cloudSyncDeps(),
+			);
+		}
 		return selected;
 	});
 
@@ -2022,6 +2128,12 @@ if (!singleInstanceLock) {
 		await loadGrants();
 		if (launchWorkspacePath) grantRoot(launchWorkspacePath);
 		await saveGrants();
+		// R27: opt-in survives quitting and relaunching. `grantedRoots` also
+		// holds incidental directories (asset folders, a picked file's parent)
+		// alongside real workspace roots, but resuming is safe and correct
+		// against all of them — a root with no `cloudSync.backgroundSync: true`
+		// in its `.hubble/config.json` is simply a no-op (see
+		// `startCloudSyncWatcherIfEnabled`).
 		// Slice 4: resolve the device id once so the agent tool context can stay
 		// synchronous, then bring the loopback MCP server up if the user has
 		// agent access on. Both are fire-and-forget: a failure here must never
@@ -2030,6 +2142,11 @@ if (!singleInstanceLock) {
 			agentActorId = actorId;
 			void startAgentMcpServerIfEnabled();
 		});
+		void resumeCloudSyncForGrantedRoots(grantedRoots, cloudSyncDeps());
+		// R36 honesty contract: a workspace whose off-switch could not reach
+		// the Worker last time (offline, rotated password) is retried here on
+		// every launch until its cloud copy is actually gone.
+		void retryPendingCloudSyncDeletions(grantedRoots, cloudSyncDeps());
 		protocol.handle("hubble-asset", (request) => {
 			const url = new URL(request.url);
 			const filePath = assertGranted(assetPathFromUrl(url));
@@ -2056,9 +2173,8 @@ if (!singleInstanceLock) {
 			}
 			try {
 				const body = fsSync.readFileSync(filePath);
-				const isHashedAsset = /\/assets\/.+\.(?:js|css|ttf|woff2?|png|svg|mp4)$/.test(
-					url.pathname,
-				);
+				const isHashedAsset =
+					/\/assets\/.+\.(?:js|css|ttf|woff2?|png|svg|mp4)$/.test(url.pathname);
 				return new Response(body, {
 					headers: {
 						"content-type": assetContentType(filePath),
@@ -2087,9 +2203,14 @@ if (!singleInstanceLock) {
 		}
 	});
 
-	// Release the loopback port so the next launch gets the fixed default
-	// back instead of silently falling through to a random one.
+	// R25: every watcher/subscription this module opened must be closed on
+	// quit — never leaked across app restarts (a fresh process starts with
+	// empty registries anyway, but a slow WebSocket close should still be
+	// requested rather than abandoned mid-flight).
 	app.on("before-quit", () => {
+		void stopAllCloudSync();
+		// Release the loopback port so the next launch gets the fixed default
+		// back instead of silently falling through to a random one.
 		void stopAgentMcpServer();
 	});
 }

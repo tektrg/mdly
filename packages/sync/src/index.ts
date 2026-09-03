@@ -18,6 +18,7 @@ export type {
 export { contentHash } from "./fs.js";
 export { init, status, sync } from "./sync.js";
 export type {
+	AuthorizedUrl,
 	CloudSyncConfig,
 	FileState,
 	RemoteAsset,

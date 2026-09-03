@@ -35,7 +35,7 @@ export async function init(
 		(await backend.createWorkspace(opts.workspaceName));
 
 	const cloudSync: CloudSyncConfig = {
-		provider: "convex",
+		provider: "cloudflare",
 		deploymentUrl: opts.deploymentUrl,
 		workspaceId,
 		deviceId: crypto.randomUUID(),
@@ -205,11 +205,14 @@ export async function sync(
 	const remoteAssetByPath = new Map(remoteAssets.map((a) => [a.path, a]));
 
 	async function pushAsset(path: string, hash: string) {
-		const uploadUrl = await backend.generateAssetUploadUrl();
+		const upload = await backend.generateAssetUploadUrl();
 		const data = await fs.readBinaryFile(`${workspacePath}/${path}`);
-		const res = await fetch(uploadUrl, {
+		const res = await fetch(upload.url, {
 			method: "POST",
-			headers: { "Content-Type": "application/octet-stream" },
+			headers: {
+				"Content-Type": "application/octet-stream",
+				...upload.headers,
+			},
 			body: data,
 		});
 		const { storageId } = (await res.json()) as { storageId: string };
@@ -225,9 +228,9 @@ export async function sync(
 	}
 
 	async function pullAsset(remote: RemoteAsset) {
-		const url = await backend.getAssetDownloadUrl(remote.storageId);
-		if (!url) return;
-		const res = await fetch(url);
+		const download = await backend.getAssetDownloadUrl(remote.storageId);
+		if (!download) return;
+		const res = await fetch(download.url, { headers: download.headers });
 		const buf = new Uint8Array(await res.arrayBuffer());
 		await ensureParentDir(remote.path);
 		await fs.writeBinaryFile(`${workspacePath}/${remote.path}`, buf);

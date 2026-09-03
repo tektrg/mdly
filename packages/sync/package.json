@@ -30,13 +30,16 @@
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
-		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput"
+		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+		"test": "vitest run"
 	},
 	"dependencies": {
+		"@mdly/workspace-scan": "workspace:*",
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
 		"@types/node": "^25.5.0",
-		"typescript": "~5.8.3"
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
 	}
 }

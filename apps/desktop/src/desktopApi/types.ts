@@ -159,6 +159,35 @@ export type WorkspaceConfig = {
 	pinnedNotes: string[];
 };
 
+/** Mirrors `apps/desktop/electron/cloudSyncWiring.ts`'s `CloudSyncStatus` (charter rules R19-R30). */
+export type CloudSyncStatus =
+	| "off"
+	| "connecting"
+	| "syncing"
+	| "idle"
+	| "error"
+	| "needs-reauth"
+	| "workspace-unavailable"
+	| "workspace-too-large";
+
+/** Mirrors `apps/desktop/electron/cloudSyncWiring.ts`'s `CloudSyncWorkspaceState`. */
+export type CloudSyncWorkspaceState = {
+	backgroundSync: boolean;
+	status: CloudSyncStatus;
+	workspaceId: string | null;
+	deploymentUrl: string | null;
+	detail: string | null;
+	/** The EFFECTIVE never-synced folder-name list: this workspace's configured `cloudSync.excludedFolders`, or the built-in defaults when it has none. */
+	excludedFolders: string[];
+};
+
+export type EnableCloudSyncOptions = {
+	workspaceName: string;
+	deploymentUrl: string;
+	/** The shared Cloud Sync password (R20). Required only the first time, or to rotate it; omit to reuse whatever is already in the Keychain. */
+	password?: string;
+};
+
 /**
  * Tags an in-app save so `@mdly/doc-history` can cut a version alongside the
  * real write. Undefined by default so ordinary writes are unaffected.
@@ -326,6 +355,38 @@ export type DesktopApi = {
 		workspacePath: string,
 		config: WorkspaceConfig,
 	): Promise<void>;
+	/** Read-only: never starts or stops a watcher/subscription (R27, R29). */
+	getCloudSyncState(workspacePath: string): Promise<CloudSyncWorkspaceState>;
+	/** Turns Cloud Sync on for this workspace (R26/R27's opt-in half, R28). */
+	enableCloudSync(
+		workspacePath: string,
+		options: EnableCloudSyncOptions,
+	): Promise<CloudSyncWorkspaceState>;
+	/** Turns Cloud Sync off for this workspace (R27) — never touches another workspace's config (R26). */
+	/**
+	 * Turns cloud sync off AND deletes this workspace's cloud copy (R36).
+	 * `cloudCopyDeleted` is false when the delete could not be performed
+	 * (offline, rotated password) -- the local switch is still off, but the
+	 * copy is still in the cloud and a retry is pending, so the UI must not
+	 * report it as removed.
+	 */
+	disableCloudSync(
+		workspacePath: string,
+	): Promise<{ cloudCopyDeleted: boolean }>;
+	/**
+	 * Replaces this workspace's never-synced folder-name list and restarts a
+	 * running watcher so it takes effect at once. Rejects (writing nothing) when
+	 * an entry is a path rather than a folder name.
+	 */
+	setCloudSyncExcludedFolders(
+		workspacePath: string,
+		folders: string[],
+	): Promise<CloudSyncWorkspaceState>;
+	/** Live status updates for the D5 settings switch / status indicator (R29, R30), independent per workspace. */
+	onCloudSyncStatusChange(
+		workspacePath: string,
+		callback: (status: CloudSyncStatus, detail: string | null) => void,
+	): Promise<Unsubscribe>;
 	readFileText(path: string): Promise<string>;
 	writeFileText(
 		path: string,

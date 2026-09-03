@@ -1,0 +1,53 @@
+{
+	"name": "@mdly/cloudflare-client",
+	"version": "0.0.1",
+	"description": "SyncBackend + Subscriber implementation against the garden.theindie.app Cloudflare Worker",
+	"license": "MIT",
+	"author": "tektrg",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tektrg/mdly.git",
+		"directory": "packages/cloudflare-client"
+	},
+	"bugs": "https://github.com/tektrg/mdly/issues",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./node-ws": {
+			"types": "./dist/nodeWebSocket.d.ts",
+			"default": "./dist/nodeWebSocket.js"
+		},
+		"./keychain": {
+			"types": "./dist/keychain.d.ts",
+			"default": "./dist/keychain.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@hubble.md/sync": "workspace:*",
+		"ws": "8.18.0",
+		"zod": "^4.3.6"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"@types/ws": "8.18.1",
+		"esbuild": "0.27.0",
+		"miniflare": "4.20260701.0",
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
+	}
+}
