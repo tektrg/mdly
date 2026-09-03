@@ -1,11 +1,12 @@
-import { createConvexBackend } from "@hubble.md/convex-client";
 import type { RemoteFile, SyncBackend } from "@hubble.md/sync";
-import { api } from "@hubble.md/sync-backend";
-import type { Doc } from "@hubble.md/sync-backend/types";
-import { ConvexHttpClient } from "convex/browser";
+import {
+	createCloudflareBackend,
+	listWorkspaces,
+} from "@mdly/cloudflare-client";
 import { stripMarkdownExtension } from "@mdly/workspace-kit";
-import { categorizeError, describeError } from "../connection/convex-error";
+import { describeApiError, isUnauthorizedError } from "../connection/apiError";
 import { ensureDeviceId } from "../connection/deviceId";
+import { WORKER_BASE_URL } from "../connection/workerUrl";
 import { latest } from "../lib/latest";
 import {
 	type AssetEntry,
@@ -25,16 +26,19 @@ type Ctx = {
 
 let ctx: Ctx | null = null;
 
-function createCtx(url: string, workspaceId: string): Ctx {
+function createCtx(workspaceId: string): Ctx {
 	return {
-		backend: createConvexBackend(url),
+		backend: createCloudflareBackend({
+			baseUrl: WORKER_BASE_URL,
+			auth: { kind: "cookie" },
+		}),
 		workspaceId,
 		deviceId: ensureDeviceId(),
 	};
 }
 
-export function initActions(url: string, workspaceId: string): void {
-	ctx = createCtx(url, workspaceId);
+export function initActions(workspaceId: string): void {
+	ctx = createCtx(workspaceId);
 }
 
 export function teardownActions(): void {
@@ -59,19 +63,35 @@ type WorkspaceSnapshot = {
 };
 
 async function fetchWorkspaceSnapshot(
-	url: string,
 	workspaceId: string,
 	selectedPath: string | null,
 ): Promise<WorkspaceSnapshot> {
-	const client = new ConvexHttpClient(url);
-	const workspacesPromise = client.query(api.sync.listWorkspaces, {});
-	const backend = createConvexBackend(url);
+	const workspacesPromise = listWorkspaces({
+		baseUrl: WORKER_BASE_URL,
+		auth: { kind: "cookie" },
+	});
+	const backend = createCloudflareBackend({
+		baseUrl: WORKER_BASE_URL,
+		auth: { kind: "cookie" },
+	});
 	const filesPromise = backend.getFiles(workspaceId);
 	const assetsPromise = backend.getAssets(workspaceId);
-	const [files, assets] = await Promise.all([filesPromise, assetsPromise]);
-	const workspaces = (await workspacesPromise) as Doc<"workspaces">[];
+	// All three requests race together in one Promise.all (rather than
+	// awaiting workspacesPromise separately afterward) so that a total
+	// network failure — every request rejecting at once, R39 — can never
+	// leave workspacesPromise's own rejection unobserved: if files/assets
+	// threw first and execution moved on before `await workspacesPromise` was
+	// reached, that promise's rejection would surface as a genuine unhandled
+	// promise rejection instead of the clean, caught "can't reach the
+	// server" error this function is supposed to produce.
+	const [files, assets, workspaces] = await Promise.all([
+		filesPromise,
+		assetsPromise,
+		workspacesPromise,
+	]);
 	const workspace =
-		workspaces.find((candidate) => candidate._id === workspaceId) ?? null;
+		workspaces.find((candidate) => candidate.workspaceId === workspaceId) ??
+		null;
 	if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
 
 	const visible: FileEntry[] = files.map((f) => ({
@@ -93,20 +113,26 @@ async function fetchWorkspaceSnapshot(
 			: (files.find((file) => file.path === selectedPath) ?? null);
 
 	return {
-		workspace: { id: workspace._id, name: workspace.name },
+		workspace: { id: workspace.workspaceId, name: workspace.name },
 		files: visible,
 		assets: assetEntries,
 		currentFile,
 	};
 }
 
+/**
+ * Result kind lets callers (AppShell) distinguish "the session expired" from
+ * any other failure — a 401 should bounce the user back to the login screen
+ * instead of showing a dead-end "Reload" button that will just 401 again.
+ */
+export type LoadWorkspaceSnapshotResult = "loaded" | "unauthorized" | "failed";
+
 export const loadWorkspaceSnapshot = latest(
 	async (
 		{ isStale },
-		url: string,
 		workspaceId: string,
 		selectedPath: string | null = null,
-	): Promise<boolean> => {
+	): Promise<LoadWorkspaceSnapshotResult> => {
 		const previousSnapshot = workspaceStore.get().snapshot;
 		if (!previousSnapshot) {
 			workspaceStore.set((state) => ({
@@ -116,13 +142,9 @@ export const loadWorkspaceSnapshot = latest(
 			}));
 		}
 		try {
-			const snapshot = await fetchWorkspaceSnapshot(
-				url,
-				workspaceId,
-				selectedPath,
-			);
-			if (isStale()) return false;
-			ctx = createCtx(url, workspaceId);
+			const snapshot = await fetchWorkspaceSnapshot(workspaceId, selectedPath);
+			if (isStale()) return "failed";
+			ctx = createCtx(workspaceId);
 			appStore.set((state) => ({
 				workspace: {
 					...state.workspace,
@@ -144,7 +166,6 @@ export const loadWorkspaceSnapshot = latest(
 							currentPath: snapshot.currentFile.path,
 							pendingPath: null,
 							content: snapshot.currentFile.content,
-							savedContent: snapshot.currentFile.content,
 							basedOnHash: snapshot.currentFile.contentHash,
 							externalChange: { kind: "none" },
 							status: "ready",
@@ -154,25 +175,60 @@ export const loadWorkspaceSnapshot = latest(
 							currentPath: null,
 							pendingPath: null,
 							content: "",
-							savedContent: "",
 							basedOnHash: null,
 							externalChange: { kind: "none" },
 							status: "idle",
 							error: null,
 						},
 			}));
-			return true;
+			return "loaded";
 		} catch (err) {
-			if (isStale()) return false;
+			if (isStale()) return "failed";
 			workspaceStore.set((state) => ({
 				...state,
 				status: "error",
-				error: describeError(categorizeError(err)),
+				error: describeApiError(err),
 			}));
-			return false;
+			return isUnauthorizedError(err) ? "unauthorized" : "failed";
 		}
 	},
 );
+
+/**
+ * R36: the Worker has no push signal for "this workspace's sync was just
+ * turned off on the Mac" — `disableCloudSyncForWorkspace` (apps/desktop,
+ * frozen for this delivery) only flips local config and never calls the
+ * Worker, and the Worker (apps/www/worker, also frozen) has no
+ * unregister/disable route, only `ensureWorkspaceRegistered` (R28's
+ * enable-only half). So a browser can only find out by asking: AppShell
+ * polls this on an interval while a workspace is open, and if the workspace
+ * ever does stop appearing in `listWorkspaces`, the caller (AppShell) drops
+ * `workspace.snapshot` to null, which is what actually tears down the
+ * subscription (its effect is keyed on snapshot identity) and swaps in a
+ * clear message instead of leaving the socket open and inert.
+ */
+export type WorkspaceAvailability =
+	| "available"
+	| "unavailable"
+	| "unauthorized"
+	| "unknown";
+
+export async function checkWorkspaceAvailable(
+	workspaceId: string,
+): Promise<WorkspaceAvailability> {
+	try {
+		const workspaces = await listWorkspaces({
+			baseUrl: WORKER_BASE_URL,
+			auth: { kind: "cookie" },
+		});
+		return workspaces.some((w) => w.workspaceId === workspaceId)
+			? "available"
+			: "unavailable";
+	} catch (err) {
+		if (isUnauthorizedError(err)) return "unauthorized";
+		return "unknown";
+	}
+}
 
 export function clearCurrentPath(): void {
 	viewerStore.set((state) => ({
@@ -180,19 +236,11 @@ export function clearCurrentPath(): void {
 		currentPath: null,
 		pendingPath: null,
 		content: "",
-		savedContent: "",
 		basedOnHash: null,
 		externalChange: { kind: "none" },
 		status: "idle",
 		error: null,
 	}));
-}
-
-async function computeContentHash(content: string): Promise<string> {
-	const data = new TextEncoder().encode(content);
-	const hash = await crypto.subtle.digest("SHA-256", data);
-	const bytes = new Uint8Array(hash);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function computeBytesHash(bytes: ArrayBuffer): Promise<string> {
@@ -202,35 +250,12 @@ async function computeBytesHash(bytes: ArrayBuffer): Promise<string> {
 }
 
 /**
- * Classify a remote update against the editor's current state.
- * Mirrors apps/desktop/src/externalFileChange.ts.
- */
-type ChangeKind = "none" | "match" | "reload" | "conflict";
-
-function classifyRemoteChange(args: {
-	editorContent: string;
-	savedContent: string;
-	basedOnHash: string | null;
-	remoteContent: string;
-	remoteHash: string;
-}): ChangeKind {
-	const {
-		editorContent,
-		savedContent,
-		basedOnHash,
-		remoteContent,
-		remoteHash,
-	} = args;
-	if (basedOnHash === remoteHash) return "none";
-	if (editorContent === remoteContent) return "match";
-	if (editorContent === savedContent) return "reload";
-	return "conflict";
-}
-
-/**
- * Atomically advance baseline state (content, savedContent, basedOnHash) and
- * clear any pending external-change banner. Use whenever we accept a new
- * authoritative version of the file.
+ * Advance baseline state (content, basedOnHash) and clear any pending
+ * "deleted" banner. Use whenever we accept a new authoritative version of
+ * the file. R31: there is no "conflict" classification here — apps/www's
+ * editor is read-only, so the viewer's content can never diverge from the
+ * remote copy the way the desktop app's editable one can
+ * (apps/desktop/src/externalFileChange.ts). Every remote update simply wins.
  */
 function cleanState(
 	state: ViewerState,
@@ -240,7 +265,6 @@ function cleanState(
 	return {
 		...state,
 		content,
-		savedContent: content,
 		basedOnHash: hash,
 		externalChange: { kind: "none" },
 		status: "ready",
@@ -266,7 +290,7 @@ export async function refreshFiles(): Promise<FileEntry[]> {
 		}));
 		return visible;
 	} catch (err) {
-		console.error("refreshFiles failed:", describeError(categorizeError(err)));
+		console.error("refreshFiles failed:", describeApiError(err));
 		return [];
 	}
 }
@@ -288,7 +312,7 @@ export async function refreshAssets(): Promise<AssetEntry[]> {
 		}
 		return assets;
 	} catch (err) {
-		console.error("refreshAssets failed:", describeError(categorizeError(err)));
+		console.error("refreshAssets failed:", describeApiError(err));
 		return [];
 	}
 }
@@ -310,7 +334,10 @@ export async function resolveAssetDownloadUrl(
 	if (!asset) return null;
 	const cached = assetDownloadUrlCache.get(assetPath);
 	if (cached?.storageId === asset.storageId) return cached.url;
-	const url = await backend.getAssetDownloadUrl(asset.storageId);
+	// The browser is cookie-authenticated (same-origin), so the bare URL
+	// works directly as an <img src> — no headers to attach on this side.
+	const download = await backend.getAssetDownloadUrl(asset.storageId);
+	const url = download?.url ?? null;
 	assetDownloadUrlCache.set(assetPath, { storageId: asset.storageId, url });
 	return url;
 }
@@ -323,10 +350,13 @@ export async function uploadAssetFile(args: {
 	const bytes = await args.file.arrayBuffer();
 	const contentHash = await computeBytesHash(bytes);
 	const paths = assetPathsForNote(args.path, contentHash, args.file);
-	const uploadUrl = await backend.generateAssetUploadUrl();
-	const uploadResponse = await fetch(uploadUrl, {
+	const upload = await backend.generateAssetUploadUrl();
+	const uploadResponse = await fetch(upload.url, {
 		method: "POST",
-		headers: { "Content-Type": args.file.type || "application/octet-stream" },
+		headers: {
+			"Content-Type": args.file.type || "application/octet-stream",
+			...upload.headers,
+		},
 		body: bytes,
 	});
 	if (!uploadResponse.ok) {
@@ -422,7 +452,6 @@ export const loadPath = latest(
 					currentPath: path,
 					pendingPath: null,
 					content: "",
-					savedContent: "",
 					basedOnHash: null,
 					externalChange: { kind: "none" },
 					status: "error",
@@ -448,7 +477,7 @@ export const loadPath = latest(
 				...s,
 				pendingPath: null,
 				status: "error",
-				error: describeError(categorizeError(err)),
+				error: describeApiError(err),
 			}));
 		} finally {
 			window.clearTimeout(timer);
@@ -456,98 +485,14 @@ export const loadPath = latest(
 	},
 );
 
-export function updateEditorContent(path: string, content: string): void {
-	const state = viewerStore.get();
-	if (state.currentPath !== path) return;
-	// Type-along resolution: if the user manually edits to match the pending
-	// remote, the conflict is gone — clear it and advance baseline.
-	if (
-		state.externalChange.kind === "conflict" &&
-		content === state.externalChange.remoteContent
-	) {
-		viewerStore.set(
-			cleanState(state, content, state.externalChange.remoteHash),
-		);
-		return;
-	}
-	viewerStore.set({ ...state, content });
-}
-
-export async function savePathContent(
-	path: string,
-	content: string,
-): Promise<void> {
-	const { backend, workspaceId, deviceId } = requireCtx();
-	const state = viewerStore.get();
-	if (
-		state.currentPath === path &&
-		(state.externalChange.kind === "conflict" ||
-			state.externalChange.kind === "deleted")
-	) {
-		return;
-	}
-	// Skip no-op saves only when we're still on the same file and content
-	// hasn't changed since the last successful save.
-	if (state.currentPath === path && content === state.savedContent) return;
-	try {
-		if (state.currentPath === path && state.basedOnHash !== null) {
-			const remote = await backend.getFiles(workspaceId, {
-				includeDeleted: true,
-			});
-			const latestState = viewerStore.get();
-			if (
-				latestState.currentPath === path &&
-				(latestState.externalChange.kind === "conflict" ||
-					latestState.externalChange.kind === "deleted")
-			) {
-				return;
-			}
-			const remoteFile = remote.find((f) => f.path === path);
-			if (!remoteFile || remoteFile.deleted) {
-				markRemoteDeleted(path);
-				return;
-			}
-			if (remoteFile.contentHash !== latestState.basedOnHash) {
-				applyRemoteChange(path, remoteFile.content, remoteFile.contentHash);
-				return;
-			}
-		}
-		const hash = await computeContentHash(content);
-		await backend.pushFile({
-			workspaceId,
-			path,
-			contentHash: hash,
-			content,
-			deviceId,
-		});
-		viewerStore.set((s) => {
-			if (s.currentPath !== path) return s;
-			if (
-				s.externalChange.kind === "conflict" ||
-				s.externalChange.kind === "deleted"
-			) {
-				return s;
-			}
-			// If the editor hasn't been further edited during the push, run
-			// cleanState (advances baseline AND clears any stale conflict from
-			// before this save). If the user typed more, only advance baseline
-			// metadata — don't touch the live editor content.
-			if (s.content === content) {
-				return cleanState(s, content, hash);
-			}
-			return {
-				...s,
-				savedContent: content,
-				basedOnHash: hash,
-			};
-		});
-	} catch (err) {
-		console.error(
-			"savePathContent failed:",
-			describeError(categorizeError(err)),
-		);
-	}
-}
+/**
+ * R31: apps/www never edits or saves note content — this is a deliberate
+ * no-op kept only because `EditorView.editable={false}` still requires an
+ * `onLocalChange` handler (its ProseMirror surface already rejects direct
+ * typing; this is the belt to that suspenders for any other path — e.g. the
+ * front-matter properties panel — that might otherwise call it).
+ */
+export function updateEditorContent(_path: string, _content: string): void {}
 
 export function markRemoteDeleted(path: string): void {
 	const state = viewerStore.get();
@@ -561,8 +506,11 @@ export function markRemoteDeleted(path: string): void {
 }
 
 /**
- * Apply a remote update for the currently-open file. Classifies the change and
- * dispatches into a single branch that updates all relevant fields atomically.
+ * Apply a remote update for the currently-open file. R31: there is no
+ * save/conflict-resolution path in apps/www — the viewer is read-only, so
+ * the remote copy always simply wins. A no-op when the hash hasn't actually
+ * moved, so a redundant broadcast doesn't clear an unrelated "deleted"
+ * banner or force an extra render.
  */
 export function applyRemoteChange(
 	path: string,
@@ -571,54 +519,11 @@ export function applyRemoteChange(
 ): void {
 	const state = viewerStore.get();
 	if (state.currentPath !== path) return;
-	const kind = classifyRemoteChange({
-		editorContent: state.content,
-		savedContent: state.savedContent,
-		basedOnHash: state.basedOnHash,
-		remoteContent,
-		remoteHash,
-	});
-	switch (kind) {
-		case "none":
-			// No actual change relative to our baseline. Only thing to do is
-			// clear a stale conflict banner if one is lingering.
-			if (state.externalChange.kind !== "none") {
-				viewerStore.set({ ...state, externalChange: { kind: "none" } });
-			}
-			return;
-		case "match":
-			// Editor already matches remote (type-along resolution, or our own
-			// push echoing back with the new hash). Advance baseline + clear.
-			viewerStore.set({
-				...state,
-				savedContent: remoteContent,
-				basedOnHash: remoteHash,
-				externalChange: { kind: "none" },
-			});
-			return;
-		case "reload":
-			// Editor was clean. Adopt the remote silently.
-			viewerStore.set(cleanState(state, remoteContent, remoteHash));
-			return;
-		case "conflict":
-			// Editor is dirty and remote diverges. Surface the banner.
-			viewerStore.set({
-				...state,
-				externalChange: { kind: "conflict", remoteContent, remoteHash },
-			});
-			return;
+	if (
+		state.basedOnHash === remoteHash &&
+		state.externalChange.kind === "none"
+	) {
+		return;
 	}
-}
-
-export function reloadFromRemote(): void {
-	const state = viewerStore.get();
-	if (state.externalChange.kind !== "conflict") return;
-	const { remoteContent, remoteHash } = state.externalChange;
 	viewerStore.set(cleanState(state, remoteContent, remoteHash));
-}
-
-export function dismissExternalChange(): void {
-	const state = viewerStore.get();
-	if (state.externalChange.kind !== "conflict") return;
-	viewerStore.set({ ...state, externalChange: { kind: "none" } });
 }

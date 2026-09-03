@@ -4,13 +4,8 @@ import {
 	wikiDisplayNameForTarget,
 } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
-import {
-	loadPath,
-	savePathContent,
-	updateEditorContent,
-} from "../store/actions";
+import { loadPath, updateEditorContent } from "../store/actions";
 import { filesStore } from "../store/state";
-import { handleImageDrop, handleImagePaste } from "./handleImageUpload";
 import { createWebImageExtension } from "./WebImageExtension";
 
 type Props = {
@@ -18,6 +13,18 @@ type Props = {
 	initialMarkdown: string;
 };
 
+/**
+ * R31: read-only. `editable={false}` rejects direct typing at the
+ * ProseMirror level and gates the kit's own save path (see EditorView's
+ * `editable` doc comment in @mdly/workspace-kit). `onPaste`/`onDrop` are
+ * deliberately not wired here either — the Convex-era version of this file
+ * routed them to `handleImagePaste`/`handleImageDrop` to insert+upload a new
+ * image; that upload entry point is a write, so it's dropped along with
+ * everything else "the Mac is the sole author of notes" rules out.
+ * `createWebImageExtension()` stays: it's needed to *render* images that are
+ * already part of a synced note (resolves each image's authenticated
+ * download URL), which is a read, not a write.
+ */
 export function EditorView({ path, initialMarkdown }: Props) {
 	const files = useStoreValue(filesStore);
 	const wikiTargets: WikiTarget[] = files.map((file) => ({
@@ -32,10 +39,9 @@ export function EditorView({ path, initialMarkdown }: Props) {
 			initialMarkdown={initialMarkdown}
 			wikiTargets={wikiTargets}
 			extensions={[createWebImageExtension()]}
-			onPaste={(editor, event) => handleImagePaste({ editor, event })}
-			onDrop={(editor, event) => handleImageDrop({ editor, event })}
+			editable={false}
 			onLocalChange={updateEditorContent}
-			onSave={savePathContent}
+			onSave={() => {}}
 			onOpenExternalLink={(href) => {
 				window.open(href, "_blank", "noopener");
 			}}
