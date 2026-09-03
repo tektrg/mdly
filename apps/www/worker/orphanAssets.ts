@@ -2,6 +2,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
+import { normalizeWorkspacePath } from "./paths.js";
 
 type MarkdownFile = {
 	path: string;
@@ -117,18 +118,4 @@ function parentDir(path: string): string {
 
 function joinWorkspacePath(dir: string, path: string): string {
 	return dir ? `${dir}/${path}` : path;
-}
-
-function normalizeWorkspacePath(path: string): string | null {
-	const parts: string[] = [];
-	for (const part of path.replaceAll("\\", "/").split("/")) {
-		if (!part || part === ".") continue;
-		if (part === "..") {
-			if (parts.length === 0) return null;
-			parts.pop();
-			continue;
-		}
-		parts.push(part);
-	}
-	return parts.join("/");
 }

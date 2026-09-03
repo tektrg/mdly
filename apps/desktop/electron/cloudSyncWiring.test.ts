@@ -9,7 +9,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { FSWatcher } from "chokidar";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createFakeBackend,
 	createFakeKeychain,
@@ -96,6 +97,34 @@ describe("isPrunedCloudSyncPath (R19)", () => {
 			isPrunedCloudSyncPath("/ws/node_modules/pkg/readme.md", "/ws", custom),
 		).toBe(false);
 	});
+
+	it("an anchored entry prunes only that workspace-relative path, not the same name elsewhere", () => {
+		const custom = ["fe/docs"];
+		expect(isPrunedCloudSyncPath("/ws/fe/docs/a.md", "/ws", custom)).toBe(
+			true,
+		);
+		expect(
+			isPrunedCloudSyncPath("/ws/fe/docs/nested/b.md", "/ws", custom),
+		).toBe(true);
+		// Same folder name at a different path is NOT pruned.
+		expect(isPrunedCloudSyncPath("/ws/docs/a.md", "/ws", custom)).toBe(false);
+		expect(isPrunedCloudSyncPath("/ws/other/fe/docs/a.md", "/ws", custom)).toBe(
+			false,
+		);
+		// While a bare name still matches at any depth.
+		expect(isPrunedCloudSyncPath("/ws/a/docs/b.md", "/ws", ["docs"])).toBe(
+			true,
+		);
+	});
+
+	it("a leading slash anchors to the root (gitignore meaning)", () => {
+		expect(isPrunedCloudSyncPath("/ws/dist/a.md", "/ws", ["/dist"])).toBe(
+			true,
+		);
+		expect(isPrunedCloudSyncPath("/ws/a/dist/b.md", "/ws", ["/dist"])).toBe(
+			false,
+		);
+	});
 });
 
 describe("effectiveExcludedFolders", () => {
@@ -135,12 +164,19 @@ describe("normalizeExcludedFolders", () => {
 		expect(normalizeExcludedFolders(["", "  "])).toEqual([]);
 	});
 
-	it("rejects an entry containing a path separator, saying entries are folder names", () => {
-		expect(() => normalizeExcludedFolders(["notes/drafts"])).toThrow(
-			/folder NAMES only/i,
+	it("accepts workspace-anchored paths (gitignore convention) and preserves leading-slash anchors", () => {
+		expect(
+			normalizeExcludedFolders(["notes/drafts", "/fe/docs/", "notes\\drafts"]),
+		).toEqual(["notes/drafts", "/fe/docs"]);
+		expect(normalizeExcludedFolders(["/dist"])).toEqual(["/dist"]);
+	});
+
+	it("rejects entries that escape the workspace or are empty segments", () => {
+		expect(() => normalizeExcludedFolders(["../escape"])).toThrow(
+			/not a valid exclusion/i,
 		);
-		expect(() => normalizeExcludedFolders(["notes\\drafts"])).toThrow(
-			/folder NAMES only/i,
+		expect(() => normalizeExcludedFolders(["a//b"])).toThrow(
+			/not a valid exclusion/i,
 		);
 	});
 });
@@ -185,7 +221,28 @@ describe("setCloudSyncExcludedFolders", () => {
 		expect(reread.excludedFolders).toEqual([".claude", "vendor"]);
 	});
 
-	it("rejects a path-shaped entry and writes NOTHING to the config", async () => {
+	it("persists a workspace-anchored path entry (selection UIs produce paths)", async () => {
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: false,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+
+		const state = await setCloudSyncExcludedFolders(
+			workspaceRoot,
+			[".claude", "notes/drafts"],
+			depsFor(),
+		);
+
+		expect(state.excludedFolders).toEqual([".claude", "notes/drafts"]);
+		const raw = await readRawConfig(workspaceRoot);
+		expect(raw.cloudSync.excludedFolders).toEqual([
+			".claude",
+			"notes/drafts",
+		]);
+	});
+
+	it("rejects a workspace-escaping entry and writes NOTHING to the config", async () => {
 		await writeCloudSyncConfigFixture(workspaceRoot, {
 			backgroundSync: false,
 			workspaceId: "ws-1",
@@ -196,10 +253,10 @@ describe("setCloudSyncExcludedFolders", () => {
 		await expect(
 			setCloudSyncExcludedFolders(
 				workspaceRoot,
-				[".claude", "notes/drafts"],
+				[".claude", "../escape"],
 				depsFor(),
 			),
-		).rejects.toThrow(/folder NAMES only/i);
+		).rejects.toThrow(/not a valid exclusion/i);
 
 		expect(await readRawConfig(workspaceRoot)).toEqual(before);
 		expect(
@@ -474,34 +531,73 @@ describe("R36 — turning cloud sync off deletes the workspace's cloud copy hone
 
 describe("250ms debounce (R19)", () => {
 	it("collapses a burst of writes into exactly one sync run", async () => {
-		await writeCloudSyncConfigFixture(workspaceRoot, {
-			backgroundSync: true,
-			workspaceId: "ws-1",
-			deploymentUrl: "http://127.0.0.1:8787",
-		});
+		// Deterministic by construction: an injected fake watcher emits all
+		// five events synchronously (no fs-timing in delivery), and fake
+		// timers collapse them through ONE 250ms debounce window. Real time
+		// is used only as a generous completion window for the tiny sync
+		// itself — never as a race window. (The old all-real version failed
+		// ~1 in 8 runs under load. Pure-virtual time was tried: it starves
+		// real fs I/O inside plan/execute, so the run never completes.)
 		const { backend, calls } = createFakeBackend();
 		const { subscriber } = createFakeSubscriber();
+		const listeners = new Map<string, Set<(payload?: string) => void>>();
+		const fakeWatcher = {
+			on(event: string, callback: (payload?: string) => void) {
+				let set = listeners.get(event);
+				if (!set) {
+					set = new Set();
+					listeners.set(event, set);
+				}
+				set.add(callback);
+				return this;
+			},
+			async close() {},
+		} as unknown as FSWatcher;
 		const deps = {
 			echoTracker: createSelfWriteEchoTracker(),
 			grantedRoots: [workspaceRoot],
 			keychain: createFakeKeychain({ [SHARED_CLOUD_SYNC_ACCOUNT]: "pw" }),
 			createBackend: () => backend,
 			createSubscriber: () => subscriber,
+			createWatcher: () => fakeWatcher,
 			// deliberately NOT overriding debounceMs — this proves the real 250ms default (R19).
 		};
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
 
 		await startCloudSyncWatcherIfEnabled(workspaceRoot, deps);
 		const callsBeforeBurst = calls.getFiles;
 
-		for (let i = 0; i < 5; i++) {
-			await fs.writeFile(
-				path.join(workspaceRoot, `burst-${i}.md`),
-				`content ${i}`,
-			);
+		vi.useFakeTimers();
+		try {
+			for (let i = 0; i < 5; i++) {
+				await fs.writeFile(
+					path.join(workspaceRoot, `burst-${i}.md`),
+					`content ${i}`,
+				);
+				for (const callback of listeners.get("add") ?? [])
+					callback(path.join(workspaceRoot, `burst-${i}.md`));
+			}
+			// Exactly one debounce window fires for all five events.
+			await vi.advanceTimersByTimeAsync(300);
+		} finally {
+			vi.useRealTimers();
 		}
 
-		await waitFor(() => calls.getFiles > callsBeforeBurst, 4000);
-		await new Promise((resolve) => setTimeout(resolve, 400));
-		expect(calls.getFiles - callsBeforeBurst).toBe(1);
-	}, 10000);
+		// Generous real-time completion window for the 5-file sync.
+		await waitFor(() => calls.getFiles - callsBeforeBurst === 2, 10000);
+		// One run = two manifest fetches (plan() decides, execute() re-reads
+		// for pulls/conflicts so a stale preview can never clobber fresh
+		// remote edits). Five writes collapsing to 2 fetches still proves a
+		// single run — without coalescing it would be five runs / ten fetches.
+		expect(calls.pushFile.filter((p) => p.startsWith("burst-")).length).toBe(
+			5,
+		);
+		// Quiet settles nothing more: no events, no timers, no runs.
+		await new Promise((resolve) => setTimeout(resolve, 800));
+		expect(calls.getFiles - callsBeforeBurst).toBe(2);
+	});
 });

@@ -9,10 +9,10 @@
  * (via `docHistoryWiring.ts`'s `getHistoryStoreForWorkspace(...).resolveDocId`),
  * so a comment thread survives a file rename the same way a revision log does.
  */
-import type { RevisionAuthor } from "@mdly/doc-history";
-import { createNodeFileSystem } from "@mdly/doc-history/node";
+
 import {
 	type CommentThread,
+	deleteThread,
 	listThreads,
 	openThread,
 	reopen,
@@ -20,6 +20,8 @@ import {
 	resolve,
 	type TextAnchor,
 } from "@mdly/doc-comments";
+import type { RevisionAuthor } from "@mdly/doc-history";
+import { createNodeFileSystem } from "@mdly/doc-history/node";
 import {
 	getHistoryStoreForWorkspace,
 	resolveHistoryWorkspaceRoot,
@@ -49,9 +51,8 @@ export async function resolveCommentDocId(
 	workspaceRoot: string,
 	relativePath: string,
 ): Promise<string> {
-	const { id } = await getHistoryStoreForWorkspace(workspaceRoot).resolveDocId(
-		relativePath,
-	);
+	const { id } =
+		await getHistoryStoreForWorkspace(workspaceRoot).resolveDocId(relativePath);
 	return id;
 }
 
@@ -156,6 +157,20 @@ export async function reopenCommentThreadForPath(
 		params.grantedRoots,
 	);
 	await reopen(commentsFileSystem, workspaceRoot, {
+		docId,
+		threadId: params.threadId,
+		author: params.author,
+	});
+}
+
+export async function deleteCommentThreadForPath(
+	params: CommentThreadStateChangeForPathParams,
+): Promise<void> {
+	const { workspaceRoot, docId } = await resolveCommentTarget(
+		params.absoluteFilePath,
+		params.grantedRoots,
+	);
+	await deleteThread(commentsFileSystem, workspaceRoot, {
 		docId,
 		threadId: params.threadId,
 		author: params.author,

@@ -1,6 +1,10 @@
 import os from "node:os";
 import { contextBridge, ipcRenderer } from "electron";
-import type { CloudSyncStatus, DesktopApi } from "../src/desktopApi/types";
+import type {
+	CloudSyncStatus,
+	DesktopApi,
+	SyncProgress,
+} from "../src/desktopApi/types";
 
 function subscribe<T extends unknown[]>(
 	channel: string,
@@ -45,6 +49,21 @@ const desktopApi = {
 			workspacePath,
 			folders,
 		}),
+	getCloudSyncPreview: (workspacePath, options) =>
+		ipcRenderer.invoke("desktop:cloud-sync-prepare-preview", {
+			workspacePath,
+			...options,
+		}),
+	approveCloudSyncPendingFolder: (workspacePath, folderPath) =>
+		ipcRenderer.invoke("desktop:cloud-sync-approve-pending", {
+			workspacePath,
+			folderPath,
+		}),
+	excludeCloudSyncPendingFolder: (workspacePath, folderPath) =>
+		ipcRenderer.invoke("desktop:cloud-sync-exclude-pending", {
+			workspacePath,
+			folderPath,
+		}),
 	onCloudSyncStatusChange: async (workspacePath, callback) => {
 		const watchId = String(++nextCloudSyncWatchId);
 		const unsubscribeEvents = subscribe(
@@ -53,6 +72,23 @@ const desktopApi = {
 				callback(state.status, state.detail),
 		);
 		await ipcRenderer.invoke("desktop:cloud-sync-watch-status", {
+			watchId,
+			workspacePath,
+		});
+		return () => {
+			unsubscribeEvents();
+			void ipcRenderer.invoke("desktop:cloud-sync-unwatch-status", {
+				watchId,
+			});
+		};
+	},
+	onCloudSyncProgressChange: async (workspacePath, callback) => {
+		const watchId = String(++nextCloudSyncWatchId);
+		const unsubscribeEvents = subscribe(
+			`desktop:cloud-sync-progress:${watchId}`,
+			(progress: SyncProgress) => callback(progress),
+		);
+		await ipcRenderer.invoke("desktop:cloud-sync-watch-progress", {
 			watchId,
 			workspacePath,
 		});
@@ -87,6 +123,8 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:comment-resolve", { path, threadId }),
 	reopenCommentThread: (path, threadId) =>
 		ipcRenderer.invoke("desktop:comment-reopen", { path, threadId }),
+	deleteCommentThread: (path, threadId) =>
+		ipcRenderer.invoke("desktop:comment-delete-thread", { path, threadId }),
 	listAgentTools: () => ipcRenderer.invoke("desktop:agent-list-tools"),
 	callAgentTool: (name, input) =>
 		ipcRenderer.invoke("desktop:agent-call-tool", { name, input }),

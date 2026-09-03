@@ -1,6 +1,21 @@
 import type { Env } from "../env.js";
-import { json, readJsonBody } from "../http.js";
+import {
+	forbiddenDeviceIdResponse,
+	json,
+	readJsonBody,
+	requestTooLargeResponse,
+} from "../http.js";
 import { workspaceStub } from "./workspaceStub.js";
+
+function assetErrorStatus(code: string): number {
+	if (code === "ASSET_REFERENCE_ERROR") return 409;
+	if (code === "INVALID_PATH") return 400;
+	return 500;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
+}
 
 export function assetR2Key(hash: string): string {
 	return `assets/${hash}`;
@@ -90,31 +105,52 @@ export async function handlePushAsset(
 		contentHash?: string;
 		deviceId?: string;
 	}>(request);
-	if (!body?.workspaceId || !body.path || !body.storageId || !body.deviceId) {
+	const workspaceId = body?.workspaceId;
+	const path = body?.path;
+	const storageId = body?.storageId;
+	const deviceId = body?.deviceId;
+	const contentHash = body?.contentHash;
+	if (
+		!isNonEmptyString(workspaceId) ||
+		!isNonEmptyString(path) ||
+		!isNonEmptyString(storageId) ||
+		!isNonEmptyString(deviceId) ||
+		(contentHash !== undefined && typeof contentHash !== "string")
+	) {
 		return json(
-			{ error: "workspaceId, path, storageId and deviceId are required" },
+			{
+				error:
+					"workspaceId, path, storageId and deviceId are required non-empty strings",
+			},
 			{ status: 400 },
 		);
 	}
+	const tooLarge = requestTooLargeResponse(body);
+	if (tooLarge) return tooLarge;
+	const badDevice = forbiddenDeviceIdResponse(deviceId);
+	if (badDevice) return badDevice;
 
-	const head = await env.ASSET_BUCKET.head(assetR2Key(body.storageId));
+	const head = await env.ASSET_BUCKET.head(assetR2Key(storageId));
 	if (!head) {
 		return json(
 			{
-				error: `No uploaded object found for storageId "${body.storageId}" — upload before pushAsset.`,
+				error: `No uploaded object found for storageId "${storageId}" — upload before pushAsset.`,
 				code: "ASSET_REFERENCE_ERROR",
 			},
 			{ status: 409 },
 		);
 	}
 
-	const result = await workspaceStub(env, body.workspaceId).pushAsset({
-		path: body.path,
-		hash: body.storageId,
-		deviceId: body.deviceId,
+	const result = await workspaceStub(env, workspaceId).pushAsset({
+		path,
+		hash: storageId,
+		deviceId,
 	});
 	if (!result.ok) {
-		return json({ error: result.message, code: result.code }, { status: 500 });
+		return json(
+			{ error: result.message, code: result.code },
+			{ status: assetErrorStatus(result.code) },
+		);
 	}
 	return json({ ok: true, version: result.version });
 }
@@ -129,15 +165,35 @@ export async function handleSoftDeleteAsset(
 		path?: string;
 		deviceId?: string;
 	}>(request);
-	if (!body?.workspaceId || !body.path || !body.deviceId) {
+	const workspaceId = body?.workspaceId;
+	const path = body?.path;
+	const deviceId = body?.deviceId;
+	if (
+		!isNonEmptyString(workspaceId) ||
+		!isNonEmptyString(path) ||
+		!isNonEmptyString(deviceId)
+	) {
 		return json(
-			{ error: "workspaceId, path and deviceId are required" },
+			{
+				error:
+					"workspaceId, path and deviceId are required non-empty strings",
+			},
 			{ status: 400 },
 		);
 	}
-	const result = await workspaceStub(env, body.workspaceId).deleteAsset({
-		path: body.path,
-		deviceId: body.deviceId,
+	const tooLarge = requestTooLargeResponse(body);
+	if (tooLarge) return tooLarge;
+	const badDevice = forbiddenDeviceIdResponse(deviceId);
+	if (badDevice) return badDevice;
+	const result = await workspaceStub(env, workspaceId).deleteAsset({
+		path,
+		deviceId,
 	});
+	if (!result.ok) {
+		return json(
+			{ error: result.message, code: result.code },
+			{ status: assetErrorStatus(result.code) },
+		);
+	}
 	return json({ ok: true, version: result.version });
 }

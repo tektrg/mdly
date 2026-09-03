@@ -10,6 +10,16 @@ import { z } from "zod/v4";
 // next time any `hubble cloud` command ran. `.passthrough()` keeps any
 // unrecognized top-level key intact across that round trip; it does not
 // change validation of the fields this schema DOES know about.
+export const PendingFolderSchema = z.object({
+	/** Workspace-relative POSIX path of the held folder. */
+	path: z.string(),
+	/** Lower bound — the detector bails at 1,001, so this is "at least". */
+	fileCountAtLeast: z.number(),
+	dirCountAtLeast: z.number().optional(),
+	discoveredAt: z.number(),
+});
+export type PendingFolder = z.infer<typeof PendingFolderSchema>;
+
 export const WorkspaceConfigSchema = z
 	.object({
 		cloudSync: z
@@ -27,13 +37,22 @@ export const WorkspaceConfigSchema = z
 				// than the Mac silently claiming "deleted" when nothing was.
 				// Cleared once the retry succeeds.
 				pendingRemoteDelete: z.boolean().optional(),
-				// Folder NAMES (never paths) that the desktop background watcher
-				// must never descend into, matched at any depth below the
-				// workspace root. Absent means "use the built-in defaults" rather
-				// than "exclude nothing", so configs written before this field
-				// existed keep working and the default list can grow later
-				// without rewriting every workspace's config file.
+				// Exclusion entries with gitignore's own convention in ONE list: a
+				// bare name (`node_modules`) matches at any depth; an entry
+				// containing a separator (`fe/docs`) is anchored to the workspace
+				// root. Built-in defaults stay name-based and unchanged. Absent
+				// means "use the built-in defaults" rather than "exclude
+				// nothing".
 				excludedFolders: z.array(z.string()).optional(),
+				// Folders held out of sync until the user approves them (D-LW5).
+				// First sync IS this queue at t=0 — one surface, one persisted
+				// state, not two features.
+				pendingFolders: z.array(PendingFolderSchema).optional(),
+				// Top-level dirs the user explicitly approved. Approval is
+				// DURABLE: the vet check never spontaneously re-holds an
+				// approved path (stale watcher backlog must not un-approve),
+				// and restarts/enables carry it over like exclusions.
+				approvedFolders: z.array(z.string()).optional(),
 			})
 			.optional(),
 	})
@@ -44,6 +63,13 @@ export type CloudSyncConfig = NonNullable<WorkspaceConfig["cloudSync"]>;
 export const FileStateSchema = z.object({
 	hash: z.string(),
 	lastSyncedAt: z.number(),
+	// Cheap-change-detection hint (D-LW Tier 1.2): "might have changed →
+	// verify by hashing", never proof. Optional so state files written before
+	// these fields existed still parse. Unit is SECONDS since epoch (the
+	// walker's clock) — states written by the previous cut used ms and will
+	// simply miss the hint once, then rewrite. A miss only costs a hash.
+	mtime: z.number().optional(),
+	size: z.number().optional(),
 });
 export type FileState = z.infer<typeof FileStateSchema>;
 
@@ -99,3 +125,64 @@ export type AuthorizedUrl = {
 	url: string;
 	headers?: Record<string, string>;
 };
+
+/** Auto-exclusion reason shown greyed with the folder in the review UI. */
+export type FolderAutoExcludeReason =
+	| "gitignored"
+	| "nested-repo"
+	| "over-threshold";
+
+/** Per-folder roll-up of a sync plan — the review UI selects folders, not files. */
+export type FolderSummaryEntry = {
+	/** Top-level folder (POSIX, relative), or "(root)" for workspace-top files. */
+	folder: string;
+	fileCount: number;
+	bytes: number;
+	autoExcluded?: FolderAutoExcludeReason;
+};
+
+/** One decided file action inside a plan. */
+export type PlannedPush = {
+	path: string;
+	hash: string;
+	content: string;
+	mtime?: number;
+	size?: number;
+};
+export type PlannedPull = { path: string; hash: string; content: string };
+export type PlannedDelete = {
+	path: string;
+	kind: "local" | "remote-tombstone";
+};
+
+/**
+ * The decidable half of sync (D-LW3): everything `execute()` will do,
+ * computed before anything is pushed/pulled. The dry-run preview and the
+ * real count come from the SAME call, so the number shown before enabling
+ * is the number that actually happens.
+ */
+export type SyncPlan = {
+	toPush: PlannedPush[];
+	toPull: PlannedPull[];
+	toDelete: PlannedDelete[];
+	conflicts: string[];
+	unchanged: number;
+	assetOps: {
+		toPush: { path: string; hash: string; mtime?: number; size?: number }[];
+		toPull: string[];
+		toDelete: string[];
+	};
+	folders: FolderSummaryEntry[];
+	totalOps: number;
+};
+
+/** Structured progress payload — the old enum+string channel cannot carry counts. */
+export type SyncProgress = {
+	/** `scan` is indeterminate (no total exists until the walk ends). */
+	phase: "scan" | "push" | "pull" | "assets" | "done";
+	done: number;
+	total: number | null;
+	currentPath?: string;
+};
+
+export type SyncProgressCallback = (progress: SyncProgress) => void;

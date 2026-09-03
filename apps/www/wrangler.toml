@@ -5,8 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 # Custom domain — the deploy target (D2/R45). Must be a top-level key
 # (before any [table] header) or TOML folds it into the preceding table.
-# NOT deployed by this delivery (Stage 1 scope stops before `wrangler
-# deploy`) — see DEPLOY_NOTES.md for what deploying this needs.
+# Deployed at garden.theindie.app via `wrangler deploy`.
 routes = [
 	{ pattern = "garden.theindie.app", custom_domain = true }
 ]
@@ -23,15 +22,13 @@ run_worker_first = ["/api/*"]
 # Session + workspace-registry store: session-id (httpOnly cookie) -> stored
 # session; also holds the "workspace-registry" JSON blob (R28/R33). A Worker
 # fully separate from apps/notion-web's own SESSIONS namespace (R47) — this
-# id is a local-dev placeholder; see DEPLOY_NOTES.md for the real
-# `wrangler kv namespace create SESSIONS` step this delivery could not run.
+# id is the live production namespace serving garden.theindie.app.
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "c15721990d2f4c568a8ea539243f5161"
 
 # Content-addressed asset + (Phase 2) version bytes: key = `assets/<sha256>`.
-# Placeholder bucket name; see DEPLOY_NOTES.md for the real
-# `wrangler r2 bucket create` step this delivery could not run.
+# Live bucket bound to this Worker in production (serves garden.theindie.app).
 [[r2_buckets]]
 binding = "ASSET_BUCKET"
 bucket_name = "mdly-garden-assets"
@@ -46,8 +43,21 @@ tag = "v1"
 new_sqlite_classes = ["WorkspaceDurableObject"]
 
 # Nightly orphan-asset GC (R5) — same time-of-day as the old Convex cron.
-[triggers]
-crons = ["0 4 * * *"]
+#
+# DISARMED 2026-09-03. `referencedAssetPaths` only counts a markdown image
+# reference when a path segment ends in `.assets`, but `POST /api/assets`
+# accepts any path and the desktop asset walker uploads images from anywhere
+# in the workspace. An image at e.g. `images/logo.png` referenced by a live
+# note is therefore marked orphaned, tombstoned after the grace period, and
+# deleted from R2 — and the tombstone propagates to the desktop, which deletes
+# the user's local original too. Reproduced end-to-end against real workerd
+# driving runOrphanAssetCleanup.
+#
+# Re-enable ONLY after the reference matcher and the asset write path agree on
+# what counts as an asset (same class as the writer/matcher split that caused
+# the earlier trim data-loss bug — see .brief-do-fix-round-4.md).
+# [triggers]
+# crons = ["0 4 * * *"]
 
 # Secrets (set via `wrangler secret put`, not committed):
 #   APP_PASSWORD — the single shared login password (R38, R41).

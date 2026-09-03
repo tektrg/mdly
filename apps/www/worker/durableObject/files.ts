@@ -1,5 +1,6 @@
 import { slotForDevice } from "./devices.js";
 import { SlotInvariantViolationError } from "./errors.js";
+import { addWorkspaceBytes, ensureBytesCounter } from "./schema.js";
 
 export type FileRow = {
 	path: string;
@@ -59,8 +60,14 @@ export function getFiles(
  * by a caller that has NEVER registered a slot — i.e. the desktop app or CLI
  * (R3: browsers always register; desktop/CLI never do), matching "the
  * desktop app owns the canonical log" from the spec.
+ *
+ * Paths reaching here are already normalised (`canonicalFilePath` in the
+ * DO — structural `.`/`..`/slash collapsing only, byte-preserving within
+ * segments), so the stored path is the checked path: `note.jsonl ` is simply
+ * a different, harmless file from `note.jsonl`, never a bypass. The `.jsonl`
+ * extension matches case-insensitively.
  */
-const COMMENT_LOG_PATTERN = /^\.mdly\/comments\/(.+?)(?: (\d+))?\.jsonl$/;
+const COMMENT_LOG_PATTERN = /^\.mdly\/comments\/(.+?)(?: (\d+))?\.jsonl$/i;
 
 export function assertCommentLogSlotInvariant(
 	sql: SqlStorage,
@@ -95,6 +102,14 @@ export function assertCommentLogSlotInvariant(
  * within a single DO instance — the DO's single-threaded JS execution model
  * plus this synchronous SQLite API is what makes "no error thrown, last
  * write deterministically wins" true rather than merely likely.
+ *
+ * Also maintains the running byte total for the storage-cap check (BUG-LW1):
+ * reads the OLD row by primary key (O(1)) to compute the delta, then adjusts
+ * the counter — never a table scan. Lengths use SQLite `LENGTH()` semantics
+ * (via `SELECT LENGTH(?)`), not JS `.length`, so the counter matches
+ * `SUM(LENGTH(content))` exactly even for non-BMP text (emoji), where the
+ * two disagree (UTF-16 code units vs code points). `SELECT LENGTH(?)` reads
+ * zero table rows.
  */
 export function upsertFile(
 	sql: SqlStorage,
@@ -105,6 +120,14 @@ export function upsertFile(
 		deviceId: string;
 	},
 ): void {
+	ensureBytesCounter(sql);
+	const old = sql
+		.exec<{ len: number; deleted: number }>(
+			`SELECT LENGTH(content) AS len, deleted FROM files WHERE path = ?`,
+			args.path,
+		)
+		.toArray()[0];
+	const oldBytes = old && old.deleted === 0 ? old.len : 0;
 	const now = Date.now();
 	sql.exec(
 		`INSERT INTO files (path, contentHash, content, updatedAt, deviceId, deleted)
@@ -121,16 +144,30 @@ export function upsertFile(
 		now,
 		args.deviceId,
 	);
+	const newBytes = sql
+		.exec<{ len: number }>(`SELECT LENGTH(?) AS len`, args.content)
+		.one().len;
+	addWorkspaceBytes(sql, newBytes - oldBytes);
 }
 
 export function softDeleteFile(
 	sql: SqlStorage,
 	args: { path: string; deviceId: string },
 ): void {
+	ensureBytesCounter(sql);
+	const old = sql
+		.exec<{ len: number; deleted: number }>(
+			`SELECT LENGTH(content) AS len, deleted FROM files WHERE path = ?`,
+			args.path,
+		)
+		.toArray()[0];
 	sql.exec(
 		`UPDATE files SET deleted = 1, updatedAt = ?, deviceId = ? WHERE path = ?`,
 		Date.now(),
 		args.deviceId,
 		args.path,
 	);
+	// Only a live row leaving the live set shrinks the total: deleting an
+	// already-deleted or nonexistent path changes nothing.
+	if (old && old.deleted === 0) addWorkspaceBytes(sql, -old.len);
 }

@@ -177,8 +177,52 @@ export type CloudSyncWorkspaceState = {
 	workspaceId: string | null;
 	deploymentUrl: string | null;
 	detail: string | null;
-	/** The EFFECTIVE never-synced folder-name list: this workspace's configured `cloudSync.excludedFolders`, or the built-in defaults when it has none. */
+	/** The EFFECTIVE never-synced exclusion list (bare names match at any depth; entries with a separator are anchored to the workspace root). */
 	excludedFolders: string[];
+	/** Folders held out of sync until approved (D-LW5). Empty when none pending. */
+	pendingFolders: PendingFolder[];
+	/** Latest structured sync progress, if a sync is or recently was running. */
+	progress: SyncProgress | null;
+};
+
+/** A folder held out of sync until the user approves it. */
+export type PendingFolder = {
+	path: string;
+	fileCountAtLeast: number;
+	dirCountAtLeast?: number;
+	discoveredAt: number;
+};
+
+/** Structured sync progress — `scan` is indeterminate (no total until the walk ends). */
+export type SyncProgress = {
+	phase: "scan" | "push" | "pull" | "assets" | "done";
+	done: number;
+	total: number | null;
+	currentPath?: string;
+};
+
+/** Per-folder roll-up of a sync plan for the first-sync review dialog. */
+export type SyncFolderSummary = {
+	folder: string;
+	fileCount: number;
+	bytes: number;
+	autoExcluded?: "gitignored" | "nested-repo" | "over-threshold";
+};
+
+/** Dry-run preview: the SAME plan the real sync will execute, plus greyed excluded rows with engine-emitted reasons. */
+export type SyncPreview = {
+	folders: SyncFolderSummary[];
+	totalOps: number;
+	toPush: number;
+	toPull: number;
+	conflicts: number;
+};
+
+/** Inputs the review dialog passes to prepare its plan-backed preview (password stored in the Keychain, remote record ensured, nothing started). */
+export type PrepareSyncPreviewOptions = {
+	workspaceName: string;
+	deploymentUrl: string;
+	password?: string;
 };
 
 export type EnableCloudSyncOptions = {
@@ -186,7 +230,11 @@ export type EnableCloudSyncOptions = {
 	deploymentUrl: string;
 	/** The shared Cloud Sync password (R20). Required only the first time, or to rotate it; omit to reuse whatever is already in the Keychain. */
 	password?: string;
+	/** Folders the first-sync review dialog left unchecked — the initial exclusion list instead of the defaults. */
+	excludedFolders?: string[];
 };
+
+/** First-sync review preview is always plan-backed (prepare step); no local-only estimator exists by design. */
 
 /**
  * Tags an in-app save so `@mdly/doc-history` can cut a version alongside the
@@ -254,7 +302,8 @@ export type CommentThreadEventKind =
 	| "thread-opened"
 	| "replied"
 	| "resolved"
-	| "reopened";
+	| "reopened"
+	| "deleted";
 
 /** Mirrors `@mdly/workspace-kit`'s `CommentThreadEvent`. */
 export type CommentThreadEvent = {
@@ -275,7 +324,7 @@ export type CommentThread = {
 		text: string;
 	};
 	events: CommentThreadEvent[];
-	state: "open" | "resolved";
+	state: "open" | "resolved" | "deleted";
 };
 
 /**
@@ -374,18 +423,38 @@ export type DesktopApi = {
 		workspacePath: string,
 	): Promise<{ cloudCopyDeleted: boolean }>;
 	/**
-	 * Replaces this workspace's never-synced folder-name list and restarts a
-	 * running watcher so it takes effect at once. Rejects (writing nothing) when
-	 * an entry is a path rather than a folder name.
+	 * Replaces this workspace's never-synced exclusion list and restarts a
+	 * running watcher so it takes effect at once. Bare names match at any
+	 * depth; entries with a separator are anchored to the workspace root.
 	 */
 	setCloudSyncExcludedFolders(
 		workspacePath: string,
 		folders: string[],
 	): Promise<CloudSyncWorkspaceState>;
-	/** Live status updates for the D5 settings switch / status indicator (R29, R30), independent per workspace. */
+	/** First-sync review preview — prepares (password, remote record, dormant config) then returns the SAME plan the real sync will execute. */
+	getCloudSyncPreview(
+		workspacePath: string,
+		options: PrepareSyncPreviewOptions,
+	): Promise<SyncPreview>;
+	/** Approves a pending folder: it syncs from now on. */
+	approveCloudSyncPendingFolder(
+		workspacePath: string,
+		folderPath: string,
+	): Promise<CloudSyncWorkspaceState>;
+	/** Excludes a pending folder forever ("never ask again"). */
+	excludeCloudSyncPendingFolder(
+		workspacePath: string,
+		folderPath: string,
+	): Promise<CloudSyncWorkspaceState>;
+	/** Live status updates for the D5 settings switch / status indicator (R29, R30), independent per workspace. Carries no counts — use onCloudSyncProgressChange for those. */
 	onCloudSyncStatusChange(
 		workspacePath: string,
 		callback: (status: CloudSyncStatus, detail: string | null) => void,
+	): Promise<Unsubscribe>;
+	/** Live structured sync progress (indeterminate scan count-up, then a determinate bar). */
+	onCloudSyncProgressChange(
+		workspacePath: string,
+		callback: (progress: SyncProgress) => void,
 	): Promise<Unsubscribe>;
 	readFileText(path: string): Promise<string>;
 	writeFileText(
@@ -416,6 +485,7 @@ export type DesktopApi = {
 	): Promise<void>;
 	resolveCommentThread(path: string, threadId: string): Promise<void>;
 	reopenCommentThread(path: string, threadId: string): Promise<void>;
+	deleteCommentThread(path: string, threadId: string): Promise<void>;
 	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
 	listAgentTools(): Promise<AgentToolDescriptor[]>;
 	callAgentTool(

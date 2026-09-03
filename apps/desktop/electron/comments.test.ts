@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { RevisionAuthor } from "@mdly/doc-history";
 import type { TextAnchor } from "@mdly/doc-comments";
+import type { RevisionAuthor } from "@mdly/doc-history";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	deleteCommentThreadForPath,
 	listCommentThreadsForPath,
 	openCommentThreadForPath,
 	reopenCommentThreadForPath,
@@ -138,5 +139,68 @@ describe("comments desktop wiring (R23)", () => {
 				text: "should not land",
 			}),
 		).rejects.toThrow();
+	});
+
+	it("delete appends a tombstone line and filters the thread from list", async () => {
+		const filePath = path.join(tmpDir, "note.md");
+		const docId = await resolveCommentDocId(tmpDir, "note.md");
+		const logPath = path.join(tmpDir, ".mdly", "comments", `${docId}.jsonl`);
+
+		await openCommentThreadForPath({
+			absoluteFilePath: filePath,
+			grantedRoots: [tmpDir],
+			author: AUTHOR,
+			anchor: quoteAnchor("hello"),
+			text: "why bold?",
+		});
+		const opened = await listCommentThreadsForPath(filePath, [tmpDir]);
+		const threadId = opened.threads[0].id;
+
+		await deleteCommentThreadForPath({
+			absoluteFilePath: filePath,
+			grantedRoots: [tmpDir],
+			author: AUTHOR,
+			threadId,
+		});
+
+		const lines = (await fs.readFile(logPath, "utf8"))
+			.split("\n")
+			.filter((line) => line.length > 0);
+		expect(lines).toHaveLength(2);
+		expect(JSON.parse(lines[1]).kind).toBe("deleted");
+
+		const { threads } = await listCommentThreadsForPath(filePath, [tmpDir]);
+		expect(threads).toHaveLength(0);
+	});
+
+	it("a reply after delete still appends but the thread stays filtered out", async () => {
+		const filePath = path.join(tmpDir, "note.md");
+
+		await openCommentThreadForPath({
+			absoluteFilePath: filePath,
+			grantedRoots: [tmpDir],
+			author: AUTHOR,
+			anchor: quoteAnchor("hello"),
+			text: "why bold?",
+		});
+		const opened = await listCommentThreadsForPath(filePath, [tmpDir]);
+		const threadId = opened.threads[0].id;
+
+		await deleteCommentThreadForPath({
+			absoluteFilePath: filePath,
+			grantedRoots: [tmpDir],
+			author: AUTHOR,
+			threadId,
+		});
+		await replyToCommentThreadForPath({
+			absoluteFilePath: filePath,
+			grantedRoots: [tmpDir],
+			author: AUTHOR,
+			threadId,
+			text: "late reply",
+		});
+
+		const { threads } = await listCommentThreadsForPath(filePath, [tmpDir]);
+		expect(threads).toHaveLength(0);
 	});
 });

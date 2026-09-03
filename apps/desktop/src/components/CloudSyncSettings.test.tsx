@@ -15,24 +15,36 @@ import { CloudSyncSettings } from "./SettingsDialog";
 const {
 	getCloudSyncState,
 	onCloudSyncStatusChange,
+	onCloudSyncProgressChange,
 	enableCloudSync,
 	disableCloudSync,
 	setCloudSyncExcludedFolders,
+	getCloudSyncPreview,
+	approveCloudSyncPendingFolder,
+	excludeCloudSyncPendingFolder,
 } = vi.hoisted(() => ({
 	getCloudSyncState: vi.fn(),
 	onCloudSyncStatusChange: vi.fn(),
+	onCloudSyncProgressChange: vi.fn(),
 	enableCloudSync: vi.fn(),
 	disableCloudSync: vi.fn(),
 	setCloudSyncExcludedFolders: vi.fn(),
+	getCloudSyncPreview: vi.fn(),
+	approveCloudSyncPendingFolder: vi.fn(),
+	excludeCloudSyncPendingFolder: vi.fn(),
 }));
 
 vi.mock("../desktopApi", () => ({
 	desktopApi: {
 		getCloudSyncState,
 		onCloudSyncStatusChange,
+		onCloudSyncProgressChange,
 		enableCloudSync,
 		disableCloudSync,
 		setCloudSyncExcludedFolders,
+		getCloudSyncPreview,
+		approveCloudSyncPendingFolder,
+		excludeCloudSyncPendingFolder,
 	},
 }));
 
@@ -45,6 +57,8 @@ const SYNCED_ON_STATE: CloudSyncWorkspaceState = {
 	deploymentUrl: "http://127.0.0.1:8787",
 	detail: null,
 	excludedFolders: [".git", "node_modules", ".claude"],
+	pendingFolders: [],
+	progress: null,
 };
 
 // Mirrors `DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES` in
@@ -86,6 +100,7 @@ describe("CloudSyncSettings", () => {
 		statusCallback = undefined;
 		getCloudSyncState.mockReset();
 		onCloudSyncStatusChange.mockReset();
+		onCloudSyncProgressChange.mockReset();
 		enableCloudSync.mockReset();
 		disableCloudSync.mockReset();
 		setCloudSyncExcludedFolders.mockReset();
@@ -96,6 +111,9 @@ describe("CloudSyncSettings", () => {
 				statusCallback = callback;
 				return Promise.resolve(() => {});
 			},
+		);
+		onCloudSyncProgressChange.mockImplementation(() =>
+			Promise.resolve(() => {}),
 		);
 	});
 
@@ -190,12 +208,14 @@ describe("CloudSyncSettings — folders never synced", () => {
 
 		getCloudSyncState.mockReset();
 		onCloudSyncStatusChange.mockReset();
+		onCloudSyncProgressChange.mockReset();
 		enableCloudSync.mockReset();
 		disableCloudSync.mockReset();
 		setCloudSyncExcludedFolders.mockReset();
 
 		getCloudSyncState.mockResolvedValue(SYNCED_ON_STATE);
 		onCloudSyncStatusChange.mockImplementation(() => Promise.resolve(() => {}));
+		onCloudSyncProgressChange.mockImplementation(() => Promise.resolve(() => {}));
 	});
 
 	afterEach(() => {
@@ -287,21 +307,21 @@ describe("CloudSyncSettings — folders never synced", () => {
 	it("surfaces a rejected entry inline and leaves the saved list untouched", async () => {
 		setCloudSyncExcludedFolders.mockRejectedValue(
 			new Error(
-				'"notes/drafts" looks like a path. List folder NAMES only — each name is matched at any depth inside the workspace.',
+				'"../escape" is not a valid exclusion — use a folder name (matches at any depth) or a workspace-relative path like "fe/docs".',
 			),
 		);
 		await renderSettings();
 
-		typeIntoTextarea(".claude\nnotes/drafts");
+		typeIntoTextarea(".claude\n../escape");
 		await act(async () => {
 			clickButton("Save folder list");
 			await flushMicrotasks();
 		});
 
-		expect(container.textContent).toContain("List folder NAMES only");
+		expect(container.textContent).toContain("not a valid exclusion");
 		// The rejected draft is kept for the user to correct, and nothing claims
 		// the new list took effect.
-		expect(textarea().value).toBe(".claude\nnotes/drafts");
+		expect(textarea().value).toBe(".claude\n../escape");
 		expect(setCloudSyncExcludedFolders).toHaveBeenCalledTimes(1);
 	});
 

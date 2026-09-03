@@ -3,6 +3,7 @@ import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
 import {
+	type CSSProperties,
 	lazy,
 	Suspense,
 	useCallback,
@@ -12,6 +13,7 @@ import {
 	useState,
 } from "react";
 import { toast } from "sonner";
+import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { AgentAccessSettings } from "./components/AgentAccessSettings";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -24,6 +26,7 @@ import { ReimportDocDialog } from "./components/ReimportDocDialog";
 import { RevisionHistoryPanel } from "./components/RevisionHistoryPanel";
 import {
 	AppearanceSettings,
+	CloudSyncSettings,
 	ImportSettings,
 	SettingsDialog,
 	WorkspaceSettings,
@@ -192,6 +195,13 @@ function App() {
 	const [reimportOpen, setReimportOpen] = useState(false);
 	const [importDocOpen, setImportDocOpen] = useState(false);
 	const [historyOpen, setHistoryOpen] = useState(false);
+	// Only one right-edge panel open at a time (R21): opening comments closes
+	// history and vice versa. Closing a panel never touches the other.
+	const [commentsOpen, setCommentsOpen] = useState(false);
+	const handleCommentsOpenChange = useCallback((open: boolean) => {
+		setCommentsOpen(open);
+		if (open) setHistoryOpen(false);
+	}, []);
 	// The revision currently swapped into the main document pane as a diff
 	// (see `ReadyDocument`), or null when the live editor is showing.
 	const [viewingRevision, setViewingRevision] =
@@ -759,10 +769,44 @@ function App() {
 				onRefreshNotionPage={refreshNotionPage}
 				onMoveCurrentFile={openMoveCurrentFileCommandBar}
 				onReimportDoc={() => void reimportDoc()}
-				onOpenRevisionHistory={() => setHistoryOpen(true)}
+				onOpenRevisionHistory={() => {
+					setCommentsOpen(false);
+					setHistoryOpen(true);
+				}}
+				onOpenComments={() => {
+					setHistoryOpen(false);
+					setCommentsOpen(true);
+				}}
 				notionSyncMode={notionSyncMode}
 				docImported={docImported}
 			/>
+			{!sidebarOpen && hasWorkspace && (
+				<div
+					className="desktop-window-no-drag pointer-events-none fixed top-3 z-30"
+					style={{
+						insetInlineStart:
+							desktopApi.platform === "darwin"
+								? "var(--hubble-traffic-light-inset, 70px)"
+								: "0.75rem",
+					}}
+				>
+					<div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-border/50 bg-background/78 shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md">
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="rounded-none text-muted-foreground hover:bg-accent hover:text-foreground"
+							aria-label="Show sidebar"
+							title="Show sidebar (⌘⇧E)"
+							onClick={() => {
+								setSidebarOpen(true);
+								requestAnimationFrame(() => focusSidebarNav());
+							}}
+						>
+							<MingcuteLayoutLeftLine className="size-4" />
+						</Button>
+					</div>
+				</div>
+			)}
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				<Sidebar
 					onFocusedPathChange={setFocusedSidebarPath}
@@ -797,6 +841,8 @@ function App() {
 							onScrollContainerChange={setScrollContainerEl}
 							historyOpen={historyOpen}
 							onHistoryOpenChange={setHistoryOpen}
+							commentsOpen={commentsOpen}
+							onCommentsOpenChange={handleCommentsOpenChange}
 							viewingRevision={viewingRevision}
 							onViewingRevisionChange={setViewingRevision}
 						/>
@@ -807,6 +853,7 @@ function App() {
 				<AppearanceSettings />
 				<WorkspaceSettings />
 				<ImportSettings />
+				<CloudSyncSettings workspacePath={workspacePath ?? null} />
 				<AgentAccessSettings />
 				{updateState ? (
 					<UpdatesSection
@@ -889,6 +936,8 @@ function ReadyDocument({
 	onScrollContainerChange,
 	historyOpen,
 	onHistoryOpenChange,
+	commentsOpen,
+	onCommentsOpenChange,
 	viewingRevision,
 	onViewingRevisionChange,
 }: {
@@ -897,25 +946,48 @@ function ReadyDocument({
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
 	historyOpen: boolean;
 	onHistoryOpenChange: (open: boolean) => void;
+	commentsOpen: boolean;
+	onCommentsOpenChange: (open: boolean) => void;
 	viewingRevision: HistoryRevision | null;
 	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
 }) {
 	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
 
-	// The history panel and any revision it's showing a diff for belong to the
-	// document they were opened for -- close/clear them rather than let them
-	// leak onto whatever note this component next renders for (R27's
-	// per-document scoping precedent). The review/conflict pill lives in the
-	// title bar (Toolbar) now and resets itself the same way, keyed off its
-	// own currentPath subscription.
+	// Only one right-edge panel is ever open at a time (R21), and every such
+	// panel is a fixed overlay (SidePanel, w-80) -- without this offset it
+	// covers the document's centered column instead of the document yielding
+	// the space. Padding the pane by the panel width shifts the centered
+	// content left so it stays fully visible while a panel is open.
+	const rightPanelOpen = historyOpen || commentsOpen;
+
+	// The history panel, the comments panel, and any revision the former is
+	// showing a diff for all belong to the document they were opened for --
+	// close/clear them rather than let them leak onto whatever note this
+	// component next renders for (R27's per-document scoping precedent). The
+	// review/conflict pill lives in the title bar (Toolbar) now and resets
+	// itself the same way, keyed off its own currentPath subscription.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
 	useEffect(() => {
 		onHistoryOpenChange(false);
+		onCommentsOpenChange(false);
 		onViewingRevisionChange(null);
 	}, [currentPath]);
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
+		<div
+			className="flex h-full min-h-0 flex-col transition-[padding] duration-300 ease-snappy"
+			style={
+				rightPanelOpen
+					? ({
+							paddingInlineEnd: "min(20rem, calc(100vw - 2rem))",
+							// Keeps the viewport-fixed TOC rail (workspace-kit)
+							// usable: it reads this width to yield the same space.
+							"--hubble-right-panel-inline-size":
+								"min(20rem, calc(100vw - 2rem))",
+						} as CSSProperties)
+					: undefined
+			}
+		>
 			{viewingRevision ? (
 				<RevisionDiffView
 					revision={viewingRevision}
@@ -931,6 +1003,8 @@ function ReadyDocument({
 					content={content}
 					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 					onScrollContainerChange={onScrollContainerChange}
+					commentsOpen={commentsOpen}
+					onCommentsOpenChange={onCommentsOpenChange}
 				/>
 			)}
 			<RevisionHistoryPanel

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import hubbleRuntime from "@hubble.md/runtime/global.js?raw";
 import htmlAppTheme from "@hubble.md/runtime/html-app-theme.css?raw";
@@ -41,9 +42,13 @@ import type { AgentToolContext } from "./agentToolContract";
 import { AGENT_TOOL_DESCRIPTORS, AGENT_TOOLS } from "./agentTools";
 import {
 	type CloudSyncWiringDeps,
+	approvePendingFolder,
 	disableCloudSyncForWorkspace,
 	enableCloudSyncForWorkspace,
+	excludePendingFolder,
+	onCloudSyncProgressChange,
 	onCloudSyncStatusChange,
+	prepareCloudSyncPreview,
 	readCloudSyncWorkspaceState,
 	readRawWorkspaceConfigFile,
 	resumeCloudSyncForGrantedRoots,
@@ -52,6 +57,7 @@ import {
 	stopAllCloudSync,
 } from "./cloudSyncWiring";
 import {
+	deleteCommentThreadForPath,
 	listCommentThreadsForPath,
 	openCommentThreadForPath,
 	reopenCommentThreadForPath,
@@ -247,6 +253,19 @@ function getActorId(): Promise<string> {
 		actorIdPromise = loadOrCreateActorId(app.getPath("userData"));
 	}
 	return actorIdPromise;
+}
+
+/** OS login name is not this machine's persisted actor id — it's just a human-readable stand-in for it, since comment/thread authors otherwise only carry that opaque UUID. */
+async function getHumanAuthor(): Promise<{
+	kind: "human";
+	id: string;
+	label: string;
+}> {
+	return {
+		kind: "human",
+		id: await getActorId(),
+		label: os.userInfo().username,
+	};
 }
 
 const ignoreConfigFiles = [".gitignore", ".ignore"];
@@ -1418,13 +1437,17 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:cloud-sync-enable",
-		async (_event, { workspacePath, workspaceName, deploymentUrl, password }) =>
+		async (
+			_event,
+			{ workspacePath, workspaceName, deploymentUrl, password, excludedFolders },
+		) =>
 			enableCloudSyncForWorkspace(
 				{
 					workspaceRoot: resolvePath(workspacePath),
 					workspaceName,
 					deploymentUrl,
 					password,
+					excludedFolders,
 				},
 				cloudSyncDeps(),
 			),
@@ -1447,9 +1470,56 @@ function registerIpc() {
 	);
 
 	ipcMain.handle(
+		"desktop:cloud-sync-prepare-preview",
+		async (
+			_event,
+			{ workspacePath, workspaceName, deploymentUrl, password },
+		) => {
+			const { plan, folders } = await prepareCloudSyncPreview(
+				{
+					workspaceRoot: resolvePath(workspacePath),
+					workspaceName,
+					deploymentUrl,
+					password,
+				},
+				cloudSyncDeps(),
+			);
+			return {
+				folders,
+				totalOps: plan.totalOps,
+				toPush: plan.toPush.length,
+				toPull: plan.toPull.length,
+				conflicts: plan.conflicts.length,
+			};
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-approve-pending",
+		async (_event, { workspacePath, folderPath }) =>
+			approvePendingFolder(
+				resolvePath(workspacePath),
+				folderPath,
+				cloudSyncDeps(),
+			),
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-exclude-pending",
+		async (_event, { workspacePath, folderPath }) =>
+			excludePendingFolder(
+				resolvePath(workspacePath),
+				folderPath,
+				cloudSyncDeps(),
+			),
+	);
+
+	ipcMain.handle(
 		"desktop:cloud-sync-watch-status",
 		(_event, { watchId, workspacePath }) => {
 			const resolved = resolvePath(workspacePath);
+			// Status carries no counts — progress has its own channel below
+			// (one wire, not two).
 			const unsubscribe = onCloudSyncStatusChange(
 				resolved,
 				(status, detail) => {
@@ -1459,6 +1529,17 @@ function registerIpc() {
 					});
 				},
 			);
+			cloudSyncStatusUnsubscribers.set(String(watchId), unsubscribe);
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-watch-progress",
+		(_event, { watchId, workspacePath }) => {
+			const resolved = resolvePath(workspacePath);
+			const unsubscribe = onCloudSyncProgressChange(resolved, (progress) => {
+				sendToRenderer(`desktop:cloud-sync-progress:${watchId}`, progress);
+			});
 			cloudSyncStatusUnsubscribers.set(String(watchId), unsubscribe);
 		},
 	);
@@ -1551,7 +1632,7 @@ function registerIpc() {
 			return {
 				docId,
 				threads,
-				currentAuthor: { kind: "human" as const, id: await getActorId() },
+				currentAuthor: await getHumanAuthor(),
 			};
 		},
 	);
@@ -1563,7 +1644,7 @@ function registerIpc() {
 			await openCommentThreadForPath({
 				absoluteFilePath: resolved,
 				grantedRoots,
-				author: { kind: "human", id: await getActorId() },
+				author: await getHumanAuthor(),
 				anchor,
 				text: String(text),
 			});
@@ -1577,7 +1658,7 @@ function registerIpc() {
 			await replyToCommentThreadForPath({
 				absoluteFilePath: resolved,
 				grantedRoots,
-				author: { kind: "human", id: await getActorId() },
+				author: await getHumanAuthor(),
 				threadId: String(threadId),
 				text: String(text),
 			});
@@ -1591,7 +1672,7 @@ function registerIpc() {
 			await resolveCommentThreadForPath({
 				absoluteFilePath: resolved,
 				grantedRoots,
-				author: { kind: "human", id: await getActorId() },
+				author: await getHumanAuthor(),
 				threadId: String(threadId),
 			});
 		},
@@ -1604,7 +1685,20 @@ function registerIpc() {
 			await reopenCommentThreadForPath({
 				absoluteFilePath: resolved,
 				grantedRoots,
-				author: { kind: "human", id: await getActorId() },
+				author: await getHumanAuthor(),
+				threadId: String(threadId),
+			});
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:comment-delete-thread",
+		async (_event, { path: filePath, threadId }) => {
+			const resolved = assertGranted(filePath);
+			await deleteCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: await getHumanAuthor(),
 				threadId: String(threadId),
 			});
 		},

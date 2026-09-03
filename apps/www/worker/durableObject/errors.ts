@@ -14,7 +14,13 @@
 export type WorkerErrorCode =
 	| "STORAGE_CAP_EXCEEDED"
 	| "SLOT_INVARIANT_VIOLATION"
-	| "ASSET_REFERENCE_ERROR";
+	| "ASSET_REFERENCE_ERROR"
+	| "BATCH_TOO_LARGE"
+	| "BATCH_EMPTY"
+	| "BATCH_BYTE_LIMIT"
+	| "FILE_TOO_LARGE"
+	| "REQUEST_TOO_LARGE"
+	| "INVALID_PATH";
 
 export class StorageCapExceededError extends Error {
 	readonly code = "STORAGE_CAP_EXCEEDED" as const;
@@ -45,6 +51,76 @@ export class AssetReferenceError extends Error {
 	}
 }
 
+export class BatchTooLargeError extends Error {
+	readonly code = "BATCH_TOO_LARGE" as const;
+	constructor(
+		public readonly fileCount: number,
+		public readonly maxFiles: number,
+	) {
+		super(
+			`Batch of ${fileCount} files exceeds the maximum batch size of ${maxFiles} files — split it into smaller batches.`,
+		);
+		this.name = "BatchTooLargeError";
+	}
+}
+
+export class BatchEmptyError extends Error {
+	readonly code = "BATCH_EMPTY" as const;
+	constructor() {
+		super("Batch contains no files — nothing to push.");
+		this.name = "BatchEmptyError";
+	}
+}
+
+export class BatchByteLimitError extends Error {
+	readonly code = "BATCH_BYTE_LIMIT" as const;
+	constructor(
+		public readonly totalBytes: number,
+		public readonly maxBytes: number,
+	) {
+		super(
+			`Batch payload of ${totalBytes} bytes exceeds the maximum batch size of ${maxBytes} bytes — split it into smaller batches.`,
+		);
+		this.name = "BatchByteLimitError";
+	}
+}
+
+export class InvalidPathError extends Error {
+	readonly code = "INVALID_PATH" as const;
+	constructor(public readonly path: string) {
+		super(
+			`Invalid file path "${path}" — paths must be non-empty and stay inside the workspace.`,
+		);
+		this.name = "InvalidPathError";
+	}
+}
+
+export class FileTooLargeError extends Error {
+	readonly code = "FILE_TOO_LARGE" as const;
+	constructor(
+		public readonly contentBytes: number,
+		public readonly maxBytes: number,
+	) {
+		super(
+			`File content of ${contentBytes} bytes exceeds the maximum single-push size of ${maxBytes} bytes — split the file or push it in smaller batches.`,
+		);
+		this.name = "FileTooLargeError";
+	}
+}
+
+export class RequestTooLargeError extends Error {
+	readonly code = "REQUEST_TOO_LARGE" as const;
+	constructor(
+		public readonly requestBytes: number,
+		public readonly maxBytes: number,
+	) {
+		super(
+			`Request body of ${requestBytes} bytes exceeds the maximum request size of ${maxBytes} bytes.`,
+		);
+		this.name = "RequestTooLargeError";
+	}
+}
+
 /** True when the underlying SQLite storage itself reports being full — the DO's real 10GB hard wall, as a fallback safety net behind the app-level cap check. */
 export function isStorageFullError(error: unknown): boolean {
 	if (!(error instanceof Error)) return false;
@@ -62,7 +138,13 @@ export function toRpcError(error: unknown): {
 	if (
 		error instanceof StorageCapExceededError ||
 		error instanceof SlotInvariantViolationError ||
-		error instanceof AssetReferenceError
+		error instanceof AssetReferenceError ||
+		error instanceof BatchTooLargeError ||
+		error instanceof BatchEmptyError ||
+		error instanceof BatchByteLimitError ||
+		error instanceof FileTooLargeError ||
+		error instanceof RequestTooLargeError ||
+		error instanceof InvalidPathError
 	) {
 		return { ok: false, code: error.code, message: error.message };
 	}
@@ -73,10 +155,13 @@ export function toRpcError(error: unknown): {
 			message: "Workspace storage is full.",
 		};
 	}
+	// UNKNOWN: never leak the raw message (it can carry RPC internals or
+	// storage paths). The detail goes to the Worker logs server-side.
+	console.error("[worker] unhandled Durable Object error:", error);
 	return {
 		ok: false,
 		code: "UNKNOWN",
-		message: error instanceof Error ? error.message : String(error),
+		message: "Internal error — the operation failed.",
 	};
 }
 
@@ -93,6 +178,24 @@ export function errorToResponseBody(error: unknown): {
 	if (error instanceof AssetReferenceError) {
 		return { status: 409, body: { error: error.message, code: error.code } };
 	}
+	if (error instanceof BatchTooLargeError) {
+		return { status: 400, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof BatchEmptyError) {
+		return { status: 400, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof BatchByteLimitError) {
+		return { status: 413, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof InvalidPathError) {
+		return { status: 400, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof FileTooLargeError) {
+		return { status: 413, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof RequestTooLargeError) {
+		return { status: 413, body: { error: error.message, code: error.code } };
+	}
 	if (isStorageFullError(error)) {
 		return {
 			status: 413,
@@ -102,6 +205,8 @@ export function errorToResponseBody(error: unknown): {
 			},
 		};
 	}
-	const message = error instanceof Error ? error.message : String(error);
-	return { status: 500, body: { error: message } };
+	// Same UNKNOWN policy as `toRpcError`: generic message to the client,
+	// detail to the server logs.
+	console.error("[worker] unhandled Worker error:", error);
+	return { status: 500, body: { error: "Internal error." } };
 }

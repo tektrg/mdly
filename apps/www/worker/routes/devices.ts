@@ -1,5 +1,10 @@
 import type { Env } from "../env.js";
-import { json, readJsonBody } from "../http.js";
+import {
+	forbiddenDeviceIdResponse,
+	json,
+	readJsonBody,
+	requestTooLargeResponse,
+} from "../http.js";
 import { workspaceStub } from "./workspaceStub.js";
 
 /**
@@ -23,6 +28,10 @@ export async function handleRegisterDevice(
 			{ status: 400 },
 		);
 	}
+	const tooLarge = requestTooLargeResponse(body);
+	if (tooLarge) return tooLarge;
+	const badDevice = forbiddenDeviceIdResponse(body.deviceId);
+	if (badDevice) return badDevice;
 	const device = await workspaceStub(env, body.workspaceId).registerDeviceSlot(
 		body.deviceId,
 		body.label,

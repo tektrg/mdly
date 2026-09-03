@@ -1,5 +1,6 @@
 import { handleLogin, handleLogout, withAuth } from "./auth.js";
 import { runOrphanAssetCleanup } from "./cron.js";
+import { errorToResponseBody } from "./durableObject/errors.js";
 import type { Env } from "./env.js";
 import { json } from "./http.js";
 import {
@@ -14,7 +15,9 @@ import {
 import { handleRegisterDevice } from "./routes/devices.js";
 import {
 	handleGetFiles,
+	handleGetVersion,
 	handlePushFile,
+	handlePushFilesBatch,
 	handleSoftDeleteFile,
 } from "./routes/files.js";
 import { workspaceStub } from "./routes/workspaceStub.js";
@@ -28,9 +31,15 @@ import {
 
 export { WorkspaceDurableObject } from "./durableObject/workspaceDurableObject.js";
 
+/**
+ * Fallback for anything thrown out of the API router. Typed DO/Worker errors
+ * keep their specific status and message; anything unrecognised (notably an
+ * RPC serialization blowup) becomes a generic 500 with no internals — that
+ * raw `error.message` was the actual leak channel for the 32MiB RPC text.
+ */
 function errorResponse(error: unknown): Response {
-	const message = error instanceof Error ? error.message : String(error);
-	return json({ error: message }, { status: 500 });
+	const { status, body } = errorToResponseBody(error);
+	return json(body, { status });
 }
 
 const ASSET_DOWNLOAD_PATTERN = /^\/api\/asset\/([^/]+)$/;
@@ -84,6 +93,12 @@ async function handleApi(
 	}
 	if (path === "/api/files" && method === "POST") {
 		return withAuth(request, env, () => handlePushFile(request, env));
+	}
+	if (path === "/api/files/batch" && method === "POST") {
+		return withAuth(request, env, () => handlePushFilesBatch(request, env));
+	}
+	if (path === "/api/version" && method === "GET") {
+		return withAuth(request, env, () => handleGetVersion(request, env));
 	}
 	if (path === "/api/files/delete" && method === "POST") {
 		return withAuth(request, env, () => handleSoftDeleteFile(request, env));

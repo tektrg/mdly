@@ -2,11 +2,16 @@ export type LocalFile = {
 	relativePath: string;
 	content: string;
 	hash: string;
+	/** Cheap-stat hint fields (populated by the Node fs) — lets plan() treat an unchanged stat as "might be unchanged" without trusting it as proof. */
+	mtime?: number;
+	size?: number;
 };
 
 export type LocalAsset = {
 	relativePath: string;
 	hash: string;
+	mtime?: number;
+	size?: number;
 };
 
 /** Platform-agnostic filesystem interface for sync operations */
