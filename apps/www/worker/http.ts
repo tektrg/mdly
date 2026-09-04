@@ -56,3 +56,29 @@ export function forbiddenDeviceIdResponse(deviceId: string): Response | null {
 			)
 		: null;
 }
+
+/**
+ * Parses the listing paging cursor query params. Both absent → first page
+ * (null); both present and well-formed → the cursor; anything else →
+ * "invalid" (the route answers 400 — a malformed cursor must never reach
+ * the DO, where a NaN binding would throw).
+ */
+export function parseCursor(
+	updatedAtParam: string | null,
+	pathParam: string | null,
+): { updatedAt: number; path: string } | null | "invalid" {
+	if (updatedAtParam === null && pathParam === null) return null;
+	if (updatedAtParam === null || pathParam === null) return "invalid";
+	const updatedAt = Number(updatedAtParam);
+	if (!Number.isFinite(updatedAt)) return "invalid";
+	return { updatedAt, path: pathParam };
+}
+
+/**
+ * Exact UTF-8 byte length. The per-file cap is enforced in bytes (not JS
+ * `.length`), so astral-plane text can't slip past it: 1.2M emoji are 2.4M
+ * UTF-8 bytes and must trip a 2MiB cap exactly like 2.4M ASCII bytes do.
+ */
+export function utf8ByteLength(value: string): number {
+	return new TextEncoder().encode(value).length;
+}

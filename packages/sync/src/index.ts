@@ -33,6 +33,7 @@ export {
 	createThrottledProgress,
 	execute,
 	init,
+	isPermanentFailure,
 	plan,
 	status,
 	summarizePlanByFolder,
@@ -41,6 +42,7 @@ export {
 export type {
 	AuthorizedUrl,
 	CloudSyncConfig,
+	FailedFile,
 	FileState,
 	FolderAutoExcludeReason,
 	FolderSummaryEntry,
@@ -48,6 +50,7 @@ export type {
 	PlannedDelete,
 	PlannedPull,
 	PlannedPush,
+	RejectedFile,
 	RemoteAsset,
 	RemoteFile,
 	SyncPlan,
@@ -57,4 +60,4 @@ export type {
 	SyncState,
 	WorkspaceConfig,
 } from "./types.js";
-export { PendingFolderSchema } from "./types.js";
+export { PendingFolderSchema, RejectedFileSchema } from "./types.js";

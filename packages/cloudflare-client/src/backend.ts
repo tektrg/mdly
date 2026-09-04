@@ -1,4 +1,9 @@
-import type { AuthorizedUrl, SyncBackend } from "@hubble.md/sync";
+import type {
+	AuthorizedUrl,
+	RemoteAsset,
+	RemoteFile,
+	SyncBackend,
+} from "@hubble.md/sync";
 import { authFetchInit, authHeaders, type CloudflareAuth } from "./auth.js";
 import { buildUrl, jsonRequestInit, requestJson } from "./httpClient.js";
 import {
@@ -53,17 +58,36 @@ export function createCloudflareBackend(
 		},
 
 		async getFiles(workspaceId, opts) {
-			const data = await requestJson(
-				buildUrl(baseUrl, "/api/files", {
-					workspaceId,
-					since: opts?.since?.toString(),
-					includeDeleted: opts?.includeDeleted ? "true" : undefined,
-				}),
-				{ headers: headers(), ...init() },
-				GetFilesResponseSchema,
-				"getFiles",
-			);
-			return data.files;
+			// Page through the byte-bounded listing: a large workspace must
+			// never be fetched as one RPC-busting response. Old servers (and
+			// test mocks) omit nextCursor — missing means done after one page.
+			const all: RemoteFile[] = [];
+			let cursor: { updatedAt: number; path: string } | undefined;
+			let previous: string | undefined;
+			do {
+				const data = await requestJson(
+					buildUrl(baseUrl, "/api/files", {
+						workspaceId,
+						since: opts?.since?.toString(),
+						includeDeleted: opts?.includeDeleted ? "true" : undefined,
+						cursorUpdatedAt: cursor?.updatedAt.toString(),
+						cursorPath: cursor?.path,
+					}),
+					{ headers: headers(), ...init() },
+					GetFilesResponseSchema,
+					"getFiles",
+				);
+				all.push(...data.files);
+				previous = cursor ? `${cursor.updatedAt}/${cursor.path}` : undefined;
+				const next = data.nextCursor ?? undefined;
+				// A server that repeats a cursor is stuck — stop rather than
+				// loop forever on its bug.
+				cursor =
+					next && `${next.updatedAt}/${next.path}` !== previous
+						? next
+						: undefined;
+			} while (cursor);
+			return all;
 		},
 
 		async pushFile(args) {
@@ -85,16 +109,30 @@ export function createCloudflareBackend(
 		},
 
 		async getAssets(workspaceId, since) {
-			const data = await requestJson(
-				buildUrl(baseUrl, "/api/assets", {
-					workspaceId,
-					since: since?.toString(),
-				}),
-				{ headers: headers(), ...init() },
-				GetAssetsResponseSchema,
-				"getAssets",
-			);
-			return data.assets;
+			const all: RemoteAsset[] = [];
+			let cursor: { updatedAt: number; path: string } | undefined;
+			let previous: string | undefined;
+			do {
+				const data = await requestJson(
+					buildUrl(baseUrl, "/api/assets", {
+						workspaceId,
+						since: since?.toString(),
+						cursorUpdatedAt: cursor?.updatedAt.toString(),
+						cursorPath: cursor?.path,
+					}),
+					{ headers: headers(), ...init() },
+					GetAssetsResponseSchema,
+					"getAssets",
+				);
+				all.push(...data.assets);
+				previous = cursor ? `${cursor.updatedAt}/${cursor.path}` : undefined;
+				const next = data.nextCursor ?? undefined;
+				cursor =
+					next && `${next.updatedAt}/${next.path}` !== previous
+						? next
+						: undefined;
+			} while (cursor);
+			return all;
 		},
 
 		async pushAsset(args) {

@@ -1,3 +1,11 @@
+import { utf8ByteLength } from "../http.js";
+import {
+	escapedBytes,
+	MAX_LIST_PAGE_BYTES,
+	MAX_LIST_PAGE_ROWS,
+	PAGE_ENVELOPE_BYTES,
+} from "./files.js";
+
 export type AssetRow = {
 	path: string;
 	hash: string;
@@ -32,19 +40,104 @@ function toRemoteAsset(row: AssetRow): RemoteAssetLike {
 	};
 }
 
-export function getAssets(sql: SqlStorage, since?: number): RemoteAssetLike[] {
-	const rows =
-		since !== undefined
-			? sql
-					.exec<AssetRow>(
-						`SELECT * FROM assets WHERE updatedAt > ? ORDER BY updatedAt ASC`,
-						since,
-					)
-					.toArray()
-			: sql
-					.exec<AssetRow>(`SELECT * FROM assets ORDER BY updatedAt ASC`)
-					.toArray();
-	return rows.map(toRemoteAsset);
+export type AssetCursor = { updatedAt: number; path: string };
+export type AssetPage = {
+	assets: RemoteAssetLike[];
+	nextCursor: AssetCursor | null;
+};
+
+type AssetMetaRow = {
+	updatedAt: number;
+	path: string;
+	pathEsc: number;
+	hashEsc: number;
+	deviceEsc: number;
+};
+
+/**
+ * Byte-bounded page of the asset listing — same keyset protocol as
+ * `listFilesPage` (see it for why). Asset rows carry no content column, so
+ * the budget counts path + hash bytes plus the per-row envelope allowance.
+ * Unlike files there is no deleted filter: every row is listed.
+ */
+export function listAssetsPage(
+	sql: SqlStorage,
+	opts?: {
+		since?: number;
+		cursor?: AssetCursor | null;
+		maxBytes?: number;
+	},
+): AssetPage {
+	const budget =
+		opts?.maxBytes && opts.maxBytes > 0 ? opts.maxBytes : MAX_LIST_PAGE_BYTES;
+	const cursor = opts?.cursor ?? null;
+	const since = opts?.since ?? -1;
+
+	const meta = sql
+		.exec<AssetMetaRow>(
+			`SELECT updatedAt, path,
+				${escapedBytes("path")} AS pathEsc,
+				${escapedBytes("hash")} AS hashEsc,
+				${escapedBytes("deviceId")} AS deviceEsc
+			 FROM assets
+			 WHERE updatedAt > ?
+			 AND ((updatedAt > ?) OR (updatedAt = ? AND path > ?))
+			 ORDER BY updatedAt ASC, path ASC
+			 LIMIT ${MAX_LIST_PAGE_ROWS + 1}`,
+			since,
+			cursor?.updatedAt ?? -1,
+			cursor?.updatedAt ?? -1,
+			cursor?.path ?? "",
+		)
+		.toArray();
+
+	let bytes = 0;
+	let take = 0;
+	for (const row of meta) {
+		// Emitted per row: path twice (`_id`, `path`), hash twice
+		// (`storageId`, `contentHash`), deviceId once, plus the envelope —
+		// all in exact escaped wire bytes.
+		const rowBytes =
+			2 * row.pathEsc + 2 * row.hashEsc + row.deviceEsc + PAGE_ENVELOPE_BYTES;
+		if (take > 0 && (take >= MAX_LIST_PAGE_ROWS || bytes + rowBytes > budget))
+			break;
+		bytes += rowBytes;
+		take++;
+	}
+	const page = meta.slice(0, take);
+	if (page.length === 0) return { assets: [], nextCursor: null };
+
+	const endKey = take < meta.length ? meta[take] : null;
+	const endPred = endKey
+		? `AND ((updatedAt < ?) OR (updatedAt = ? AND path < ?))`
+		: ``;
+	const endParams = endKey
+		? [endKey.updatedAt, endKey.updatedAt, endKey.path]
+		: [];
+	const rows = sql
+		.exec<AssetRow>(
+			`SELECT * FROM assets
+			 WHERE updatedAt > ?
+			 AND ((updatedAt > ?) OR (updatedAt = ? AND path > ?))
+			 ${endPred}
+			 ORDER BY updatedAt ASC, path ASC`,
+			since,
+			cursor?.updatedAt ?? -1,
+			cursor?.updatedAt ?? -1,
+			cursor?.path ?? "",
+			...endParams,
+		)
+		.toArray();
+
+	const last = page[page.length - 1];
+	if (!last) return { assets: [], nextCursor: null };
+	return {
+		assets: rows.map(toRemoteAsset),
+		nextCursor:
+			take < meta.length
+				? { updatedAt: last.updatedAt, path: last.path }
+				: null,
+	};
 }
 
 /**
@@ -95,17 +188,56 @@ export function softDeleteAsset(
 	);
 }
 
-export function listAllAssetsForGc(
+export type GcAssetCursor = { path: string };
+export type GcAssetPage = {
+	assets: { path: string; deleted: boolean; orphanedAt?: number }[];
+	nextCursor: GcAssetCursor | null;
+};
+
+/**
+ * Byte-bounded page of the GC scan. GC rows carry no content, but the row
+ * COUNT is unbounded in principle, so this pages exactly like the listings
+ * (keyset on path — rows are already path-ordered small metadata, so the
+ * scan doubles as its own metadata pass). Always at least one row per page.
+ */
+export function listAssetsForGcPage(
 	sql: SqlStorage,
-): { path: string; deleted: boolean; orphanedAt?: number }[] {
-	return sql
-		.exec<AssetRow>(`SELECT * FROM assets`)
-		.toArray()
-		.map((row) => ({
+	opts?: { cursor?: GcAssetCursor | null; maxBytes?: number },
+): GcAssetPage {
+	const budget =
+		opts?.maxBytes && opts.maxBytes > 0 ? opts.maxBytes : MAX_LIST_PAGE_BYTES;
+	const cursor = opts?.cursor ?? null;
+
+	const rows = sql
+		.exec<AssetRow>(
+			`SELECT * FROM assets WHERE path > ? ORDER BY path ASC LIMIT ${MAX_LIST_PAGE_ROWS + 1}`,
+			cursor?.path ?? "",
+		)
+		.toArray();
+
+	let bytes = 0;
+	let take = 0;
+	for (const row of rows) {
+		const rowBytes =
+			utf8ByteLength(row.path) + utf8ByteLength(row.hash) + PAGE_ENVELOPE_BYTES;
+		if (take > 0 && (take >= MAX_LIST_PAGE_ROWS || bytes + rowBytes > budget))
+			break;
+		bytes += rowBytes;
+		take++;
+	}
+	const page = rows.slice(0, take);
+	if (page.length === 0) return { assets: [], nextCursor: null };
+
+	const last = page[page.length - 1];
+	if (!last) return { assets: [], nextCursor: null };
+	return {
+		assets: page.map((row) => ({
 			path: row.path,
 			deleted: row.deleted === 1,
 			orphanedAt: row.orphanedAt ?? undefined,
-		}));
+		})),
+		nextCursor: take < rows.length ? { path: last.path } : null,
+	};
 }
 
 export function markAssetOrphaned(

@@ -438,9 +438,7 @@ describe("round-2 fixes", () => {
 		]) {
 			const blocked = await pushSingle(evasive);
 			expect.soft(blocked.status, evasive).toBe(403);
-			expect.soft(blocked.body.code, evasive).toBe(
-				"SLOT_INVARIANT_VIOLATION",
-			);
+			expect.soft(blocked.body.code, evasive).toBe("SLOT_INVARIANT_VIOLATION");
 		}
 
 		// Trailing whitespace is NOT an evasion: `space.jsonl ` is a
@@ -451,9 +449,9 @@ describe("round-2 fixes", () => {
 		const spacedList = await authedJson<{ files: { path: string }[] }>(
 			`/api/files?workspaceId=${workspaceId}&includeDeleted=true`,
 		);
-		expect(
-			spacedList.body.files.map((f) => f.path),
-		).toContain(".mdly/comments/space.jsonl ");
+		expect(spacedList.body.files.map((f) => f.path)).toContain(
+			".mdly/comments/space.jsonl ",
+		);
 
 		// Batch path: an evasion inside a batch rejects the whole batch.
 		const batch = await authedJson<{ error: string; code: string }>(
@@ -699,13 +697,10 @@ describe("round-3 fixes", () => {
 		const { storageId } = (await upload.json()) as { storageId: string };
 
 		const pushAsset = (path: string) =>
-			authedJson<{ ok: boolean; error: string; code: string }>(
-				"/api/assets",
-				{
-					method: "POST",
-					...jsonBody({ workspaceId, path, storageId, deviceId: "d" }),
-				},
-			);
+			authedJson<{ ok: boolean; error: string; code: string }>("/api/assets", {
+				method: "POST",
+				...jsonBody({ workspaceId, path, storageId, deviceId: "d" }),
+			});
 
 		// Root escapes are rejected, never stored.
 		for (const evil of ["../evil.png", "../../../etc/passwd"]) {
@@ -738,9 +733,9 @@ describe("round-3 fixes", () => {
 			}),
 		});
 		expect(del.body.ok).toBe(true);
-		const after = await authedJson<{ assets: { path: string; deleted: boolean }[] }>(
-			`/api/assets?workspaceId=${workspaceId}`,
-		);
+		const after = await authedJson<{
+			assets: { path: string; deleted: boolean }[];
+		}>(`/api/assets?workspaceId=${workspaceId}`);
 		expect(after.body.assets).toHaveLength(2);
 		expect(
 			after.body.assets.find((a) => a.path === "a.assets/x.png")?.deleted,
@@ -840,13 +835,10 @@ describe("round-3 fixes", () => {
 			}),
 		});
 		expect(pushed.body.ok).toBe(true);
-		const delNormal = await authedJson<{ ok: boolean }>(
-			"/api/files/delete",
-			{
-				method: "POST",
-				...jsonBody({ workspaceId, path: "normal.md", deviceId: "d" }),
-			},
-		);
+		const delNormal = await authedJson<{ ok: boolean }>("/api/files/delete", {
+			method: "POST",
+			...jsonBody({ workspaceId, path: "normal.md", deviceId: "d" }),
+		});
 		expect(delNormal.body.ok).toBe(true);
 		const gone2 = await authedJson<{ files: unknown[] }>(
 			`/api/files?workspaceId=${workspaceId}`,
@@ -902,7 +894,12 @@ describe("round-4 fixes", () => {
 						...jsonBody({
 							workspaceId,
 							files: [
-								{ path: "b.md", contentHash: huge, content: "x", deviceId: "d" },
+								{
+									path: "b.md",
+									contentHash: huge,
+									content: "x",
+									deviceId: "d",
+								},
 							],
 						}),
 					}),
@@ -1101,15 +1098,15 @@ describe("round-4 fixes", () => {
 			...jsonBody({ workspaceId, path: "./dup.md", deviceId: "d" }),
 		});
 		expect(del.body.ok).toBe(true);
-		const after = await authedJson<{ files: { path: string; deleted: boolean }[] }>(
-			`/api/files?workspaceId=${workspaceId}&includeDeleted=true`,
+		const after = await authedJson<{
+			files: { path: string; deleted: boolean }[];
+		}>(`/api/files?workspaceId=${workspaceId}&includeDeleted=true`);
+		expect(after.body.files.find((f) => f.path === "./dup.md")?.deleted).toBe(
+			true,
 		);
-		expect(
-			after.body.files.find((f) => f.path === "./dup.md")?.deleted,
-		).toBe(true);
-		expect(
-			after.body.files.find((f) => f.path === "dup.md")?.deleted,
-		).toBe(false);
+		expect(after.body.files.find((f) => f.path === "dup.md")?.deleted).toBe(
+			false,
+		);
 
 		// Dead canonical + live legacy: the live legacy row is still removed.
 		await runInDurableObject(stub, (_instance, state) => {
@@ -1139,12 +1136,12 @@ describe("round-4 fixes", () => {
 			...jsonBody({ workspaceId, path: "./dup2.md", deviceId: "d" }),
 		});
 		expect(delRaw.body.ok).toBe(true);
-		const after2 = await authedJson<{ files: { path: string; deleted: boolean }[] }>(
-			`/api/files?workspaceId=${workspaceId}&includeDeleted=true`,
+		const after2 = await authedJson<{
+			files: { path: string; deleted: boolean }[];
+		}>(`/api/files?workspaceId=${workspaceId}&includeDeleted=true`);
+		expect(after2.body.files.find((f) => f.path === "./dup2.md")?.deleted).toBe(
+			true,
 		);
-		expect(
-			after2.body.files.find((f) => f.path === "./dup2.md")?.deleted,
-		).toBe(true);
 	});
 
 	it("deviceIds with forbidden characters are rejected on write routes", async () => {
@@ -1167,13 +1164,691 @@ describe("round-4 fixes", () => {
 		expect(badPush.status).toBe(400);
 		expect(badPush.body.error).toContain("deviceId");
 
-		const badReg = await authedJson<{ error: string }>(
+		const badReg = await authedJson<{ error: string }>("/api/device/register", {
+			method: "POST",
+			...jsonBody({ workspaceId, deviceId: "dev\u200B" }),
+		});
+		expect(badReg.status).toBe(400);
+	});
+});
+
+describe("round-5 blocker 2 (server)", () => {
+	it("a 2.5MB single push is a typed 413 with nothing stored, never an opaque 500", async () => {
+		const workspaceId = "single-ws-toobig";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		// Over both the workspace cap and the SQLite per-value ceiling: the
+		// quota binds first, typed — the important part is no 500, no leak,
+		// no row, no unhandled rejection.
+		const big = "x".repeat(2_500_000);
+		const push = await authedJson<{ error: string; code: string }>(
+			"/api/files",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: "big.md",
+					contentHash: "h",
+					content: big,
+					deviceId: "d",
+				}),
+			},
+		);
+		expect(push.status).toBe(413);
+		expect(push.body.code).toMatch(/STORAGE_CAP_EXCEEDED|FILE_TOO_LARGE/);
+		expect(JSON.stringify(push.body)).not.toContain("Internal error");
+		expect(JSON.stringify(push.body)).not.toContain("Serialized RPC");
+
+		const files = await authedJson<{ files: unknown[] }>(
+			`/api/files?workspaceId=${workspaceId}&includeDeleted=true`,
+		);
+		expect(files.body.files).toHaveLength(0);
+	});
+
+	it("re-pushing an over-limit file is FILE_TOO_LARGE once the quota passes", async () => {
+		const workspaceId = "single-ws-filecap";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		const stub = workspaceDoStub(workspaceId);
+
+		// Seed a 2.15MB row bypassing the caps (production already holds such
+		// rows: under the SQLite ceiling but over the new 2MiB cap, written
+		// before the cap existed); re-pushing it is net-zero, so the quota
+		// passes and the physical per-file ceiling must fire.
+		const big = "x".repeat(2_150_000);
+		await runInDurableObject(stub, (_instance, state) => {
+			upsertFile(state.storage.sql, {
+				path: "huge.md",
+				contentHash: "h",
+				content: big,
+				deviceId: "d",
+			});
+		});
+		const push = await authedJson<{ error: string; code: string }>(
+			"/api/files",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: "huge.md",
+					contentHash: "h",
+					content: big,
+					deviceId: "d",
+				}),
+			},
+		);
+		expect(push.status).toBe(413);
+		expect(push.body.code).toBe("FILE_TOO_LARGE");
+		expect(push.body.error).toContain("huge.md");
+	});
+
+	it("the cap is byte-exact: emoji over 2MiB in UTF-8 trips it below 2M JS units", async () => {
+		const workspaceId = "single-ws-emoji";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		// 600,000 JS string units but 2,400,000 UTF-8 bytes. A `.length`
+		// check would pass this to SQLite and 500; the byte check 413s.
+		const emoji = "📝".repeat(600_000);
+		expect(emoji.length).toBeLessThan(2_000_000);
+		const push = await authedJson<{ error: string; code: string }>(
+			"/api/files",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: "emoji.md",
+					contentHash: "h",
+					content: emoji,
+					deviceId: "d",
+				}),
+			},
+		);
+		expect(push.status).toBe(413);
+		expect(push.body.code).toBe("FILE_TOO_LARGE");
+	});
+
+	it("a 1.9MB note still syncs fine under the lowered cap", async () => {
+		const workspaceId = "single-ws-fits";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const push = await authedJson<{ ok: boolean }>("/api/files", {
+			method: "POST",
+			...jsonBody({
+				workspaceId,
+				path: "log.md",
+				contentHash: "h",
+				content: "x".repeat(1_900_000),
+				deviceId: "d",
+			}),
+		});
+		expect(push.body.ok).toBe(true);
+	});
+
+	it("a 3MiB entry via batch is a typed 413, not UNKNOWN", async () => {
+		const workspaceId = "batch-ws-toobig";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const big = "x".repeat(3_145_728);
+		const batch = await authedJson<{ error: string; code: string }>(
+			"/api/files/batch",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					files: [
+						{ path: "small.md", contentHash: "h", content: "x", deviceId: "d" },
+						{ path: "big.md", contentHash: "h", content: big, deviceId: "d" },
+					],
+				}),
+			},
+		);
+		expect(batch.status).toBe(413);
+		expect(batch.body.code).toBe("FILE_TOO_LARGE");
+		expect(JSON.stringify(batch.body)).not.toContain("Internal error");
+
+		const files = await authedJson<{ files: unknown[] }>(
+			`/api/files?workspaceId=${workspaceId}&includeDeleted=true`,
+		);
+		expect(files.body.files).toHaveLength(0);
+	});
+
+	it("a browser pushing an asset to the canonical log gets 403", async () => {
+		const workspaceId = "asset-invariant-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		await fetchWithBearer("/api/device/register", {
+			method: "POST",
+			...jsonBody({ workspaceId, deviceId: "browser-1" }),
+		});
+		const upload = await fetchWithBearer("/api/asset/upload", {
+			method: "POST",
+			body: new Uint8Array([8, 8, 8]),
+		});
+		const { storageId } = (await upload.json()) as { storageId: string };
+
+		const push = await authedJson<{ error: string; code: string }>(
+			"/api/assets",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: ".mdly/comments/note.jsonl",
+					storageId,
+					deviceId: "browser-1",
+				}),
+			},
+		);
+		expect(push.status).toBe(403);
+		expect(push.body.code).toBe("SLOT_INVARIANT_VIOLATION");
+
+		// And the pre-existing delete path maps the same code to 403.
+		const desktop = await authedJson<{ ok: boolean }>("/api/assets", {
+			method: "POST",
+			...jsonBody({
+				workspaceId,
+				path: ".mdly/comments/note.jsonl",
+				storageId,
+				deviceId: "desktop-1",
+			}),
+		});
+		expect(desktop.body.ok).toBe(true);
+		const del = await authedJson<{ error: string; code: string }>(
+			"/api/assets/delete",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: ".mdly/comments/note.jsonl",
+					deviceId: "browser-1",
+				}),
+			},
+		);
+		expect(del.status).toBe(403);
+		expect(del.body.code).toBe("SLOT_INVARIANT_VIOLATION");
+	});
+
+	it("errorResponse wires typed errors specifically and generics generically", async () => {
+		const { errorResponse } = await import("./index.js");
+		const typed = errorResponse(new StorageCapExceededError(3, 2));
+		expect(typed.status).toBe(413);
+		const typedBody = (await typed.json()) as { code: string; error: string };
+		expect(typedBody.code).toBe("STORAGE_CAP_EXCEEDED");
+
+		const generic = errorResponse(new Error("wire-leak-xyz"));
+		expect(generic.status).toBe(500);
+		const genericBody = (await generic.json()) as { error: string };
+		expect(genericBody.error).not.toContain("wire-leak-xyz");
+	});
+});
+
+describe("round-6 pull paging (P0-2 server)", () => {
+	it("a 10MB workspace pages through bounded responses and reassembles exactly", async () => {
+		const workspaceId = "paging-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		const stub = workspaceDoStub(workspaceId);
+
+		// 5 x 2MB rows (seeded direct: the 2MB test quota would 413 HTTP
+		// pushes; the listing path under test is the real HTTP route).
+		// Distinct updatedAt per row so cursor progress is observable.
+		const chunk = "x".repeat(2_000_000);
+		await runInDurableObject(stub, (_instance, state) => {
+			for (let i = 0; i < 5; i++) {
+				upsertFile(state.storage.sql, {
+					path: `f-${i}.md`,
+					contentHash: `h-${i}`,
+					content: `${i}:${chunk.slice(2)}`,
+					deviceId: "d",
+				});
+			}
+		});
+
+		const seen: { path: string; content: string }[] = [];
+		let cursor: { updatedAt: number; path: string } | null = null;
+		let pages = 0;
+		do {
+			const params = new URLSearchParams({ workspaceId });
+			if (cursor) {
+				params.set("cursorUpdatedAt", String(cursor.updatedAt));
+				params.set("cursorPath", cursor.path);
+			}
+			const res = await authedJson<{
+				files: { path: string; content: string }[];
+				nextCursor: { updatedAt: number; path: string } | null;
+			}>(`/api/files?${params.toString()}`);
+			expect(res.status).toBe(200);
+			const bodyBytes = JSON.stringify(res.body).length;
+			// 8MB page budget: no response may approach the 32MiB ceiling.
+			expect(bodyBytes).toBeLessThan(9 * 1024 * 1024);
+			seen.push(...res.body.files);
+			cursor = res.body.nextCursor;
+			pages++;
+			expect(pages).toBeLessThan(10);
+		} while (cursor);
+
+		// More than one page, everything reassembled exactly once.
+		expect(pages).toBeGreaterThan(1);
+		expect(seen.map((f) => f.path).sort()).toEqual([
+			"f-0.md",
+			"f-1.md",
+			"f-2.md",
+			"f-3.md",
+			"f-4.md",
+		]);
+		for (let i = 0; i < 5; i++) {
+			expect(seen.find((f) => f.path === `f-${i}.md`)?.content).toBe(
+				`${i}:${chunk.slice(2)}`,
+			);
+		}
+	});
+
+	it("a malformed cursor is a clean 400, never a DO throw", async () => {
+		const workspaceId = "paging-bad-cursor-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		for (const query of [
+			"cursorUpdatedAt=abc",
+			"cursorUpdatedAt=123",
+			"cursorPath=x.md",
+		]) {
+			const res = await authedJson(
+				`/api/files?workspaceId=${workspaceId}&${query}`,
+			);
+			expect(res.status, query).toBe(400);
+		}
+	});
+
+	it("control-heavy notes page one per response and stay far under the ceiling", async () => {
+		// M1: U+0001 escapes to 6 bytes in JSON, so 2MiB of it is ~12MB on
+		// the wire. A raw-byte budget packs 4 such rows (~50MB wire) while an
+		// escape-exact budget isolates them one per page (~12MB each).
+		const workspaceId = "paging-controls-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		const stub = workspaceDoStub(workspaceId);
+		// 2MiB of U+0001 (explicit escape: no invisible characters in source).
+		const CTRL = "\u0001";
+		const controls = `x${CTRL.repeat(2 * 1024 * 1024 - 1)}`;
+		await runInDurableObject(stub, (_instance, state) => {
+			for (let i = 0; i < 4; i++) {
+				upsertFile(state.storage.sql, {
+					path: `k-${i}.md`,
+					contentHash: `h-${i}`,
+					content: `${i}:${controls.slice(2)}`,
+					deviceId: "d",
+				});
+			}
+		});
+
+		const seen = new Set<string>();
+		let cursor: { updatedAt: number; path: string } | null = null;
+		let pages = 0;
+		let biggest = 0;
+		do {
+			const params = new URLSearchParams({ workspaceId });
+			if (cursor) {
+				params.set("cursorUpdatedAt", String(cursor.updatedAt));
+				params.set("cursorPath", cursor.path);
+			}
+			const res = await authedJson<{
+				files: { path: string }[];
+				nextCursor: { updatedAt: number; path: string } | null;
+			}>(`/api/files?${params.toString()}`);
+			expect(res.status).toBe(200);
+			const bodyBytes = new TextEncoder().encode(
+				JSON.stringify(res.body),
+			).length;
+			biggest = Math.max(biggest, bodyBytes);
+			// One 2MiB-control row escapes to ~12MB: bounded, and less than
+			// half the 32MiB ceiling even in the adversarial case.
+			expect(bodyBytes).toBeLessThan(16 * 1024 * 1024);
+			for (const f of res.body.files) seen.add(f.path);
+			cursor = res.body.nextCursor;
+			pages++;
+			expect(pages).toBeLessThan(10);
+		} while (cursor);
+		expect(seen.size).toBe(4);
+		expect(pages).toBeGreaterThan(1);
+	});
+
+	it("a malformed asset path segment reaching the router is a generic 500", async () => {
+		// /api/asset/% throws URIError in decodeURIComponent inside the
+		// router, past auth — exercising errorResponse itself (not the
+		// mapping function). Must be generic: the raw message would leak
+		// router internals the same way the RPC text once did.
+		const res = await fetchWithBearer("/api/asset/%");
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as { error: string };
+		expect(body.error).not.toContain("URI");
+		expect(body.error).toBe("Internal error.");
+	});
+});
+
+describe("round-6 L7/L8 scalar field caps", () => {
+	it("oversized contentHash/deviceId on /api/files are typed 413s", async () => {
+		const workspaceId = "fields-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const huge = "h".repeat(3 * 1024 * 1024);
+		for (const [label, extra] of [
+			["contentHash", { contentHash: huge, deviceId: "d" }],
+			["deviceId", { contentHash: "h", deviceId: huge }],
+		] as const) {
+			const push = await authedJson<{ error: string; code: string }>(
+				"/api/files",
+				{
+					method: "POST",
+					...jsonBody({
+						workspaceId,
+						path: "a.md",
+						content: "x",
+						...extra,
+					}),
+				},
+			);
+			expect(push.status, label).toBe(413);
+			expect(push.body.code, label).toBe("FIELD_TOO_LARGE");
+			expect(push.body.error, label).toContain(label);
+		}
+
+		const batch = await authedJson<{ error: string; code: string }>(
+			"/api/files/batch",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					files: [
+						{ path: "b.md", contentHash: huge, content: "x", deviceId: "d" },
+					],
+				}),
+			},
+		);
+		expect(batch.status).toBe(413);
+		expect(batch.body.code).toBe("FIELD_TOO_LARGE");
+	});
+
+	it("an oversized storageId on /api/assets is a typed 413, not an escaping R2 500", async () => {
+		const workspaceId = "fields-assets-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const push = await authedJson<{ error: string; code: string }>(
+			"/api/assets",
+			{
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: "a.png",
+					storageId: "s".repeat(3 * 1024 * 1024),
+					deviceId: "d",
+				}),
+			},
+		);
+		expect(push.status).toBe(413);
+		expect(push.body.code).toBe("FIELD_TOO_LARGE");
+		expect(push.body.error).toContain("storageId");
+	});
+
+	it("an oversized deviceId on register is a typed 413 via route and via direct RPC", async () => {
+		const workspaceId = "fields-register-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const hugeDevice = "d".repeat(3 * 1024 * 1024);
+		const route = await authedJson<{ error: string; code: string }>(
 			"/api/device/register",
 			{
 				method: "POST",
-				...jsonBody({ workspaceId, deviceId: "dev\u200B" }),
+				...jsonBody({ workspaceId, deviceId: hugeDevice }),
 			},
 		);
-		expect(badReg.status).toBe(400);
+		expect(route.status).toBe(413);
+		expect(route.body.code).toBe("FIELD_TOO_LARGE");
+
+		// Direct RPC: a typed result, never a SQLITE_TOOBIG throw escaping
+		// the DO's error mapping.
+		const stub = workspaceDoStub(workspaceId);
+		const direct = await stub.registerDeviceSlot(hugeDevice);
+		expect(direct.ok).toBe(false);
+		if (!direct.ok) {
+			expect(direct.code).toBe("FIELD_TOO_LARGE");
+		}
+	});
+});
+
+describe("round-7 byte-exact page budget (B2)", () => {
+	it("20 emoji notes with max-length paths page bounded responses with no 500", async () => {
+		const workspaceId = "paging-emoji-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		const stub = workspaceDoStub(workspaceId);
+
+		// 524,288 emoji x 4 bytes = exactly 2MiB per note (at, not over, the
+		// file cap), 1000-char paths. A character-counting budget admits all
+		// 20 rows (~42MB) in a few responses and 500s; a byte budget pages
+		// ~3 rows at a time. Seeded direct (quota bypass for setup); every
+		// byte asserted below crosses the real HTTP route.
+		// 📝 is one code point but two UTF-16 units and four UTF-8 bytes:
+		// 524,288 of them are 1M JS units but exactly 2MiB on the wire.
+		const emoji = "📝".repeat(524_288);
+		expect(emoji.length).toBe(1_048_576);
+		await runInDurableObject(stub, (_instance, state) => {
+			for (let i = 0; i < 20; i++) {
+				upsertFile(state.storage.sql, {
+					path: `${`p-${i}-`.padEnd(996, "x")}.md`,
+					contentHash: `h-${i}`,
+					content: `${i}:${emoji.slice(2)}`,
+					deviceId: "d",
+				});
+			}
+		});
+
+		const seen = new Set<string>();
+		let cursor: { updatedAt: number; path: string } | null = null;
+		let pages = 0;
+		let biggest = 0;
+		do {
+			const params = new URLSearchParams({ workspaceId });
+			if (cursor) {
+				params.set("cursorUpdatedAt", String(cursor.updatedAt));
+				params.set("cursorPath", cursor.path);
+			}
+			const res = await authedJson<{
+				files: { path: string; content: string }[];
+				nextCursor: { updatedAt: number; path: string } | null;
+			}>(`/api/files?${params.toString()}`);
+			expect(res.status).toBe(200);
+			// UTF-8 bytes on the wire (JS `.length` counts UTF-16 units —
+			// half the bytes for emoji — so measure properly).
+			const bodyBytes = new TextEncoder().encode(
+				JSON.stringify(res.body),
+			).length;
+			biggest = Math.max(biggest, bodyBytes);
+			// 8MB budget + one max row: nowhere near the 32MiB ceiling.
+			expect(bodyBytes).toBeLessThan(11 * 1024 * 1024);
+			for (const f of res.body.files) seen.add(f.path);
+			cursor = res.body.nextCursor;
+			pages++;
+			// Hang guard only: >256KiB rows are charged the conservative 6x
+			// (exact quoting would itself overflow SQLite values), so 2MiB
+			// rows legitimately page one per response here.
+			expect(pages).toBeLessThan(100);
+		} while (cursor);
+
+		expect(pages).toBeGreaterThan(1);
+		expect(seen.size).toBe(20);
+		// Biggest single response stays near one max row: over-2MiB rows
+		// are charged conservatively, so pages hold one row each here.
+		expect(biggest).toBeGreaterThan(2 * 1024 * 1024);
+	});
+});
+
+describe("round-7 M1/L2/L4", () => {
+	it("an oversized label on register is a typed 413 via route and via direct RPC", async () => {
+		const workspaceId = "fields-label-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const hugeLabel = "l".repeat(3 * 1024 * 1024);
+		const route = await authedJson<{ error: string; code: string }>(
+			"/api/device/register",
+			{
+				method: "POST",
+				...jsonBody({ workspaceId, deviceId: "d", label: hugeLabel }),
+			},
+		);
+		expect(route.status).toBe(413);
+		expect(route.body.code).toBe("FIELD_TOO_LARGE");
+		expect(route.body.error).toContain("label");
+
+		// Direct RPC: a typed result, never a SQLITE_TOOBIG throw escaping
+		// the DO's error mapping (the L7 unhandled rejection).
+		const stub = workspaceDoStub(workspaceId);
+		const direct = await stub.registerDeviceSlot("d", hugeLabel);
+		expect(direct.ok).toBe(false);
+		if (!direct.ok) {
+			expect(direct.code).toBe("FIELD_TOO_LARGE");
+		}
+
+		// A normal label still registers.
+		const ok = await authedJson<{ slot: number }>("/api/device/register", {
+			method: "POST",
+			...jsonBody({ workspaceId, deviceId: "d", label: "MacBook" }),
+		});
+		expect(ok.body.slot).toBe(2);
+	});
+
+	it("a non-string label is a clean 400", async () => {
+		const workspaceId = "fields-label-type-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		const res = await authedJson("/api/device/register", {
+			method: "POST",
+			...jsonBody({ workspaceId, deviceId: "d", label: ["x"] }),
+		});
+		expect(res.status).toBe(400);
+	});
+
+	it("a malformed since is a clean 400 on both listings", async () => {
+		const workspaceId = "bad-since-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+
+		for (const route of [
+			`/api/files?workspaceId=${workspaceId}&since=abc`,
+			`/api/assets?workspaceId=${workspaceId}&since=abc`,
+		]) {
+			const res = await authedJson<{ files?: unknown[]; assets?: unknown[] }>(
+				route,
+			);
+			expect(res.status, route).toBe(400);
+		}
+
+		// A valid since still filters.
+		const push = await authedJson<{ ok: boolean }>("/api/files", {
+			method: "POST",
+			...jsonBody({
+				workspaceId,
+				path: "n.md",
+				contentHash: "h",
+				content: "hi",
+				deviceId: "d",
+			}),
+		});
+		expect(push.body.ok).toBe(true);
+		const list = await authedJson<{ files: unknown[] }>(
+			`/api/files?workspaceId=${workspaceId}&since=0`,
+		);
+		expect(list.body.files).toHaveLength(1);
+		const future = await authedJson<{ files: unknown[] }>(
+			`/api/files?workspaceId=${workspaceId}&since=${Date.now() + 100000}`,
+		);
+		expect(future.body.files).toHaveLength(0);
+	});
+
+	it("the GC asset scan pages and reassembles", async () => {
+		const workspaceId = "gc-paging-ws";
+		await fetchWithBearer("/api/workspace", {
+			method: "POST",
+			...jsonBody({ name: workspaceId }),
+		});
+		const stub = workspaceDoStub(workspaceId);
+
+		for (let i = 0; i < 5; i++) {
+			const upload = await fetchWithBearer("/api/asset/upload", {
+				method: "POST",
+				body: new Uint8Array([100 + i]),
+			});
+			const { storageId } = (await upload.json()) as { storageId: string };
+			const pushed = await authedJson<{ ok: boolean }>("/api/assets", {
+				method: "POST",
+				...jsonBody({
+					workspaceId,
+					path: `p${i}.assets/a.png`,
+					storageId,
+					deviceId: "d",
+				}),
+			});
+			expect(pushed.body.ok).toBe(true);
+		}
+
+		// Tiny budget forces multiple pages through the real DO method.
+		const seen: string[] = [];
+		let cursor: { path: string } | null = null;
+		let pages = 0;
+		do {
+			const page = await stub.listAssetsForGc({ cursor, maxBytes: 300 });
+			seen.push(...page.assets.map((a) => a.path));
+			cursor = page.nextCursor;
+			pages++;
+			expect(pages).toBeLessThan(10);
+		} while (cursor);
+		expect(pages).toBeGreaterThan(1);
+		expect(seen.sort()).toEqual([
+			"p0.assets/a.png",
+			"p1.assets/a.png",
+			"p2.assets/a.png",
+			"p3.assets/a.png",
+			"p4.assets/a.png",
+		]);
 	});
 });

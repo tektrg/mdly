@@ -44,18 +44,19 @@ new_sqlite_classes = ["WorkspaceDurableObject"]
 
 # Nightly orphan-asset GC (R5) — same time-of-day as the old Convex cron.
 #
-# DISARMED 2026-09-03. `referencedAssetPaths` only counts a markdown image
-# reference when a path segment ends in `.assets`, but `POST /api/assets`
-# accepts any path and the desktop asset walker uploads images from anywhere
-# in the workspace. An image at e.g. `images/logo.png` referenced by a live
-# note is therefore marked orphaned, tombstoned after the grace period, and
-# deleted from R2 — and the tombstone propagates to the desktop, which deletes
-# the user's local original too. Reproduced end-to-end against real workerd
-# driving runOrphanAssetCleanup.
+# DISARMED 2026-09-03. The old matcher only counted a markdown image reference
+# when a path segment ended in `.assets`, but `POST /api/assets` accepts any
+# path and the desktop asset walker uploads images from anywhere in the
+# workspace — so referenced images in plain folders were marked, tombstoned,
+# and deleted from R2 (and the tombstone then deleted the local original).
+# Fixed round 6: reachability is now a raw-content containment check over
+# every live note's text (canonical, raw, percent-encoded and backslash forms
+# of the stored path — no folder-name gate, no syntax enumeration), and the
+# stored row path is canonicalised before comparing so legacy rows match.
+# A deletion decision fails toward keeping data.
 #
-# Re-enable ONLY after the reference matcher and the asset write path agree on
-# what counts as an asset (same class as the writer/matcher split that caused
-# the earlier trim data-loss bug — see .brief-do-fix-round-4.md).
+# Re-enable ONLY after review says so — see .brief-do-fix-round-5.md and
+# .brief-do-fix-round-6.md. The [triggers] block below stays commented out.
 # [triggers]
 # crons = ["0 4 * * *"]
 

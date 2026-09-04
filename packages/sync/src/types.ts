@@ -73,10 +73,24 @@ export const FileStateSchema = z.object({
 });
 export type FileState = z.infer<typeof FileStateSchema>;
 
+/** One permanently-rejected file, persisted so later runs skip re-pushing it. */
+export const RejectedFileSchema = z.object({
+	hash: z.string(),
+	code: z.string().optional(),
+	message: z.string(),
+	rejectedAt: z.number(),
+});
+export type RejectedFile = z.infer<typeof RejectedFileSchema>;
+
 export const SyncStateSchema = z.object({
 	lastSyncedAt: z.number(),
 	files: z.record(z.string(), FileStateSchema),
 	assets: z.record(z.string(), FileStateSchema).optional(),
+	// Files the server permanently refused (HTTP 413 — physically unable to
+	// store, e.g. over the per-value ceiling). Keyed by path with the hash
+	// that was refused: an unchanged file is not retried on later runs, an
+	// edited file (new hash) is. Optional so older state files still parse.
+	rejectedFiles: z.record(z.string(), RejectedFileSchema).optional(),
 });
 export type SyncState = z.infer<typeof SyncStateSchema>;
 
@@ -89,6 +103,19 @@ export type SyncResult = {
 	assetsPushed: number;
 	assetsPulled: number;
 	assetsDeleted: number;
+	/** Files that failed to push this run. `permanent` (HTTP 413) means the
+	 * server can never store this content — kept local, unsynced, reported,
+	 * and not retried while unchanged. Anything else is transient and retried
+	 * next run. Always present (possibly empty) so callers can report it. */
+	failedFiles: FailedFile[];
+};
+
+/** One file that failed to push during a sync run. */
+export type FailedFile = {
+	path: string;
+	permanent: boolean;
+	code?: string;
+	message: string;
 };
 
 export type RemoteFile = {
@@ -174,6 +201,23 @@ export type SyncPlan = {
 	};
 	folders: FolderSummaryEntry[];
 	totalOps: number;
+	/**
+	 * Pushes withheld because a previous run permanently rejected the same
+	 * content (HTTP 413). Not actions — execute() reports (not retries) them.
+	 * Optional so hand-built plans from older callers still work.
+	 */
+	skippedPushes?: {
+		path: string;
+		hash: string;
+		code?: string;
+		message: string;
+	}[];
+	/**
+	 * Rejected-file entries whose path is no longer present locally.
+	 * execute() drops them from persisted state. Optional for the same
+	 * backward-compatibility reason.
+	 */
+	prunedRejected?: string[];
 };
 
 /** Structured progress payload — the old enum+string channel cannot carry counts. */

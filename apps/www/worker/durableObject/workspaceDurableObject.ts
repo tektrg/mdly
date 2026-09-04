@@ -3,8 +3,12 @@ import type { Env } from "../env.js";
 import { workspaceStorageCapBytes } from "../env.js";
 import {
 	clearAssetOrphaned,
-	getAssets,
-	listAllAssetsForGc,
+	type AssetCursor,
+	type AssetPage,
+	type GcAssetCursor,
+	type GcAssetPage,
+	listAssetsForGcPage,
+	listAssetsPage,
 	markAssetDeletedByGc,
 	markAssetOrphaned,
 	referencedHashesInWorkspace,
@@ -17,6 +21,7 @@ import {
 	BatchByteLimitError,
 	BatchEmptyError,
 	BatchTooLargeError,
+	FieldTooLargeError,
 	FileTooLargeError,
 	StorageCapExceededError,
 	toRpcError,
@@ -24,8 +29,9 @@ import {
 } from "./errors.js";
 import {
 	assertCommentLogSlotInvariant,
-	getFiles,
-	type RemoteFileLike,
+	type FileCursor,
+	type FilePage,
+	listFilesPage,
 	softDeleteFile,
 	upsertFile,
 } from "./files.js";
@@ -36,6 +42,7 @@ import {
 	ensureSchema,
 } from "./schema.js";
 import { canonicalFilePath } from "../paths.js";
+import { utf8ByteLength } from "../http.js";
 
 export type { RemoteAssetLike } from "./assets.js";
 export type { RemoteFileLike } from "./files.js";
@@ -55,12 +62,25 @@ export const MAX_PUSH_BATCH_FILES = 100;
 export const MAX_PUSH_BATCH_BYTES = 8 * 1024 * 1024;
 
 /**
- * Maximum content bytes per single `pushFile` call. Same ~32MiB RPC ceiling
- * as the batch limit: a bigger payload would die inside the RPC layer with a
- * 500 leaking internals, so the single-push route rejects it pre-RPC with a
- * clean 413 and the DO re-checks here as defence in depth.
+ * Maximum content bytes per single `pushFile` call, measured in exact UTF-8
+ * bytes. Probed empirically on real workerd: 2,195,000 bytes stores fine,
+ * 2,199,999 throws `SQLITE_TOOBIG` — so the real per-value ceiling sits just
+ * under 2.2MB, and 2MiB leaves a safe margin that no production drift can
+ * plausibly eat (the check itself is byte-exact, so there is no astral-plane
+ * slack to account for). Anything bigger gets a typed 413 naming the file
+ * and the limit, instead of escaping as an opaque 500. The Worker route
+ * enforces the same cap pre-RPC; this DO-side check is defence in depth.
  */
-export const MAX_PUSH_FILE_BYTES = 8 * 1024 * 1024;
+export const MAX_PUSH_FILE_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Maximum UTF-8 bytes for any single scalar RPC field that lands in SQLite
+ * (`contentHash`, `deviceId`, `storageId`). Same physical ceiling as file
+ * content: past it the value can never be stored, so it is a terminal 413,
+ * not a retryable 500. Paths have their own 1024-char cap; content its own
+ * 2MiB cap.
+ */
+export const MAX_FIELD_BYTES = 2 * 1024 * 1024;
 
 /**
  * One Durable Object instance per workspace (`WORKSPACE_DO.idFromName(name)`),
@@ -133,8 +153,10 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 	listFiles(opts?: {
 		since?: number;
 		includeDeleted?: boolean;
-	}): RemoteFileLike[] {
-		return getFiles(this.sql, opts);
+		cursor?: FileCursor | null;
+		maxBytes?: number;
+	}): FilePage {
+		return listFilesPage(this.sql, opts);
 	}
 
 	pushFile(args: {
@@ -143,29 +165,35 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 		content: string;
 		deviceId: string;
 	}): PushResult {
-		let path: string;
 		try {
-			path = canonicalFilePath(args.path);
+			const path = canonicalFilePath(args.path);
 			assertCommentLogSlotInvariant(this.sql, path, args.deviceId);
-			if (args.content.length > MAX_PUSH_FILE_BYTES) {
-				throw new FileTooLargeError(
-					args.content.length,
-					MAX_PUSH_FILE_BYTES,
-				);
-			}
 			// Delta, not raw length: re-saving an unchanged file costs ~zero,
 			// so a workspace near its cap can still save what it already has.
+			// Quota is checked before the physical per-file ceiling so a push
+			// that exceeds both reports the quota it was measured against.
 			this.assertWithinStorageCap(
 				args.content.length - this.liveBytesForPath(path),
 			);
+			const contentBytes =
+				typeof args.content === "string"
+					? utf8ByteLength(args.content)
+					: 0;
+			if (contentBytes > MAX_PUSH_FILE_BYTES) {
+				throw new FileTooLargeError(contentBytes, MAX_PUSH_FILE_BYTES, path);
+			}
+			this.assertFieldSize("contentHash", args.contentHash);
+			this.assertFieldSize("deviceId", args.deviceId);
+			// Inside the try: a SQLite throw (too big, storage full) becomes
+			// a typed result through `toRpcError` — never an opaque 500 with
+			// an unhandled rejection.
+			upsertFile(this.sql, { ...args, path });
+			const version = bumpVersion(this.sql);
+			broadcastVersion(this.ctx, version);
+			return { ok: true, version };
 		} catch (error) {
 			return toRpcError(error);
 		}
-
-		upsertFile(this.sql, { ...args, path });
-		const version = bumpVersion(this.sql);
-		broadcastVersion(this.ctx, version);
-		return { ok: true, version };
 	}
 
 	deleteFile(args: { path: string; deviceId: string }): PushResult {
@@ -173,6 +201,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 			const raw = args.path;
 			const path = canonicalFilePath(raw);
 			assertCommentLogSlotInvariant(this.sql, path, args.deviceId);
+			this.assertFieldSize("deviceId", args.deviceId);
 			// Legacy rows stored pre-normalisation live under the raw
 			// spelling: prefer a live exact match on the raw path as sent,
 			// else the canonical row. Live-only, so a soft-deleted canonical
@@ -211,6 +240,19 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 				)
 				.toArray().length > 0
 		);
+	}
+
+	/**
+	 * Guards one scalar field against the SQLite per-value ceiling. Non-string
+	 * input passes through (route shape validation owns types; the write then
+	 * coerces or throws exactly as before this check existed).
+	 */
+	private assertFieldSize(field: string, value: unknown): void {
+		const bytes =
+			typeof value === "string" ? utf8ByteLength(value) : 0;
+		if (bytes > MAX_FIELD_BYTES) {
+			throw new FieldTooLargeError(field, bytes, MAX_FIELD_BYTES);
+		}
 	}
 
 	/**
@@ -287,7 +329,28 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 			for (const file of canonical) {
 				assertCommentLogSlotInvariant(this.sql, file.path, file.deviceId);
 			}
+			// Quota before the physical per-file ceiling (same order as
+			// single pushes): a batch exceeding both reports the quota.
 			this.assertWithinStorageCap(this.incomingBatchDeltaBytes(canonical));
+			for (const file of canonical) {
+				// Same per-file ceiling as single pushes: one oversized entry
+				// must 413 the batch up front, not SQLITE_TOOBIG mid-loop.
+				// Non-strings pass through here (the write then throws and
+				// the transaction rolls back — covered by the rollback test).
+				const contentBytes =
+					typeof file.content === "string"
+						? utf8ByteLength(file.content)
+						: 0;
+				if (contentBytes > MAX_PUSH_FILE_BYTES) {
+					throw new FileTooLargeError(
+						contentBytes,
+						MAX_PUSH_FILE_BYTES,
+						file.path,
+					);
+				}
+				this.assertFieldSize("contentHash", file.contentHash);
+				this.assertFieldSize("deviceId", file.deviceId);
+			}
 		} catch (error) {
 			return toRpcError(error);
 		}
@@ -341,8 +404,12 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 
 	// --- Assets (SyncBackend) ---
 
-	listAssets(since?: number) {
-		return getAssets(this.sql, since);
+	listAssets(opts?: {
+		since?: number;
+		cursor?: AssetCursor | null;
+		maxBytes?: number;
+	}): AssetPage {
+		return listAssetsPage(this.sql, opts);
 	}
 
 	/**
@@ -357,13 +424,22 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 		hash: string;
 		deviceId: string;
 	}): PushResult {
-		let path: string;
 		try {
-			path = canonicalFilePath(args.path);
+			const path = canonicalFilePath(args.path);
+			// Same namespace guard as file pushes: the invariant protects
+			// the `.mdly/comments/` PATH namespace, not a table. A browser
+			// must not be able to claim a canonical-log path through the
+			// asset table that it is refused through the file table —
+			// otherwise push and delete disagree about who owns the name.
+			// Desktop/CLI never register a slot, so the legitimate
+			// comment-log owners are unaffected on every path.
+			assertCommentLogSlotInvariant(this.sql, path, args.deviceId);
+			this.assertFieldSize("storageId", args.hash);
+			this.assertFieldSize("deviceId", args.deviceId);
+			upsertAsset(this.sql, { ...args, path });
 		} catch (error) {
 			return toRpcError(error);
 		}
-		upsertAsset(this.sql, { ...args, path });
 		const version = bumpVersion(this.sql);
 		broadcastVersion(this.ctx, version);
 		return { ok: true, version };
@@ -374,6 +450,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 			const raw = args.path;
 			const path = canonicalFilePath(raw);
 			assertCommentLogSlotInvariant(this.sql, path, args.deviceId);
+			this.assertFieldSize("deviceId", args.deviceId);
 			// Asset rows were never normalised before this deploy, so
 			// non-canonical rows are the expected production state — same
 			// raw-preferring, live-only fallback as `deleteFile`.
@@ -390,14 +467,32 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 
 	// --- Devices (R3) ---
 
-	registerDeviceSlot(deviceId: string, label?: string): DeviceRow {
-		return registerDevice(this.sql, deviceId, label);
+	/**
+	 * Registers a browser device slot. Wrapped so a SQLite throw (e.g. an
+	 * over-limit deviceId hitting the per-value ceiling) becomes a typed
+	 * result instead of an uncaught rejection — same shape as the upsert
+	 * fix. The length cap makes that throw unreachable for oversized input.
+	 */
+	registerDeviceSlot(
+		deviceId: string,
+		label?: string,
+	): { ok: true; device: DeviceRow } | { ok: false; code: WorkerErrorCode | "UNKNOWN"; message: string } {
+		try {
+			this.assertFieldSize("deviceId", deviceId);
+			this.assertFieldSize("label", label ?? "");
+			return { ok: true, device: registerDevice(this.sql, deviceId, label) };
+		} catch (error) {
+			return toRpcError(error);
+		}
 	}
 
 	// --- Orphan asset GC (R5), invoked by the Worker's cron handler ---
 
-	listAssetsForGc() {
-		return listAllAssetsForGc(this.sql);
+	listAssetsForGc(opts?: {
+		cursor?: GcAssetCursor | null;
+		maxBytes?: number;
+	}): GcAssetPage {
+		return listAssetsForGcPage(this.sql, opts);
 	}
 
 	referencedHashes(): string[] {

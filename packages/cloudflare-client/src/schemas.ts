@@ -27,12 +27,21 @@ export const RemoteAssetSchema = z.object({
 	deleted: z.boolean(),
 });
 
+export const PageCursorSchema = z.object({
+	updatedAt: z.number(),
+	path: z.string(),
+});
+
 export const GetFilesResponseSchema = z.object({
 	files: z.array(RemoteFileSchema),
+	// Absent on old servers / mocks that return the full list at once —
+	// missing means "no further pages".
+	nextCursor: PageCursorSchema.nullish(),
 });
 
 export const GetAssetsResponseSchema = z.object({
 	assets: z.array(RemoteAssetSchema),
+	nextCursor: PageCursorSchema.nullish(),
 });
 
 export const MutationOkResponseSchema = z.object({

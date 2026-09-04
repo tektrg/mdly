@@ -36,8 +36,12 @@ export { WorkspaceDurableObject } from "./durableObject/workspaceDurableObject.j
  * keep their specific status and message; anything unrecognised (notably an
  * RPC serialization blowup) becomes a generic 500 with no internals — that
  * raw `error.message` was the actual leak channel for the 32MiB RPC text.
+ *
+ * Exported (not just module-private) so the suite can prove the wiring:
+ * `errorToResponseBody` unit tests cover the mapping, and the test below
+ * covers that THIS function is what the router actually calls.
  */
-function errorResponse(error: unknown): Response {
+export function errorResponse(error: unknown): Response {
 	const { status, body } = errorToResponseBody(error);
 	return json(body, { status });
 }

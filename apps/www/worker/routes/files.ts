@@ -1,9 +1,11 @@
 import {
 	BatchByteLimitError,
 	BatchTooLargeError,
+	FieldTooLargeError,
 	FileTooLargeError,
 } from "../durableObject/errors.js";
 import {
+	MAX_FIELD_BYTES,
 	MAX_PUSH_BATCH_BYTES,
 	MAX_PUSH_BATCH_FILES,
 	MAX_PUSH_FILE_BYTES,
@@ -12,8 +14,10 @@ import type { Env } from "../env.js";
 import {
 	forbiddenDeviceIdResponse,
 	json,
+	parseCursor,
 	readJsonBody,
 	requestTooLargeResponse,
+	utf8ByteLength,
 } from "../http.js";
 import { workspaceStub } from "./workspaceStub.js";
 
@@ -24,12 +28,31 @@ function pushErrorStatus(code: string): number {
 	if (code === "BATCH_EMPTY") return 400;
 	if (code === "BATCH_BYTE_LIMIT") return 413;
 	if (code === "FILE_TOO_LARGE") return 413;
+	if (code === "REQUEST_TOO_LARGE") return 413;
+	if (code === "FIELD_TOO_LARGE") return 413;
 	if (code === "INVALID_PATH") return 400;
 	return 500;
 }
 
 function isNonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.length > 0;
+}
+
+/**
+ * 413 when one scalar field exceeds the SQLite-safe ceiling (pre-RPC, so an
+ * oversized contentHash/deviceId can never 500 mid-write and be retried as
+ * transient forever). Returns null when clean.
+ */
+function oversizedFieldResponse(field: string, value: string): Response | null {
+	const bytes = utf8ByteLength(value);
+	if (bytes > MAX_FIELD_BYTES) {
+		const error = new FieldTooLargeError(field, bytes, MAX_FIELD_BYTES);
+		return json(
+			{ error: error.message, code: error.code },
+			{ status: 413 },
+		);
+	}
+	return null;
 }
 
 /**
@@ -52,7 +75,7 @@ export async function handleGetVersion(
 	return json({ version });
 }
 
-/** GET /api/files?workspaceId=&since=&includeDeleted= — SyncBackend.getFiles. */
+/** GET /api/files?workspaceId=&since=&includeDeleted=&cursorUpdatedAt=&cursorPath= — SyncBackend.getFiles, one byte-bounded page. */
 export async function handleGetFiles(
 	request: Request,
 	env: Env,
@@ -63,13 +86,31 @@ export async function handleGetFiles(
 		return json({ error: "workspaceId is required" }, { status: 400 });
 
 	const sinceParam = url.searchParams.get("since");
+	const since = sinceParam ? Number(sinceParam) : undefined;
+	if (since !== undefined && !Number.isFinite(since)) {
+		return json(
+			{ error: "since must be a valid timestamp number" },
+			{ status: 400 },
+		);
+	}
+	const cursor = parseCursor(
+		url.searchParams.get("cursorUpdatedAt"),
+		url.searchParams.get("cursorPath"),
+	);
+	if (cursor === "invalid") {
+		return json(
+			{ error: "cursorUpdatedAt and cursorPath must be passed together and valid" },
+			{ status: 400 },
+		);
+	}
 	const opts = {
-		since: sinceParam ? Number(sinceParam) : undefined,
+		since,
 		includeDeleted: url.searchParams.get("includeDeleted") === "true",
+		cursor,
 	};
 
-	const files = await workspaceStub(env, workspaceId).listFiles(opts);
-	return json({ files });
+	const page = await workspaceStub(env, workspaceId).listFiles(opts);
+	return json({ files: page.files, nextCursor: page.nextCursor });
 }
 
 /** POST /api/files — SyncBackend.pushFile. */
@@ -112,12 +153,20 @@ export async function handlePushFile(
 	if (tooLarge) return tooLarge;
 	const badDevice = forbiddenDeviceIdResponse(deviceId);
 	if (badDevice) return badDevice;
+	const badField =
+		oversizedFieldResponse("contentHash", contentHash ?? "") ??
+		oversizedFieldResponse("deviceId", deviceId);
+	if (badField) return badField;
 
 	// Pre-RPC guard: a payload near the ~32MiB RPC ceiling would die inside
 	// the RPC layer with a 500 leaking internals (same leak the batch byte
 	// cap closes). The DO re-checks as defence in depth.
-	if (content.length > MAX_PUSH_FILE_BYTES) {
-		const error = new FileTooLargeError(content.length, MAX_PUSH_FILE_BYTES);
+	if (utf8ByteLength(content) > MAX_PUSH_FILE_BYTES) {
+		const error = new FileTooLargeError(
+			utf8ByteLength(content),
+			MAX_PUSH_FILE_BYTES,
+			path,
+		);
 		return json(
 			{ error: error.message, code: error.code },
 			{ status: 413 },
@@ -169,6 +218,8 @@ export async function handleSoftDeleteFile(
 	if (tooLarge) return tooLarge;
 	const badDevice = forbiddenDeviceIdResponse(deviceId);
 	if (badDevice) return badDevice;
+	const badField = oversizedFieldResponse("deviceId", deviceId);
+	if (badField) return badField;
 	const result = await workspaceStub(env, workspaceId).deleteFile({
 		path,
 		deviceId,
@@ -241,6 +292,24 @@ export async function handlePushFilesBatch(
 	for (const file of files) {
 		const badDevice = forbiddenDeviceIdResponse(file?.deviceId ?? "");
 		if (badDevice) return badDevice;
+		const badField =
+			oversizedFieldResponse("contentHash", file?.contentHash ?? "") ??
+			oversizedFieldResponse("deviceId", file?.deviceId ?? "");
+		if (badField) return badField;
+		// Per-file ceiling pre-RPC, mirroring the DO check: one oversized
+		// entry 413s here instead of SQLITE_TOOBIG-ing mid-batch.
+		const contentBytes = utf8ByteLength(file?.content ?? "");
+		if (contentBytes > MAX_PUSH_FILE_BYTES) {
+			const error = new FileTooLargeError(
+				contentBytes,
+				MAX_PUSH_FILE_BYTES,
+				file?.path ?? "",
+			);
+			return json(
+				{ error: error.message, code: error.code },
+				{ status: 413 },
+			);
+		}
 	}
 	if (files.length > MAX_PUSH_BATCH_FILES) {
 		const error = new BatchTooLargeError(files.length, MAX_PUSH_BATCH_FILES);

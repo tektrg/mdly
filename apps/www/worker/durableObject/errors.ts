@@ -20,6 +20,7 @@ export type WorkerErrorCode =
 	| "BATCH_BYTE_LIMIT"
 	| "FILE_TOO_LARGE"
 	| "REQUEST_TOO_LARGE"
+	| "FIELD_TOO_LARGE"
 	| "INVALID_PATH";
 
 export class StorageCapExceededError extends Error {
@@ -100,12 +101,19 @@ export class FileTooLargeError extends Error {
 	constructor(
 		public readonly contentBytes: number,
 		public readonly maxBytes: number,
+		public readonly path?: string,
 	) {
+		const name = path ? `File "${truncateForError(path)}" ` : "File content ";
 		super(
-			`File content of ${contentBytes} bytes exceeds the maximum single-push size of ${maxBytes} bytes — split the file or push it in smaller batches.`,
+			`${name}of ${contentBytes} bytes exceeds the maximum single-push size of ${maxBytes} bytes — split the file or push it in smaller batches.`,
 		);
 		this.name = "FileTooLargeError";
 	}
+}
+
+/** Caps echoed-back input in error messages so a giant path can't bloat the response. */
+function truncateForError(value: string, max = 200): string {
+	return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
 export class RequestTooLargeError extends Error {
@@ -118,6 +126,20 @@ export class RequestTooLargeError extends Error {
 			`Request body of ${requestBytes} bytes exceeds the maximum request size of ${maxBytes} bytes.`,
 		);
 		this.name = "RequestTooLargeError";
+	}
+}
+
+export class FieldTooLargeError extends Error {
+	readonly code = "FIELD_TOO_LARGE" as const;
+	constructor(
+		public readonly field: string,
+		public readonly fieldBytes: number,
+		public readonly maxBytes: number,
+	) {
+		super(
+			`Field "${field}" of ${fieldBytes} bytes exceeds the maximum of ${maxBytes} bytes.`,
+		);
+		this.name = "FieldTooLargeError";
 	}
 }
 
@@ -144,6 +166,7 @@ export function toRpcError(error: unknown): {
 		error instanceof BatchByteLimitError ||
 		error instanceof FileTooLargeError ||
 		error instanceof RequestTooLargeError ||
+		error instanceof FieldTooLargeError ||
 		error instanceof InvalidPathError
 	) {
 		return { ok: false, code: error.code, message: error.message };
@@ -194,6 +217,9 @@ export function errorToResponseBody(error: unknown): {
 		return { status: 413, body: { error: error.message, code: error.code } };
 	}
 	if (error instanceof RequestTooLargeError) {
+		return { status: 413, body: { error: error.message, code: error.code } };
+	}
+	if (error instanceof FieldTooLargeError) {
 		return { status: 413, body: { error: error.message, code: error.code } };
 	}
 	if (isStorageFullError(error)) {

@@ -13,6 +13,7 @@ import type {
 	CloudSyncConfig,
 	FileState,
 	FolderSummaryEntry,
+	RejectedFile,
 	RemoteAsset,
 	SyncPlan,
 	SyncProgress,
@@ -308,7 +309,37 @@ export async function plan(
 		nextPlan.assetOps.toPull.push(remote.path);
 	}
 
+	// Permanently-rejected files (HTTP 413 on an earlier run) are not
+	// re-planned while their content is unchanged — retrying them every run
+	// would jam the loop the same way the original failure did. An edited
+	// file (new hash) plans normally: it may fit now. Withheld ops travel on
+	// `skippedPushes` so execute() (and dry-run previews) still report them
+	// instead of going silent.
+	const skippedPushes: NonNullable<SyncPlan["skippedPushes"]> = [];
+	nextPlan.toPush = nextPlan.toPush.filter((op) => {
+		const entry = state.rejectedFiles?.[op.path];
+		if (entry && entry.hash === op.hash) {
+			skippedPushes.push({
+				path: op.path,
+				hash: op.hash,
+				code: entry.code,
+				message: entry.message,
+			});
+			return false;
+		}
+		return true;
+	});
+	nextPlan.skippedPushes = skippedPushes;
+
+	// Rejected entries for files that no longer exist locally are dead
+	// weight: drop them from persisted state when this plan executes.
+	nextPlan.prunedRejected = Object.keys(state.rejectedFiles ?? {}).filter(
+		(path) => !localByPath.has(path),
+	);
+
 	nextPlan.folders = summarizePlanByFolder(nextPlan);
+	// totalOps means "work to do" — withheld pushes are reported, not
+	// worked, and live on `skippedPushes` as their own field.
 	nextPlan.totalOps =
 		nextPlan.toPush.length +
 		nextPlan.toPull.length +
@@ -318,6 +349,28 @@ export async function plan(
 		nextPlan.assetOps.toPull.length +
 		nextPlan.assetOps.toDelete.length;
 	return nextPlan;
+}
+
+/** HTTP 413 means the server can never store this content — do not retry it. */
+export function isPermanentFailure(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"status" in error &&
+		(error as { status?: unknown }).status === 413
+	);
+}
+
+function failureInfo(error: unknown): { code?: string; message: string } {
+	if (typeof error === "object" && error !== null) {
+		const record = error as { code?: unknown; message?: unknown };
+		return {
+			code: typeof record.code === "string" ? record.code : undefined,
+			message:
+				typeof record.message === "string" ? record.message : String(error),
+		};
+	}
+	return { message: String(error) };
 }
 
 /**
@@ -350,8 +403,14 @@ export async function execute(
 		assetsPushed: 0,
 		assetsPulled: 0,
 		assetsDeleted: 0,
+		failedFiles: [],
 	};
 	const nextFiles: Record<string, FileState> = { ...state.files };
+	const nextRejected: Record<string, RejectedFile> = {
+		...(state.rejectedFiles ?? {}),
+	};
+	const prevAssets = state.assets ?? {};
+	const nextAssets: Record<string, FileState> = { ...prevAssets };
 	const now = Date.now();
 	const total = Math.max(computed.totalOps, 1);
 	let done = 0;
@@ -390,9 +449,51 @@ export async function execute(
 	}
 
 	for (const op of computed.toPush) {
-		await pushLocal(op.path, op.hash, op.content, op.mtime, op.size);
+		try {
+			await pushLocal(op.path, op.hash, op.content, op.mtime, op.size);
+		} catch (error) {
+			// One file's failure must never abort the run: record it,
+			// continue the loop, and still write state at the end so all
+			// other progress is durable.
+			const info = failureInfo(error);
+			if (isPermanentFailure(error)) {
+				nextRejected[op.path] = {
+					hash: op.hash,
+					code: info.code,
+					message: info.message,
+					rejectedAt: now,
+				};
+				result.failedFiles.push({ path: op.path, permanent: true, ...info });
+			} else {
+				// Transient (5xx, network…): reported now, retried next run —
+				// state keeps the old entry so the next plan re-pushes it.
+				result.failedFiles.push({ path: op.path, permanent: false, ...info });
+			}
+			tick(op.path, "push");
+			continue;
+		}
+		// A push that now succeeds clears a stale rejection (e.g. the file
+		// was edited down to a storable size after an earlier refusal).
+		if (nextRejected[op.path]) delete nextRejected[op.path];
 		tick(op.path, "push");
 	}
+
+	// Withheld by plan() as known permanent rejections: not retried, but
+	// reported every run — unsynced, never silent. Not ticked: they are not
+	// work, and totalOps doesn't count them.
+	for (const skipped of computed.skippedPushes ?? []) {
+		result.failedFiles.push({
+			path: skipped.path,
+			permanent: true,
+			code: skipped.code,
+			message: skipped.message,
+		});
+	}
+
+	// Durability checkpoint: everything pushed above is recorded BEFORE the
+	// pull listing below. If that listing throws, the run still propagates
+	// the error — but the next run resumes instead of re-pushing.
+	await writeState();
 
 	// Pulls + deletes + conflicts need remote content fresh at execute time
 	// for correctness; re-fetch once rather than per file.
@@ -430,6 +531,10 @@ export async function execute(
 		result.pulled.push(op.path);
 		tick(op.path, "pull");
 	}
+
+	// Durability checkpoint: pulled files are recorded before deletes and
+	// assets run, for the same resume-instead-of-repeat reason as above.
+	await writeState();
 
 	for (const op of computed.toDelete) {
 		if (op.kind === "local") {
@@ -471,8 +576,6 @@ export async function execute(
 	}
 
 	// --- Asset execution ---
-	const prevAssets = state.assets ?? {};
-	const nextAssets: Record<string, FileState> = { ...prevAssets };
 	const remoteAssets = await backend.getAssets(workspaceId);
 	const remoteAssetByPath = new Map(remoteAssets.map((a) => [a.path, a]));
 
@@ -553,13 +656,30 @@ export async function execute(
 		tick(path, "assets");
 	}
 
-	await writeSyncState(fs, workspacePath, {
-		lastSyncedAt: now,
-		files: nextFiles,
-		assets: nextAssets,
-	});
+	await writeState();
 	throttle.flush({ phase: "done", done: total, total });
 	return result;
+
+	/**
+	 * Persists everything recorded so far: files, assets, and rejections
+	 * (minus entries pruned for locally-deleted paths). Called at checkpoints
+	 * and at the end, so a failure anywhere still leaves durable progress.
+	 * `rejectedFiles` is written only when non-empty, so runs without
+	 * rejections write byte-identical state to before.
+	 */
+	async function writeState(): Promise<void> {
+		for (const pruned of computed.prunedRejected ?? []) {
+			delete nextRejected[pruned];
+		}
+		await writeSyncState(fs, workspacePath, {
+			lastSyncedAt: now,
+			files: nextFiles,
+			assets: nextAssets,
+			...(Object.keys(nextRejected).length > 0
+				? { rejectedFiles: nextRejected }
+				: {}),
+		});
+	}
 }
 
 function isGoneError(error: unknown): boolean {
