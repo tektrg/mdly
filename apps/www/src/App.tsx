@@ -1,80 +1,64 @@
-import { useState } from "react";
+import { logout } from "@mdly/cloudflare-client";
+import { useStoreValue } from "@simplestack/store/react";
 import {
 	BrowserRouter,
 	Navigate,
 	Route,
 	Routes,
-	useLocation,
 	useNavigate,
 	useParams,
 } from "react-router";
-import { disconnect, readConnection } from "./connection/connection";
-import { ConnectScreen } from "./screens/ConnectScreen";
-import { OpenWorkspaceScreen } from "./screens/OpenWorkspaceScreen";
+import { readLastWorkspaceId, saveWorkspace } from "./connection/connection";
+import { WORKER_BASE_URL } from "./connection/workerUrl";
+import { LoginScreen } from "./screens/LoginScreen";
+import { WorkspacePickerScreen } from "./screens/WorkspacePickerScreen";
 import { AppShell } from "./shell/AppShell";
+import {
+	authStore,
+	markAuthenticated,
+	markUnauthenticated,
+} from "./store/authState";
 import { workspaceStore } from "./store/state";
-
-type Connection = {
-	url: string;
-	workspaceId: string | null;
-};
-
-function initialConnection(): Connection | null {
-	const testConnection = readTestBootstrap();
-	if (testConnection) return testConnection;
-	return readConnection();
-}
-
-// Agent test bootstrap: navigating to /?test=1 skips the connect + workspace
-// screens by reading VITE_TEST_CONVEX_URL / VITE_TEST_WORKSPACE_ID from
-// apps/www/.env.local. Without the query param the env vars are inert, so
-// human dev sessions are unaffected.
-function readTestBootstrap(): Connection | null {
-	const params = new URLSearchParams(window.location.search);
-	if (params.get("test") !== "1") return null;
-	const url = import.meta.env.VITE_TEST_CONVEX_URL;
-	const workspaceId = import.meta.env.VITE_TEST_WORKSPACE_ID;
-	if (!url || !workspaceId) {
-		console.warn(
-			"?test=1 set but VITE_TEST_CONVEX_URL / VITE_TEST_WORKSPACE_ID are missing — falling back to normal routing.",
-		);
-		return null;
-	}
-	return { url, workspaceId };
-}
 
 export default function App() {
 	return (
 		<BrowserRouter>
-			<AppRoutes />
+			<AppGate />
 		</BrowserRouter>
 	);
 }
 
+/**
+ * D6/D8: replaces the old Convex-era "connect to a URL, then open a
+ * workspace" flow with a plain auth gate. `authStore` starts optimistic
+ * (assume the session cookie is still valid) — the first request any screen
+ * makes will flip it to "unauthenticated" on a real 401, which is the signal
+ * to show the login screen instead.
+ */
+function AppGate() {
+	const authStatus = useStoreValue(authStore);
+
+	if (authStatus === "unauthenticated") {
+		return <LoginScreen onLoggedIn={markAuthenticated} />;
+	}
+
+	return <AppRoutes />;
+}
+
 function AppRoutes() {
-	const [connection, setConnection] = useState<Connection | null>(
-		initialConnection,
-	);
 	const navigate = useNavigate();
-	const location = useLocation();
 
-	const handleDisconnect = () => {
-		disconnect();
-		setConnection(null);
-		navigate("/", { replace: true });
+	const handleLogout = async () => {
+		try {
+			await logout(WORKER_BASE_URL);
+		} finally {
+			markUnauthenticated();
+		}
 	};
 
-	const handleConnected = (url: string) => {
-		setConnection({
-			url,
-			workspaceId: getWorkspaceIdFromPath(location.pathname),
-		});
-	};
-
-	const handleWorkspaceLoaded = (workspaceId: string) => {
-		setConnection((current) =>
-			current ? { ...current, workspaceId } : current,
-		);
+	const handleWorkspaceSelected = (workspaceId: string) => {
+		saveWorkspace(workspaceId);
+		navigate(workspaceRoute(workspaceId));
 	};
 
 	return (
@@ -83,13 +67,8 @@ function AppRoutes() {
 				path="/"
 				element={
 					<HomeRoute
-						connection={connection}
-						onConnected={handleConnected}
-						onSelected={(workspaceId) => {
-							handleWorkspaceLoaded(workspaceId);
-							navigate(workspaceRoute(workspaceId));
-						}}
-						onDisconnect={handleDisconnect}
+						onSelected={handleWorkspaceSelected}
+						onLogout={handleLogout}
 					/>
 				}
 			/>
@@ -97,11 +76,9 @@ function AppRoutes() {
 				path="/w/:workspaceId"
 				element={
 					<WorkspaceRoute
-						connection={connection}
 						filePath={null}
-						onConnected={handleConnected}
-						onWorkspaceLoaded={handleWorkspaceLoaded}
-						onDisconnect={handleDisconnect}
+						onSwitch={handleWorkspaceSelected}
+						onLogout={handleLogout}
 					/>
 				}
 			/>
@@ -109,10 +86,8 @@ function AppRoutes() {
 				path="/w/:workspaceId/f/*"
 				element={
 					<WorkspaceRoute
-						connection={connection}
-						onConnected={handleConnected}
-						onWorkspaceLoaded={handleWorkspaceLoaded}
-						onDisconnect={handleDisconnect}
+						onSwitch={handleWorkspaceSelected}
+						onLogout={handleLogout}
 					/>
 				}
 			/>
@@ -122,29 +97,22 @@ function AppRoutes() {
 }
 
 function HomeRoute({
-	connection,
-	onConnected,
 	onSelected,
-	onDisconnect,
+	onLogout,
 }: {
-	connection: Connection | null;
-	onConnected: (url: string) => void;
 	onSelected: (workspaceId: string) => void;
-	onDisconnect: () => void;
+	onLogout: () => void;
 }) {
-	if (!connection) {
-		return <ConnectScreen onConnected={onConnected} />;
-	}
-
-	if (connection.workspaceId) {
+	const lastWorkspaceId = readLastWorkspaceId();
+	if (lastWorkspaceId) {
 		const lastOpenedPath =
-			workspaceStore.get().lastOpenedPaths[connection.workspaceId];
+			workspaceStore.get().lastOpenedPaths[lastWorkspaceId];
 		return (
 			<Navigate
 				to={
 					lastOpenedPath
-						? workspaceFileRoute(connection.workspaceId, lastOpenedPath)
-						: workspaceRoute(connection.workspaceId)
+						? workspaceFileRoute(lastWorkspaceId, lastOpenedPath)
+						: workspaceRoute(lastWorkspaceId)
 				}
 				replace
 			/>
@@ -152,26 +120,22 @@ function HomeRoute({
 	}
 
 	return (
-		<OpenWorkspaceScreen
-			url={connection.url}
+		<WorkspacePickerScreen
 			onSelected={onSelected}
-			onDisconnect={onDisconnect}
+			onUnauthorized={markUnauthenticated}
+			onLogout={onLogout}
 		/>
 	);
 }
 
 function WorkspaceRoute({
-	connection,
 	filePath,
-	onConnected,
-	onWorkspaceLoaded,
-	onDisconnect,
+	onSwitch,
+	onLogout,
 }: {
-	connection: Connection | null;
 	filePath?: string | null;
-	onConnected: (url: string) => void;
-	onWorkspaceLoaded: (workspaceId: string) => void;
-	onDisconnect: () => void;
+	onSwitch: (id: string) => void;
+	onLogout: () => void;
 }) {
 	const params = useParams();
 	const navigate = useNavigate();
@@ -181,23 +145,16 @@ function WorkspaceRoute({
 
 	if (!workspaceId) return <Navigate to="/" replace />;
 
-	if (!connection) {
-		return <ConnectScreen onConnected={onConnected} />;
-	}
-
 	return (
 		<AppShell
-			url={connection.url}
 			workspaceId={workspaceId}
 			filePath={routeFilePath}
 			onSelectFile={(path) => {
 				navigate(workspaceFileRoute(workspaceId, path));
 			}}
-			onSwitch={(id) => {
-				navigate(workspaceRoute(id));
-			}}
-			onWorkspaceLoaded={onWorkspaceLoaded}
-			onDisconnect={onDisconnect}
+			onSwitch={onSwitch}
+			onUnauthorized={markUnauthenticated}
+			onLogout={onLogout}
 		/>
 	);
 }
@@ -211,9 +168,4 @@ function workspaceFileRoute(workspaceId: string, path: string): string {
 		.split("/")
 		.map(encodeURIComponent)
 		.join("/")}`;
-}
-
-function getWorkspaceIdFromPath(pathname: string): string | null {
-	const match = /^\/w\/([^/]+)/.exec(pathname);
-	return match ? decodeURIComponent(match[1]) : null;
 }

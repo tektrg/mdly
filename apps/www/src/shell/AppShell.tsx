@@ -1,20 +1,19 @@
-import { createConvexSubscriber } from "@hubble.md/convex-client";
 import { AppShellFrame } from "@hubble.md/ui";
-import { withMarkdownExtension } from "@mdly/workspace-kit";
+import { createCloudflareSubscriber } from "@mdly/cloudflare-client";
 import { useStoreValue } from "@simplestack/store/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
+import { isUnauthorizedError } from "../connection/apiError";
 import { saveWorkspace } from "../connection/connection";
+import { WORKER_BASE_URL } from "../connection/workerUrl";
 import {
 	applyRemoteChange,
+	checkWorkspaceAvailable,
 	clearCurrentPath,
 	getActionCtx,
 	loadPath,
 	loadWorkspaceSnapshot,
 	markRemoteDeleted,
 	refreshAssets,
-	refreshFiles,
-	reloadFromRemote,
-	savePathContent,
 	teardownActions,
 } from "../store/actions";
 import { viewerStore, workspaceStore } from "../store/state";
@@ -22,39 +21,43 @@ import { EditorView } from "./EditorView";
 import { Sidebar } from "./Sidebar";
 import { Toolbar } from "./Toolbar";
 
+// R36: how often a browser holding a workspace open re-checks that the
+// workspace is still opted into cloud sync. See checkWorkspaceAvailable's
+// doc comment (store/actions.ts) for why polling, not a push signal, is
+// what's available here.
+const WORKSPACE_AVAILABILITY_POLL_MS = 5000;
+
 type Props = {
-	url: string;
 	workspaceId: string;
 	filePath: string | null;
 	onSelectFile: (path: string) => void;
 	onSwitch: (id: string) => void;
-	onWorkspaceLoaded: (workspaceId: string) => void;
-	onDisconnect: () => void;
+	onUnauthorized: () => void;
+	onLogout: () => void;
 };
 
 export function AppShell({
-	url,
 	workspaceId,
 	filePath,
 	onSelectFile,
 	onSwitch,
-	onWorkspaceLoaded,
-	onDisconnect,
+	onUnauthorized,
+	onLogout,
 }: Props) {
 	const viewer = useStoreValue(viewerStore);
 	const workspace = useStoreValue(workspaceStore);
-	const [newNoteName, setNewNoteName] = useState<string | null>(null);
-	const [newNoteSubmitted, setNewNoteSubmitted] = useState(false);
-	const newNoteInputRef = useRef<HTMLInputElement>(null);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: snapshot reloads only when workspace identity changes; file route changes load below
 	useEffect(() => {
-		void loadWorkspaceSnapshot(url, workspaceId, filePath).then((loaded) => {
-			if (!loaded) return;
+		void loadWorkspaceSnapshot(workspaceId, filePath).then((result) => {
+			if (result === "unauthorized") {
+				onUnauthorized();
+				return;
+			}
+			if (result !== "loaded") return;
 			saveWorkspace(workspaceId);
-			onWorkspaceLoaded(workspaceId);
 		});
-	}, [url, workspaceId]);
+	}, [workspaceId]);
 
 	useEffect(() => {
 		if (workspace.snapshot?.id !== workspaceId) return;
@@ -71,10 +74,13 @@ export function AppShell({
 		};
 	}, []);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: subscription owns its lifecycle by url+workspaceId
+	// biome-ignore lint/correctness/useExhaustiveDependencies: subscription owns its lifecycle by workspace snapshot identity
 	useEffect(() => {
 		if (!workspace.snapshot) return;
-		const subscriber = createConvexSubscriber(url);
+		const subscriber = createCloudflareSubscriber({
+			baseUrl: WORKER_BASE_URL,
+			auth: { kind: "cookie" },
+		});
 		const unsubscribe = subscriber.onFilesChanged(
 			workspace.snapshot.id,
 			() => {
@@ -98,65 +104,69 @@ export function AppShell({
 			unsubscribeAssets();
 			void subscriber.close();
 		};
-	}, [url, workspace.snapshot]);
+	}, [workspace.snapshot]);
 
+	// R36: no push signal exists for "this workspace's sync was turned off" —
+	// poll instead. Dropping `workspace.snapshot` to null on "unavailable" is
+	// what actually tears the subscription down (its effect above is keyed on
+	// snapshot identity) and swaps in the early-return loading/error screen
+	// below with a clear message, rather than leaving the socket open and
+	// inert.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: polls by workspace identity only; onUnauthorized is a stable store setter
 	useEffect(() => {
-		if (newNoteName !== null) {
-			requestAnimationFrame(() => newNoteInputRef.current?.focus());
-		}
-	}, [newNoteName]);
-
-	const newNotePath = normalizeNotePath(newNoteName ?? "");
-	const newNoteConflict = workspace.files.some(
-		(file) => file.path === newNotePath,
-	);
-	const showNewNoteConflict = newNoteSubmitted && newNoteConflict;
-
-	const handleNewNote = () => {
-		setNewNoteName("");
-		setNewNoteSubmitted(false);
-	};
-
-	const submitNewNote = async (event: React.FormEvent) => {
-		event.preventDefault();
-		setNewNoteSubmitted(true);
-		const name = (newNoteName ?? "").trim();
-		if (!name) return;
-		const path = normalizeNotePath(name);
-		if (workspace.files.some((file) => file.path === path)) return;
-		await savePathContent(path, "");
-		setNewNoteName(null);
-		setNewNoteSubmitted(false);
-		await refreshFiles();
-		onSelectFile(path);
-	};
+		const interval = window.setInterval(() => {
+			void checkWorkspaceAvailable(workspaceId).then((availability) => {
+				if (workspaceStore.get().snapshot?.id !== workspaceId) return;
+				if (availability === "unauthorized") {
+					onUnauthorized();
+					return;
+				}
+				if (availability !== "unavailable") return;
+				workspaceStore.set((state) => ({
+					...state,
+					snapshot: null,
+					status: "error",
+					error: "This workspace's cloud sync was turned off.",
+				}));
+			});
+		}, WORKSPACE_AVAILABILITY_POLL_MS);
+		return () => window.clearInterval(interval);
+	}, [workspaceId]);
 
 	const onRemoteFilesChanged = async () => {
 		const ctx = getActionCtx();
 		if (!ctx) return;
-		const remote = await ctx.backend.getFiles(ctx.workspaceId, {
-			includeDeleted: true,
-		});
-		// One tombstone-inclusive fetch updates the sidebar and detects whether
-		// the current file was deleted.
-		const visible = remote
-			.filter((f) => !f.deleted)
-			.map((f) => ({
-				path: f.path,
-				contentHash: f.contentHash,
-				updatedAt: f.updatedAt,
-				deleted: f.deleted,
-			}));
-		workspaceStore.set((state) => ({ ...state, files: visible }));
+		try {
+			const remote = await ctx.backend.getFiles(ctx.workspaceId, {
+				includeDeleted: true,
+			});
+			// One tombstone-inclusive fetch updates the sidebar and detects whether
+			// the current file was deleted.
+			const visible = remote
+				.filter((f) => !f.deleted)
+				.map((f) => ({
+					path: f.path,
+					contentHash: f.contentHash,
+					updatedAt: f.updatedAt,
+					deleted: f.deleted,
+				}));
+			workspaceStore.set((state) => ({ ...state, files: visible }));
 
-		const v = viewerStore.get();
-		if (!v.currentPath) return;
-		const current = remote.find((f) => f.path === v.currentPath);
-		if (!current || current.deleted) {
-			markRemoteDeleted(v.currentPath);
-			return;
+			const v = viewerStore.get();
+			if (!v.currentPath) return;
+			const current = remote.find((f) => f.path === v.currentPath);
+			if (!current || current.deleted) {
+				markRemoteDeleted(v.currentPath);
+				return;
+			}
+			applyRemoteChange(v.currentPath, current.content, current.contentHash);
+		} catch (err) {
+			if (isUnauthorizedError(err)) {
+				onUnauthorized();
+				return;
+			}
+			console.error("onRemoteFilesChanged failed:", err);
 		}
-		applyRemoteChange(v.currentPath, current.content, current.contentHash);
 	};
 
 	if (!workspace.snapshot) {
@@ -175,75 +185,28 @@ export function AppShell({
 		<AppShellFrame
 			sidebar={
 				<Sidebar
-					url={url}
 					workspaceId={workspace.snapshot.id}
 					workspaceName={workspace.snapshot.name}
 					onSelectFile={onSelectFile}
 					onSwitch={onSwitch}
-					onDisconnect={onDisconnect}
+					onUnauthorized={onUnauthorized}
+					onLogout={onLogout}
 				/>
 			}
-			toolbar={<Toolbar onNewNote={handleNewNote} />}
+			toolbar={<Toolbar />}
 		>
 			{workspace.status === "error" && workspace.error && (
 				<ExternalChangeBanner
 					message={workspace.error}
 					onReload={() => {
-						void loadWorkspaceSnapshot(url, workspaceId, filePath);
+						void loadWorkspaceSnapshot(workspaceId, filePath).then((result) => {
+							if (result === "unauthorized") onUnauthorized();
+						});
 					}}
 				/>
 			)}
-			{newNoteName !== null && (
-				<form
-					onSubmit={submitNewNote}
-					className="border-b border-border bg-muted/40 px-3 py-2"
-				>
-					<div className="mx-auto flex max-w-3xl items-center gap-2">
-						<input
-							ref={newNoteInputRef}
-							type="text"
-							required
-							value={newNoteName}
-							onChange={(e) => setNewNoteName(e.target.value)}
-							placeholder="note-name.md"
-							aria-invalid={showNewNoteConflict}
-							aria-describedby={
-								showNewNoteConflict ? "new-note-conflict" : undefined
-							}
-							className="flex-1 rounded-sm border border-border bg-background px-2 py-1 text-sm outline-none focus:border-ring"
-						/>
-						<button
-							type="submit"
-							className="rounded-sm bg-primary px-3 py-1 text-xs font-medium text-primary-foreground"
-						>
-							Create
-						</button>
-						<button
-							type="button"
-							onClick={() => setNewNoteName(null)}
-							className="rounded-sm px-3 py-1 text-xs text-muted-foreground hover:bg-sidebar-accent"
-						>
-							Cancel
-						</button>
-					</div>
-					{showNewNoteConflict && (
-						<p
-							id="new-note-conflict"
-							className="mx-auto mt-2 max-w-3xl text-sm text-destructive"
-						>
-							A file named {newNotePath} already exists.
-						</p>
-					)}
-				</form>
-			)}
 			{viewer.currentPath && (
 				<div className="flex h-full min-h-0 flex-col">
-					{viewer.externalChange.kind === "conflict" && (
-						<ExternalChangeBanner
-							message="Remote changes available. Reload to accept."
-							onReload={reloadFromRemote}
-						/>
-					)}
 					{viewer.externalChange.kind === "deleted" && (
 						<ExternalChangeBanner
 							message="This file was deleted remotely. Reload before editing."
@@ -267,21 +230,30 @@ export function AppShell({
 			{!viewer.currentPath &&
 				viewer.status !== "loading" &&
 				viewer.status !== "error" &&
-				workspace.filesLoaded && (
+				workspace.filesLoaded &&
+				workspace.files.length === 0 && (
+					<div
+						className="flex h-full items-center justify-center p-6"
+						data-testid="empty-workspace"
+					>
+						<p className="text-sm text-muted-foreground">
+							This workspace has no notes yet.
+						</p>
+					</div>
+				)}
+			{!viewer.currentPath &&
+				viewer.status !== "loading" &&
+				viewer.status !== "error" &&
+				workspace.filesLoaded &&
+				workspace.files.length > 0 && (
 					<div className="flex h-full items-center justify-center p-6">
 						<p className="text-sm text-muted-foreground">
-							Select a file, or create a new one with +.
+							Select a file to view its contents.
 						</p>
 					</div>
 				)}
 		</AppShellFrame>
 	);
-}
-
-function normalizeNotePath(name: string): string {
-	const trimmed = name.trim();
-	if (!trimmed) return "";
-	return withMarkdownExtension(trimmed);
 }
 
 function ExternalChangeBanner({

@@ -10,19 +10,19 @@ import {
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Sidebar({
-	url,
 	workspaceId,
 	workspaceName,
 	onSelectFile,
 	onSwitch,
-	onDisconnect,
+	onUnauthorized,
+	onLogout,
 }: {
-	url: string;
 	workspaceId: string;
 	workspaceName: string;
 	onSelectFile: (path: string) => void;
 	onSwitch: (id: string) => void;
-	onDisconnect: () => void;
+	onUnauthorized: () => void;
+	onLogout: () => void;
 }) {
 	const files = useStoreValue(filesStore);
 	const filesLoaded = useStoreValue(filesLoadedStore);
@@ -42,11 +42,11 @@ export function Sidebar({
 			storageScope={workspaceId}
 			header={
 				<WorkspaceSwitcher
-					url={url}
 					currentWorkspaceId={workspaceId}
 					currentWorkspaceName={workspaceName}
 					onSelect={onSwitch}
-					onDisconnect={onDisconnect}
+					onUnauthorized={onUnauthorized}
+					onLogout={onLogout}
 				/>
 			}
 			onSortModeChange={setSortMode}
@@ -54,7 +54,7 @@ export function Sidebar({
 			emptyState={
 				filesLoaded ? (
 					<p className="px-2.5 py-2 text-xs text-muted-foreground">
-						No files yet. Use the + button to create one.
+						This workspace has no notes yet.
 					</p>
 				) : null
 			}

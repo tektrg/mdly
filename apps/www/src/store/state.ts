@@ -19,18 +19,21 @@ export type AssetEntry = {
 
 type ViewerStatus = "idle" | "loading" | "ready" | "error";
 
-export type ExternalChange =
-	| { kind: "none" }
-	| { kind: "conflict"; remoteContent: string; remoteHash: string }
-	| { kind: "deleted" };
+/**
+ * R31: apps/www's editor is read-only, so a local edit can never diverge
+ * from the remote copy — there is no "conflict" kind here (unlike the
+ * desktop app's editable ExternalChange union). "deleted" is the only
+ * remote-state banner left: purely informational (the file the browser is
+ * looking at was removed on the Mac), not a save/conflict-resolution path.
+ */
+export type ExternalChange = { kind: "none" } | { kind: "deleted" };
 
-const NO_CONFLICT: ExternalChange = { kind: "none" };
+const NO_EXTERNAL_CHANGE: ExternalChange = { kind: "none" };
 
 export type ViewerState = {
 	currentPath: string | null;
 	pendingPath: string | null;
 	content: string;
-	savedContent: string;
 	basedOnHash: string | null;
 	externalChange: ExternalChange;
 	status: ViewerStatus;
@@ -69,9 +72,8 @@ function getInitialState(
 			currentPath: null,
 			pendingPath: null,
 			content: "",
-			savedContent: "",
 			basedOnHash: null,
-			externalChange: NO_CONFLICT,
+			externalChange: NO_EXTERNAL_CHANGE,
 			status: "idle",
 			error: null,
 		},

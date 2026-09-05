@@ -1,105 +1,91 @@
-import { api } from "@hubble.md/sync-backend";
-import type { Doc } from "@hubble.md/sync-backend/types";
-import { Modal } from "@hubble.md/ui";
+import { listWorkspaces, type WorkspaceSummary } from "@mdly/cloudflare-client";
 import { WorkspaceSwitcherMenu } from "@mdly/workspace-kit";
-import { ConvexHttpClient } from "convex/browser";
 import { useEffect, useState } from "react";
-import { categorizeError, describeError } from "../connection/convex-error";
-import { CreateWorkspaceForm } from "./CreateWorkspaceForm";
+import { describeApiError, isUnauthorizedError } from "../connection/apiError";
+import { WORKER_BASE_URL } from "../connection/workerUrl";
 
 type Props = {
-	url: string;
 	currentWorkspaceId: string;
 	currentWorkspaceName: string;
 	onSelect: (id: string) => void;
-	onDisconnect: () => void;
+	onUnauthorized: () => void;
+	onLogout: () => void;
 };
 
+/**
+ * D8: kept (not deleted like the other Convex-era screens), just repointed
+ * at the Worker's authenticated /api/workspaces route. "Create workspace" is
+ * gone — D8b reserves workspace creation for the desktop app.
+ */
 export function WorkspaceSwitcher({
-	url,
 	currentWorkspaceId,
 	currentWorkspaceName,
 	onSelect,
-	onDisconnect,
+	onUnauthorized,
+	onLogout,
 }: Props) {
 	const [open, setOpen] = useState(false);
-	const [createOpen, setCreateOpen] = useState(false);
-	const [client] = useState(() => new ConvexHttpClient(url));
-	const [workspaces, setWorkspaces] = useState<Doc<"workspaces">[]>([]);
+	const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
 	const [error, setError] = useState<string | null>(null);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: onUnauthorized is a stable store setter
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
 			try {
-				const result = await client.query(api.sync.listWorkspaces, {});
+				const result = await listWorkspaces({
+					baseUrl: WORKER_BASE_URL,
+					auth: { kind: "cookie" },
+				});
 				if (cancelled) return;
 				setWorkspaces(result);
 			} catch (err) {
-				if (!cancelled) setError(describeError(categorizeError(err)));
+				if (cancelled) return;
+				if (isUnauthorizedError(err)) {
+					onUnauthorized();
+					return;
+				}
+				setError(describeApiError(err));
 			}
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [client]);
+	}, []);
 
 	return (
-		<>
-			<WorkspaceSwitcherMenu
-				label={currentWorkspaceName}
-				title={currentWorkspaceName}
-				open={open}
-				onOpenChange={setOpen}
-			>
-				{error && (
-					<div className="px-2 py-1 text-[11px] text-destructive">{error}</div>
-				)}
-				{workspaces.map((workspace) => (
-					<WorkspaceSwitcherMenu.Item
-						key={workspace._id}
-						selected={workspace._id === currentWorkspaceId}
-						onClick={() => {
-							setOpen(false);
-							if (workspace._id !== currentWorkspaceId) {
-								onSelect(workspace._id);
-							}
-						}}
-					>
-						<span className="truncate">{workspace.name}</span>
-					</WorkspaceSwitcherMenu.Item>
-				))}
-				<WorkspaceSwitcherMenu.Separator />
+		<WorkspaceSwitcherMenu
+			label={currentWorkspaceName}
+			title={currentWorkspaceName}
+			open={open}
+			onOpenChange={setOpen}
+		>
+			{error && (
+				<div className="px-2 py-1 text-[11px] text-destructive">{error}</div>
+			)}
+			{workspaces.map((workspace) => (
 				<WorkspaceSwitcherMenu.Item
+					key={workspace.workspaceId}
+					selected={workspace.workspaceId === currentWorkspaceId}
 					onClick={() => {
 						setOpen(false);
-						setCreateOpen(true);
+						if (workspace.workspaceId !== currentWorkspaceId) {
+							onSelect(workspace.workspaceId);
+						}
 					}}
 				>
-					Create workspace
+					<span className="truncate">{workspace.name}</span>
 				</WorkspaceSwitcherMenu.Item>
-				<WorkspaceSwitcherMenu.Item
-					onClick={() => {
-						setOpen(false);
-						onDisconnect();
-					}}
-				>
-					Disconnect
-				</WorkspaceSwitcherMenu.Item>
-			</WorkspaceSwitcherMenu>
-			<Modal
-				open={createOpen}
-				onOpenChange={setCreateOpen}
-				title="Create workspace"
+			))}
+			<WorkspaceSwitcherMenu.Separator />
+			<WorkspaceSwitcherMenu.Item
+				onClick={() => {
+					setOpen(false);
+					onLogout();
+				}}
 			>
-				<CreateWorkspaceForm
-					client={client}
-					onCreated={(id) => {
-						setCreateOpen(false);
-						onSelect(id);
-					}}
-				/>
-			</Modal>
-		</>
+				Log out
+			</WorkspaceSwitcherMenu.Item>
+		</WorkspaceSwitcherMenu>
 	);
 }

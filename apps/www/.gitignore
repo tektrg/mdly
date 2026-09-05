@@ -22,3 +22,10 @@ pnpm-debug.log*
 
 # jetbrains setting folder
 .idea/
+
+# wrangler — local Worker secrets and local DO/R2/KV state.
+# .dev.vars holds APP_PASSWORD for `wrangler dev`; .wrangler/ holds the local
+# Durable Object SQLite and R2 blobs, i.e. real note content once the Worker is
+# run locally. Same two lines apps/notion-web already has.
+.dev.vars
+.wrangler

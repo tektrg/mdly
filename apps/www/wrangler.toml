@@ -1,0 +1,53 @@
+name = "mdly-garden"
+main = "worker/index.ts"
+compatibility_date = "2026-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain — the deploy target (D2/R45). Must be a top-level key
+# (before any [table] header) or TOML folds it into the preceding table.
+# NOT deployed by this delivery (Stage 1 scope stops before `wrangler
+# deploy`) — see DEPLOY_NOTES.md for what deploying this needs.
+routes = [
+	{ pattern = "garden.theindie.app", custom_domain = true }
+]
+
+# The Vite SPA build output. The Worker serves these as static assets and
+# only runs first for the API routes below — mirrors apps/notion-web exactly
+# (R46).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+# Session + workspace-registry store: session-id (httpOnly cookie) -> stored
+# session; also holds the "workspace-registry" JSON blob (R28/R33). A Worker
+# fully separate from apps/notion-web's own SESSIONS namespace (R47) — this
+# id is a local-dev placeholder; see DEPLOY_NOTES.md for the real
+# `wrangler kv namespace create SESSIONS` step this delivery could not run.
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "c15721990d2f4c568a8ea539243f5161"
+
+# Content-addressed asset + (Phase 2) version bytes: key = `assets/<sha256>`.
+# Placeholder bucket name; see DEPLOY_NOTES.md for the real
+# `wrangler r2 bucket create` step this delivery could not run.
+[[r2_buckets]]
+binding = "ASSET_BUCKET"
+bucket_name = "mdly-garden-assets"
+
+# One Durable Object instance per workspace (SQLite storage).
+[[durable_objects.bindings]]
+name = "WORKSPACE_DO"
+class_name = "WorkspaceDurableObject"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorkspaceDurableObject"]
+
+# Nightly orphan-asset GC (R5) — same time-of-day as the old Convex cron.
+[triggers]
+crons = ["0 4 * * *"]
+
+# Secrets (set via `wrangler secret put`, not committed):
+#   APP_PASSWORD — the single shared login password (R38, R41).
