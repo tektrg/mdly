@@ -1,7 +1,7 @@
 import { AppShellFrame } from "@hubble.md/ui";
 import { createCloudflareSubscriber } from "@mdly/cloudflare-client";
 import { useStoreValue } from "@simplestack/store/react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isUnauthorizedError } from "../connection/apiError";
 import { saveWorkspace } from "../connection/connection";
 import { WORKER_BASE_URL } from "../connection/workerUrl";
@@ -46,6 +46,15 @@ export function AppShell({
 }: Props) {
 	const viewer = useStoreValue(viewerStore);
 	const workspace = useStoreValue(workspaceStore);
+	const [mobileNavOpen, setMobileNavOpen] = useState(false);
+	const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
+	const selectFile = useCallback(
+		(path: string) => {
+			onSelectFile(path);
+			closeMobileNav();
+		},
+		[onSelectFile, closeMobileNav],
+	);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: snapshot reloads only when workspace identity changes; file route changes load below
 	useEffect(() => {
@@ -187,13 +196,15 @@ export function AppShell({
 				<Sidebar
 					workspaceId={workspace.snapshot.id}
 					workspaceName={workspace.snapshot.name}
-					onSelectFile={onSelectFile}
+					onSelectFile={selectFile}
 					onSwitch={onSwitch}
 					onUnauthorized={onUnauthorized}
 					onLogout={onLogout}
 				/>
 			}
-			toolbar={<Toolbar />}
+			toolbar={<Toolbar onOpenMobileNav={() => setMobileNavOpen(true)} />}
+			mobileNavOpen={mobileNavOpen}
+			onCloseMobileNav={closeMobileNav}
 		>
 			{workspace.status === "error" && workspace.error && (
 				<ExternalChangeBanner
