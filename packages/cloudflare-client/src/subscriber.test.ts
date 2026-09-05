@@ -435,7 +435,8 @@ describe("createCloudflareSubscriber — heartbeat detects a silently-dead conne
 			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
 			expect(sockets[0]!.closed).toBe(true);
 
-			// subscriber.ts's private RECONNECT_DELAY_MS is 1000ms. 400 * 3 (=
+			// The first reconnect is exactly RECONNECT_BASE_DELAY_MS (1000ms) —
+			// un-jittered by design, so this advance is deterministic. 400 * 3 (=
 			// 1200, when the stale socket was torn down) + 1000 = 2200, which
 			// isn't a multiple of 400 — so this reconnect can't land on the same
 			// simulated instant as one of the (harmless, but still-running)

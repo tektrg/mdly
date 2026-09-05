@@ -88,7 +88,43 @@ function defaultWebSocketFactory(url: string): WebSocketLike {
 
 type Listener = { callback: () => void; onError: (err: Error) => void };
 
-const RECONNECT_DELAY_MS = 1000;
+/**
+ * Reconnect backoff. A FIXED 1s retry used to be the whole policy, which
+ * turns a persistently failing server into a self-inflicted amplifier: when
+ * the Durable Object cannot even be constructed (free-tier row-read quota
+ * exhausted, for instance), every client re-attempted once per second
+ * forever, and every attempt cost more reads — pinning the workspace at zero
+ * quota and re-exhausting the next allowance the moment it reset.
+ *
+ * Exponential backoff with jitter caps that at one attempt per minute (a 60x
+ * reduction while an outage lasts) while keeping the first retry fast, so an
+ * ordinary network blip still recovers in about a second. Jitter keeps many
+ * clients from retrying in lockstep.
+ */
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 60000;
+const RECONNECT_JITTER_RATIO = 0.2;
+
+export function reconnectDelayMs(
+	attempt: number,
+	random: () => number = Math.random,
+): number {
+	// The FIRST retry is exact and un-jittered: a single client recovering
+	// from an ordinary blip should do so predictably, and jitter only earns
+	// its keep once many clients are stuck retrying together.
+	if (attempt <= 0) return RECONNECT_BASE_DELAY_MS;
+	// attempt 1 -> ~2s, 2 -> ~4s, 3 -> ~8s ... capped at ~60s.
+	const exponential = Math.min(
+		RECONNECT_BASE_DELAY_MS * 2 ** Math.max(0, attempt),
+		RECONNECT_MAX_DELAY_MS,
+	);
+	// +/- 20%, never below the base delay and never above the cap.
+	const jitter = exponential * RECONNECT_JITTER_RATIO * (random() * 2 - 1);
+	return Math.min(
+		RECONNECT_MAX_DELAY_MS,
+		Math.max(RECONNECT_BASE_DELAY_MS, Math.round(exponential + jitter)),
+	);
+}
 
 /**
  * One logical subscription to a single workspace's broadcast socket, shared
@@ -104,6 +140,8 @@ class WorkspaceConnection {
 	private lastMessageAt = Date.now();
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Consecutive failed connection attempts; reset once a socket opens. */
+	private reconnectAttempts = 0;
 	private readonly fileListeners = new Set<Listener>();
 	private readonly assetListeners = new Set<Listener>();
 
@@ -222,6 +260,8 @@ class WorkspaceConnection {
 
 	private handleOpen = (): void => {
 		this.lastMessageAt = Date.now();
+		// A real open clears the backoff: the next blip retries fast again.
+		this.reconnectAttempts = 0;
 		const isReconnect = this.hasConnectedBefore;
 		this.hasConnectedBefore = true;
 		// R42's client half: on reconnect, automatically resync from the last
@@ -262,10 +302,12 @@ class WorkspaceConnection {
 
 	private scheduleReconnect(): void {
 		if (this.disposed || this.reconnectTimer) return;
+		const delay = reconnectDelayMs(this.reconnectAttempts);
+		this.reconnectAttempts += 1;
 		this.reconnectTimer = setTimeout(() => {
 			this.reconnectTimer = null;
 			this.connect();
-		}, RECONNECT_DELAY_MS);
+		}, delay);
 	}
 
 	private startHeartbeat(): void {
