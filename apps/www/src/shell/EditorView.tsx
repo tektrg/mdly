@@ -6,6 +6,7 @@ import {
 import { useStoreValue } from "@simplestack/store/react";
 import { loadPath, updateEditorContent } from "../store/actions";
 import { filesStore } from "../store/state";
+import { useCommentOptions } from "../comments/useCommentOptions";
 import { createWebImageExtension } from "./WebImageExtension";
 
 type Props = {
@@ -32,6 +33,9 @@ export function EditorView({ path, initialMarkdown }: Props) {
 		target: file.path,
 		title: wikiDisplayNameForTarget(file.path),
 	}));
+	// Round 7, read-only: commenting is not editing — editable stays false
+	// and R31 is untouched. Undefined keeps the whole comment UI dark.
+	const commentOptions = useCommentOptions(path);
 
 	return (
 		<SharedEditorView
@@ -42,6 +46,7 @@ export function EditorView({ path, initialMarkdown }: Props) {
 			editable={false}
 			onLocalChange={updateEditorContent}
 			onSave={() => {}}
+			commentOptions={commentOptions}
 			onOpenExternalLink={(href) => {
 				window.open(href, "_blank", "noopener");
 			}}

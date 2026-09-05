@@ -16,6 +16,11 @@ import {
 	refreshAssets,
 	teardownActions,
 } from "../store/actions";
+import {
+	isSidecarRow,
+	sidecarsChanged,
+	toSidecarMap,
+} from "../store/sidecars";
 import { viewerStore, workspaceStore } from "../store/state";
 import { EditorView } from "./EditorView";
 import { Sidebar } from "./Sidebar";
@@ -150,16 +155,26 @@ export function AppShell({
 				includeDeleted: true,
 			});
 			// One tombstone-inclusive fetch updates the sidebar and detects whether
-			// the current file was deleted.
+			// the current file was deleted. Sidecar rows partition into their
+			// own map (with content) and stay out of `files` — same split as
+			// the snapshot and refresh paths, so all three always agree.
 			const visible = remote
-				.filter((f) => !f.deleted)
+				.filter((f) => !f.deleted && !isSidecarRow(f.path))
 				.map((f) => ({
 					path: f.path,
 					contentHash: f.contentHash,
 					updatedAt: f.updatedAt,
 					deleted: f.deleted,
 				}));
-			workspaceStore.set((state) => ({ ...state, files: visible }));
+			const sidecars = toSidecarMap(remote);
+			workspaceStore.set((state) => ({
+				...state,
+				files: visible,
+				sidecars,
+				commentsVersion: sidecarsChanged(state.sidecars, sidecars)
+					? state.commentsVersion + 1
+					: state.commentsVersion,
+			}));
 
 			const v = viewerStore.get();
 			if (!v.currentPath) return;

@@ -17,6 +17,12 @@ import {
 	viewerStore,
 	workspaceStore,
 } from "./state";
+import {
+	isSidecarRow,
+	sidecarsChanged,
+	type SidecarEntry,
+	toSidecarMap,
+} from "./sidecars";
 
 type Ctx = {
 	backend: SyncBackend;
@@ -58,6 +64,7 @@ export function getActionCtx(): Ctx | null {
 type WorkspaceSnapshot = {
 	workspace: { id: string; name: string };
 	files: FileEntry[];
+	sidecars: Record<string, SidecarEntry>;
 	assets: AssetEntry[];
 	currentFile: RemoteFile | null;
 };
@@ -94,12 +101,14 @@ async function fetchWorkspaceSnapshot(
 		null;
 	if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
 
-	const visible: FileEntry[] = files.map((f) => ({
-		path: f.path,
-		contentHash: f.contentHash,
-		updatedAt: f.updatedAt,
-		deleted: f.deleted,
-	}));
+	const visible: FileEntry[] = files
+		.filter((f) => !isSidecarRow(f.path))
+		.map((f) => ({
+			path: f.path,
+			contentHash: f.contentHash,
+			updatedAt: f.updatedAt,
+			deleted: f.deleted,
+		}));
 	const assetEntries: AssetEntry[] = assets.map((asset) => ({
 		path: asset.path,
 		storageId: asset.storageId,
@@ -115,6 +124,7 @@ async function fetchWorkspaceSnapshot(
 	return {
 		workspace: { id: workspace.workspaceId, name: workspace.name },
 		files: visible,
+		sidecars: toSidecarMap(files),
 		assets: assetEntries,
 		currentFile,
 	};
@@ -150,6 +160,13 @@ export const loadWorkspaceSnapshot = latest(
 					...state.workspace,
 					snapshot: snapshot.workspace,
 					files: snapshot.files,
+					sidecars: snapshot.sidecars,
+					commentsVersion: sidecarsChanged(
+						state.workspace.sidecars,
+						snapshot.sidecars,
+					)
+						? state.workspace.commentsVersion + 1
+						: state.workspace.commentsVersion,
 					assets: snapshot.assets,
 					filesLoaded: true,
 					lastOpenedPaths: snapshot.currentFile
@@ -275,17 +292,23 @@ function cleanState(
 export async function refreshFiles(): Promise<FileEntry[]> {
 	const { backend, workspaceId } = requireCtx();
 	try {
-		const visible: FileEntry[] = (await backend.getFiles(workspaceId)).map(
-			(f) => ({
+		const remote = await backend.getFiles(workspaceId);
+		const visible: FileEntry[] = remote
+			.filter((f) => !isSidecarRow(f.path))
+			.map((f) => ({
 				path: f.path,
 				contentHash: f.contentHash,
 				updatedAt: f.updatedAt,
 				deleted: f.deleted,
-			}),
-		);
+			}));
+		const sidecars = toSidecarMap(remote);
 		workspaceStore.set((state) => ({
 			...state,
 			files: visible,
+			sidecars,
+			commentsVersion: sidecarsChanged(state.sidecars, sidecars)
+				? state.commentsVersion + 1
+				: state.commentsVersion,
 			filesLoaded: true,
 		}));
 		return visible;

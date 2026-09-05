@@ -268,6 +268,12 @@ importers:
       '@mdly/cloudflare-client':
         specifier: workspace:*
         version: link:../../packages/cloudflare-client
+      '@mdly/doc-comments':
+        specifier: workspace:*
+        version: link:../../packages/doc-comments
+      '@mdly/doc-history':
+        specifier: workspace:*
+        version: link:../../packages/doc-history
       '@mdly/workspace-kit':
         specifier: workspace:*
         version: link:../../packages/workspace-kit

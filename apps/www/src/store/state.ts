@@ -1,6 +1,7 @@
 import { store } from "@simplestack/store";
 import { localStoragePersist } from "../lib/localStoragePersist";
 import { readLastOpenedPaths, STORAGE_KEY, serialize } from "./persistence";
+import type { SidecarEntry } from "./sidecars";
 
 export type FileEntry = {
 	path: string;
@@ -44,6 +45,17 @@ export type WorkspaceState = {
 	snapshot: { id: string; name: string } | null;
 	files: FileEntry[];
 	assets: AssetEntry[];
+	/**
+	 * Synced sidecar rows (comment logs + history index) WITH content,
+	 * keyed by remote path. Partitioned out of `files` on every ingestion
+	 * path, so the sidebar never sees them. Tombstoned rows excluded.
+	 */
+	sidecars: Record<string, SidecarEntry>;
+	/**
+	 * Bumped ONLY when sidecar content actually moves (hash comparison),
+	 * never on a redundant broadcast — comment surfaces memoize on this.
+	 */
+	commentsVersion: number;
 	filesLoaded: boolean;
 	lastOpenedPaths: Record<string, string>;
 	status: "idle" | "loading" | "ready" | "error";
@@ -63,6 +75,8 @@ function getInitialState(
 			snapshot: null,
 			files: [],
 			assets: [],
+			sidecars: {},
+			commentsVersion: 0,
 			filesLoaded: false,
 			lastOpenedPaths,
 			status: "idle",
