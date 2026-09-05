@@ -30,19 +30,23 @@ export {
 	PENDING_FILE_THRESHOLD,
 } from "./scope.js";
 export { mergeJsonlUnion } from "./sidecarMerge.js";
+export type { ExecuteSidecarsDeps, PushChunk } from "./sync.js";
 export {
+	chunkPushOps,
 	createThrottledProgress,
 	execute,
 	executeSidecars,
 	init,
 	isPermanentFailure,
+	MAX_PUSH_BATCH_BYTES,
+	MAX_PUSH_BATCH_FILES,
+	MAX_PUSH_FILE_BYTES,
 	plan,
 	planSidecars,
 	status,
 	summarizePlanByFolder,
 	sync,
 } from "./sync.js";
-export type { ExecuteSidecarsDeps } from "./sync.js";
 export type {
 	AuthorizedUrl,
 	CloudSyncConfig,

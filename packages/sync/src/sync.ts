@@ -20,6 +20,7 @@ import type {
 	CloudSyncConfig,
 	FileState,
 	FolderSummaryEntry,
+	PlannedPush,
 	RejectedFile,
 	RemoteAsset,
 	RemoteFile,
@@ -622,6 +623,67 @@ export function isPermanentFailure(error: unknown): boolean {
 	);
 }
 
+/**
+ * Server batch caps, mirrored client-side (DO row-read frequency fix, 2a).
+ * Source of truth is the server
+ * (`apps/www/worker/durableObject/workspaceDurableObject.ts:
+ * MAX_PUSH_BATCH_FILES / MAX_PUSH_BATCH_BYTES / MAX_PUSH_FILE_BYTES`) —
+ * chunking stays under all three so the server never 400/413s a batch we
+ * built. An empty array is a 400 server-side, so chunks are never empty.
+ */
+export const MAX_PUSH_BATCH_FILES = 100;
+export const MAX_PUSH_BATCH_BYTES = 8 * 1024 * 1024;
+export const MAX_PUSH_FILE_BYTES = 2 * 1024 * 1024;
+
+function utf8ByteLength(value: string): number {
+	return new TextEncoder().encode(value).length;
+}
+
+export type PushChunk =
+	/** One file that must go singly (over the per-entry byte cap). */
+	| { kind: "single"; op: PlannedPush }
+	/** A non-empty batch that fits all three server caps. */
+	| { kind: "batch"; ops: PlannedPush[] };
+
+/**
+ * Splits planned pushes into server-legal chunks, preserving order: files
+ * over the per-entry byte cap become `single` entries (they push singly so
+ * the existing permanent-rejection handling still fires per file); the rest
+ * pack greedily into `batch` chunks bounded by file count AND total bytes.
+ */
+export function chunkPushOps(ops: PlannedPush[]): PushChunk[] {
+	const chunks: PushChunk[] = [];
+	let current: PlannedPush[] = [];
+	let currentBytes = 0;
+	function flushBatch(): void {
+		if (current.length > 0) {
+			chunks.push({ kind: "batch", ops: current });
+			current = [];
+			currentBytes = 0;
+		}
+	}
+	for (const op of ops) {
+		const bytes = utf8ByteLength(op.content);
+		if (bytes > MAX_PUSH_FILE_BYTES) {
+			// Oversized entries never enter a batch — singly, so their 413
+			// classifies per file exactly like the old loop.
+			flushBatch();
+			chunks.push({ kind: "single", op });
+			continue;
+		}
+		if (
+			current.length >= MAX_PUSH_BATCH_FILES ||
+			currentBytes + bytes > MAX_PUSH_BATCH_BYTES
+		) {
+			flushBatch();
+		}
+		current.push(op);
+		currentBytes += bytes;
+	}
+	flushBatch();
+	return chunks;
+}
+
 function failureInfo(error: unknown): { code?: string; message: string } {
 	if (typeof error === "object" && error !== null) {
 		const record = error as { code?: unknown; message?: unknown };
@@ -695,13 +757,11 @@ export async function execute(
 		return { hash, lastSyncedAt: now, mtime, size };
 	}
 
-	async function pushLocal(
-		path: string,
-		hash: string,
-		content: string,
-		mtime?: number,
-		size?: number,
-	) {
+	async function pushLocal(path: string, hash: string, content: string) {
+		// The bare backend call only — recording the outcome (nextFiles,
+		// result.pushed, stale-rejection cleanup) belongs to
+		// recordPushSuccess(), so batch-success and fallback paths share one
+		// identical outcome shape with no double-counting.
 		await backend.pushFile({
 			workspaceId,
 			path,
@@ -709,8 +769,6 @@ export async function execute(
 			content,
 			deviceId,
 		});
-		nextFiles[path] = statFor(hash, mtime, size);
-		result.pushed.push(path);
 	}
 
 	async function ensureParentDir(path: string) {
@@ -719,34 +777,87 @@ export async function execute(
 			await fs.ensureDir(`${workspacePath}/${path.slice(0, slash)}`);
 	}
 
-	for (const op of computed.toPush) {
-		try {
-			await pushLocal(op.path, op.hash, op.content, op.mtime, op.size);
-		} catch (error) {
-			// One file's failure must never abort the run: record it,
-			// continue the loop, and still write state at the end so all
-			// other progress is durable.
-			const info = failureInfo(error);
-			if (isPermanentFailure(error)) {
-				nextRejected[op.path] = {
-					hash: op.hash,
-					code: info.code,
-					message: info.message,
-					rejectedAt: now,
-				};
-				result.failedFiles.push({ path: op.path, permanent: true, ...info });
-			} else {
-				// Transient (5xx, network…): reported now, retried next run —
-				// state keeps the old entry so the next plan re-pushes it.
-				result.failedFiles.push({ path: op.path, permanent: false, ...info });
-			}
-			tick(op.path, "push");
-			continue;
-		}
+	function recordPushSuccess(op: PlannedPush): void {
+		nextFiles[op.path] = statFor(op.hash, op.mtime, op.size);
+		result.pushed.push(op.path);
 		// A push that now succeeds clears a stale rejection (e.g. the file
 		// was edited down to a storable size after an earlier refusal).
 		if (nextRejected[op.path]) delete nextRejected[op.path];
+	}
+
+	function recordPushFailure(op: PlannedPush, error: unknown): void {
+		// One file's failure must never abort the run: record it, continue
+		// the loop, and still write state at the end so all other progress
+		// is durable.
+		const info = failureInfo(error);
+		if (isPermanentFailure(error)) {
+			nextRejected[op.path] = {
+				hash: op.hash,
+				code: info.code,
+				message: info.message,
+				rejectedAt: now,
+			};
+			result.failedFiles.push({ path: op.path, permanent: true, ...info });
+		} else {
+			// Transient (5xx, network…): reported now, retried next run —
+			// state keeps the old entry so the next plan re-pushes it.
+			result.failedFiles.push({ path: op.path, permanent: false, ...info });
+		}
+	}
+
+	async function pushSingle(op: PlannedPush): Promise<void> {
+		try {
+			await pushLocal(op.path, op.hash, op.content);
+			recordPushSuccess(op);
+		} catch (error) {
+			recordPushFailure(op, error);
+		}
 		tick(op.path, "push");
+	}
+
+	// Batched pushes (2a): one version bump + one broadcast per chunk instead
+	// of one per file. Backends without `pushFilesBatch` (older servers,
+	// unit-test fakes) take the original per-file loop, unchanged.
+	const pushBatch = backend.pushFilesBatch;
+	if (!pushBatch) {
+		for (const op of computed.toPush) {
+			await pushSingle(op);
+		}
+	} else {
+		for (const chunk of chunkPushOps(computed.toPush)) {
+			if (chunk.kind === "single") {
+				await pushSingle(chunk.op);
+				continue;
+			}
+			try {
+				await pushBatch({
+					workspaceId,
+					files: chunk.ops.map((op) => ({
+						path: op.path,
+						contentHash: op.hash,
+						content: op.content,
+						deviceId,
+					})),
+				});
+				for (const op of chunk.ops) recordPushSuccess(op);
+			} catch {
+				// A batch is all-or-nothing server-side: fall back to pushing
+				// the chunk file-by-file so one poisoned file cannot take the
+				// good ones down with it, and the existing per-file error
+				// classification still runs. The batch error itself is not
+				// swallowed — every file below gets its own recorded outcome,
+				// identical to the old path.
+				for (const op of chunk.ops) {
+					try {
+						await pushLocal(op.path, op.hash, op.content);
+						recordPushSuccess(op);
+					} catch (error) {
+						recordPushFailure(op, error);
+					}
+				}
+			}
+			for (const op of chunk.ops) tick(op.path, "push");
+		}
 	}
 
 	// Withheld by plan() as known permanent rejections: not retried, but
@@ -860,18 +971,21 @@ export async function execute(
 			.filter((f) => isSyncedSidecarPath(f.path))
 			.map((f) => [f.path, f]),
 	);
-	await executeSidecars(computed.sidecarOps ?? { toPush: [], toPull: [], merged: [] }, {
-		backend,
-		fs,
-		workspacePath,
-		workspaceId,
-		deviceId,
-		now,
-		remoteByPath: sidecarRemoteByPath,
-		nextSidecars,
-		result,
-		tick,
-	});
+	await executeSidecars(
+		computed.sidecarOps ?? { toPush: [], toPull: [], merged: [] },
+		{
+			backend,
+			fs,
+			workspacePath,
+			workspaceId,
+			deviceId,
+			now,
+			remoteByPath: sidecarRemoteByPath,
+			nextSidecars,
+			result,
+			tick,
+		},
+	);
 
 	// Durability checkpoint: sidecar pushes/pulls/merges are recorded
 	// before assets run, for the same resume-instead-of-repeat reason as

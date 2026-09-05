@@ -49,6 +49,11 @@ export const MutationOkResponseSchema = z.object({
 	version: z.number(),
 });
 
+/** GET /api/version — the cheap 1-row "did anything change?" check. */
+export const VersionResponseSchema = z.object({
+	version: z.number(),
+});
+
 export const WorkspaceIdResponseSchema = z.object({
 	workspaceId: z.string().nullable(),
 });

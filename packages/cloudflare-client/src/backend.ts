@@ -13,13 +13,24 @@ import {
 	GetFilesResponseSchema,
 	MutationOkResponseSchema,
 	UploadUrlResponseSchema,
+	VersionResponseSchema,
 	WorkspaceIdResponseSchema,
 } from "./schemas.js";
+import type { VersionLedger } from "./versionLedger.js";
 
 export type CreateCloudflareBackendOptions = {
 	/** Absolute origin of the deployed (or locally running) Worker, e.g. "https://garden.theindie.app" or "http://127.0.0.1:8787". Never inferred — the caller (apps/www, the CLI) decides this once. */
 	baseUrl: string;
 	auth: CloudflareAuth;
+	/**
+	 * Shared self-echo ledger (DO row-read frequency fix, 2b): every
+	 * mutation version this backend produces is recorded here, and the
+	 * subscriber built with the SAME object suppresses the broadcast echo
+	 * of those versions. The caller constructs backend and subscriber
+	 * together and passes one ledger to both — never a device id threaded
+	 * through the sync engine.
+	 */
+	versionLedger?: VersionLedger;
 };
 
 /**
@@ -32,9 +43,11 @@ export type CreateCloudflareBackendOptions = {
 export function createCloudflareBackend(
 	options: CreateCloudflareBackendOptions,
 ): SyncBackend {
-	const { baseUrl, auth } = options;
+	const { baseUrl, auth, versionLedger } = options;
 	const headers = () => authHeaders(auth);
 	const init = () => authFetchInit(auth);
+	/** Records a mutation's new version for self-echo suppression (2b). */
+	const recordVersion = (version: number) => versionLedger?.record(version);
 
 	return {
 		async getWorkspace(name) {
@@ -91,21 +104,53 @@ export function createCloudflareBackend(
 		},
 
 		async pushFile(args) {
-			await requestJson(
+			const data = await requestJson(
 				buildUrl(baseUrl, "/api/files"),
 				{ ...jsonRequestInit(args, headers()), ...init() },
 				MutationOkResponseSchema,
 				"pushFile",
 			);
+			recordVersion(data.version);
+		},
+
+		/**
+		 * Batched push (DO row-read frequency fix, 2a): one version bump +
+		 * one broadcast per batch. Request/response shapes mirror the
+		 * already-deployed `POST /api/files/batch`
+		 * (`apps/www/worker/routes/files.ts:handlePushFilesBatch`) — this
+		 * client conforms to that shipped contract. Records the batch
+		 * version in the shared ledger like every other mutation.
+		 */
+		async pushFilesBatch(args) {
+			const data = await requestJson(
+				buildUrl(baseUrl, "/api/files/batch"),
+				{ ...jsonRequestInit(args, headers()), ...init() },
+				MutationOkResponseSchema,
+				"pushFilesBatch",
+			);
+			recordVersion(data.version);
+			return data.version;
+		},
+
+		/** Cheap 1-row "did anything change?" check (2d): `GET /api/version`. */
+		async getVersion(workspaceId) {
+			const data = await requestJson(
+				buildUrl(baseUrl, "/api/version", { workspaceId }),
+				{ headers: headers(), ...init() },
+				VersionResponseSchema,
+				"getVersion",
+			);
+			return data.version;
 		},
 
 		async softDeleteFile(args) {
-			await requestJson(
+			const data = await requestJson(
 				buildUrl(baseUrl, "/api/files/delete"),
 				{ ...jsonRequestInit(args, headers()), ...init() },
 				MutationOkResponseSchema,
 				"softDeleteFile",
 			);
+			recordVersion(data.version);
 		},
 
 		async getAssets(workspaceId, since) {
@@ -136,21 +181,23 @@ export function createCloudflareBackend(
 		},
 
 		async pushAsset(args) {
-			await requestJson(
+			const data = await requestJson(
 				buildUrl(baseUrl, "/api/assets"),
 				{ ...jsonRequestInit(args, headers()), ...init() },
 				MutationOkResponseSchema,
 				"pushAsset",
 			);
+			recordVersion(data.version);
 		},
 
 		async softDeleteAsset(args) {
-			await requestJson(
+			const data = await requestJson(
 				buildUrl(baseUrl, "/api/assets/delete"),
 				{ ...jsonRequestInit(args, headers()), ...init() },
 				MutationOkResponseSchema,
 				"softDeleteAsset",
 			);
+			recordVersion(data.version);
 		},
 
 		// --- Asset upload/download URLs (the fix for the unauthenticated-fetch

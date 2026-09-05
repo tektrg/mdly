@@ -1,7 +1,7 @@
 import { AppShellFrame } from "@hubble.md/ui";
 import { createCloudflareSubscriber } from "@mdly/cloudflare-client";
 import { useStoreValue } from "@simplestack/store/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isUnauthorizedError } from "../connection/apiError";
 import { saveWorkspace } from "../connection/connection";
 import { WORKER_BASE_URL } from "../connection/workerUrl";
@@ -16,11 +16,7 @@ import {
 	refreshAssets,
 	teardownActions,
 } from "../store/actions";
-import {
-	isSidecarRow,
-	sidecarsChanged,
-	toSidecarMap,
-} from "../store/sidecars";
+import { isSidecarRow, sidecarsChanged, toSidecarMap } from "../store/sidecars";
 import { viewerStore, workspaceStore } from "../store/state";
 import { EditorView } from "./EditorView";
 import { Sidebar } from "./Sidebar";
@@ -31,6 +27,14 @@ import { Toolbar } from "./Toolbar";
 // doc comment (store/actions.ts) for why polling, not a push signal, is
 // what's available here.
 const WORKSPACE_AVAILABILITY_POLL_MS = 5000;
+
+/**
+ * Notification-driven resync debounce (DO row-read frequency fix, 2c):
+ * broadcasts from a multi-device write burst collapse into one refresh.
+ * Well under the desktop leg's 5s max-wait; the in-flight guard below is
+ * what stops overlapping refreshes stacking on a slow listing.
+ */
+const REMOTE_RESYNC_DEBOUNCE_MS = 400;
 
 type Props = {
 	workspaceId: string;
@@ -91,21 +95,38 @@ export function AppShell({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: subscription owns its lifecycle by workspace snapshot identity
 	useEffect(() => {
 		if (!workspace.snapshot) return;
+		// New workspace, new version counter (2d): counters are
+		// per-workspace, so a version remembered from the previous workspace
+		// must never suppress this one's first refresh.
+		lastSeenVersion.current = null;
+		const snapshotId = workspace.snapshot.id;
+		// Shared self-echo ledger (2b): the SAME object the backend in the
+		// action context records its mutation versions into — constructed
+		// together in store/actions.ts's createCtx. Only shared when the
+		// context actually belongs to this snapshot: version counters are
+		// per-workspace, and a cross-workspace ledger could suppress another
+		// workspace's change that happens to share a version number.
+		const actionCtx = getActionCtx();
+		const versionLedger =
+			actionCtx && actionCtx.workspaceId === snapshotId
+				? actionCtx.versionLedger
+				: undefined;
 		const subscriber = createCloudflareSubscriber({
 			baseUrl: WORKER_BASE_URL,
 			auth: { kind: "cookie" },
+			versionLedger,
 		});
 		const unsubscribe = subscriber.onFilesChanged(
-			workspace.snapshot.id,
+			snapshotId,
 			() => {
-				void onRemoteFilesChanged();
+				scheduleRemoteResync();
 			},
 			(err) => {
 				console.error("subscription error:", err);
 			},
 		);
 		const unsubscribeAssets = subscriber.onAssetsChanged(
-			workspace.snapshot.id,
+			snapshotId,
 			() => {
 				void refreshAssets();
 			},
@@ -114,6 +135,13 @@ export function AppShell({
 			},
 		);
 		return () => {
+			if (resyncTimer.current !== null) {
+				window.clearTimeout(resyncTimer.current);
+				resyncTimer.current = null;
+			}
+			// A refresh queued behind an in-flight one must not fire after
+			// teardown into a different workspace's state.
+			resyncQueued.current = false;
 			unsubscribe();
 			unsubscribeAssets();
 			void subscriber.close();
@@ -147,10 +175,67 @@ export function AppShell({
 		return () => window.clearInterval(interval);
 	}, [workspaceId]);
 
+	// Version this tab's view corresponds to (2d pre-check state), plus the
+	// debounce timer and in-flight guard for notification-driven refreshes
+	// (2c). Refs, not state: none of this renders, and the subscriber
+	// callback closes over the first render's instances — refs stay correct
+	// across renders where state snapshots would go stale.
+	const lastSeenVersion = useRef<number | null>(null);
+	const resyncTimer = useRef<number | null>(null);
+	const resyncInFlight = useRef(false);
+	const resyncQueued = useRef(false);
+
+	const scheduleRemoteResync = () => {
+		if (resyncTimer.current !== null) {
+			window.clearTimeout(resyncTimer.current);
+		}
+		resyncTimer.current = window.setTimeout(() => {
+			resyncTimer.current = null;
+			void runRemoteResync();
+		}, REMOTE_RESYNC_DEBOUNCE_MS);
+	};
+
+	const runRemoteResync = async () => {
+		// In-flight guard (2c): a slow listing must never stack overlapping
+		// refreshes — a broadcast arriving mid-refresh re-runs once after,
+		// never concurrently.
+		if (resyncInFlight.current) {
+			resyncQueued.current = true;
+			return;
+		}
+		resyncInFlight.current = true;
+		try {
+			await onRemoteFilesChanged();
+		} finally {
+			resyncInFlight.current = false;
+			if (resyncQueued.current) {
+				resyncQueued.current = false;
+				void runRemoteResync();
+			}
+		}
+	};
+
 	const onRemoteFilesChanged = async () => {
 		const ctx = getActionCtx();
 		if (!ctx) return;
 		try {
+			// Cheap 1-row pre-check (2d): skip the full listing when the
+			// version hasn't moved since this tab last refreshed (notably
+			// the server's per-heartbeat ping-echo on an idle workspace).
+			// The version is recorded only AFTER a successful listing, so a
+			// change landing mid-refresh costs at most one redundant
+			// listing — never a missed one. Backends without getVersion
+			// (older servers, tests) list unconditionally, like before.
+			let checkedVersion: number | undefined;
+			if (ctx.backend.getVersion) {
+				checkedVersion = await ctx.backend.getVersion(ctx.workspaceId);
+				if (
+					lastSeenVersion.current !== null &&
+					checkedVersion === lastSeenVersion.current
+				) {
+					return;
+				}
+			}
 			const remote = await ctx.backend.getFiles(ctx.workspaceId, {
 				includeDeleted: true,
 			});
@@ -175,6 +260,9 @@ export function AppShell({
 					? state.commentsVersion + 1
 					: state.commentsVersion,
 			}));
+			if (checkedVersion !== undefined) {
+				lastSeenVersion.current = checkedVersion;
+			}
 
 			const v = viewerStore.get();
 			if (!v.currentPath) return;

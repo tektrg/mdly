@@ -44,8 +44,10 @@ import {
 	CloudflareResponseError,
 	createCloudflareBackend,
 	createCloudflareSubscriber,
+	createVersionLedger,
 	deleteWorkspace as deleteRemoteWorkspace,
 	type Subscriber,
+	type VersionLedger,
 } from "@mdly/cloudflare-client";
 import type { KeychainCredentialStore } from "@mdly/cloudflare-client/keychain";
 import { SHARED_CLOUD_SYNC_ACCOUNT } from "@mdly/cloudflare-client/keychain";
@@ -115,10 +117,14 @@ export interface CloudSyncWiringDeps {
 	createBackend?: (opts: {
 		deploymentUrl: string;
 		token: string;
+		/** Shared self-echo ledger (2b) — forwarded when the double uses a real backend; fakes ignore it and keep working. */
+		versionLedger?: VersionLedger;
 	}) => SyncBackend;
 	createSubscriber?: (opts: {
 		deploymentUrl: string;
 		token: string;
+		/** Shared self-echo ledger (2b) — same object as createBackend's. */
+		versionLedger?: VersionLedger;
 	}) => Subscriber;
 	createWatcher?: (
 		workspaceRoot: string,
@@ -262,7 +268,11 @@ export function isWatchedSidecarPath(
 		return false;
 	}
 	const posix = relative.split(path.sep).join("/");
-	if (posix === ".mdly" || posix === ".mdly/comments" || posix === ".mdly/history") {
+	if (
+		posix === ".mdly" ||
+		posix === ".mdly/comments" ||
+		posix === ".mdly/history"
+	) {
 		return true;
 	}
 	const commentsPrefix = ".mdly/comments/";
@@ -284,21 +294,25 @@ export function isWatchedSidecarPath(
 function defaultCreateBackend(opts: {
 	deploymentUrl: string;
 	token: string;
+	versionLedger?: VersionLedger;
 }): SyncBackend {
 	return createCloudflareBackend({
 		baseUrl: opts.deploymentUrl,
 		auth: { kind: "bearer", token: opts.token },
+		versionLedger: opts.versionLedger,
 	});
 }
 
 function defaultCreateSubscriber(opts: {
 	deploymentUrl: string;
 	token: string;
+	versionLedger?: VersionLedger;
 }): Subscriber {
 	return createCloudflareSubscriber({
 		baseUrl: opts.deploymentUrl,
 		auth: { kind: "bearer", token: opts.token },
 		webSocketFactory: createNodeWebSocketFactory(),
+		versionLedger: opts.versionLedger,
 	});
 }
 
@@ -490,6 +504,20 @@ interface RunningCloudSync {
 	backend: SyncBackend | null;
 	cloudFs: SyncFileSystem | null;
 	deps: CloudSyncWiringDeps | null;
+	/**
+	 * Shared self-echo ledger (2b) — the same object handed to both the
+	 * backend and the subscriber at construction, so our own mutation
+	 * versions never trigger a resync.
+	 */
+	versionLedger: VersionLedger | null;
+	/**
+	 * Version seen by the last notification-triggered resync decision (2d).
+	 * A broadcast whose version matches this one means nothing changed
+	 * since — the full sync is skipped without listing (this also absorbs
+	 * the server's per-heartbeat ping-echo, which would otherwise resync
+	 * every 15s on an idle workspace).
+	 */
+	lastRemoteVersion: number | null;
 }
 
 const activeSyncs = new Map<string, RunningCloudSync>();
@@ -500,6 +528,14 @@ const progressListeners = new Map<string, Set<CloudSyncProgressListener>>();
 const MAX_DRAIN_ITERATIONS = 3;
 /** Debounce max-wait: a continuously-written tree still syncs at least this often. */
 const MAX_DEBOUNCE_WAIT_MS = 5000;
+/**
+ * Remote-broadcast resync debounce (2c): notification-driven resyncs wait
+ * this long to coalesce multi-device write bursts. Well under
+ * MAX_DEBOUNCE_WAIT_MS above. Batched pushes (2a) mean a remote burst is
+ * now a handful of discrete broadcasts rather than one per file; the
+ * self-echo ledger (2b) absorbs our own writes before they ever reach here.
+ */
+const REMOTE_RESYNC_DEBOUNCE_MS = 400;
 /** An unvetted dir is evaluated only after its arrival goes this quiet — a continuously-materializing checkout stays provisionally excluded until it stops churning. */
 const VET_QUIET_MS = 1500;
 /** Delay before the first vet check after a new dir is seen (coalesced, never reset by further events). */
@@ -1101,6 +1137,8 @@ export async function startCloudSyncWatcherIfEnabled(
 		disposed: false,
 		backend: null,
 		cloudFs: null,
+		versionLedger: null,
+		lastRemoteVersion: null,
 	};
 	// A restart (detect/approve/exclude/exclusion-edit) must not drop the
 	// provisional hold on dirs that are still arriving — carry them over.
@@ -1142,9 +1180,17 @@ export async function startCloudSyncWatcherIfEnabled(
 	const createSubscriber = deps.createSubscriber ?? defaultCreateSubscriber;
 	const createWatcher = deps.createWatcher ?? defaultCreateWatcher;
 
+	// One shared self-echo ledger (2b) for this workspace's backend +
+	// subscriber pair: versions our own pushes produce are recorded by the
+	// backend and suppressed by the subscriber, so we never re-list in
+	// response to our own writes.
+	const versionLedger = createVersionLedger();
+	handle.versionLedger = versionLedger;
+
 	const backend = createBackend({
 		deploymentUrl: cloudSync.deploymentUrl,
 		token,
+		versionLedger,
 	});
 	handle.backend = backend;
 	handle.deps = deps;
@@ -1197,14 +1243,44 @@ export async function startCloudSyncWatcherIfEnabled(
 	const subscriber = createSubscriber({
 		deploymentUrl: cloudSync.deploymentUrl,
 		token,
+		versionLedger,
 	});
 	handle.subscriber = subscriber;
-	// A remote broadcast resyncs promptly with no debounce on this leg — the
-	// 250ms debounce (R19) applies to LOCAL fs events, which can arrive in
-	// bursts; a remote push is already one discrete event.
+	// A remote broadcast resyncs on a real debounce (2c) — batched pushes
+	// (2a) finally made "one discrete event per remote burst" true, and the
+	// shared ledger (2b) absorbs our own echoes before they reach here. The
+	// 1-row version pre-check (2d) skips the full sync when nothing changed
+	// (notably the server's per-heartbeat ping-echo on an idle workspace).
 	handle.unsubscribeFiles = subscriber.onFilesChanged(
 		cloudSync.workspaceId,
-		() => scheduleSync(workspaceRoot, handle, backend, cloudFs, 0),
+		() => {
+			void (async () => {
+				if (handle.disposed) return;
+				if (backend.getVersion) {
+					try {
+						const version = await backend.getVersion(cloudSync.workspaceId);
+						if (handle.disposed) return;
+						if (
+							handle.lastRemoteVersion !== null &&
+							version === handle.lastRemoteVersion
+						) {
+							return;
+						}
+						handle.lastRemoteVersion = version;
+					} catch {
+						// A failed pre-check must never block syncing — fall
+						// through to the resync below.
+					}
+				}
+				scheduleSync(
+					workspaceRoot,
+					handle,
+					backend,
+					cloudFs,
+					REMOTE_RESYNC_DEBOUNCE_MS,
+				);
+			})();
+		},
 		(error) => {
 			const { status, detail } = classifyError(error);
 			setStatus(workspaceRoot, handle, status, detail);
@@ -1281,6 +1357,19 @@ export async function startCloudSyncWatcherIfEnabled(
 	});
 
 	await runOnce(workspaceRoot, handle, backend, cloudFs);
+	// Seed the notification pre-check (2d) from the just-completed initial
+	// sync: the first ping-echo afterwards must read as "unchanged", not as
+	// a reason for a redundant full listing. Best-effort — a failure here
+	// just means the first broadcast syncs once, like the old code.
+	if (!handle.disposed && backend.getVersion) {
+		try {
+			handle.lastRemoteVersion = await backend.getVersion(
+				cloudSync.workspaceId,
+			);
+		} catch {
+			// Leave null — the first broadcast will sync and record then.
+		}
+	}
 	return readState(activeSyncs.get(workspaceRoot) ?? handle);
 }
 

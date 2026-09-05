@@ -31,6 +31,8 @@ type FixtureFile = {
 type Fixture = {
 	workspaces: { workspaceId: string; name: string }[];
 	files: Record<string, FixtureFile[]>;
+	/** Current `GET /api/version` value per workspace (defaults to 1). */
+	versions?: Record<string, number>;
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -69,6 +71,11 @@ function installFetchMock(fixture: Fixture) {
 			const includeDeleted = url.searchParams.get("includeDeleted") === "true";
 			return jsonResponse({
 				files: includeDeleted ? files : files.filter((f) => !f.deleted),
+			});
+		}
+		if (url.pathname === "/api/version") {
+			return jsonResponse({
+				version: fixture.versions?.[workspaceId ?? ""] ?? 1,
 			});
 		}
 		if (url.pathname === "/api/assets") {
@@ -134,6 +141,17 @@ async function flush() {
 	await act(async () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		await new Promise((resolve) => setTimeout(resolve, 0));
+	});
+}
+
+/**
+ * Notification-driven refreshes are debounced (REMOTE_RESYNC_DEBOUNCE_MS),
+ * so a broadcast needs a real-timer wait past the debounce window before
+ * its listing lands — `flush()` above only drains microtasks.
+ */
+async function flushDebounced() {
+	await act(async () => {
+		await new Promise((resolve) => setTimeout(resolve, 600));
 	});
 }
 
@@ -292,12 +310,84 @@ describe("AppShell workspace switching + subscription lifecycle (R34, R35, R36, 
 			},
 		];
 		betaSocket.broadcastVersion(2);
-		await flush();
+		await flushDebounced();
 		const filesCallsAfterLiveBroadcast = calls.filter(
 			(c) => c.pathname === "/api/files",
 		).length;
 		expect(filesCallsAfterLiveBroadcast).toBeGreaterThan(
 			filesCallsAfterStaleBroadcast,
+		);
+	});
+
+	it("2d: a broadcast whose version is unchanged since the last refresh skips the full listing", async () => {
+		const fixture: Fixture = {
+			workspaces: [{ workspaceId: "alpha", name: "Alpha" }],
+			files: {
+				alpha: [
+					{
+						path: "alpha-note.md",
+						content: "Alpha v1",
+						contentHash: "hash-a1",
+						updatedAt: 1,
+					},
+				],
+			},
+			versions: { alpha: 3 },
+		};
+		const { calls } = installFetchMock(fixture);
+
+		renderShell("alpha");
+		await flush();
+		const alphaSocket = socketFor("alpha");
+		const count = (pathname: string) =>
+			calls.filter((c) => c.pathname === pathname).length;
+		const filesBefore = count("/api/files");
+
+		// First broadcast: this tab has never refreshed, so it lists once
+		// (and remembers version 3).
+		alphaSocket.broadcastVersion(3);
+		await flushDebounced();
+		expect(count("/api/files")).toBe(filesBefore + 1);
+
+		// Second broadcast, same version (e.g. the server's per-heartbeat
+		// ping-echo on an idle workspace): the 1-row pre-check runs, the
+		// full listing does not.
+		const versionsBefore = count("/api/version");
+		alphaSocket.broadcastVersion(3);
+		await flushDebounced();
+		expect(count("/api/version")).toBe(versionsBefore + 1);
+		expect(count("/api/files")).toBe(filesBefore + 1);
+	});
+
+	it("2c: rapid broadcasts collapse into a single refresh (debounce)", async () => {
+		const fixture: Fixture = {
+			workspaces: [{ workspaceId: "alpha", name: "Alpha" }],
+			files: {
+				alpha: [
+					{
+						path: "alpha-note.md",
+						content: "Alpha v1",
+						contentHash: "hash-a1",
+						updatedAt: 1,
+					},
+				],
+			},
+			versions: { alpha: 5 },
+		};
+		const { calls } = installFetchMock(fixture);
+
+		renderShell("alpha");
+		await flush();
+		const alphaSocket = socketFor("alpha");
+		const filesBefore = calls.filter((c) => c.pathname === "/api/files").length;
+
+		// Two broadcasts in the same tick — the second resets the debounce
+		// timer, so exactly one refresh (one pre-check + one listing) runs.
+		alphaSocket.broadcastVersion(4);
+		alphaSocket.broadcastVersion(5);
+		await flushDebounced();
+		expect(calls.filter((c) => c.pathname === "/api/files").length).toBe(
+			filesBefore + 1,
 		);
 	});
 

@@ -1,7 +1,8 @@
 import { authHeaders, type CloudflareAuth } from "./auth.js";
 import { CloudflareClientError } from "./errors.js";
 import { buildUrl, requestJson } from "./httpClient.js";
-import { GetFilesResponseSchema, VersionMessageSchema } from "./schemas.js";
+import { VersionMessageSchema, VersionResponseSchema } from "./schemas.js";
+import type { VersionLedger } from "./versionLedger.js";
 
 /** Same shape as the old `@hubble.md/convex-client`'s `Subscriber` (R9) — callers (apps/www's AppShell, the CLI's `cloud watch`) don't change at all. */
 export type Subscriber = {
@@ -59,6 +60,14 @@ export type CreateCloudflareSubscriberOptions = {
 	 * and desktop app do.
 	 */
 	webSocketFactory?: WebSocketFactory;
+	/**
+	 * Shared self-echo ledger (DO row-read frequency fix, 2b): the SAME
+	 * object the backend was constructed with. An incoming version that is
+	 * an exact member of this ledger is this client's own echo — recorded
+	 * but never notified. Exact membership only, never `<=` (a `<=` rule
+	 * would swallow another device's lower-numbered change: data loss).
+	 */
+	versionLedger?: VersionLedger;
 };
 
 function toWebSocketUrl(baseUrl: string, path: string): string {
@@ -234,6 +243,11 @@ class WorkspaceConnection {
 			this.lastKnownVersion,
 			result.data.version,
 		);
+		// Self-echo suppression (2b): this client produced this version (the
+		// backend recorded it in the shared ledger when the mutation
+		// response arrived), so there is nothing to re-read. The version is
+		// still tracked above — only the notification is skipped.
+		if (this.options.versionLedger?.has(result.data.version)) return;
 		this.notifyAll();
 	};
 
@@ -282,22 +296,34 @@ class WorkspaceConnection {
 	}
 
 	private async resyncAfterReconnect(): Promise<void> {
+		// Cheap 1-row version check (2d), NOT a full listing: the old shape
+		// fetched the entire file list here and then discarded the response,
+		// calling notifyAll() anyway — every reconnect re-read every row for
+		// nothing. Listeners re-list on notify; the version comparison below
+		// (plus each call site's own getVersion pre-check) is what decides
+		// whether that listing actually happens.
+		let current = this.lastKnownVersion;
 		try {
-			await requestJson(
-				buildUrl(this.options.baseUrl, "/api/files", {
+			const data = await requestJson(
+				buildUrl(this.options.baseUrl, "/api/version", {
 					workspaceId: this.workspaceId,
-					since: String(this.lastKnownVersion),
 				}),
 				{ headers: authHeaders(this.options.auth) },
-				GetFilesResponseSchema,
-				"getFiles(reconnect resync)",
+				VersionResponseSchema,
+				"getVersion(reconnect resync)",
 			);
+			current = Math.max(current, data.version);
 		} catch (err) {
 			this.notifyError(
 				err instanceof Error ? err : new CloudflareClientError(String(err)),
 			);
 		}
-		this.notifyAll();
+		const moved = current > this.lastKnownVersion;
+		this.lastKnownVersion = current;
+		// Nothing changed while we were gone — no reason to make every
+		// listener re-list (this also absorbs the server's ping-echo, which
+		// otherwise re-triggers a full resync on every heartbeat).
+		if (moved) this.notifyAll();
 	}
 }
 

@@ -1,13 +1,21 @@
 import type { RemoteFile, SyncBackend } from "@hubble.md/sync";
 import {
 	createCloudflareBackend,
+	createVersionLedger,
 	listWorkspaces,
+	type VersionLedger,
 } from "@mdly/cloudflare-client";
 import { stripMarkdownExtension } from "@mdly/workspace-kit";
 import { describeApiError, isUnauthorizedError } from "../connection/apiError";
 import { ensureDeviceId } from "../connection/deviceId";
 import { WORKER_BASE_URL } from "../connection/workerUrl";
 import { latest } from "../lib/latest";
+import {
+	isSidecarRow,
+	type SidecarEntry,
+	sidecarsChanged,
+	toSidecarMap,
+} from "./sidecars";
 import {
 	type AssetEntry,
 	appStore,
@@ -17,29 +25,36 @@ import {
 	viewerStore,
 	workspaceStore,
 } from "./state";
-import {
-	isSidecarRow,
-	sidecarsChanged,
-	type SidecarEntry,
-	toSidecarMap,
-} from "./sidecars";
 
 type Ctx = {
 	backend: SyncBackend;
 	workspaceId: string;
 	deviceId: string;
+	/**
+	 * Shared self-echo ledger (DO row-read frequency fix, 2b): the backend
+	 * above records every mutation version here, and AppShell passes this
+	 * SAME object to the subscriber it constructs — so this tab never
+	 * re-lists in response to its own writes. Created per workspace
+	 * context, never global: version counters are per-workspace, and a
+	 * global ledger could suppress another workspace's change that happens
+	 * to share a version number.
+	 */
+	versionLedger: VersionLedger;
 };
 
 let ctx: Ctx | null = null;
 
 function createCtx(workspaceId: string): Ctx {
+	const versionLedger = createVersionLedger();
 	return {
 		backend: createCloudflareBackend({
 			baseUrl: WORKER_BASE_URL,
 			auth: { kind: "cookie" },
+			versionLedger,
 		}),
 		workspaceId,
 		deviceId: ensureDeviceId(),
+		versionLedger,
 	};
 }
 
