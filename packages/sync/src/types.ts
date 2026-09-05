@@ -86,6 +86,12 @@ export const SyncStateSchema = z.object({
 	lastSyncedAt: z.number(),
 	files: z.record(z.string(), FileStateSchema),
 	assets: z.record(z.string(), FileStateSchema).optional(),
+	// Sidecar baseline (Round 3, codename sidecar-union-plan): comment logs
+	// + history index shards keyed by path, same shape as `files`. A
+	// SEPARATE map on purpose — sidecars must never be mixed into
+	// `state.files`, which is what keeps the Round 1 fence permanent.
+	// Optional so state files written before Round 3 still parse.
+	sidecars: z.record(z.string(), FileStateSchema).optional(),
 	// Files the server permanently refused (HTTP 413 — physically unable to
 	// store, e.g. over the per-value ceiling). Keyed by path with the hash
 	// that was refused: an unchanged file is not retried on later runs, an
@@ -103,6 +109,14 @@ export type SyncResult = {
 	assetsPushed: number;
 	assetsPulled: number;
 	assetsDeleted: number;
+	/**
+	 * Sidecar ops completed this run (Round 4: comment logs + history
+	 * index shards). The note `pushed`/`pulled` arrays above never carry
+	 * `.mdly` paths — the fence holds in results as well as in plan/state.
+	 */
+	sidecarsPushed: number;
+	sidecarsPulled: number;
+	sidecarsMerged: number;
 	/** Files that failed to push this run. `permanent` (HTTP 413) means the
 	 * server can never store this content — kept local, unsynced, reported,
 	 * and not retried while unchanged. Anything else is transient and retried
@@ -116,6 +130,13 @@ export type FailedFile = {
 	permanent: boolean;
 	code?: string;
 	message: string;
+	/**
+	 * Present only for sidecar (comment log / history index) failures, so
+	 * a caller can tell them apart from note failures without sniffing the
+	 * `.mdly/` path prefix. Note failures leave it absent (pre-Round-4
+	 * shape, unchanged).
+	 */
+	kind?: "sidecar";
 };
 
 export type RemoteFile = {
@@ -177,6 +198,12 @@ export type PlannedPush = {
 	size?: number;
 };
 export type PlannedPull = { path: string; hash: string; content: string };
+/** One diverged-both-changed sidecar with its computed union content. */
+export type PlannedSidecarMerge = {
+	path: string;
+	hash: string;
+	content: string;
+};
 export type PlannedDelete = {
 	path: string;
 	kind: "local" | "remote-tombstone";
@@ -218,6 +245,18 @@ export type SyncPlan = {
 	 * backward-compatibility reason.
 	 */
 	prunedRejected?: string[];
+	/**
+	 * Sidecar intent (Round 3 planned, Round 4 executes): comment logs +
+	 * history index shards, kept apart from the note `toPush`/`toPull` so
+	 * the Round 1 fence stays permanent. `merged` holds diverged-both-changed
+	 * sidecars with their computed union content. Optional so hand-built
+	 * plans from older callers still work.
+	 */
+	sidecarOps?: {
+		toPush: PlannedPush[];
+		toPull: PlannedPull[];
+		merged: PlannedSidecarMerge[];
+	};
 };
 
 /** Structured progress payload — the old enum+string channel cannot carry counts. */

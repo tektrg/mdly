@@ -8,13 +8,21 @@ import {
 	writeSyncState,
 } from "./config.js";
 import type { FileSystem, InitFileSystem } from "./fs.js";
+import { contentHash } from "./fs.js";
 import { isUnchangedByStat } from "./scope.js";
+import { mergeJsonlUnion } from "./sidecarMerge.js";
+import {
+	isPushableSidecarPath,
+	isSidecarPath,
+	isSyncedSidecarPath,
+} from "./sidecarScope.js";
 import type {
 	CloudSyncConfig,
 	FileState,
 	FolderSummaryEntry,
 	RejectedFile,
 	RemoteAsset,
+	RemoteFile,
 	SyncPlan,
 	SyncProgress,
 	SyncProgressCallback,
@@ -141,7 +149,15 @@ export async function plan(
 	const remoteFiles = await backend.getFiles(workspaceId, {
 		includeDeleted: true,
 	});
-	const remoteByPath = new Map(remoteFiles.map((f) => [f.path, f]));
+	// tombstone-then-403-fence (Step 1): remote `.mdly/**` rows are sidecars
+	// the local walkers prune, so they must never enter the note paths below
+	// — otherwise a cloud comment log pulls once, then reads as
+	// locally-deleted forever and dies on a 403 soft-delete.
+	const noteRemoteFiles = remoteFiles.filter((f) => !isSidecarPath(f.path));
+	// Round 3: the fenced-out rows stay in this local variable for
+	// planSidecars() below. The note path above is not un-fenced.
+	const sidecarRemoteFiles = remoteFiles.filter((f) => isSidecarPath(f.path));
+	const remoteByPath = new Map(noteRemoteFiles.map((f) => [f.path, f]));
 
 	const nextPlan: SyncPlan = {
 		toPush: [],
@@ -218,6 +234,10 @@ export async function plan(
 
 	// --- Decide local deletions (in state but no longer on disk) ---
 	for (const [path, prev] of Object.entries(state.files)) {
+		// Fence: sidecars never live in the note paths — a pulled comment log
+		// is pruned by the walkers, so without this it would read as
+		// locally-deleted and escalate to a fatal remote tombstone.
+		if (isSidecarPath(path)) continue;
 		if (localByPath.has(path)) continue;
 
 		const remote = remoteByPath.get(path);
@@ -234,7 +254,7 @@ export async function plan(
 	}
 
 	// --- Decide new remote files not present locally ---
-	for (const remote of remoteFiles) {
+	for (const remote of noteRemoteFiles) {
 		if (remote.deleted) continue;
 		if (localByPath.has(remote.path)) continue;
 		if (state.files[remote.path]) continue;
@@ -309,6 +329,16 @@ export async function plan(
 		nextPlan.assetOps.toPull.push(remote.path);
 	}
 
+	// --- Decide sidecar ops (Round 3 planned, Round 4 executes) ---
+	// Sidecars never enter toPush/toPull/toDelete/conflicts above — the
+	// separate sidecarOps block is what keeps the Round 1 fence permanent.
+	nextPlan.sidecarOps = await planSidecars(
+		fs,
+		workspacePath,
+		sidecarRemoteFiles,
+		state.sidecars ?? {},
+	);
+
 	// Permanently-rejected files (HTTP 413 on an earlier run) are not
 	// re-planned while their content is unchanged — retrying them every run
 	// would jam the loop the same way the original failure did. An edited
@@ -339,7 +369,10 @@ export async function plan(
 
 	nextPlan.folders = summarizePlanByFolder(nextPlan);
 	// totalOps means "work to do" — withheld pushes are reported, not
-	// worked, and live on `skippedPushes` as their own field.
+	// worked, and live on `skippedPushes` as their own field. Sidecar ops
+	// ARE counted (Round 4): execute() now performs them, so the progress
+	// total must promise exactly this much work. (Round 3 excluded them
+	// while execute was a sidecar no-op.)
 	nextPlan.totalOps =
 		nextPlan.toPush.length +
 		nextPlan.toPull.length +
@@ -347,8 +380,236 @@ export async function plan(
 		nextPlan.conflicts.length +
 		nextPlan.assetOps.toPush.length +
 		nextPlan.assetOps.toPull.length +
-		nextPlan.assetOps.toDelete.length;
+		nextPlan.assetOps.toDelete.length +
+		(nextPlan.sidecarOps?.toPush.length ?? 0) +
+		(nextPlan.sidecarOps?.toPull.length ?? 0) +
+		(nextPlan.sidecarOps?.merged.length ?? 0);
 	return nextPlan;
+}
+
+/**
+ * Plans sidecar intent without doing anything (Round 3, codename
+ * sidecar-union-plan): compares local sidecar files against the fenced-out
+ * remote sidecar rows and the `state.sidecars` baseline, and classifies each
+ * allowlisted path into toPush / toPull / merged.
+ *
+ * Rules:
+ * - Local only → push, but only if `isPushableSidecarPath` (this slotless
+ *   device may never push a slotted browser sibling — the server would 403).
+ * - Remote only (live) → pull. This includes baseline-known but locally
+ *   missing: a comment log is append-only and never intentionally deleted,
+ *   so a missing local file is a wipe or a fresh clone, and re-pulling is
+ *   the safe answer in both.
+ * - Both present, hashes equal → no op.
+ * - Diverged, local unchanged vs baseline → pull.
+ * - Diverged, local also changed → merged (union via `mergeJsonlUnion`),
+ *   NEVER a conflict. Except on a path this device may not push (slotted
+ *   sibling): a merged result could never be pushed back, so take remote.
+ * - Remote tombstoned → IGNORE, always. A comment log is append-only and
+ *   sync must never delete one, so there is deliberately no delete case.
+ *
+ * Sidecars never enter `plan.conflicts`, so `toConflictName` can never be
+ * reached for a `.mdly` path. Non-allowlisted `.mdly` rows (revision blobs,
+ * …) stay ignored exactly like Round 1.
+ */
+export async function planSidecars(
+	fs: FileSystem,
+	workspacePath: string,
+	sidecarRemoteFiles: RemoteFile[],
+	baseline: Record<string, FileState>,
+): Promise<NonNullable<SyncPlan["sidecarOps"]>> {
+	const ops: NonNullable<SyncPlan["sidecarOps"]> = {
+		toPush: [],
+		toPull: [],
+		merged: [],
+	};
+	const localFiles = await fs.listSidecarFiles(workspacePath);
+	const localByPath = new Map(localFiles.map((f) => [f.relativePath, f]));
+	// Only allowlisted sidecars are plannable; the rest stays ignored.
+	const remoteByPath = new Map(
+		sidecarRemoteFiles
+			.filter((f) => isSyncedSidecarPath(f.path))
+			.map((f) => [f.path, f]),
+	);
+
+	for (const local of localFiles) {
+		// Belt-and-braces: the walker allowlist should already agree, but a
+		// non-allowlisted local file must never be pushed.
+		if (!isSyncedSidecarPath(local.relativePath)) continue;
+		const remote = remoteByPath.get(local.relativePath);
+		if (!remote || remote.deleted) {
+			// No live remote row. A tombstone is answered with IGNORE (never
+			// delete an append-only log); a genuinely missing row pushes what
+			// this device may write and skips what it may not.
+			if (remote?.deleted) continue;
+			if (!isPushableSidecarPath(local.relativePath)) continue;
+			ops.toPush.push({
+				path: local.relativePath,
+				hash: local.hash,
+				content: local.content,
+				mtime: local.mtime,
+				size: local.size,
+			});
+			continue;
+		}
+		if (remote.contentHash === local.hash) continue;
+		const prev = baseline[local.relativePath];
+		const localChanged = !prev || prev.hash !== local.hash;
+		if (!localChanged || !isPushableSidecarPath(local.relativePath)) {
+			// Unchanged locally → take remote. Unpushable (slotted sibling)
+			// with local edits → also take remote: a merged result could
+			// never be pushed back, so pulling is the only convergent move.
+			ops.toPull.push({
+				path: local.relativePath,
+				hash: remote.contentHash,
+				content: remote.content,
+			});
+			continue;
+		}
+		const content = mergeJsonlUnion(local.content, remote.content);
+		ops.merged.push({
+			path: local.relativePath,
+			hash: await contentHash(content),
+			content,
+		});
+	}
+
+	for (const remote of remoteByPath.values()) {
+		if (remote.deleted) continue;
+		if (localByPath.has(remote.path)) continue;
+		ops.toPull.push({
+			path: remote.path,
+			hash: remote.contentHash,
+			content: remote.content,
+		});
+	}
+
+	// Deterministic plan order regardless of walker/backend ordering.
+	for (const list of [ops.toPush, ops.toPull, ops.merged]) {
+		list.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	}
+	return ops;
+}
+
+/** Inputs executeSidecars() needs from its execute() call site. */
+export type ExecuteSidecarsDeps = {
+	backend: SyncBackend;
+	fs: FileSystem;
+	workspacePath: string;
+	workspaceId: string;
+	deviceId: string;
+	now: number;
+	/** Fresh-at-execute-time allowlisted sidecar rows (mirrors the note re-fetch). */
+	remoteByPath: Map<string, RemoteFile>;
+	/** Mutable baseline accumulator, persisted by the caller's writeState. */
+	nextSidecars: Record<string, FileState>;
+	result: SyncResult;
+	tick: (currentPath?: string, phase?: SyncProgress["phase"]) => void;
+};
+
+/**
+ * Performs a previously planned sidecar block (Round 4): pushes, pulls,
+ * and union-merges comment logs + history index shards.
+ *
+ * - toPush goes through backend.pushFile with the SAME per-file try/catch
+ *   as the note push loop, so one 403 or 413 can never abort the run.
+ *   Failures land in result.failedFiles with `kind: "sidecar"`.
+ * - toPull resolves content against the fresh execute-time remote (live
+ *   row wins, planned content is the fallback), writes via fs.writeFile
+ *   with ensureParentDir first, and records the baseline.
+ * - merged writes the union locally AND pushes it; the baseline is
+ *   recorded only after the push succeeds, so a failed push retries the
+ *   same union next run instead of believing it converged.
+ *
+ * Still no delete path: an append-only log is never removed. Successes
+ * count on result.sidecarsPushed/Pulled/Merged — the note pushed/pulled
+ * arrays never carry `.mdly` paths.
+ */
+export async function executeSidecars(
+	sidecarOps: NonNullable<SyncPlan["sidecarOps"]>,
+	deps: ExecuteSidecarsDeps,
+): Promise<void> {
+	const {
+		backend,
+		fs,
+		workspacePath,
+		workspaceId,
+		deviceId,
+		now,
+		remoteByPath,
+		nextSidecars,
+		result,
+		tick,
+	} = deps;
+
+	function statFor(hash: string, mtime?: number, size?: number): FileState {
+		return { hash, lastSyncedAt: now, mtime, size };
+	}
+
+	async function ensureParentDir(path: string) {
+		const slash = path.lastIndexOf("/");
+		if (slash > 0)
+			await fs.ensureDir(`${workspacePath}/${path.slice(0, slash)}`);
+	}
+
+	/** Pushes one sidecar; false means "recorded as failed, keep going". */
+	async function pushSidecar(
+		path: string,
+		hash: string,
+		content: string,
+		mtime?: number,
+		size?: number,
+	): Promise<boolean> {
+		try {
+			await backend.pushFile({
+				workspaceId,
+				path,
+				contentHash: hash,
+				content,
+				deviceId,
+			});
+		} catch (error) {
+			// Same isolation as the note push loop: record, continue, and
+			// still write state at the end so all other progress is durable.
+			const info = failureInfo(error);
+			result.failedFiles.push({
+				path,
+				permanent: isPermanentFailure(error),
+				kind: "sidecar",
+				...info,
+			});
+			return false;
+		}
+		nextSidecars[path] = statFor(hash, mtime, size);
+		return true;
+	}
+
+	for (const op of sidecarOps.toPush) {
+		if (await pushSidecar(op.path, op.hash, op.content, op.mtime, op.size)) {
+			result.sidecarsPushed++;
+		}
+		tick(op.path, "push");
+	}
+
+	for (const op of sidecarOps.toPull) {
+		const remote = remoteByPath.get(op.path);
+		const content = remote && !remote.deleted ? remote.content : op.content;
+		const hash = remote && !remote.deleted ? remote.contentHash : op.hash;
+		await ensureParentDir(op.path);
+		await fs.writeFile(`${workspacePath}/${op.path}`, content);
+		nextSidecars[op.path] = statFor(hash);
+		result.sidecarsPulled++;
+		tick(op.path, "pull");
+	}
+
+	for (const op of sidecarOps.merged) {
+		await ensureParentDir(op.path);
+		await fs.writeFile(`${workspacePath}/${op.path}`, op.content);
+		if (await pushSidecar(op.path, op.hash, op.content)) {
+			result.sidecarsMerged++;
+		}
+		tick(op.path, "pull");
+	}
 }
 
 /** HTTP 413 means the server can never store this content — do not retry it. */
@@ -403,6 +664,9 @@ export async function execute(
 		assetsPushed: 0,
 		assetsPulled: 0,
 		assetsDeleted: 0,
+		sidecarsPushed: 0,
+		sidecarsPulled: 0,
+		sidecarsMerged: 0,
 		failedFiles: [],
 	};
 	const nextFiles: Record<string, FileState> = { ...state.files };
@@ -411,6 +675,13 @@ export async function execute(
 	};
 	const prevAssets = state.assets ?? {};
 	const nextAssets: Record<string, FileState> = { ...prevAssets };
+	// Sidecar baseline accumulator (Round 4): carried forward from state so
+	// paths untouched this run keep their entries, and persisted by every
+	// writeState() checkpoint below. Declared here — not at the sidecar
+	// block — because writeState() runs before that block is reached.
+	const nextSidecars: Record<string, FileState> = {
+		...(state.sidecars ?? {}),
+	};
 	const now = Date.now();
 	const total = Math.max(computed.totalOps, 1);
 	let done = 0;
@@ -500,7 +771,11 @@ export async function execute(
 	const remoteFiles = await backend.getFiles(workspaceId, {
 		includeDeleted: true,
 	});
-	const remoteByPath = new Map(remoteFiles.map((f) => [f.path, f]));
+	// Same fence as plan(): execute-time lookups run against notes only, so
+	// a sidecar row can never leak into pull/delete/conflict handling here.
+	const remoteByPath = new Map(
+		remoteFiles.filter((f) => !isSidecarPath(f.path)).map((f) => [f.path, f]),
+	);
 
 	// A path planned as a push whose remote turned into a tombstone between
 	// plan and execute honors the tombstone unless genuinely modified —
@@ -574,6 +849,34 @@ export async function execute(
 		result.conflicts.push(conflictPath);
 		tick(conflictPath, "pull");
 	}
+
+	// --- Sidecar execution (Round 4) ---
+	// Runs after conflicts, before assets. Sidecar lookups run against the
+	// allowlisted rows of the same fresh fetch above — never the note map,
+	// so the fence holds at execute time too. Still no delete path, and
+	// `.mdly` never enters conflicts.
+	const sidecarRemoteByPath = new Map(
+		remoteFiles
+			.filter((f) => isSyncedSidecarPath(f.path))
+			.map((f) => [f.path, f]),
+	);
+	await executeSidecars(computed.sidecarOps ?? { toPush: [], toPull: [], merged: [] }, {
+		backend,
+		fs,
+		workspacePath,
+		workspaceId,
+		deviceId,
+		now,
+		remoteByPath: sidecarRemoteByPath,
+		nextSidecars,
+		result,
+		tick,
+	});
+
+	// Durability checkpoint: sidecar pushes/pulls/merges are recorded
+	// before assets run, for the same resume-instead-of-repeat reason as
+	// the file checkpoints above.
+	await writeState();
 
 	// --- Asset execution ---
 	const remoteAssets = await backend.getAssets(workspaceId);
@@ -661,9 +964,12 @@ export async function execute(
 	return result;
 
 	/**
-	 * Persists everything recorded so far: files, assets, and rejections
-	 * (minus entries pruned for locally-deleted paths). Called at checkpoints
-	 * and at the end, so a failure anywhere still leaves durable progress.
+	 * Persists everything recorded so far: files, assets, sidecars, and
+	 * rejections (minus entries pruned for locally-deleted paths). Called
+	 * at checkpoints and at the end, so a failure anywhere still leaves
+	 * durable progress. `sidecars` is written only when non-empty, so runs
+	 * without sidecars write byte-identical state to before — and the next
+	 * run reuses it as the planSidecars() baseline.
 	 * `rejectedFiles` is written only when non-empty, so runs without
 	 * rejections write byte-identical state to before.
 	 */
@@ -675,6 +981,9 @@ export async function execute(
 			lastSyncedAt: now,
 			files: nextFiles,
 			assets: nextAssets,
+			...(Object.keys(nextSidecars).length > 0
+				? { sidecars: nextSidecars }
+				: {}),
 			...(Object.keys(nextRejected).length > 0
 				? { rejectedFiles: nextRejected }
 				: {}),

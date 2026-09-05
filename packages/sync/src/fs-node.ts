@@ -7,13 +7,14 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { assetsWalker, notesWalker } from "@mdly/workspace-scan";
+import { assetsWalker, notesWalker, sidecarWalker } from "@mdly/workspace-scan";
 import {
 	contentHash,
 	type FileSystem,
 	type LocalAsset,
 	type LocalFile,
 } from "./fs.js";
+import { isSyncedSidecarPath } from "./sidecarScope.js";
 
 export {
 	WorkspaceDirectoryLimitError,
@@ -123,6 +124,48 @@ export function createNodeFileSystem(
 		},
 		async writeBinaryFile(path, data) {
 			writeFileSync(path, data);
+		},
+		// Sidecars deliberately ignore options.excludedFolders: the desktop
+		// default list contains `.mdly`, so forwarding it would silently
+		// return nothing forever. The walker's own hard exclusion of
+		// `.mdly/history/objects/**` plus the isSyncedSidecarPath allowlist
+		// are the only filters. Same ENOENT-skip read loop as
+		// listMarkdownFiles above. Wired into plan() (Round 3) and
+		// execute() (Round 4).
+		async listSidecarFiles(dir) {
+			const { files, details } = await sidecarWalker(dir, {
+				include: isSyncedSidecarPath,
+			});
+			const results: LocalFile[] = [];
+			for (const relativePath of files) {
+				let content: string;
+				let mtime = details?.[relativePath]?.modifiedAt;
+				let size = details?.[relativePath]?.size;
+				try {
+					const absolute = join(dir, relativePath);
+					content = readFileSync(absolute, "utf-8");
+					if (mtime === undefined || size === undefined) {
+						try {
+							const st = statSync(absolute);
+							mtime = Math.floor(st.mtimeMs / 1000);
+							size = st.size;
+						} catch {
+							// Stat is a hint only — same as above.
+						}
+					}
+				} catch (error) {
+					if (isEnoent(error)) continue;
+					throw error;
+				}
+				results.push({
+					relativePath,
+					content,
+					hash: await contentHash(content),
+					mtime,
+					size,
+				});
+			}
+			return results;
 		},
 		// Same ignore rules as notes, except it still descends into
 		// `*.assets` folders — the sidebar hides those, sync cannot (R13).

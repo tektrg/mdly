@@ -50,7 +50,13 @@ import {
 import type { KeychainCredentialStore } from "@mdly/cloudflare-client/keychain";
 import { SHARED_CLOUD_SYNC_ACCOUNT } from "@mdly/cloudflare-client/keychain";
 import { createNodeWebSocketFactory } from "@mdly/cloudflare-client/node-ws";
-import { contentHash, isVersionableMarkdownPath } from "@mdly/doc-history";
+import {
+	contentHash,
+	historyRootFor,
+	isVersionableMarkdownPath,
+	resolvePathIndex,
+} from "@mdly/doc-history";
+import { createNodeFileSystem as createDocHistoryNodeFileSystem } from "@mdly/doc-history/node";
 import chokidar, { type FSWatcher } from "chokidar";
 import {
 	recordDeleteHistory,
@@ -131,6 +137,15 @@ export interface CloudSyncWiringDeps {
 		token: string;
 		workspaceId: string;
 	}) => Promise<void>;
+	/**
+	 * Fired with the ABSOLUTE note path after a sync run pulls or merges a
+	 * comment log for it, so the open document view refreshes without
+	 * waiting for a reopen. Optional so existing dep constructions keep
+	 * compiling — without it a pulled comment just sits on disk until the
+	 * note is reopened. `main.ts` maps it to the existing
+	 * `desktop:comments-changed` channel (no new preload/renderer work).
+	 */
+	notifyCommentsChanged?: (absoluteNotePath: string) => void;
 }
 
 const DEFAULT_DEBOUNCE_MS = 250;
@@ -216,6 +231,56 @@ export function isPrunedCloudSyncPath(
 	return matchesExcludedPattern(relative.split(path.sep).join("/"), entries);
 }
 
+/**
+ * The single named exception to the `.mdly` prune (Round 5): comment logs
+ * and history index shards must be WATCHED so local edits to them trigger a
+ * sync cycle, even though `.mdly` itself stays in
+ * `DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES` (that list is user-editable,
+ * rendered in Settings, and fed to the sync walk — removing `.mdly` there
+ * is not an option). Exactly one call site (`defaultCreateWatcher`
+ * below) — never a second parallel exclusion list; two lists that can
+ * drift is the known trap here.
+ *
+ * Mirrors the sync allowlist (`isSyncedSidecarPath` in `@hubble.md/sync`):
+ * everything under `.mdly/comments/` plus the top-level
+ * `.mdly/history/index*.jsonl` shards. Ancestor dirs (`.mdly` itself,
+ * `.mdly/comments`, `.mdly/history`) return true so chokidar descends into
+ * them instead of pruning the watched leaves. Revision blobs
+ * (`.mdly/history/objects/**`) and everything else return false and fall
+ * through to `isPrunedCloudSyncPath`.
+ */
+export function isWatchedSidecarPath(
+	candidatePath: string,
+	workspaceRoot: string,
+): boolean {
+	const relative = path.relative(workspaceRoot, candidatePath);
+	if (
+		relative === "" ||
+		relative.startsWith("..") ||
+		path.isAbsolute(relative)
+	) {
+		return false;
+	}
+	const posix = relative.split(path.sep).join("/");
+	if (posix === ".mdly" || posix === ".mdly/comments" || posix === ".mdly/history") {
+		return true;
+	}
+	const commentsPrefix = ".mdly/comments/";
+	if (
+		posix.startsWith(commentsPrefix) &&
+		posix.length > commentsPrefix.length
+	) {
+		return true;
+	}
+	const historyPrefix = ".mdly/history/";
+	if (posix.startsWith(historyPrefix)) {
+		const rest = posix.slice(historyPrefix.length);
+		// Top level only (`index*.jsonl`): no nested shards, no objects dir.
+		if (!rest.includes("/")) return /^index[^/]*\.jsonl$/i.test(rest);
+	}
+	return false;
+}
+
 function defaultCreateBackend(opts: {
 	deploymentUrl: string;
 	token: string;
@@ -248,7 +313,9 @@ function defaultCreateWatcher(
 	return chokidar.watch(workspaceRoot, {
 		ignoreInitial: true,
 		ignored: (candidatePath: string) =>
-			isPrunedCloudSyncPath(candidatePath, workspaceRoot, excluded),
+			isWatchedSidecarPath(candidatePath, workspaceRoot)
+				? false
+				: isPrunedCloudSyncPath(candidatePath, workspaceRoot, excluded),
 	});
 }
 
@@ -588,6 +655,9 @@ async function runOnce(
 					},
 				);
 				if (handle.disposed) return;
+				// A comment pulled from another device sits on disk invisible
+				// until the note reopens — tell the open document view now.
+				await notifyPulledCommentLogs(workspaceRoot, handle, computed);
 				setStatus(workspaceRoot, handle, "idle");
 			} catch (error) {
 				if (handle.disposed) return;
@@ -627,6 +697,71 @@ async function runOnce(
 		}
 	} finally {
 		handle.running = false;
+	}
+}
+
+/**
+ * Recovers the docId from a workspace-relative comment-log path by
+ * stripping the `.mdly/comments/` prefix, a trailing ` <slot>` suffix, and
+ * the `.jsonl` extension. Mirrors the server's slot pattern (and
+ * `agentComments.ts`'s filename parsing) — null when not a comment log.
+ */
+function docIdFromCommentLogPath(sidecarPath: string): string | null {
+	const prefix = ".mdly/comments/";
+	if (!sidecarPath.startsWith(prefix)) return null;
+	const match = /^(.+?)(?: (\d+))?\.jsonl$/i.exec(
+		sidecarPath.slice(prefix.length),
+	);
+	return match ? match[1] : null;
+}
+
+/**
+ * After a successful execute, maps freshly pulled/merged comment logs back
+ * to their notes and fires `deps.notifyCommentsChanged` per note, so the
+ * open document view refreshes live. Pushes need no notify (our own content
+ * going up), history index shards are skipped (not comments), and a docId
+ * with no current path (note without an id yet, or deleted) is skipped
+ * silently. A half-written history index or a throwing listener must never
+ * break the sync loop — every failure mode here degrades to "reopen to
+ * see it", never to a broken sync.
+ */
+async function notifyPulledCommentLogs(
+	workspaceRoot: string,
+	handle: RunningCloudSync,
+	computed: SyncPlan,
+): Promise<void> {
+	const notify = handle.deps?.notifyCommentsChanged;
+	if (!notify) return;
+	const commentPaths = [
+		...(computed.sidecarOps?.toPull ?? []),
+		...(computed.sidecarOps?.merged ?? []),
+	]
+		.map((op) => op.path)
+		.filter((p) => p.startsWith(".mdly/comments/"));
+	if (commentPaths.length === 0) return;
+	let pathByDocId: Map<string, string>;
+	try {
+		const byPath = await resolvePathIndex(
+			createDocHistoryNodeFileSystem(),
+			historyRootFor(workspaceRoot),
+		);
+		pathByDocId = new Map<string, string>();
+		for (const [relativePath, docId] of byPath) {
+			pathByDocId.set(docId, relativePath);
+		}
+	} catch {
+		return;
+	}
+	for (const sidecarPath of commentPaths) {
+		const docId = docIdFromCommentLogPath(sidecarPath);
+		if (!docId) continue;
+		const relativePath = pathByDocId.get(docId);
+		if (!relativePath) continue;
+		try {
+			notify(path.join(workspaceRoot, ...relativePath.split("/")));
+		} catch {
+			// A listener's own error must never break sync.
+		}
 	}
 }
 

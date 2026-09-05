@@ -10,6 +10,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { FSWatcher } from "chokidar";
+import { contentHash } from "@mdly/doc-history";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createFakeBackend,
@@ -26,6 +27,7 @@ import {
 	enableCloudSyncForWorkspace,
 	isCloudSyncRunning,
 	isPrunedCloudSyncPath,
+	isWatchedSidecarPath,
 	normalizeExcludedFolders,
 	readCloudSyncWorkspaceState,
 	resumeCloudSyncForGrantedRoots,
@@ -34,8 +36,12 @@ import {
 	setCloudSyncExcludedFolders,
 	startCloudSyncWatcherIfEnabled,
 	stopAllCloudSync,
+	stopCloudSyncForWorkspace,
 } from "./cloudSyncWiring";
-import { createSelfWriteEchoTracker } from "./docHistoryWiring";
+import {
+	createSelfWriteEchoTracker,
+	getHistoryStoreForWorkspace,
+} from "./docHistoryWiring";
 
 let workspaceRoot: string;
 let extraTmpDirs: string[];
@@ -600,4 +606,94 @@ describe("250ms debounce (R19)", () => {
 		await new Promise((resolve) => setTimeout(resolve, 800));
 		expect(calls.getFiles - callsBeforeBurst).toBe(2);
 	});
+});
+
+describe("isWatchedSidecarPath (Round 5)", () => {
+	it("watches comment logs at any depth, plus the ancestor dirs chokidar must descend through", () => {
+		for (const p of [
+			".mdly/comments/note.jsonl",
+			".mdly/comments/note 2.jsonl",
+			".mdly/comments/nested/note.jsonl",
+			".mdly",
+			".mdly/comments",
+			".mdly/history",
+		]) {
+			expect(isWatchedSidecarPath(`/ws/${p}`, "/ws")).toBe(true);
+		}
+	});
+
+	it("watches history index shards, top level only", () => {
+		expect(isWatchedSidecarPath("/ws/.mdly/history/index.jsonl", "/ws")).toBe(
+			true,
+		);
+		expect(isWatchedSidecarPath("/ws/.mdly/history/index2.jsonl", "/ws")).toBe(
+			true,
+		);
+	});
+
+	it("prunes revision blobs, per-doc history logs, and everything else", () => {
+		for (const p of [
+			".mdly/history/objects/ab/cd",
+			".mdly/history/objects",
+			".mdly/history/some-doc.jsonl",
+			".mdly/config.json",
+			"node_modules/pkg/readme.md",
+			"notes/todo.md",
+		]) {
+			expect(isWatchedSidecarPath(`/ws/${p}`, "/ws")).toBe(false);
+		}
+	});
+});
+
+describe("pulled comment logs notify the open document view (Round 5)", () => {
+	it("a pulled comment log calls notifyCommentsChanged with the absolute note path", async () => {
+		await fs.writeFile(path.join(workspaceRoot, "note.md"), "hello");
+		const history = getHistoryStoreForWorkspace(workspaceRoot);
+		await history.recordRevision("note.md", "hello", {
+			by: { kind: "human", id: "device-1" },
+			cause: "manual",
+		});
+		const docId = (await history.resolveDocId("note.md")).id;
+
+		const commentContent = '{"id":"c1"}\n';
+		const { backend } = createFakeBackend([
+			{
+				path: `.mdly/comments/${docId}.jsonl`,
+				contentHash: await contentHash(
+					new TextEncoder().encode(commentContent),
+				),
+				content: commentContent,
+				deviceId: "phone-1",
+				deleted: false,
+				updatedAt: Date.now(),
+			},
+		]);
+		const { subscriber } = createFakeSubscriber();
+		const notified: string[] = [];
+		const deps = {
+			echoTracker: createSelfWriteEchoTracker(),
+			grantedRoots: [workspaceRoot],
+			keychain: createFakeKeychain({ [SHARED_CLOUD_SYNC_ACCOUNT]: "pw" }),
+			createBackend: () => backend,
+			createSubscriber: () => subscriber,
+			debounceMs: 20,
+			notifyCommentsChanged: (absoluteNotePath: string) => {
+				notified.push(absoluteNotePath);
+			},
+		};
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+
+		await startCloudSyncWatcherIfEnabled(workspaceRoot, deps);
+		const expected = path.join(workspaceRoot, "note.md");
+		await waitFor(() => notified.includes(expected), 10000);
+		// Stop the live watcher before asserting quiet: the pulled log's own
+		// disk write would otherwise keep debounce-triggering settled cycles
+		// under `debounceMs: 20` and race the count below.
+		await stopCloudSyncForWorkspace(workspaceRoot);
+		expect(notified).toEqual([expected]);
+	}, 15000);
 });

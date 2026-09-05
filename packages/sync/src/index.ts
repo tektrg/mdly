@@ -29,16 +29,20 @@ export {
 	PENDING_DIR_THRESHOLD,
 	PENDING_FILE_THRESHOLD,
 } from "./scope.js";
+export { mergeJsonlUnion } from "./sidecarMerge.js";
 export {
 	createThrottledProgress,
 	execute,
+	executeSidecars,
 	init,
 	isPermanentFailure,
 	plan,
+	planSidecars,
 	status,
 	summarizePlanByFolder,
 	sync,
 } from "./sync.js";
+export type { ExecuteSidecarsDeps } from "./sync.js";
 export type {
 	AuthorizedUrl,
 	CloudSyncConfig,
@@ -50,6 +54,7 @@ export type {
 	PlannedDelete,
 	PlannedPull,
 	PlannedPush,
+	PlannedSidecarMerge,
 	RejectedFile,
 	RemoteAsset,
 	RemoteFile,

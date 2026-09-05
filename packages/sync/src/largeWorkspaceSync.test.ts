@@ -82,6 +82,9 @@ function memoryFs(seed: Record<string, string>): FileSystem & {
 		async listAssetFiles() {
 			return [];
 		},
+		async listSidecarFiles() {
+			return [];
+		},
 	};
 }
 

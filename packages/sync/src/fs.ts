@@ -22,6 +22,15 @@ export interface FileSystem {
 	readFileOrNull(path: string): Promise<string | null>;
 	ensureDir(path: string): Promise<void>;
 	listMarkdownFiles(dir: string): Promise<LocalFile[]>;
+	/**
+	 * Comment logs + history index shards (`.mdly/comments/**` +
+	 * `.mdly/history/index*.jsonl`), with full content like
+	 * `listMarkdownFiles`. Deliberately NOT subject to `excludedFolders` —
+	 * the desktop default list contains `.mdly`, which would otherwise
+	 * silently return nothing forever. Wired into plan()/execute() (Rounds
+	 * 3–4); nothing about note/asset sync behaviour changes by adding it.
+	 */
+	listSidecarFiles(dir: string): Promise<LocalFile[]>;
 	readBinaryFile(path: string): Promise<Uint8Array>;
 	writeBinaryFile(path: string, data: Uint8Array): Promise<void>;
 	listAssetFiles(dir: string): Promise<LocalAsset[]>;

@@ -230,6 +230,10 @@ function cloudSyncDeps(): CloudSyncWiringDeps {
 		echoTracker: historyEchoTracker,
 		grantedRoots,
 		keychain: cloudSyncKeychain,
+		// Same existing channel the agent comment path already uses — the
+		// document view listens on it, so no preload/renderer changes.
+		notifyCommentsChanged: (absoluteFilePath: string) =>
+			sendToRenderer("desktop:comments-changed", absoluteFilePath),
 	};
 }
 
