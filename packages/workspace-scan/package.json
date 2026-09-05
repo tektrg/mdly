@@ -1,0 +1,44 @@
+{
+	"name": "@mdly/workspace-scan",
+	"version": "0.0.1",
+	"description": "Pure-Node workspace file discovery: the Mac sidebar's ignore-rule engine plus the notes/assets/sidecars walkers used by cloud sync",
+	"license": "MIT",
+	"author": "tektrg",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tektrg/mdly.git",
+		"directory": "packages/workspace-scan"
+	},
+	"bugs": "https://github.com/tektrg/mdly/issues",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./file-discovery": {
+			"types": "./dist/file-discovery.d.ts",
+			"default": "./dist/file-discovery.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"ignore": "^7.0.5"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
+	}
+}
