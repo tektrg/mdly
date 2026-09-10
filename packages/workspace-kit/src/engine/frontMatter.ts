@@ -86,11 +86,16 @@ export function serializeFrontMatter(properties: FileProperty[]): string {
 			lines.push(
 				`${property.key}: ${stringify(property.value, {
 					defaultStringType: "QUOTE_DOUBLE",
+					// One line per property: disable folding so long values stay
+					// on a single line instead of wrapping to column 0.
+					lineWidth: 0,
 				}).trimEnd()}`,
 			);
 			continue;
 		}
-		lines.push(stringify({ [property.key]: property.value }).trimEnd());
+		lines.push(
+			stringify({ [property.key]: property.value }, { lineWidth: 0 }).trimEnd(),
+		);
 	}
 	return lines.join("\n");
 }
@@ -327,7 +332,7 @@ function scalarValue(node: unknown) {
 }
 
 function pairToRaw(key: string, value: unknown): string {
-	return stringify({ [key]: valueToJs(value) }).trimEnd();
+	return stringify({ [key]: valueToJs(value) }, { lineWidth: 0 }).trimEnd();
 }
 
 function valueToJs(value: unknown): unknown {

@@ -254,6 +254,33 @@ AI Summary: >
 Nested Value: { child: "quoted", list: [one, two] }`);
 	});
 
+	it("keeps long property values on one line so they survive serialize -> parse", () => {
+		const value =
+			"a value long enough that a YAML serializer will fold it across two lines at eighty columns";
+		const parsed = parseMarkdownFrontMatter(`---
+item: "${value}"
+stage: plan
+---
+body
+`);
+
+		expect(parsed.type).toBe("valid");
+		if (parsed.type !== "valid") return;
+		const yaml = serializeFrontMatter(parsed.properties);
+		expect(yaml.split("\n")).toHaveLength(2);
+
+		const reparsed = parseMarkdownFrontMatter(
+			combineMarkdownFrontMatter(yaml, "body\n"),
+		);
+		expect(reparsed.type).toBe("valid");
+		if (reparsed.type !== "valid") return;
+		expect(reparsed.properties).toContainEqual({
+			key: "item",
+			type: "text",
+			value,
+		});
+	});
+
 	it("recombines front matter with a markdown body", () => {
 		expect(combineMarkdownFrontMatter("title: Test", "# Body")).toBe(`---
 title: Test
