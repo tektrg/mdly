@@ -2,6 +2,19 @@ import {
 	computeGloballyReferencedHashes,
 	deleteR2ObjectsIfUnreferenced,
 } from "./assetGc.js";
+import type {
+	AssetCursor,
+	AssetPage,
+	GcAssetCursor,
+	GcAssetPage,
+	RemoteAssetLike,
+} from "./durableObject/assets.js";
+import type {
+	FileCursor,
+	FilePage,
+	RemoteFileLike,
+} from "./durableObject/files.js";
+import type { WorkspaceDurableObject } from "./durableObject/workspaceDurableObject.js";
 import type { Env } from "./env.js";
 import { orphanAssetCandidates, referencedAssetPaths } from "./orphanAssets.js";
 import { workspaceStub } from "./routes/workspaceStub.js";
@@ -9,6 +22,53 @@ import { listWorkspaceNames } from "./workspaceRegistry.js";
 
 const ORPHAN_ASSET_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
 const ASSET_CLEANUP_DEVICE_ID = "asset-orphan-cleanup";
+
+/**
+ * Full-workspace reads through the byte-bounded listing pages. The GC needs
+ * the whole workspace view, but no single RPC call may approach the ceiling —
+ * so page locally and concatenate. Cursors strictly advance per page, so the
+ * loops terminate.
+ */
+async function listAllFiles(
+	stub: DurableObjectStub<WorkspaceDurableObject>,
+	opts: { includeDeleted: boolean },
+): Promise<RemoteFileLike[]> {
+	const all: RemoteFileLike[] = [];
+	let cursor: FileCursor | null = null;
+	do {
+		const page: FilePage = await stub.listFiles({ ...opts, cursor });
+		all.push(...page.files);
+		cursor = page.nextCursor;
+	} while (cursor);
+	return all;
+}
+
+async function listAllAssets(
+	stub: DurableObjectStub<WorkspaceDurableObject>,
+	since?: number,
+): Promise<RemoteAssetLike[]> {
+	const all: RemoteAssetLike[] = [];
+	let cursor: AssetCursor | null = null;
+	do {
+		const page: AssetPage = await stub.listAssets({ since, cursor });
+		all.push(...page.assets);
+		cursor = page.nextCursor;
+	} while (cursor);
+	return all;
+}
+
+async function listAllAssetsForGc(
+	stub: DurableObjectStub<WorkspaceDurableObject>,
+): Promise<{ path: string; deleted: boolean; orphanedAt?: number }[]> {
+	const all: { path: string; deleted: boolean; orphanedAt?: number }[] = [];
+	let cursor: GcAssetCursor | null = null;
+	do {
+		const page: GcAssetPage = await stub.listAssetsForGc({ cursor });
+		all.push(...page.assets);
+		cursor = page.nextCursor;
+	} while (cursor);
+	return all;
+}
 
 /**
  * Nightly Cron Trigger (R5). Mirrors the old Convex
@@ -35,9 +95,9 @@ export async function runOrphanAssetCleanup(env: Env): Promise<{
 	// ported-verbatim function the old Convex backend used.
 	for (const name of names) {
 		const stub = workspaceStub(env, name);
-		const files = await stub.listFiles({ includeDeleted: true });
-		const assets = await stub.listAssetsForGc();
-		const references = referencedAssetPaths(files);
+		const files = await listAllFiles(stub, { includeDeleted: true });
+		const assets = await listAllAssetsForGc(stub);
+		const references = referencedAssetPaths(files, assets);
 		const now = Date.now();
 
 		for (const asset of assets) {
@@ -61,9 +121,9 @@ export async function runOrphanAssetCleanup(env: Env): Promise<{
 	// row pointed at (so phase 3 can refcount across workspaces).
 	for (const name of names) {
 		const stub = workspaceStub(env, name);
-		const files = await stub.listFiles({ includeDeleted: true });
-		const assetsForGc = await stub.listAssetsForGc();
-		const assetRows = await stub.listAssets();
+		const files = await listAllFiles(stub, { includeDeleted: true });
+		const assetsForGc = await listAllAssetsForGc(stub);
+		const assetRows = await listAllAssets(stub);
 		const cutoff = Date.now() - ORPHAN_ASSET_GRACE_PERIOD_MS;
 
 		const candidates = orphanAssetCandidates(files, assetsForGc);

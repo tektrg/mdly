@@ -1,6 +1,40 @@
+import { FieldTooLargeError } from "../durableObject/errors.js";
+import { MAX_FIELD_BYTES } from "../durableObject/workspaceDurableObject.js";
 import type { Env } from "../env.js";
-import { json, readJsonBody } from "../http.js";
+import {
+	forbiddenDeviceIdResponse,
+	json,
+	parseCursor,
+	readJsonBody,
+	requestTooLargeResponse,
+	utf8ByteLength,
+} from "../http.js";
 import { workspaceStub } from "./workspaceStub.js";
+
+function assetErrorStatus(code: string): number {
+	if (code === "ASSET_REFERENCE_ERROR") return 409;
+	if (code === "SLOT_INVARIANT_VIOLATION") return 403;
+	if (code === "INVALID_PATH") return 400;
+	if (code === "FIELD_TOO_LARGE") return 413;
+	return 500;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
+}
+
+/** 413 when one scalar field exceeds the SQLite-safe ceiling (see files.ts). */
+function oversizedFieldResponse(field: string, value: string): Response | null {
+	const bytes = utf8ByteLength(value);
+	if (bytes > MAX_FIELD_BYTES) {
+		const error = new FieldTooLargeError(field, bytes, MAX_FIELD_BYTES);
+		return json(
+			{ error: error.message, code: error.code },
+			{ status: 413 },
+		);
+	}
+	return null;
+}
 
 export function assetR2Key(hash: string): string {
 	return `assets/${hash}`;
@@ -13,7 +47,7 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
 		.join("");
 }
 
-/** GET /api/assets?workspaceId=&since= — SyncBackend.getAssets. */
+/** GET /api/assets?workspaceId=&since=&cursorUpdatedAt=&cursorPath= — SyncBackend.getAssets, one byte-bounded page. */
 export async function handleGetAssets(
 	request: Request,
 	env: Env,
@@ -23,10 +57,28 @@ export async function handleGetAssets(
 	if (!workspaceId)
 		return json({ error: "workspaceId is required" }, { status: 400 });
 	const sinceParam = url.searchParams.get("since");
-	const assets = await workspaceStub(env, workspaceId).listAssets(
-		sinceParam ? Number(sinceParam) : undefined,
+	const since = sinceParam ? Number(sinceParam) : undefined;
+	if (since !== undefined && !Number.isFinite(since)) {
+		return json(
+			{ error: "since must be a valid timestamp number" },
+			{ status: 400 },
+		);
+	}
+	const cursor = parseCursor(
+		url.searchParams.get("cursorUpdatedAt"),
+		url.searchParams.get("cursorPath"),
 	);
-	return json({ assets });
+	if (cursor === "invalid") {
+		return json(
+			{ error: "cursorUpdatedAt and cursorPath must be passed together and valid" },
+			{ status: 400 },
+		);
+	}
+	const page = await workspaceStub(env, workspaceId).listAssets({
+		since,
+		cursor,
+	});
+	return json({ assets: page.assets, nextCursor: page.nextCursor });
 }
 
 /**
@@ -90,31 +142,56 @@ export async function handlePushAsset(
 		contentHash?: string;
 		deviceId?: string;
 	}>(request);
-	if (!body?.workspaceId || !body.path || !body.storageId || !body.deviceId) {
+	const workspaceId = body?.workspaceId;
+	const path = body?.path;
+	const storageId = body?.storageId;
+	const deviceId = body?.deviceId;
+	const contentHash = body?.contentHash;
+	if (
+		!isNonEmptyString(workspaceId) ||
+		!isNonEmptyString(path) ||
+		!isNonEmptyString(storageId) ||
+		!isNonEmptyString(deviceId) ||
+		(contentHash !== undefined && typeof contentHash !== "string")
+	) {
 		return json(
-			{ error: "workspaceId, path, storageId and deviceId are required" },
+			{
+				error:
+					"workspaceId, path, storageId and deviceId are required non-empty strings",
+			},
 			{ status: 400 },
 		);
 	}
+	const tooLarge = requestTooLargeResponse(body);
+	if (tooLarge) return tooLarge;
+	const badDevice = forbiddenDeviceIdResponse(deviceId);
+	if (badDevice) return badDevice;
+	const badField =
+		oversizedFieldResponse("storageId", storageId) ??
+		oversizedFieldResponse("deviceId", deviceId);
+	if (badField) return badField;
 
-	const head = await env.ASSET_BUCKET.head(assetR2Key(body.storageId));
+	const head = await env.ASSET_BUCKET.head(assetR2Key(storageId));
 	if (!head) {
 		return json(
 			{
-				error: `No uploaded object found for storageId "${body.storageId}" — upload before pushAsset.`,
+				error: `No uploaded object found for storageId "${storageId}" — upload before pushAsset.`,
 				code: "ASSET_REFERENCE_ERROR",
 			},
 			{ status: 409 },
 		);
 	}
 
-	const result = await workspaceStub(env, body.workspaceId).pushAsset({
-		path: body.path,
-		hash: body.storageId,
-		deviceId: body.deviceId,
+	const result = await workspaceStub(env, workspaceId).pushAsset({
+		path,
+		hash: storageId,
+		deviceId,
 	});
 	if (!result.ok) {
-		return json({ error: result.message, code: result.code }, { status: 500 });
+		return json(
+			{ error: result.message, code: result.code },
+			{ status: assetErrorStatus(result.code) },
+		);
 	}
 	return json({ ok: true, version: result.version });
 }
@@ -129,15 +206,37 @@ export async function handleSoftDeleteAsset(
 		path?: string;
 		deviceId?: string;
 	}>(request);
-	if (!body?.workspaceId || !body.path || !body.deviceId) {
+	const workspaceId = body?.workspaceId;
+	const path = body?.path;
+	const deviceId = body?.deviceId;
+	if (
+		!isNonEmptyString(workspaceId) ||
+		!isNonEmptyString(path) ||
+		!isNonEmptyString(deviceId)
+	) {
 		return json(
-			{ error: "workspaceId, path and deviceId are required" },
+			{
+				error:
+					"workspaceId, path and deviceId are required non-empty strings",
+			},
 			{ status: 400 },
 		);
 	}
-	const result = await workspaceStub(env, body.workspaceId).deleteAsset({
-		path: body.path,
-		deviceId: body.deviceId,
+	const tooLarge = requestTooLargeResponse(body);
+	if (tooLarge) return tooLarge;
+	const badDevice = forbiddenDeviceIdResponse(deviceId);
+	if (badDevice) return badDevice;
+	const badField = oversizedFieldResponse("deviceId", deviceId);
+	if (badField) return badField;
+	const result = await workspaceStub(env, workspaceId).deleteAsset({
+		path,
+		deviceId,
 	});
+	if (!result.ok) {
+		return json(
+			{ error: result.message, code: result.code },
+			{ status: assetErrorStatus(result.code) },
+		);
+	}
 	return json({ ok: true, version: result.version });
 }

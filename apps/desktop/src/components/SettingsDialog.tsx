@@ -5,6 +5,7 @@ import { desktopApi } from "../desktopApi";
 import type {
 	CloudSyncStatus,
 	CloudSyncWorkspaceState,
+	SyncProgress,
 } from "../desktopApi/types";
 import {
 	CONTRAST_PREFERENCES,
@@ -22,6 +23,7 @@ import {
 	setThemePreference,
 } from "../store/actions";
 import type { SourceRetentionPreference } from "../store/persistence";
+import { CloudSyncReviewDialog } from "./CloudSyncReviewDialog";
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
@@ -405,7 +407,10 @@ export function CloudSyncSettings({
 	);
 	const [password, setPassword] = useState("");
 	const [busy, setBusy] = useState(false);
+	const [pendingBusy, setPendingBusy] = useState<string | null>(null);
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [progress, setProgress] = useState<SyncProgress | null>(null);
+	const [reviewOpen, setReviewOpen] = useState(false);
 	const [excludedFoldersDraft, setExcludedFoldersDraft] = useState("");
 	const [savedExcludedFolders, setSavedExcludedFolders] = useState<string[]>(
 		[],
@@ -431,8 +436,10 @@ export function CloudSyncSettings({
 			if (initial.deploymentUrl) setDeploymentUrl(initial.deploymentUrl);
 			setSavedExcludedFolders(initial.excludedFolders);
 			setExcludedFoldersDraft(initial.excludedFolders.join("\n"));
+			setProgress(initial.progress ?? null);
 		});
 		let unsubscribe: (() => void) | undefined;
+		let unsubscribeProgress: (() => void) | undefined;
 		void desktopApi
 			.onCloudSyncStatusChange(workspacePath, (status, detail) => {
 				if (cancelled) return;
@@ -442,15 +449,27 @@ export function CloudSyncSettings({
 				if (cancelled) fn();
 				else unsubscribe = fn;
 			});
+		// Progress arrives ONLY over the dedicated progress channel (one
+		// wire, not two) — the status callback above carries no counts.
+		void desktopApi
+			.onCloudSyncProgressChange(workspacePath, (prog) => {
+				if (cancelled) return;
+				setProgress(prog);
+			})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unsubscribeProgress = fn;
+			});
 		return () => {
 			cancelled = true;
 			unsubscribe?.();
+			unsubscribeProgress?.();
 		};
 	}, [workspacePath]);
 
 	if (!workspacePath || !state) return null;
 
-	const handleEnable = async () => {
+	const handleEnable = async (presetExcludedFolders?: string[]) => {
 		setBusy(true);
 		setActionError(null);
 		try {
@@ -458,9 +477,11 @@ export function CloudSyncSettings({
 				workspaceName: workspaceNameFromPath(workspacePath),
 				deploymentUrl,
 				password: password.length > 0 ? password : undefined,
+				excludedFolders: presetExcludedFolders,
 			});
 			setState(next);
 			adoptExcludedFolders(next.excludedFolders);
+			setProgress(next.progress ?? null);
 			setPassword("");
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
@@ -512,6 +533,42 @@ export function CloudSyncSettings({
 	const needsPassword =
 		!state.backgroundSync || state.status === "needs-reauth";
 
+	const pendingFolders = state.pendingFolders ?? [];
+
+	const handleApprovePending = async (folderPath: string) => {
+		setPendingBusy(folderPath);
+		setActionError(null);
+		try {
+			const next = await desktopApi.approveCloudSyncPendingFolder(
+				workspacePath,
+				folderPath,
+			);
+			setState(next);
+			adoptExcludedFolders(next.excludedFolders);
+		} catch (error) {
+			setActionError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setPendingBusy(null);
+		}
+	};
+
+	const handleExcludePending = async (folderPath: string) => {
+		setPendingBusy(folderPath);
+		setActionError(null);
+		try {
+			const next = await desktopApi.excludeCloudSyncPendingFolder(
+				workspacePath,
+				folderPath,
+			);
+			setState(next);
+			adoptExcludedFolders(next.excludedFolders);
+		} catch (error) {
+			setActionError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setPendingBusy(null);
+		}
+	};
+
 	return (
 		<SettingsSection
 			title="Cloud Sync"
@@ -527,12 +584,17 @@ export function CloudSyncSettings({
 							{CLOUD_SYNC_STATUS_LABELS[state.status]}
 							{state.detail ? ` — ${state.detail}` : ""}
 						</span>
+						{state.status === "syncing" && (
+							<SyncProgressLine progress={progress} />
+						)}
 					</span>
 					<button
 						className="h-8 shrink-0 rounded-sm border border-input bg-card px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
 						disabled={busy}
 						onClick={() =>
-							void (state.backgroundSync ? handleDisable() : handleEnable())
+							void (state.backgroundSync
+								? handleDisable()
+								: setReviewOpen(true))
 						}
 						type="button"
 					>
@@ -587,10 +649,13 @@ export function CloudSyncSettings({
 							Folders never synced
 						</span>
 						<span className="text-[11px] leading-4 text-muted-foreground">
-							Anything inside a folder with one of these names stays on this Mac
-							and is never watched or uploaded. Agent worktrees (.claude) and
-							dependency folders belong here — watching them can freeze the app.
-							One folder name per line.
+							A bare name matches at any depth; a path like fe/docs is
+							anchored to the workspace root (a leading slash pins it
+							there too: /dist matches only the top-level dist).
+							Anything under a listed folder stays on this Mac and is
+							never watched or uploaded. Agent worktrees (.claude) and
+							dependency folders belong here — watching them can freeze
+							the app. One entry per line.
 						</span>
 						<textarea
 							className="min-h-24 rounded-sm border border-input bg-card px-2 py-1.5 text-[11px] leading-4 text-foreground outline-hidden disabled:opacity-50"
@@ -632,12 +697,112 @@ export function CloudSyncSettings({
 						</span>
 					)}
 				</div>
+				{pendingFolders.length > 0 && (
+					<div className="flex flex-col gap-2">
+						<span className="text-[11px] font-medium text-foreground">
+							Folders waiting for approval ({pendingFolders.length})
+						</span>
+						<span className="text-[11px] leading-4 text-muted-foreground">
+							These grew past 1,000 files or folders and are held out of
+							sync until you confirm. Everything else keeps syncing.
+						</span>
+						<ul className="flex flex-col gap-1">
+							{pendingFolders.map((pending) => (
+								<li
+									key={pending.path}
+									className="flex items-center gap-2 rounded-sm border border-border [padding-block:0.375rem] [padding-inline:0.5rem]"
+								>
+									<span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+										{pending.path} —{" "}
+										{pending.fileCountAtLeast.toLocaleString()}+ files
+										{pending.dirCountAtLeast != null &&
+										pending.dirCountAtLeast > 0
+											? ` · ${pending.dirCountAtLeast.toLocaleString()}+ folders`
+											: ""}
+									</span>
+									<button
+										className="h-7 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden disabled:opacity-50"
+										disabled={pendingBusy !== null}
+										onClick={() => void handleApprovePending(pending.path)}
+										type="button"
+									>
+										Approve
+									</button>
+									<button
+										className="h-7 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-muted-foreground outline-hidden disabled:opacity-50"
+										disabled={pendingBusy !== null}
+										onClick={() => void handleExcludePending(pending.path)}
+										type="button"
+										title="Never sync this folder, and never ask about it again"
+									>
+										Never ask again
+									</button>
+								</li>
+							))}
+						</ul>
+					</div>
+				)}
 				{actionError && (
 					<span className="text-[11px] leading-4 text-destructive">
 						{actionError}
 					</span>
 				)}
 			</div>
+			<CloudSyncReviewDialog
+				open={reviewOpen}
+				onOpenChange={setReviewOpen}
+				workspacePath={workspacePath}
+				workspaceName={workspaceNameFromPath(workspacePath)}
+				deploymentUrl={deploymentUrl}
+				password={password.length > 0 ? password : undefined}
+				onConfirm={(excluded) => {
+					setReviewOpen(false);
+					void handleEnable(excluded);
+				}}
+			/>
 		</SettingsSection>
+	);
+}
+
+/**
+ * Honest progress: an indeterminate count-up while the walk runs (no total
+ * exists yet), a determinate bar only after plan() returns. Never a fake bar.
+ */
+function SyncProgressLine({ progress }: { progress: SyncProgress | null }) {
+	if (!progress || progress.phase === "scan" || progress.total === null) {
+		const scanned = progress?.done ?? 0;
+		return (
+			<span className="text-[11px] leading-4 text-muted-foreground">
+				{scanned > 0
+					? `Scanning workspace… ${scanned.toLocaleString()} entries so far`
+					: "Scanning workspace…"}
+			</span>
+		);
+	}
+	if (progress.phase === "done") return null;
+	const pct =
+		progress.total > 0
+			? Math.min(100, Math.round((progress.done / progress.total) * 100))
+			: 0;
+	return (
+		<span className="flex flex-col gap-1">
+			<span className="text-[11px] leading-4 text-muted-foreground">
+				Syncing {progress.done.toLocaleString()} of{" "}
+				{progress.total.toLocaleString()}
+				{progress.currentPath ? ` — ${progress.currentPath}` : ""}
+			</span>
+			<span
+				className="block h-1 overflow-hidden rounded-full bg-border"
+				role="progressbar"
+				aria-valuenow={pct}
+				aria-valuemin={0}
+				aria-valuemax={100}
+			>
+				<span
+					className="block h-full rounded-full bg-foreground"
+					style={{ width: `${pct}%` }}
+				/>
+			</span>
+		</span>
 	);
 }

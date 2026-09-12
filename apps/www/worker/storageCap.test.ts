@@ -16,7 +16,9 @@ describe("storage cap produces a specific, distinct error (R7)", () => {
 			...jsonBody({ name: workspaceId }),
 		});
 
-		const tooBig = "x".repeat(3_000_000); // > the 2,000,000-byte test cap
+		// Over the 2,000,000-byte test cap but under the 2MiB per-file
+		// SQLite ceiling, so this exercises the quota check specifically.
+		const tooBig = "x".repeat(2_050_000);
 		const push = await authedJson<{ error: string; code: string }>(
 			"/api/files",
 			{

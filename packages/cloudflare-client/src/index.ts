@@ -16,6 +16,11 @@ export {
 	type WebSocketLike,
 } from "./subscriber.js";
 export {
+	createVersionLedger,
+	DEFAULT_LEDGER_CAP,
+	type VersionLedger,
+} from "./versionLedger.js";
+export {
 	type DeleteWorkspaceOptions,
 	deleteWorkspace,
 	listWorkspaces,

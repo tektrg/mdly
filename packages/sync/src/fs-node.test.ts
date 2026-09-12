@@ -124,3 +124,62 @@ describe("createNodeFileSystem (walker-backed, R12-R14)", () => {
 		).rejects.toThrow(WorkspaceTraversalLimitError);
 	});
 });
+
+describe("createNodeFileSystem.listSidecarFiles (Step 2, sidecar-walker-details)", () => {
+	beforeEach(async () => {
+		workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fs-node-"));
+	});
+
+	afterEach(async () => {
+		await fs.rm(workspaceRoot, { recursive: true, force: true });
+	});
+
+	// The desktop default excludedFolders contains `.mdly` — if
+	// listSidecarFiles honoured it, it would silently return nothing
+	// forever. It must not forward excludedFolders at all.
+	it("still returns comment logs when excludedFolders contains .mdly", async () => {
+		await writeFixture(".mdly/comments/doc-1.jsonl", '{"id":"c1"}\n');
+		await writeFixture(".mdly/comments/doc-1 2.jsonl", '{"id":"c2"}\n');
+		await writeFixture(".mdly/history/index.jsonl", '{"ok":true}\n');
+		await writeFixture("note.md", "not a sidecar");
+
+		const files = await createNodeFileSystem({
+			excludedFolders: [".mdly"],
+		}).listSidecarFiles(workspaceRoot);
+
+		expect(files.map((f) => f.relativePath).sort()).toEqual([
+			".mdly/comments/doc-1 2.jsonl",
+			".mdly/comments/doc-1.jsonl",
+			".mdly/history/index.jsonl",
+		]);
+		for (const file of files) {
+			expect(file.content.length).toBeGreaterThan(0);
+			expect(file.hash).toBe(await contentHash(file.content));
+			expect(Number.isInteger(file.mtime)).toBe(true);
+			expect(file.size).toBe(file.content.length);
+		}
+	});
+
+	it("excludes revision blobs and non-allowlisted sidecars via isSyncedSidecarPath", async () => {
+		await writeFixture(".mdly/comments/doc-1.jsonl", "{}");
+		await writeFixture(".mdly/history/index.jsonl", "{}");
+		await writeFixture(".mdly/history/doc-1.jsonl", "{}");
+		await writeFixture(".mdly/history/objects/ab/abcd1234", "gzipped-blob");
+		await writeFixture(".mdly/config.json", "{}");
+
+		const files = await createNodeFileSystem().listSidecarFiles(workspaceRoot);
+
+		expect(files.map((f) => f.relativePath).sort()).toEqual([
+			".mdly/comments/doc-1.jsonl",
+			".mdly/history/index.jsonl",
+		]);
+	});
+
+	it("returns [] (not an error) when there is no .mdly folder yet", async () => {
+		await writeFixture("note.md", "hello");
+
+		const files = await createNodeFileSystem().listSidecarFiles(workspaceRoot);
+
+		expect(files).toEqual([]);
+	});
+});

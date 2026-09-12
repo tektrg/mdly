@@ -215,7 +215,7 @@ describe("createCloudflareSubscriber — real WebSocket against the real Worker 
 		await subscriber.close();
 	}, 15000);
 
-	it("reconnect after a dropped connection automatically calls getFiles(since=lastKnownVersion) and refires listeners — no manual reload (R42)", async () => {
+	it("reconnect after a dropped connection re-checks the 1-row version and refires listeners — no manual reload (R42)", async () => {
 		const workspaceId = await backend().createWorkspace("sub-reconnect-ws");
 
 		const { factory, sockets } = capturingFactory();
@@ -252,6 +252,9 @@ describe("createCloudflareSubscriber — real WebSocket against the real Worker 
 		});
 		await waitFor(() => fireCount > 0);
 
+		// Baseline captured BEFORE the drop on purpose — see the assertion
+		// at the end of this test for why taking it later cannot work.
+		const firesBeforeDrop = fireCount;
 		const fetchSpy = vi.spyOn(globalThis, "fetch");
 
 		// Simulate a real dropped connection (network blip, laptop sleep, etc.)
@@ -275,9 +278,8 @@ describe("createCloudflareSubscriber — real WebSocket against the real Worker 
 				fetchSpy.mock.calls.some((call) => {
 					const url = String(call[0]);
 					return (
-						url.includes("/api/files") &&
-						url.includes(`workspaceId=${workspaceId}`) &&
-						url.includes("since=")
+						url.includes("/api/version") &&
+						url.includes(`workspaceId=${workspaceId}`)
 					);
 				}),
 			10000,
@@ -286,14 +288,27 @@ describe("createCloudflareSubscriber — real WebSocket against the real Worker 
 		const resyncCall = fetchSpy.mock.calls.find((call) => {
 			const url = String(call[0]);
 			return (
-				url.includes("/api/files") &&
-				url.includes(`workspaceId=${workspaceId}`) &&
-				url.includes("since=")
+				url.includes("/api/version") &&
+				url.includes(`workspaceId=${workspaceId}`)
 			);
 		});
 		expect(resyncCall).toBeTruthy();
-		// The resync used the version known BEFORE the drop, not 0 / not undefined.
-		expect(String(resyncCall![0])).toMatch(/since=[1-9]/);
+		// The reconnect caused exactly the cheap version check — never a
+		// full /api/files listing (the old shape re-read every row here and
+		// then discarded the response).
+		expect(
+			fetchSpy.mock.calls.some((call) =>
+				String(call[0]).includes("/api/files?"),
+			),
+		).toBe(false);
+
+		// Another client wrote while we were disconnected, so the version
+		// moved and listeners refire. The baseline is the pre-drop count,
+		// NOT one taken here: the resync's notifyAll() can land while the
+		// waitFor above is still polling for the /api/version call, so a
+		// baseline taken at this point would already include that fire and
+		// could never grow — the test would time out ~1 run in 3.
+		await waitFor(() => fireCount > firesBeforeDrop, 10000);
 
 		unsubscribe();
 		await subscriber.close();
@@ -357,9 +372,9 @@ describe("createCloudflareSubscriber — heartbeat detects a silently-dead conne
 	// for why that matters.
 	const HEARTBEAT_INTERVAL_MS = 400;
 
-	function mockFilesFetch() {
+	function mockVersionFetch(version = 6) {
 		return vi.spyOn(globalThis, "fetch").mockResolvedValue(
-			new Response(JSON.stringify({ files: [] }), {
+			new Response(JSON.stringify({ version }), {
 				status: 200,
 				headers: { "content-type": "application/json" },
 			}),
@@ -376,7 +391,10 @@ describe("createCloudflareSubscriber — heartbeat detects a silently-dead conne
 			const { factory, sockets } = createFakeBroadcastSocketFactory({
 				echoPing: false, // the real-world case: the socket dies without so much as a close event, so even the ping goes unanswered
 			});
-			const fetchMock = mockFilesFetch();
+			// The reconnect resync is the 1-row version check: it reports a
+			// NEWER version (6) than the connection knew before it died (5),
+			// i.e. something changed while we were gone.
+			const fetchMock = mockVersionFetch(6);
 			const subscriber = createCloudflareSubscriber({
 				baseUrl: FAKE_BASE_URL,
 				auth: { kind: "bearer", token: "test-token" },
@@ -429,11 +447,15 @@ describe("createCloudflareSubscriber — heartbeat detects a silently-dead conne
 
 			const resyncCall = fetchMock.mock.calls.find((call) => {
 				const url = String(call[0]);
-				return url.includes("/api/files") && url.includes("since=");
+				return url.includes("/api/version");
 			});
 			expect(resyncCall).toBeTruthy();
-			// The resync used the version known BEFORE the silent death, not 0.
-			expect(String(resyncCall![0])).toContain("since=5");
+			// The resync was the cheap version check — never a full listing.
+			expect(
+				fetchMock.mock.calls.some((call) =>
+					String(call[0]).includes("/api/files"),
+				),
+			).toBe(false);
 			expect(fireCount).toBeGreaterThan(0); // listeners refired after the heartbeat-driven resync
 
 			await subscriber.close();

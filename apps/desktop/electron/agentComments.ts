@@ -80,8 +80,13 @@ export interface AgentOpenDocument {
 /** One event in a thread, shaped for a model reader — no event ids, no `prev` chain, no anchor internals. */
 export interface AgentThreadMessage {
 	author: RevisionAuthor;
-	kind: CommentThread["opener"]["kind"] | "replied" | "resolved" | "reopened";
-	/** Empty for event kinds that carry no message body (`resolved`, `reopened`). */
+	kind:
+		| CommentThread["opener"]["kind"]
+		| "replied"
+		| "resolved"
+		| "reopened"
+		| "deleted";
+	/** Empty for event kinds that carry no message body (`resolved`, `reopened`, `deleted`). */
 	text: string;
 }
 

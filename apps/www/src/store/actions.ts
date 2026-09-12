@@ -1,13 +1,21 @@
 import type { RemoteFile, SyncBackend } from "@hubble.md/sync";
 import {
 	createCloudflareBackend,
+	createVersionLedger,
 	listWorkspaces,
+	type VersionLedger,
 } from "@mdly/cloudflare-client";
 import { stripMarkdownExtension } from "@mdly/workspace-kit";
 import { describeApiError, isUnauthorizedError } from "../connection/apiError";
 import { ensureDeviceId } from "../connection/deviceId";
 import { WORKER_BASE_URL } from "../connection/workerUrl";
 import { latest } from "../lib/latest";
+import {
+	isSidecarRow,
+	type SidecarEntry,
+	sidecarsChanged,
+	toSidecarMap,
+} from "./sidecars";
 import {
 	type AssetEntry,
 	appStore,
@@ -22,18 +30,31 @@ type Ctx = {
 	backend: SyncBackend;
 	workspaceId: string;
 	deviceId: string;
+	/**
+	 * Shared self-echo ledger (DO row-read frequency fix, 2b): the backend
+	 * above records every mutation version here, and AppShell passes this
+	 * SAME object to the subscriber it constructs — so this tab never
+	 * re-lists in response to its own writes. Created per workspace
+	 * context, never global: version counters are per-workspace, and a
+	 * global ledger could suppress another workspace's change that happens
+	 * to share a version number.
+	 */
+	versionLedger: VersionLedger;
 };
 
 let ctx: Ctx | null = null;
 
 function createCtx(workspaceId: string): Ctx {
+	const versionLedger = createVersionLedger();
 	return {
 		backend: createCloudflareBackend({
 			baseUrl: WORKER_BASE_URL,
 			auth: { kind: "cookie" },
+			versionLedger,
 		}),
 		workspaceId,
 		deviceId: ensureDeviceId(),
+		versionLedger,
 	};
 }
 
@@ -58,6 +79,7 @@ export function getActionCtx(): Ctx | null {
 type WorkspaceSnapshot = {
 	workspace: { id: string; name: string };
 	files: FileEntry[];
+	sidecars: Record<string, SidecarEntry>;
 	assets: AssetEntry[];
 	currentFile: RemoteFile | null;
 };
@@ -94,12 +116,14 @@ async function fetchWorkspaceSnapshot(
 		null;
 	if (!workspace) throw new Error(`Workspace not found: ${workspaceId}`);
 
-	const visible: FileEntry[] = files.map((f) => ({
-		path: f.path,
-		contentHash: f.contentHash,
-		updatedAt: f.updatedAt,
-		deleted: f.deleted,
-	}));
+	const visible: FileEntry[] = files
+		.filter((f) => !isSidecarRow(f.path))
+		.map((f) => ({
+			path: f.path,
+			contentHash: f.contentHash,
+			updatedAt: f.updatedAt,
+			deleted: f.deleted,
+		}));
 	const assetEntries: AssetEntry[] = assets.map((asset) => ({
 		path: asset.path,
 		storageId: asset.storageId,
@@ -115,6 +139,7 @@ async function fetchWorkspaceSnapshot(
 	return {
 		workspace: { id: workspace.workspaceId, name: workspace.name },
 		files: visible,
+		sidecars: toSidecarMap(files),
 		assets: assetEntries,
 		currentFile,
 	};
@@ -150,6 +175,13 @@ export const loadWorkspaceSnapshot = latest(
 					...state.workspace,
 					snapshot: snapshot.workspace,
 					files: snapshot.files,
+					sidecars: snapshot.sidecars,
+					commentsVersion: sidecarsChanged(
+						state.workspace.sidecars,
+						snapshot.sidecars,
+					)
+						? state.workspace.commentsVersion + 1
+						: state.workspace.commentsVersion,
 					assets: snapshot.assets,
 					filesLoaded: true,
 					lastOpenedPaths: snapshot.currentFile
@@ -275,17 +307,23 @@ function cleanState(
 export async function refreshFiles(): Promise<FileEntry[]> {
 	const { backend, workspaceId } = requireCtx();
 	try {
-		const visible: FileEntry[] = (await backend.getFiles(workspaceId)).map(
-			(f) => ({
+		const remote = await backend.getFiles(workspaceId);
+		const visible: FileEntry[] = remote
+			.filter((f) => !isSidecarRow(f.path))
+			.map((f) => ({
 				path: f.path,
 				contentHash: f.contentHash,
 				updatedAt: f.updatedAt,
 				deleted: f.deleted,
-			}),
-		);
+			}));
+		const sidecars = toSidecarMap(remote);
 		workspaceStore.set((state) => ({
 			...state,
 			files: visible,
+			sidecars,
+			commentsVersion: sidecarsChanged(state.sidecars, sidecars)
+				? state.commentsVersion + 1
+				: state.commentsVersion,
 			filesLoaded: true,
 		}));
 		return visible;

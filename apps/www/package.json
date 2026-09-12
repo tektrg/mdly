@@ -27,6 +27,8 @@
 		"@hubble.md/sync": "workspace:*",
 		"@hubble.md/ui": "workspace:*",
 		"@mdly/cloudflare-client": "workspace:*",
+		"@mdly/doc-comments": "workspace:*",
+		"@mdly/doc-history": "workspace:*",
 		"@mdly/workspace-kit": "workspace:*",
 		"@simplestack/store": "^0.7.5",
 		"@tiptap/core": "^3.4.3",

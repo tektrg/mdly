@@ -36,6 +36,17 @@ const API_ROUTES_BACKING_SYNC_BACKEND: { path: string; init?: RequestInit }[] =
 				...jsonBody({ workspaceId: "w", path: "a.md", deviceId: "d" }),
 			},
 		},
+		{
+			path: "/api/files/batch",
+			init: {
+				method: "POST",
+				...jsonBody({
+					workspaceId: "w",
+					files: [{ path: "a.md", content: "hi", deviceId: "d" }],
+				}),
+			},
+		},
+		{ path: "/api/version?workspaceId=w" },
 		{ path: "/api/assets?workspaceId=w" },
 		{
 			path: "/api/assets",

@@ -214,3 +214,106 @@ describe("createCloudflareBackend — all 10 SyncBackend methods (R1, R9)", () =
 		}
 	});
 });
+
+describe("listing pagination (P0-2 client)", () => {
+	let worker: RealWorkerHandle;
+
+	beforeAll(async () => {
+		worker = await startRealWorker();
+	}, 30000);
+
+	afterAll(async () => {
+		await worker.dispose();
+	});
+
+	it("getFiles pages a 34MB workspace through bounded responses and reassembles it exactly", async () => {
+		const backend = createCloudflareBackend({
+			baseUrl: worker.baseUrl,
+			auth: { kind: "bearer", token: TEST_PASSWORD },
+		});
+		const workspaceId = await backend.createWorkspace("backend-paging-ws");
+
+		// 17 x 2MB: over the old 32MiB single-response ceiling, under the
+		// 2MiB per-file cap and the 50MB harness quota.
+		const chunk = "x".repeat(2_000_000);
+		for (let i = 0; i < 17; i++) {
+			await backend.pushFile({
+				workspaceId,
+				path: `f-${i}.md`,
+				contentHash: `h-${i}`,
+				content: `${i}:${chunk.slice(2)}`,
+				deviceId: "device-a",
+			});
+		}
+
+		// Count listing requests: more than one proves the client paged
+		// instead of fetching a single giant response.
+		let listCalls = 0;
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+			if (new URL(String(input)).pathname === "/api/files") listCalls++;
+			return originalFetch(input, init);
+		}) as typeof fetch;
+		try {
+			const files = await backend.getFiles(workspaceId);
+			expect(listCalls).toBeGreaterThan(1);
+			expect(files).toHaveLength(17);
+			expect(files.map((f) => f.path).sort()).toEqual(
+				Array.from({ length: 17 }, (_, i) => `f-${i}.md`).sort(),
+			);
+			for (let i = 0; i < 17; i++) {
+				expect(files.find((f) => f.path === `f-${i}.md`)?.content).toBe(
+					`${i}:${chunk.slice(2)}`,
+				);
+			}
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	}, 120000);
+});
+
+describe("file-cap boundary (T1)", () => {
+	let worker: RealWorkerHandle;
+
+	beforeAll(async () => {
+		// 50MB quota (the default): far above the 2MiB per-file cap, so the
+		// quota never fires first and both sides of the file-cap boundary
+		// actually run. The apps/www suite pins its quota to 2MB (below the
+		// file cap) for the quota-tuned storageCap tests, which makes the
+		// boundary unreachable there — this per-worker override is the
+		// mechanism that reaches it instead of churning those tests.
+		worker = await startRealWorker();
+	}, 30000);
+
+	afterAll(async () => {
+		await worker.dispose();
+	});
+
+	it("2MiB-minus-1 byte pushes 200, 2.15MB pushes 413 FILE_TOO_LARGE", async () => {
+		const backend = createCloudflareBackend({
+			baseUrl: worker.baseUrl,
+			auth: { kind: "bearer", token: TEST_PASSWORD },
+		});
+		const workspaceId = await backend.createWorkspace("backend-cap-edge-ws");
+
+		await backend.pushFile({
+			workspaceId,
+			path: "edge.md",
+			contentHash: "h",
+			content: "x".repeat(2 * 1024 * 1024 - 1),
+			deviceId: "device-a",
+		});
+		const files = await backend.getFiles(workspaceId);
+		expect(files).toHaveLength(1);
+
+		await expect(
+			backend.pushFile({
+				workspaceId,
+				path: "over.md",
+				contentHash: "h",
+				content: "x".repeat(2_150_000),
+				deviceId: "device-a",
+			}),
+		).rejects.toMatchObject({ code: "FILE_TOO_LARGE", status: 413 });
+	});
+});

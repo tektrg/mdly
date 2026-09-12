@@ -591,4 +591,15 @@ describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
 			expect(descriptor.annotations.untrustedContentHint).toBe(true);
 		}
 	});
+
+	it("exposes no delete tool to agents -- thread deletion stays human-only", () => {
+		const names = AGENT_TOOLS.map((tool) => tool.name);
+		expect(names).not.toContain("delete");
+		expect(names).not.toContain("delete_thread");
+		expect(
+			AGENT_TOOL_DESCRIPTORS.some((descriptor) =>
+				descriptor.name.includes("delete"),
+			),
+		).toBe(false);
+	});
 });

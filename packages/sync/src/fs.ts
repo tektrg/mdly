@@ -2,11 +2,16 @@ export type LocalFile = {
 	relativePath: string;
 	content: string;
 	hash: string;
+	/** Cheap-stat hint fields (populated by the Node fs) — lets plan() treat an unchanged stat as "might be unchanged" without trusting it as proof. */
+	mtime?: number;
+	size?: number;
 };
 
 export type LocalAsset = {
 	relativePath: string;
 	hash: string;
+	mtime?: number;
+	size?: number;
 };
 
 /** Platform-agnostic filesystem interface for sync operations */
@@ -17,6 +22,15 @@ export interface FileSystem {
 	readFileOrNull(path: string): Promise<string | null>;
 	ensureDir(path: string): Promise<void>;
 	listMarkdownFiles(dir: string): Promise<LocalFile[]>;
+	/**
+	 * Comment logs + history index shards (`.mdly/comments/**` +
+	 * `.mdly/history/index*.jsonl`), with full content like
+	 * `listMarkdownFiles`. Deliberately NOT subject to `excludedFolders` —
+	 * the desktop default list contains `.mdly`, which would otherwise
+	 * silently return nothing forever. Wired into plan()/execute() (Rounds
+	 * 3–4); nothing about note/asset sync behaviour changes by adding it.
+	 */
+	listSidecarFiles(dir: string): Promise<LocalFile[]>;
 	readBinaryFile(path: string): Promise<Uint8Array>;
 	writeBinaryFile(path: string, data: Uint8Array): Promise<void>;
 	listAssetFiles(dir: string): Promise<LocalAsset[]>;

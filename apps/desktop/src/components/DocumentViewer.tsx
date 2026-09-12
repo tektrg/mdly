@@ -313,6 +313,7 @@ function MarkdownEditor({
 				desktopApi.replyToCommentThread(path, threadId, text),
 			onResolve: (threadId) => desktopApi.resolveCommentThread(path, threadId),
 			onReopen: (threadId) => desktopApi.reopenCommentThread(path, threadId),
+			onDelete: (threadId) => desktopApi.deleteCommentThread(path, threadId),
 			refreshSignal: commentRefreshSignal,
 			panelOpen: commentsOpen,
 			onPanelOpenChange: onCommentsOpenChange,
