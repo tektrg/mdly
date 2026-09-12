@@ -8,6 +8,7 @@ import { fromHtml } from "hast-util-from-html";
 import type {
 	AlignType,
 	Content,
+	Html,
 	Image,
 	List,
 	ListItem,
@@ -43,13 +44,106 @@ export function markdownToTiptapDoc(markdown: string): JSONContent {
 	const tree = processor.runSync(parsed) as Root;
 	return {
 		type: "doc",
-		content: normalizeBlockContent(tree.children).flatMap(blockToPM),
+		content: normalizeBlockContent(
+			stitchSplitDetailsBlocks(tree.children, input),
+		).flatMap(blockToPM),
 	} satisfies JSONContent;
 }
 
 function normalizeBlockContent(children: Content[]): Content[] {
 	// mdast root.children are already block-level. Return as-is for now.
 	return children;
+}
+
+// remark splits a `<details>` block the moment its body contains a node the
+// Markdown parser claims for itself — a GFM table, a blank-line-separated
+// paragraph, a list — so the opener (`<details><summary>…`), the body nodes,
+// and the orphan `</details>` arrive as separate siblings, none of which
+// matches the whole-block DETAILS_PATTERN downstream. Stitch such spans back
+// into one `html` node using remark's own source offsets (byte-exact, no
+// re-serialization loss), so tables/blank lines inside a toggle survive the
+// load. Spans that never find a `</details>` are left untouched and keep the
+// old raw-text fallback. Nested `<details>` bails the same way — the outer
+// opener is left alone rather than risk swallowing the wrong closing tag.
+function stitchSplitDetailsBlocks(
+	children: Content[],
+	source: string,
+): Content[] {
+	const stitched: Content[] = [];
+	let index = 0;
+	while (index < children.length) {
+		const node = children[index];
+		if (node === undefined) break;
+		const startOffset = node.position?.start.offset;
+		if (!isUnclosedDetailsOpener(node) || startOffset === undefined) {
+			stitched.push(node);
+			index += 1;
+			continue;
+		}
+		let closerIndex = index + 1;
+		let closer: Content | null = null;
+		while (closerIndex < children.length) {
+			const candidate = children[closerIndex];
+			if (candidate === undefined) break;
+			if (isUnclosedDetailsOpener(candidate)) break;
+			const candidateHtml = htmlOnlyText(candidate);
+			if (candidateHtml !== null && /<\/details\s*>/i.test(candidateHtml)) {
+				closer = candidate;
+				break;
+			}
+			closerIndex += 1;
+		}
+		const endOffset = closer?.position?.end.offset;
+		if (closer === null || endOffset === undefined) {
+			stitched.push(node);
+			index += 1;
+			continue;
+		}
+		stitched.push({
+			type: "html",
+			value: source.slice(startOffset, endOffset),
+			position: {
+				start: node.position?.start ?? {
+					line: 1,
+					column: 1,
+					offset: startOffset,
+				},
+				end: closer.position?.end ?? { line: 1, column: 1, offset: endOffset },
+			},
+		} satisfies Html);
+		index = closerIndex + 1;
+	}
+	return stitched;
+}
+
+// The joined HTML of an `html` node, or of a paragraph whose children are all
+// inline HTML (how remark surfaces an unclosed `<details><summary>…` opener).
+// Anything else is structural Markdown, never a details fragment.
+function htmlOnlyText(node: Content): string | null {
+	if (node.type === "html") return (node as Html).value ?? "";
+	if (node.type === "paragraph") {
+		const paragraph = node as Paragraph;
+		if (
+			(paragraph.children ?? []).length > 0 &&
+			(paragraph.children ?? []).every((child) => child.type === "html")
+		) {
+			return paragraph.children
+				.map((child) => (child as Html).value ?? "")
+				.join("");
+		}
+	}
+	return null;
+}
+
+// True when the node is a `<details…>` fragment with no `</details>` — either
+// a block-level `html` node or a paragraph made only of inline HTML.
+function isUnclosedDetailsOpener(node: Content): boolean {
+	const raw = htmlOnlyText(node);
+	if (raw === null) return false;
+	const trimmed = raw.trim();
+	if (!/^<details(?:\s[^>]*)?>/i.test(trimmed)) return false;
+	if (/<\/details\s*>/i.test(trimmed)) return false;
+	return true;
 }
 
 function separateHtmlBlocksFromFollowingMarkdown(markdown: string): string {

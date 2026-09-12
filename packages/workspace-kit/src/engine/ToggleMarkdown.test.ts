@@ -169,4 +169,56 @@ describe("toggle block markdown conversion", () => {
 			content: [{ type: "toggleSummary" }, { type: "paragraph", content: [] }],
 		});
 	});
+
+	it("parses a toggle whose body is a table (remark splits the html span)", () => {
+		const input =
+			"<details>\n<summary>Title</summary>\n| a | b |\n|---|---|\n| 1 | 2 |\n</details>";
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		expect(
+			doc.content?.[0]?.content?.some((node) => node.type === "table"),
+		).toBe(true);
+		// The table serializer pads delimiter cells (standard behaviour —
+		// see TableMarkdown.test.ts); the toggle span itself round-trips.
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			"<details>\n<summary>Title</summary>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n</details>",
+		);
+		// And the normalized form is stable on reload.
+		expect(
+			markdownToTiptapDoc(tiptapDocToMarkdown(doc)).content?.[0],
+		).toMatchObject({ type: "toggle" });
+	});
+
+	it("parses a toggle whose body has blank lines and mixed blocks", () => {
+		const input = [
+			"<details>",
+			"<summary>Title</summary>",
+			"",
+			"Para one.",
+			"",
+			"| a | b |",
+			"|---|---|",
+			"| 1 | 2 |",
+			"",
+			"</details>",
+			"",
+			"## After",
+		].join("\n");
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		const types = doc.content?.[0]?.content?.map((node) => node.type);
+		expect(types).toContain("paragraph");
+		expect(types).toContain("table");
+		expect(doc.content?.[1]).toMatchObject({ type: "heading" });
+	});
+
+	it("leaves an unclosed details block on the old raw-text fallback", () => {
+		const doc = markdownToTiptapDoc(
+			"<details>\n<summary>Title</summary>\nBody",
+		);
+
+		expect(doc.content?.some((node) => node.type === "toggle")).toBe(false);
+	});
 });
