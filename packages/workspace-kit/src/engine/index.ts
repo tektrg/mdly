@@ -60,6 +60,11 @@ export {
 	tableExtensions,
 } from "./Table.js";
 export {
+	ToggleExtension,
+	ToggleSummaryExtension,
+	toggleBlockExtensions,
+} from "./ToggleBlock.js";
+export {
 	isSelectionAtStartOfNode,
 	nearestSharedParentOfType,
 	parentsOfType,

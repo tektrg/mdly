@@ -11,6 +11,7 @@ export type SlashCommandKind =
 	| "orderedList"
 	| "taskList"
 	| "blockquote"
+	| "toggle"
 	| "divider"
 	| "mermaid"
 	| "strike";
@@ -158,6 +159,8 @@ function createEmptyBlock(
 	const listItem = schema.nodes.listItem;
 	const blockquote = schema.nodes.blockquote;
 	const horizontalRule = schema.nodes.horizontalRule;
+	const toggle = schema.nodes.toggle;
+	const toggleSummary = schema.nodes.toggleSummary;
 
 	switch (kind) {
 		case "paragraph":
@@ -182,6 +185,10 @@ function createEmptyBlock(
 			);
 		case "blockquote":
 			return blockquote.create(null, paragraph.create());
+		case "toggle": {
+			if (!toggle || !toggleSummary) return null;
+			return toggle.create(null, [toggleSummary.create(), paragraph.create()]);
+		}
 		case "divider":
 			return horizontalRule.create();
 		case "mermaid": {
@@ -196,7 +203,7 @@ function createEmptyBlock(
 
 function selectionOffsetInsideNode(node: PMNode) {
 	if (node.isTextblock) return 1;
-	if (node.type.name === "blockquote") return 2;
+	if (node.type.name === "blockquote" || node.type.name === "toggle") return 2;
 	if (node.type.name === "bulletList" || node.type.name === "orderedList")
 		return 3;
 	return 0;

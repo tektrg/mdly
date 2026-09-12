@@ -365,6 +365,10 @@ function hastToNotionBlock(root: HastRoot, raw: string): JSONContent | null {
 		};
 	}
 
+	if (tagName === "details") {
+		return hastDetailsToToggle(raw);
+	}
+
 	if (tagName !== "callout") return null;
 
 	const icon = getStringProperty(node.properties?.icon);
@@ -382,6 +386,46 @@ function hastToNotionBlock(root: HastRoot, raw: string): JSONContent | null {
 				? calloutContent
 				: [{ type: "paragraph" }],
 	};
+}
+
+const DETAILS_PATTERN =
+	/^<details(?:\s[^>]*)?>\s*<summary(?:\s[^>]*)?>([\s\S]*?)<\/summary>\n?([\s\S]*?)\n?<\/details>\s*$/i;
+const DETAILS_OPEN_ATTR_PATTERN = /^<details(\s[^>]*)?>/i;
+
+// A `<details>` without a recognizable `<summary>` isn't a toggle we know how
+// to round-trip — fall through to the raw-HTML text fallback in blockToPM
+// rather than risk dropping content.
+function hastDetailsToToggle(raw: string): JSONContent | null {
+	const trimmed = raw.trim();
+	const match = trimmed.match(DETAILS_PATTERN);
+	if (!match) return null;
+
+	const openAttrs = trimmed.match(DETAILS_OPEN_ATTR_PATTERN)?.[1] ?? "";
+	const isOpen = /\bopen\b/i.test(openAttrs);
+	const summaryContent = inlineMarkdownToPM(match[1] ?? "");
+	const bodyMarkdown = dedentNotionBlockMarkdown(match[2] ?? "");
+	const bodyContent = markdownToTiptapDoc(bodyMarkdown).content;
+
+	return {
+		type: "toggle",
+		attrs: { open: isOpen },
+		content: [
+			{ type: "toggleSummary", content: summaryContent },
+			...(bodyContent && bodyContent.length > 0
+				? bodyContent
+				: [{ type: "paragraph" }]),
+		],
+	};
+}
+
+// The summary title is inline markdown (bold/links/etc), not a plain string —
+// parse it through the same pipeline as a one-line document and lift its
+// single paragraph's inline content back out.
+function inlineMarkdownToPM(markdown: string): JSONContent[] {
+	if (!markdown.trim()) return [];
+	const doc = markdownToTiptapDoc(markdown);
+	const first = doc.content?.[0];
+	return first?.type === "paragraph" ? (first.content ?? []) : [];
 }
 
 function isRawNotionHtmlBlock(tagName: string): boolean {

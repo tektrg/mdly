@@ -109,6 +109,10 @@ function blockToMarkdown(node: JSONContent): string {
 			return "<empty-block/>";
 		}
 
+		case "toggle": {
+			return toggleToMarkdown(node);
+		}
+
 		case "notionHtmlBlock": {
 			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
 		}
@@ -116,6 +120,33 @@ function blockToMarkdown(node: JSONContent): string {
 		default:
 			return "";
 	}
+}
+
+// Open/closed state is never persisted (see ToggleBlock.ts) so the `open`
+// attribute is intentionally never emitted here.
+//
+// Body blocks are joined with a single newline rather than the blank line
+// used elsewhere (e.g. notionCallout): `<details>` is a raw-HTML-block tag,
+// which CommonMark closes at the first blank line, so a blank line between
+// body blocks would split the toggle into unparseable fragments on the next
+// load. Headings/lists/code fences/blockquotes all self-interrupt without a
+// blank line, so this only costs the ability to round-trip two directly
+// adjacent freeform paragraphs (they'd merge into one on reload) — the same
+// compact-body convention already used by Notion's own `<details>` exports.
+function toggleToMarkdown(node: JSONContent): string {
+	const [summaryNode, ...bodyNodes] = node.content ?? [];
+	const summaryMarkdown =
+		summaryNode?.type === "toggleSummary"
+			? inlineToMarkdown(summaryNode.content ?? [])
+			: "";
+	const bodyMarkdown = bodyNodes
+		.map(blockToMarkdown)
+		.filter(Boolean)
+		.join("\n");
+	// An empty body must not leave a blank line before `</details>` — a blank
+	// line is exactly what closes the raw HTML block early (see above).
+	const body = bodyMarkdown ? `${bodyMarkdown}\n` : "";
+	return `<details>\n<summary>${summaryMarkdown}</summary>\n${body}</details>`;
 }
 
 function notionCalloutAttributes(node: JSONContent): string {
