@@ -5,12 +5,15 @@ import icons from "unplugin-icons/vite";
 import { defineConfig } from "vite";
 
 const resolve = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+// `@mdly/*` workspace packages are bundled, not external: they are unpublished,
+// so a consumer's npm could never resolve them as runtime dependencies.
 const isExternal = (id: string) =>
 	!id.startsWith(".") &&
 	!id.startsWith("\0") &&
 	!id.startsWith("~icons/") &&
 	!id.startsWith("@mdly/doc-history") &&
 	!id.startsWith("@mdly/doc-comments") &&
+	!id.startsWith("@mdly/workspace-scan") &&
 	!isAbsolute(id);
 
 export default defineConfig({

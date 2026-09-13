@@ -1,9 +1,8 @@
 /*
  * Inline-in-content markers, one per textblock containing an anchored
  * comment (not one per thread -- see `CommentParagraphMarker.tsx`'s R17
- * note). Absolutely positioned against the same container `CommentGutter`
- * uses, via `coordsAtPos` on the block's end position, so it tracks
- * scroll/reflow the same way.
+ * note). Absolutely positioned against the editor root container via
+ * `coordsAtPos` on the block's end position, so it tracks scroll/reflow.
  */
 .commentParagraphMarkers {
 	position: absolute;

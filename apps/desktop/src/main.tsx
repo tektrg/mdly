@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { MainProcessErrorNotice } from "./components/MainProcessErrorNotice";
 import { Toaster } from "./components/Toaster";
 import "./components/toast.css";
 import "./index.css";
@@ -19,6 +20,7 @@ void setupWebmcpBridge();
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 	<React.StrictMode>
 		<App />
+		<MainProcessErrorNotice />
 		<Toaster />
 	</React.StrictMode>,
 );

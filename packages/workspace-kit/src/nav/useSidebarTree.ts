@@ -7,6 +7,11 @@ export type SidebarSortMode = "alpha" | "recent";
 export type SidebarFile = {
 	path: string;
 	modifiedAt?: number;
+	/**
+	 * When the file was first created, as epoch ms. Optional -- only shown
+	 * (alongside `modifiedAt`) on the Recents page when a host supplies it.
+	 */
+	createdAt?: number;
 	pinned?: boolean;
 	/**
 	 * Tag names carried by this file, used by the Tags page (`buildTagCounts`).
@@ -416,6 +421,23 @@ function getFolderAncestorIds(displayPath: string): Set<string> {
 }
 
 function readExpandedFolders(storageKey: string | null): Set<string> {
+	return readExpandedIdSet(storageKey);
+}
+
+function writeExpandedFolders(
+	storageKey: string | null,
+	expandedFolders: Set<string>,
+) {
+	writeExpandedIdSet(storageKey, expandedFolders);
+}
+
+/**
+ * Generic persisted expansion set, shared with the Tags page's tree mode so
+ * both trees persist the same way (a JSON string array under the given key).
+ * Folder state keeps its own key; tag state uses
+ * `hubble-sidebar-expanded-tags:<scope>` and never collides with it.
+ */
+export function readExpandedIdSet(storageKey: string | null): Set<string> {
 	if (!storageKey || typeof localStorage === "undefined") return new Set();
 	try {
 		const raw = localStorage.getItem(storageKey);
@@ -425,10 +447,10 @@ function readExpandedFolders(storageKey: string | null): Set<string> {
 	}
 }
 
-function writeExpandedFolders(
+export function writeExpandedIdSet(
 	storageKey: string | null,
-	expandedFolders: Set<string>,
+	expandedIds: Set<string>,
 ) {
 	if (!storageKey || typeof localStorage === "undefined") return;
-	localStorage.setItem(storageKey, JSON.stringify([...expandedFolders]));
+	localStorage.setItem(storageKey, JSON.stringify([...expandedIds]));
 }

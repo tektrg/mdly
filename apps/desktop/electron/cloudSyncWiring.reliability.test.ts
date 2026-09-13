@@ -524,3 +524,89 @@ describe("workspace too large to sync (the maxEntries backstop)", () => {
 		expect(getCloudSyncStatus(workspaceRoot)).toBe("off");
 	});
 });
+
+describe("process-exit teardown skips watcher.close (Cmd+Q freeze fix)", () => {
+	function startDepsWithFakeWatcher() {
+		const { backend, calls } = createFakeBackend();
+		const fake = createFakeSubscriber();
+		const listeners = new Map<string, Set<(payload?: string) => void>>();
+		const watcherClose = vi.fn(async () => {});
+		const fakeWatcher = {
+			on(event: string, callback: (payload?: string) => void) {
+				let set = listeners.get(event);
+				if (!set) {
+					set = new Set();
+					listeners.set(event, set);
+				}
+				set.add(callback);
+				return this;
+			},
+			close: watcherClose,
+		} as unknown as FSWatcher;
+		const deps = {
+			echoTracker: createSelfWriteEchoTracker(),
+			grantedRoots: [workspaceRoot],
+			keychain: createFakeKeychain({ [SHARED_CLOUD_SYNC_ACCOUNT]: "pw" }),
+			createBackend: () => backend,
+			createSubscriber: () => fake.subscriber,
+			createWatcher: () => fakeWatcher,
+			debounceMs: 20,
+		};
+		return { backend, calls, fake, listeners, watcherClose, deps };
+	}
+
+	it("stopAllCloudSync({ closeWatchers: false }) skips watcher.close but still closes the subscriber, clears timers, and unregisters the handle", async () => {
+		const { calls, fake, listeners, watcherClose, deps } =
+			startDepsWithFakeWatcher();
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+
+		await startCloudSyncWatcherIfEnabled(workspaceRoot, deps);
+		expect(isCloudSyncRunning(workspaceRoot)).toBe(true);
+		// Arm the debounce AND max-wait timers so the "timers cleared"
+		// assertion is real: without a pending event there would be no timer
+		// to clear. One event arms both (`scheduleSync` sets max-wait when
+		// neither timer exists, then the debounce on every event).
+		for (const callback of listeners.get("change") ?? [])
+			callback(workspaceRoot);
+		const getFilesBeforeStop = calls.getFiles;
+
+		await stopAllCloudSync({ closeWatchers: false });
+
+		expect(watcherClose).not.toHaveBeenCalled();
+		expect(fake.getCloseCalls()).toBe(1);
+		expect(fake.getListenerCount()).toBe(0);
+		expect(getCloudSyncStatus(workspaceRoot)).toBe("off");
+		expect(isCloudSyncRunning(workspaceRoot)).toBe(false);
+		// Neither armed timer may fire after teardown. Fake timers jump past
+		// both the 20ms debounce and the 5s max-wait without a real 5s wait;
+		// the pending-check timer shares the same unconditional clear lines.
+		vi.useFakeTimers();
+		try {
+			await vi.advanceTimersByTimeAsync(6000);
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(calls.getFiles).toBe(getFilesBeforeStop);
+	});
+
+	it("stopAllCloudSync() with no arguments still closes the watcher (runtime-teardown regression guard)", async () => {
+		const { fake, watcherClose, deps } = startDepsWithFakeWatcher();
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+
+		await startCloudSyncWatcherIfEnabled(workspaceRoot, deps);
+		await stopAllCloudSync();
+
+		expect(watcherClose).toHaveBeenCalledTimes(1);
+		expect(fake.getCloseCalls()).toBe(1);
+		expect(getCloudSyncStatus(workspaceRoot)).toBe("off");
+		expect(isCloudSyncRunning(workspaceRoot)).toBe(false);
+	});
+});

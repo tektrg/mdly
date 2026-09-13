@@ -1,0 +1,6 @@
+{"entryKind":"assign","id":"0mtjkom981obw75bp","at":1788321896106,"path":"AGENTS.md"}
+{"entryKind":"revision","id":"0mtk90crx05hz6nl9","hash":"e20706a2a5bd6cf21e4aad24c7d0058957ef1eb9cd327c5b5b9775db1abf9942","at":1788362754478,"by":{"kind":"external","id":"external-tool"},"cause":"external-write","bytes":4384,"prev":null}
+{"entryKind":"revision","id":"0mtl2pa9u1lb6xi01","hash":"2bb1bc9e9c955e451a9ea5fa97cc6744f2a5663f760640c5119bff6d94892cea","at":1788412626501,"by":{"kind":"external","id":"external-tool"},"cause":"external-write","bytes":4271,"prev":"0mtk90crx05hz6nl9"}
+{"entryKind":"revision","id":"0mtl2pbhz1m4357lr","hash":"3fb2fe6a7032ed86a5737983f9473320b5e0474d28ff01e89e0970cc71e12d29","at":1788412628088,"by":{"kind":"external","id":"external-tool"},"cause":"external-write","bytes":4269,"prev":"0mtl2pa9u1lb6xi01"}
+{"entryKind":"revision","id":"0mtl2pwwu1n2a27nk","hash":"40d5f855fc296111b6f4ef5f19f167e966aceb227c2a88a0553be44feb7e3367","at":1788412655838,"by":{"kind":"external","id":"external-tool"},"cause":"external-write","bytes":4130,"prev":"0mtl2pbhz1m4357lr"}
+{"entryKind":"revision","id":"0mtl2py4i1oirhh4f","hash":"013df715b3c6a810a7f57adebb4a6bb49906b08ce4fd161d293e23462720ddeb","at":1788412657410,"by":{"kind":"external","id":"external-tool"},"cause":"external-write","bytes":4124,"prev":"0mtl2pwwu1n2a27nk"}

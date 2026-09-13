@@ -34,7 +34,12 @@ export interface TextAnchor {
 	contextAfter?: string;
 }
 
-export type CommentEventKind = "thread-opened" | "replied" | "resolved" | "reopened";
+export type CommentEventKind =
+	| "thread-opened"
+	| "replied"
+	| "resolved"
+	| "reopened"
+	| "deleted";
 
 export interface CommentEvent {
 	id: string;
@@ -69,14 +74,19 @@ export interface ReopenedEvent extends CommentEvent {
 	kind: "reopened";
 }
 
+export interface DeletedEvent extends CommentEvent {
+	kind: "deleted";
+}
+
 export type AnyCommentEvent =
 	| ThreadOpenedEvent
 	| RepliedEvent
 	| ResolvedEvent
-	| ReopenedEvent;
+	| ReopenedEvent
+	| DeletedEvent;
 
 /** Resolved thread state derived from the event log's head event. */
-export type ThreadState = "open" | "resolved";
+export type ThreadState = "open" | "resolved" | "deleted";
 
 /** Anchor resolution result. */
 export type AnchorStatus = "anchored" | "orphaned" | "fallback-anchored";
@@ -94,7 +104,7 @@ export interface CommentThread {
 	docId: string;
 	/** The thread-opened event for this thread. */
 	opener: ThreadOpenedEvent;
-	/** All events in this thread (thread-opened first, then replies/resolves/reopens). */
+	/** All events in this thread (thread-opened first, then replies/resolves/reopens/deletes). */
 	events: AnyCommentEvent[];
 	/** Derived thread state from the head event. */
 	state: ThreadState;
@@ -136,5 +146,13 @@ export interface ReopenOptions {
 	docId: string;
 	threadId: string;
 	/** Author of the reopen action. */
+	author: CommentAuthor;
+}
+
+/** Options for deleting a thread. */
+export interface DeleteOptions {
+	docId: string;
+	threadId: string;
+	/** Author of the delete action. */
 	author: CommentAuthor;
 }

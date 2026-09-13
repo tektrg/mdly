@@ -65,6 +65,7 @@ import {
 	resolveCommentThreadForPath,
 } from "./comments";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
+import { installMainProcessErrorHandlers } from "./mainProcessErrors";
 import {
 	createSelfWriteEchoTracker,
 	getHistoryStoreForWorkspace,
@@ -2197,6 +2198,16 @@ const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
 	app.quit();
 } else {
+	// F3 safety net, primary instance only: log unexpected main-process
+	// faults to crash-trace, keep running, and show a dismissible in-app
+	// notice — instead of Electron's default modal dialog, which freezes the
+	// app. Installed before anything else here so early startup faults are
+	// covered too. Never exits; never throws (see mainProcessErrors.ts).
+	installMainProcessErrorHandlers({
+		recordEvent: (event, data) => recordCrashTraceEvent(event, data),
+		notifyRenderer: (payload) =>
+			sendToRenderer("desktop:main-process-error", payload),
+	});
 	app.on("second-instance", (_event, argv) => {
 		const openPath = firstExistingFileArg(argv.slice(1));
 		if (!openPath) return;
@@ -2301,12 +2312,15 @@ if (!singleInstanceLock) {
 		}
 	});
 
-	// R25: every watcher/subscription this module opened must be closed on
-	// quit — never leaked across app restarts (a fresh process starts with
-	// empty registries anyway, but a slow WebSocket close should still be
-	// requested rather than abandoned mid-flight).
+	// R25 (narrowed): runtime teardown must close watchers so nothing leaks
+	// across start/stop cycles within one process lifetime. Process exit is
+	// the exception — a dying process leaks nothing; the kernel reclaims
+	// FSEvent handles for free.
 	app.on("before-quit", () => {
-		void stopAllCloudSync();
+		// The app is exiting; the kernel reclaims FSEvent handles for free. Closing
+		// chokidar's per-directory handles here blocks the AppKit main thread for
+		// minutes on large workspaces (see the Cmd+Q freeze note in project memory).
+		void stopAllCloudSync({ closeWatchers: false });
 		// Release the loopback port so the next launch gets the fixed default
 		// back instead of silently falling through to a random one.
 		void stopAgentMcpServer();

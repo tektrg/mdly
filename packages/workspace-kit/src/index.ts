@@ -3,6 +3,20 @@
 // output; consumers additively import "@mdly/workspace-kit/style.css".
 import "./tailwind.css";
 
+// ---- Comments (local doc-comment thread UI, on top of @mdly/doc-comments) ----
+export {
+	buildQuoteAnchor,
+	CommentComposer,
+	CommentExtension,
+	type CommentOptions,
+	type CommentThread,
+	commentThreadsKey,
+	type ResolvedThread,
+	setCommentThreads,
+	type TextAnchor,
+	ThreadPanel,
+	useCommentThreads,
+} from "./comments/index.js";
 // ---- Engine (Tiptap/ProseMirror Markdown core, zero UI deps) ----
 export { FakeSelectionExtension } from "./engine/FakeSelectionExtension.js";
 export {
@@ -55,7 +69,10 @@ export {
 	hasLinkedNotionFrontMatter,
 	normalizeNotionMarkdownBody,
 } from "./engine/notionMarkdownNormalization.js";
-export { tiptapDocToMarkdown } from "./engine/prosemirrorToMarkdown.js";
+export {
+	sliceToMarkdown,
+	tiptapDocToMarkdown,
+} from "./engine/prosemirrorToMarkdown.js";
 export { StoredMarksDecorationExtension } from "./engine/StoredMarksDecorationExtension.js";
 export { StrikethroughShortcutExtension } from "./engine/StrikethroughShortcutExtension.js";
 export {
@@ -73,11 +90,8 @@ export {
 	textStartPos,
 } from "./engine/utils.js";
 export { DiffChangeRail } from "./history/DiffChangeRail";
+export { DiffGroupsView } from "./history/DiffGroupsView";
 // ---- History (diff review + revision timeline, on top of @mdly/doc-history) ----
-export {
-	DiffReviewPanel,
-	type DiffReviewPanelProps,
-} from "./history/DiffReviewPanel";
 export {
 	type ReadRevisionContentResult,
 	RevisionDiffView,
@@ -106,8 +120,17 @@ export {
 	searchSidebarFiles,
 } from "./nav/buildSearchResults";
 export { buildTagCounts, type SidebarTag } from "./nav/buildTagCounts";
+export {
+	buildTagTree,
+	type FlatTagTreeRow,
+	flattenTagTree,
+	groupFilesByTag,
+	type TagTreeNode,
+	tagGroupAncestors,
+} from "./nav/buildTagTree";
 export { SearchList } from "./nav/SearchList";
 export {
+	type RecentTagAppearance,
 	Sidebar,
 	type SidebarFile,
 	type SidebarFocusedItem,
@@ -124,7 +147,7 @@ export {
 	normalizeSearchText,
 	scoreText,
 } from "./nav/searchScore";
-export { TagList } from "./nav/TagList";
+export { TagList, type TagListProps } from "./nav/TagList";
 export { NewNoteButton, Toolbar } from "./nav/Toolbar";
 export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
 // ---- Shared primitives ----

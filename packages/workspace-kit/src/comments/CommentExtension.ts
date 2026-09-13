@@ -1,19 +1,40 @@
-import { Extension } from "@tiptap/core";
 import type { Editor } from "@tiptap/core";
+import { Extension } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { ResolvedThread } from "./useCommentThreads.js";
+import { sameResolvedThreads } from "./useCommentThreads.js";
 
-export const commentThreadsKey = new PluginKey<ResolvedThread[]>("commentThreads");
+export const commentThreadsKey = new PluginKey<ResolvedThread[]>(
+	"commentThreads",
+);
 
 /**
  * Imperative push of the current resolved thread list into the plugin's
  * state -- the wiring layer (not this slice) calls this whenever
  * `useCommentThreads` produces a new list. Exactly the `FindReplaceExtension`
  * pattern (`findReplaceHighlightKey` + `tr.setMeta`).
+ *
+ * Ignition-guarded (same fix shape as `FindReplaceBar`'s
+ * `shouldDispatchFindReplaceHighlight`, see
+ * memory/Areas/editor-architecture/202607160130-mdly-oom-react-update-queue-explosion.md):
+ * `resolvedThreads` from `useCommentThreads` is *usually* reference-stable
+ * across no-op recomputes, but nothing upstream guarantees it always will be
+ * (e.g. a refetch that returns content-identical-but-freshly-allocated
+ * thread objects). Comparing against the plugin's own current state before
+ * dispatching means an unstable caller degrades to a wasted comparison, not
+ * a transaction -- so it can never re-ignite the `editor.on("transaction",
+ * resolveAll)` listener in `useCommentThreads`, which is what turns a single
+ * redundant dispatch into an unbounded loop (that listener's own dispatch
+ * would otherwise look, to this function, just like any other caller).
  */
-export function setCommentThreads(editor: Editor, threads: ResolvedThread[]): void {
+export function setCommentThreads(
+	editor: Editor,
+	threads: ResolvedThread[],
+): void {
+	const current = commentThreadsKey.getState(editor.state) ?? [];
+	if (sameResolvedThreads(current, threads)) return;
 	editor.view.dispatch(editor.state.tr.setMeta(commentThreadsKey, threads));
 }
 

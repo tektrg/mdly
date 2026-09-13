@@ -1,13 +1,14 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { appendCommentEvent, readCommentEvents } from "../src/commentLog.js";
 import {
+	type CommentStoreOptions,
+	deleteThread,
 	listThreads,
 	openThread,
+	reopen,
 	reply,
 	resolve,
-	reopen,
-	type CommentStoreOptions,
 } from "../src/commentStore.js";
-import { appendCommentEvent, readCommentEvents } from "../src/commentLog.js";
 import type { TextAnchor } from "../src/types.js";
 import { createMemoryFileSystem, type MemoryFileSystem } from "./testFs.js";
 
@@ -43,7 +44,13 @@ describe("commentStore", () => {
 				text: "Check this",
 			});
 
-			let threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			let threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads.length).toBe(1);
 			expect(threads[0].state).toBe("open");
 			expect(threads[0].events.length).toBe(1);
@@ -55,7 +62,13 @@ describe("commentStore", () => {
 				author: { kind: "human", id: "user2" },
 				text: "Good point",
 			});
-			threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads[0].state).toBe("open");
 			expect(threads[0].events.length).toBe(2);
 
@@ -64,7 +77,13 @@ describe("commentStore", () => {
 				threadId,
 				author: { kind: "human", id: "user1" },
 			});
-			threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads[0].state).toBe("resolved");
 			expect(threads[0].events.length).toBe(3);
 
@@ -73,7 +92,13 @@ describe("commentStore", () => {
 				threadId,
 				author: { kind: "human", id: "user1" },
 			});
-			threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads[0].state).toBe("open");
 			expect(threads[0].events.length).toBe(4);
 		});
@@ -113,7 +138,12 @@ describe("commentStore", () => {
 					throw new Error("EACCES: permission denied");
 				},
 			};
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await expect(
 				openThread(failingFs, WORKSPACE, {
 					docId: DOC_ID,
@@ -128,7 +158,12 @@ describe("commentStore", () => {
 
 	describe("R4/R5 — no server fields; ordering via prev, never timestamps", () => {
 		it("never writes syncedAt/seq/serverId/at, and every event carries an id and prev", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await openThread(fs, WORKSPACE, {
 				docId: DOC_ID,
 				author: { kind: "human", id: "user1", label: "Test User" },
@@ -149,7 +184,12 @@ describe("commentStore", () => {
 		});
 
 		it("chains prev pointers opener -> reply -> reply, never by wall clock", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await openThread(fs, WORKSPACE, {
 				docId: DOC_ID,
 				author: { kind: "human", id: "user1" },
@@ -176,14 +216,21 @@ describe("commentStore", () => {
 				text: "Reply 2",
 			});
 			const events3 = await readCommentEvents(fs, WORKSPACE, DOC_ID);
-			const reply2 = events3.find((e) => e.kind === "replied" && e.id !== reply1.id)!;
+			const reply2 = events3.find(
+				(e) => e.kind === "replied" && e.id !== reply1.id,
+			)!;
 			expect(reply2.prev).toBe(reply1.id);
 		});
 	});
 
 	describe("QA15 — rapid consecutive actions chain prev correctly under the keyed lock", () => {
 		it("fires open + 5 concurrent replies without forking the chain", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await openThread(fs, WORKSPACE, {
 				docId: DOC_ID,
 				author: { kind: "human", id: "user1" },
@@ -216,14 +263,25 @@ describe("commentStore", () => {
 			for (const count of prevCounts.values()) {
 				expect(count).toBe(1);
 			}
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads[0].events.length).toBe(6);
 		});
 	});
 
 	describe("QA5 — a genuine fork (two events appended with the same prev) keeps both, deterministically", () => {
 		it("includes both sibling replies exactly once, in a stable order", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await appendCommentEvent(fs, WORKSPACE, DOC_ID, {
 				id: "opener",
 				kind: "thread-opened",
@@ -250,7 +308,13 @@ describe("commentStore", () => {
 				text: "From window A",
 			});
 
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads.length).toBe(1);
 			expect(threads[0].events.map((e) => e.id).sort()).toEqual([
 				"opener",
@@ -258,7 +322,13 @@ describe("commentStore", () => {
 				"replyB",
 			]);
 			// Deterministic: re-reading produces the identical order.
-			const again = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const again = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(again[0].events.map((e) => e.id)).toEqual(
 				threads[0].events.map((e) => e.id),
 			);
@@ -267,7 +337,12 @@ describe("commentStore", () => {
 
 	describe("R6/QA6 — dangling prev and a prev cycle never hang the reader", () => {
 		it("returns the reachable events for a dangling prev without hanging", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await appendCommentEvent(fs, WORKSPACE, DOC_ID, {
 				id: "opener",
 				kind: "thread-opened",
@@ -286,7 +361,13 @@ describe("commentStore", () => {
 				text: "Orphaned pointer",
 			});
 
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads.length).toBe(1);
 			expect(threads[0].events.map((e) => e.id).sort()).toEqual([
 				"dangling",
@@ -295,7 +376,12 @@ describe("commentStore", () => {
 		});
 
 		it("terminates on a prev cycle instead of looping forever", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await appendCommentEvent(fs, WORKSPACE, DOC_ID, {
 				id: "opener",
 				kind: "thread-opened",
@@ -322,7 +408,13 @@ describe("commentStore", () => {
 				text: "b",
 			});
 
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads.length).toBe(1);
 			expect(new Set(threads[0].events.map((e) => e.id))).toEqual(
 				new Set(["opener", "a", "b"]),
@@ -341,14 +433,25 @@ describe("commentStore", () => {
 				text: "orphan reply",
 			});
 
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads.length).toBe(0);
 		});
 	});
 
 	describe("D10 — a reply after resolve reads the thread as open again", () => {
 		it("derives state from the single merged head, not resolve-then-frozen", async () => {
-			const anchor: TextAnchor = { from: 0, to: 5, quote: "Hello", mode: "quote" };
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
 			await openThread(fs, WORKSPACE, {
 				docId: DOC_ID,
 				author: { kind: "human", id: "user1" },
@@ -368,14 +471,139 @@ describe("commentStore", () => {
 				text: "One more thing",
 			});
 
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads[0].state).toBe("open");
 		});
 	});
 
 	describe("R20 — empty workspace shows no threads, no crash", () => {
 		it("returns an empty list when nothing has ever been written", async () => {
-			const threads = await listThreads(fs, WORKSPACE, DOC_ID, CURRENT_FLATTENED, storeOptions);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
+			expect(threads).toEqual([]);
+		});
+	});
+
+	describe("delete — soft-delete appends a tombstone and filters the thread from listThreads", () => {
+		async function openOne(): Promise<string> {
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
+			await openThread(fs, WORKSPACE, {
+				docId: DOC_ID,
+				author: { kind: "human", id: "user1" },
+				anchor,
+				text: "First",
+			});
+			const [opener] = await readCommentEvents(fs, WORKSPACE, DOC_ID);
+			return opener.threadId;
+		}
+
+		it("appends exactly one deleted event chained on the previous head", async () => {
+			const threadId = await openOne();
+			await reply(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user2" },
+				text: "Reply",
+			});
+			const before = await readCommentEvents(fs, WORKSPACE, DOC_ID);
+			const headBefore = before[before.length - 1];
+
+			await deleteThread(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user1" },
+			});
+
+			const events = await readCommentEvents(fs, WORKSPACE, DOC_ID);
+			expect(events.length).toBe(before.length + 1);
+			const tombstone = events[events.length - 1];
+			expect(tombstone.kind).toBe("deleted");
+			expect(tombstone.threadId).toBe(threadId);
+			expect(tombstone.prev).toBe(headBefore.id);
+		});
+
+		it("excludes the deleted thread from listThreads but keeps sibling threads", async () => {
+			const threadId = await openOne();
+			const anchor: TextAnchor = {
+				from: 0,
+				to: 5,
+				quote: "Hello",
+				mode: "quote",
+			};
+			await openThread(fs, WORKSPACE, {
+				docId: DOC_ID,
+				author: { kind: "human", id: "user1" },
+				anchor,
+				text: "Second",
+			});
+
+			await deleteThread(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user1" },
+			});
+
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
+			expect(threads.length).toBe(1);
+			expect(threads[0].opener.text).toBe("Second");
+		});
+
+		it("a reply/resolve/reopen after delete still appends an event but the thread stays filtered out", async () => {
+			const threadId = await openOne();
+			await deleteThread(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user1" },
+			});
+
+			await reply(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user2" },
+				text: "Late reply",
+			});
+			await resolve(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user1" },
+			});
+			await reopen(fs, WORKSPACE, {
+				docId: DOC_ID,
+				threadId,
+				author: { kind: "human", id: "user1" },
+			});
+
+			const events = await readCommentEvents(fs, WORKSPACE, DOC_ID);
+			expect(events.length).toBe(5);
+			const threads = await listThreads(
+				fs,
+				WORKSPACE,
+				DOC_ID,
+				CURRENT_FLATTENED,
+				storeOptions,
+			);
 			expect(threads).toEqual([]);
 		});
 	});

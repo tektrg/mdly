@@ -32,6 +32,7 @@ export function VirtualCursor({
 	);
 	const [animatePosition, setAnimatePosition] = useState(true);
 	const blinkTimeoutRef = useRef<number | null>(null);
+	const lastHeadRef = useRef<number | null>(null);
 	const { inputMode } = useEditorInputMode({ editor, containerRef });
 
 	useEffect(() => {
@@ -61,6 +62,7 @@ export function VirtualCursor({
 		};
 
 		const updateCursor = () => {
+			lastHeadRef.current = editor.state.selection.head;
 			const container = scrollContainer;
 			if (!container || !editor.view) {
 				clearBlinkTimeout();
@@ -115,7 +117,23 @@ export function VirtualCursor({
 
 		updateCursor();
 		editor.on("selectionUpdate", updateCursor);
-		editor.on("transaction", updateCursor);
+		// Cursor geometry only changes with the document, the selection, or
+		// scroll/layout (which have their own listeners below), so a
+		// meta-only transaction echo with the caret unmoved skips the
+		// `coordsAtPos` layout read.
+		const onTransaction = (event?: {
+			transaction?: { docChanged?: boolean };
+		}) => {
+			if (
+				event?.transaction &&
+				event.transaction.docChanged === false &&
+				lastHeadRef.current === editor.state.selection.head
+			) {
+				return;
+			}
+			updateCursor();
+		};
+		editor.on("transaction", onTransaction);
 		editor.on("focus", updateCursor);
 		editor.on("blur", updateCursor);
 		scrollContainer?.addEventListener("scroll", updateCursor, {
@@ -125,7 +143,7 @@ export function VirtualCursor({
 
 		return () => {
 			editor.off("selectionUpdate", updateCursor);
-			editor.off("transaction", updateCursor);
+			editor.off("transaction", onTransaction);
 			editor.off("focus", updateCursor);
 			editor.off("blur", updateCursor);
 			scrollContainer?.removeEventListener("scroll", updateCursor);

@@ -2,9 +2,18 @@
 	position: fixed;
 	z-index: 20;
 	inset-block: clamp(5rem, 18vh, 9rem) clamp(5rem, 16vh, 8rem);
-	inset-inline-end: clamp(0.65rem, 1.6vw, 1.25rem);
+	/* A docked right-edge panel (comments/history) is a fixed overlay, so
+	 * this fixed rail would slide underneath it. Hosts set
+	 * `--hubble-right-panel-inline-size` (panel width, else 0) on an
+	 * ancestor to yield the same space the document pane yields via its
+	 * own padding -- the rail and its hover panel stay usable. */
+	inset-inline-end: calc(
+		clamp(0.65rem, 1.6vw, 1.25rem) +
+			var(--hubble-right-panel-inline-size, 0px)
+	);
 	inline-size: 2.75rem;
 	pointer-events: auto;
+	transition: inset-inline-end 300ms var(--ease-snappy);
 }
 
 [data-hubble-editor] .editorTableOfContentsTrigger {
@@ -181,7 +190,9 @@
 @media (max-width: 860px) {
 	[data-hubble-editor] .editorTableOfContents {
 		inset-block: clamp(4rem, 16vh, 7rem) clamp(4rem, 14vh, 6rem);
-		inset-inline-end: 0.35rem;
+		inset-inline-end: calc(
+			0.35rem + var(--hubble-right-panel-inline-size, 0px)
+		);
 		inline-size: 2.25rem;
 	}
 

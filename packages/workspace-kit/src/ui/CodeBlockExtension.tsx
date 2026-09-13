@@ -1,6 +1,9 @@
 import { Select } from "@base-ui/react/select";
+import { findChildren } from "@tiptap/core";
 import { CodeBlockLowlight } from "@tiptap/extension-code-block-lowlight";
-import { TextSelection } from "@tiptap/pm/state";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import {
 	NodeViewContent,
 	type NodeViewProps,
@@ -56,6 +59,21 @@ lowlight.registerAlias({
 });
 
 export const HubbleCodeBlock = CodeBlockLowlight.extend({
+	addProseMirrorPlugins() {
+		// Override (do NOT call this.parent): Tiptap binds the inherited
+		// CodeBlockLowlight factory as this.parent, so spreading it would
+		// register the Lowlight plugin twice and rehighlight every code block
+		// twice per edit. A single Hubble-scoped plugin also caches
+		// per-block highlight output, so only added/changed blocks pay for
+		// highlighting while unchanged blocks reuse their parsed nodes.
+		return [
+			hubbleLowlightPlugin({
+				name: this.name,
+				lowlight: this.options.lowlight,
+				defaultLanguage: this.options.defaultLanguage,
+			}),
+		];
+	},
 	addKeyboardShortcuts() {
 		return {
 			...this.parent?.(),
@@ -167,7 +185,12 @@ function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
 						</Select.Value>
 					</Select.Trigger>
 					<Select.Portal container={portalContainer}>
-						<Select.Positioner className="z-50" align="end" side="bottom" sideOffset={8}>
+						<Select.Positioner
+							className="z-50"
+							align="end"
+							side="bottom"
+							sideOffset={8}
+						>
 							<Select.Popup className="w-40 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 								{codeBlockLanguages.map((option) => (
 									<Select.Item
@@ -216,6 +239,187 @@ function tabSizeForLanguage(language: unknown) {
 	return typeof language === "string" && TWO_SPACE_LANGUAGES.has(language)
 		? 2
 		: DEFAULT_TAB_SIZE;
+}
+
+type HighlightSpan = { text: string; classes: string[] };
+
+// Minimal structural surface of the lowlight instance this plugin needs.
+// (Kept local instead of `any` so the highlighter boundary stays typed;
+// the extension option itself remains upstream's `lowlight: any`.)
+type LowlightHastNode = {
+	value?: string;
+	properties?: { className?: string[] };
+	children?: LowlightHastNode[];
+};
+
+type LowlightResult = {
+	value?: LowlightHastNode[];
+	children?: LowlightHastNode[];
+};
+
+type LowlightInstance = {
+	listLanguages(): string[];
+	registered?(language: string): boolean;
+	highlight(language: string, value: string): LowlightResult;
+	highlightAuto(value: string): LowlightResult;
+};
+
+// Parsed highlight output per code block, cached by language+text so edits to
+// one block never re-run highlighting for the others. Bounded with a simple
+// clear-on-overflow; correctness never depends on cache retention.
+const HIGHLIGHT_CACHE_LIMIT = 1000;
+
+function parseHighlightNodes(
+	nodes: LowlightHastNode[],
+	className: string[] = [],
+): HighlightSpan[] {
+	return nodes.flatMap((node) => {
+		const classes = [...className, ...(node.properties?.className ?? [])];
+		if (node.children) return parseHighlightNodes(node.children, classes);
+		return {
+			text: typeof node.value === "string" ? node.value : "",
+			classes,
+		};
+	});
+}
+
+function highlightResultNodes(result: LowlightResult): LowlightHastNode[] {
+	// `.value` for lowlight v1, `.children` for lowlight v2.
+	return result.value ?? result.children ?? [];
+}
+
+function cachedHighlightSpans(
+	lowlight: LowlightInstance,
+	cache: Map<string, HighlightSpan[]>,
+	language: string | null | undefined,
+	text: string,
+): HighlightSpan[] {
+	if (text.length === 0) return [];
+	const languages: string[] = lowlight.listLanguages();
+	const cacheKey = `${language ?? ""}\n${text}`;
+	const cached = cache.get(cacheKey);
+	if (cached) return cached;
+	const nodes =
+		language &&
+		(languages.includes(language) || lowlight.registered?.(language))
+			? highlightResultNodes(lowlight.highlight(language, text))
+			: highlightResultNodes(lowlight.highlightAuto(text));
+	const spans = parseHighlightNodes(nodes);
+	if (cache.size >= HIGHLIGHT_CACHE_LIMIT) cache.clear();
+	cache.set(cacheKey, spans);
+	return spans;
+}
+
+function decorateCodeBlocks(
+	doc: ProseMirrorNode,
+	name: string,
+	lowlight: LowlightInstance,
+	defaultLanguage: string | null | undefined,
+	cache: Map<string, HighlightSpan[]>,
+) {
+	const decorations: Decoration[] = [];
+	findChildren(doc, (node) => node.type.name === name).forEach((block) => {
+		let from = block.pos + 1;
+		const language = block.node.attrs.language || defaultLanguage;
+		for (const span of cachedHighlightSpans(
+			lowlight,
+			cache,
+			language,
+			block.node.textContent,
+		)) {
+			if (span.text.length === 0) continue;
+			const to = from + span.text.length;
+			if (span.classes.length) {
+				decorations.push(
+					Decoration.inline(from, to, { class: span.classes.join(" ") }),
+				);
+			}
+			from = to;
+		}
+	});
+	return DecorationSet.create(doc, decorations);
+}
+
+/**
+ * Single-plugin replacement for upstream `LowlightPlugin` with identical
+ * decoration output: only blocks whose language/text changed re-run
+ * `highlight`/`highlightAuto` (via `cache`); every other block reuses its
+ * parsed spans. The docChanged gating mirrors upstream so language switches,
+ * paste, and undo/redo all still recompute.
+ */
+function hubbleLowlightPlugin({
+	name,
+	lowlight,
+	defaultLanguage,
+}: {
+	name: string;
+	lowlight: LowlightInstance;
+	defaultLanguage: string | null | undefined;
+}) {
+	const cache = new Map<string, HighlightSpan[]>();
+	const plugin: Plugin<DecorationSet> = new Plugin<DecorationSet>({
+		key: new PluginKey("lowlight"),
+		state: {
+			init: (_, { doc }) =>
+				decorateCodeBlocks(doc, name, lowlight, defaultLanguage, cache),
+			apply: (transaction, decorationSet, oldState, newState) => {
+				// Selection-only and meta-only transactions never change a
+				// block's text or language: map positions without walking
+				// either document. (Upstream walks both docs first and reaches
+				// the same mapped result; skipping the walks is the point.)
+				if (!transaction.docChanged) {
+					return decorationSet.map(transaction.mapping, transaction.doc);
+				}
+				const oldNodeName = oldState.selection.$head.parent.type.name;
+				const newNodeName = newState.selection.$head.parent.type.name;
+				const oldNodes = findChildren(
+					oldState.doc,
+					(node) => node.type.name === name,
+				);
+				const newNodes = findChildren(
+					newState.doc,
+					(node) => node.type.name === name,
+				);
+				if (
+					oldNodeName === name ||
+					newNodeName === name ||
+					newNodes.length !== oldNodes.length ||
+					transaction.steps.some((step) => {
+						const from = (step as unknown as { from?: unknown }).from;
+						const to = (step as unknown as { to?: unknown }).to;
+						// Intersection (not just encapsulation): a programmatic
+						// narrow edit strictly inside a block -- selection
+						// elsewhere, e.g. find-replace or a collab step -- must
+						// still invalidate that block. Over-triggering only
+						// costs a cached rebuild; under-triggering leaves stale
+						// decorations.
+						return (
+							typeof from === "number" &&
+							typeof to === "number" &&
+							oldNodes.some(
+								(node) => from < node.pos + node.node.nodeSize && to > node.pos,
+							)
+						);
+					})
+				) {
+					return decorateCodeBlocks(
+						transaction.doc,
+						name,
+						lowlight,
+						defaultLanguage,
+						cache,
+					);
+				}
+				return decorationSet.map(transaction.mapping, transaction.doc);
+			},
+		},
+		props: {
+			decorations(state) {
+				return plugin.getState(state);
+			},
+		},
+	});
+	return plugin;
 }
 
 async function copyCodeBlock(text: string) {

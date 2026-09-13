@@ -1,14 +1,18 @@
 // @vitest-environment happy-dom
 
 import { Editor, type JSONContent } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { PluginKey, TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { act } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildQuoteAnchor } from "../buildAnchor";
 import type { CommentOptions, CommentThread } from "../types";
-import { type UseCommentThreadsResult, useCommentThreads } from "../useCommentThreads";
+import {
+	type UseCommentThreadsResult,
+	useCommentThreads,
+} from "../useCommentThreads";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -47,6 +51,7 @@ function baseOptions(overrides: Partial<CommentOptions> = {}): CommentOptions {
 		onReply: vi.fn(),
 		onResolve: vi.fn(),
 		onReopen: vi.fn(),
+		onDelete: vi.fn(),
 		...overrides,
 	};
 }
@@ -134,7 +139,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -144,7 +151,7 @@ describe("useCommentThreads", () => {
 
 		expect(latest?.resolvedThreads).toHaveLength(1);
 		const firstRange = latest?.resolvedThreads[0]?.anchorResolution.range;
-		expect(firstRange).toEqual({ from: 0, to: 6 });
+		expect(firstRange).toEqual({ from: 1, to: 7 });
 
 		// Insert text before the anchored quote -- the quote's offset in the
 		// flattened text must move forward, purely from the editor's own
@@ -159,7 +166,7 @@ describe("useCommentThreads", () => {
 		await flush(root);
 
 		const movedRange = latest?.resolvedThreads[0]?.anchorResolution.range;
-		expect(movedRange).toEqual({ from: 7, to: 13 });
+		expect(movedRange).toEqual({ from: 8, to: 14 });
 		expect(options.getThreads).toHaveBeenCalledTimes(1);
 	});
 
@@ -180,7 +187,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -189,8 +198,8 @@ describe("useCommentThreads", () => {
 		await flush(root);
 
 		expect(latest?.resolvedThreads[0]?.anchorResolution.range).toEqual({
-			from: 0,
-			to: 6,
+			from: 1,
+			to: 7,
 		});
 
 		act(() => {
@@ -200,7 +209,9 @@ describe("useCommentThreads", () => {
 					content: [
 						{
 							type: "paragraph",
-							content: [{ type: "text", text: "PREFIX TARGET rest of the line" }],
+							content: [
+								{ type: "text", text: "PREFIX TARGET rest of the line" },
+							],
 						},
 					],
 				} satisfies JSONContent,
@@ -210,9 +221,100 @@ describe("useCommentThreads", () => {
 		await flush(root);
 
 		expect(latest?.resolvedThreads[0]?.anchorResolution.range).toEqual({
-			from: 7,
-			to: 13,
+			from: 8,
+			to: 14,
 		});
+	});
+
+	// Anchor-position regression: a comment pinned on one paragraph of a
+	// multi-paragraph doc must resolve onto that same paragraph -- never a
+	// later one. `resolveAnchor` returns flattened-markdown offsets (which
+	// count markup like `# ` and double-newline joins that have no document
+	// position); the hook translates the quote back onto live ProseMirror
+	// positions before publishing `anchorResolution.range`, which is what
+	// every consumer (decorations, gutter, paragraph markers, TOC) reads.
+	it("pins a comment on its own paragraph in a multi-paragraph doc with markup above", async () => {
+		const editor = new Editor({
+			element: document.createElement("div"),
+			extensions: [StarterKit],
+			content: {
+				type: "doc",
+				content: [
+					{
+						type: "heading",
+						attrs: { level: 1 },
+						content: [{ type: "text", text: "Title here" }],
+					},
+					{
+						type: "paragraph",
+						content: [{ type: "text", text: "First paragraph here" }],
+					},
+					{
+						type: "paragraph",
+						content: [{ type: "text", text: "Second paragraph TARGET text" }],
+					},
+					{
+						type: "paragraph",
+						content: [{ type: "text", text: "Third paragraph here" }],
+					},
+				],
+			} satisfies JSONContent,
+		});
+		editors.push(editor);
+
+		const quote = "TARGET";
+		let pmFrom = -1;
+		for (let p = 0; p < editor.state.doc.content.size; p++) {
+			try {
+				if (editor.state.doc.textBetween(p, p + quote.length, "\n") === quote) {
+					pmFrom = p;
+					break;
+				}
+			} catch {
+				// Past the end of the document -- keep scanning harmlessly.
+			}
+		}
+		expect(pmFrom).toBeGreaterThan(-1);
+		const anchor = buildQuoteAnchor(
+			editor.state.doc,
+			pmFrom,
+			pmFrom + quote.length,
+		);
+		expect(anchor.quote).toBe(quote);
+
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor,
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const resolution = latest?.resolvedThreads[0]?.anchorResolution;
+		expect(resolution?.status).toBe("fallback-anchored");
+		expect(resolution?.range).toEqual({
+			from: pmFrom,
+			to: pmFrom + quote.length,
+		});
+		expect(
+			editor.state.doc.textBetween(
+				resolution?.range?.from ?? 0,
+				resolution?.range?.to ?? 0,
+				"\n",
+			),
+		).toBe(quote);
 	});
 
 	it("keeps the same resolvedThreads reference across a transaction that cannot affect any anchor", async () => {
@@ -227,7 +329,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -245,6 +349,75 @@ describe("useCommentThreads", () => {
 		await flush(root);
 
 		expect(latest?.resolvedThreads).toBe(beforeThreads);
+	});
+
+	// Regression for the 2026-09-02 renderer-storm crash (crash-trace.log:
+	// ~766K `editor.transaction` dispatches over one 23-minute idle session,
+	// every one carrying only `commentThreadsKey`'s meta, steps:0,
+	// docChanged:false, editorFocused:false). The "transaction" listener used
+	// to call `resolveAnchor` (and thus `readRevisionContent`) again for EVERY
+	// transaction, including a meta-only one carrying no doc change -- e.g.
+	// `setCommentThreads`'s own dispatch, echoed straight back into this same
+	// listener. `resolvedThreads`'s own content-equality guard (tested above)
+	// stops that particular cycle from free-running once inputs are stable,
+	// but it still means every meta-only echo redoes a full anchor-resolution
+	// pass (an `await readRevisionContent(...)` per thread) for nothing.
+	// Gating on `docChanged` means a transaction that cannot possibly move any
+	// anchor (`resolveAnchor` only ever reads document content, never
+	// selection or plugin meta) does no resolution work at all -- verified
+	// directly here via `readRevisionContent`'s call count, since the
+	// downstream reference-stability test can't distinguish "did no work" from
+	// "did the work again and got the same answer".
+	it("does not call readRevisionContent again for a meta-only transaction that cannot affect any anchor", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: {
+					from: 0,
+					to: 5,
+					quote: "TARGET",
+					mode: "revision",
+					revisionId: "rev-1",
+				},
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const readRevisionContent = vi
+			.fn()
+			.mockResolvedValue("TARGET rest of the line");
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+			readRevisionContent,
+		});
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).toHaveLength(1);
+		const callsAfterInitialResolve = readRevisionContent.mock.calls.length;
+		expect(callsAfterInitialResolve).toBeGreaterThan(0);
+
+		// setCommentThreads's own dispatch shape: meta-only, no doc/selection
+		// change -- dispatched several times, matching the sustained-storm shape
+		// rather than a single occurrence.
+		const dummyKey = new PluginKey<number>("regressionDummy");
+		act(() => {
+			for (let i = 0; i < 5; i++) {
+				editor.view.dispatch(editor.state.tr.setMeta(dummyKey, i));
+			}
+		});
+		await flush(root);
+
+		expect(readRevisionContent.mock.calls.length).toBe(
+			callsAfterInitialResolve,
+		);
 	});
 
 	// The store behind a real `getThreads` (`@mdly/doc-comments`) documents its
@@ -281,7 +454,9 @@ describe("useCommentThreads", () => {
 			],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -321,7 +496,14 @@ describe("useCommentThreads", () => {
 		const resolvedThread: CommentThread = {
 			...openThread,
 			state: "resolved",
-			events: [{ id: "event-1", kind: "resolved", by: { kind: "human", id: "u1" }, prev: null }],
+			events: [
+				{
+					id: "event-1",
+					kind: "resolved",
+					by: { kind: "human", id: "u1" },
+					prev: null,
+				},
+			],
 		};
 		getThreads.mockResolvedValue([resolvedThread]);
 
@@ -332,5 +514,203 @@ describe("useCommentThreads", () => {
 
 		expect(latest?.resolvedThreads).not.toBe(beforeThreads);
 		expect(latest?.resolvedThreads[0]?.state).toBe("resolved");
+	});
+
+	// A brand-new comment records ProseMirror positions (buildQuoteAnchor),
+	// not flattened-markdown offsets: a selection ending at the last
+	// character always has PM `to` one past the markdown length, which used
+	// to trip resolveAnchor's fast-path into `orphaned` on the very first
+	// render after creating the thread.
+	it("does not orphan a brand-new revision-mode comment at the end of the document", async () => {
+		const editor = createEditor("Hello brave new world");
+		const endOfText = editor.state.doc.content.size - 1;
+		const quoteAnchor = buildQuoteAnchor(
+			editor.state.doc,
+			endOfText - 5,
+			endOfText,
+		);
+		expect(quoteAnchor.quote).toBe("world");
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { ...quoteAnchor, mode: "revision", revisionId: "rev-1" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+			readRevisionContent: vi.fn().mockResolvedValue("Hello brave new world"),
+		});
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const resolution = latest?.resolvedThreads[0]?.anchorResolution;
+		expect(resolution?.status).not.toBe("orphaned");
+		expect(
+			editor.state.doc.textBetween(
+				resolution?.range?.from ?? 0,
+				resolution?.range?.to ?? 0,
+				"\n",
+			),
+		).toBe("world");
+	});
+
+	// The saved revision almost always lags the live draft (revisions cut on
+	// idle/manual saves, not keystrokes), so a new comment's revision-replay
+	// runs against differing texts with PM-space offsets -- which used to
+	// orphan the thread immediately even though its quote never moved.
+	it("does not orphan a new comment when unsaved edits elsewhere moved the saved revision", async () => {
+		const editor = createEditor("PREFIX TARGET rest of the line");
+		const quoteAnchor = buildQuoteAnchor(editor.state.doc, 8, 14);
+		expect(quoteAnchor.quote).toBe("TARGET");
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { ...quoteAnchor, mode: "revision", revisionId: "rev-1" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+			readRevisionContent: vi.fn().mockResolvedValue("TARGET rest of the line"),
+		});
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		const resolution = latest?.resolvedThreads[0]?.anchorResolution;
+		expect(resolution?.status).not.toBe("orphaned");
+		expect(
+			editor.state.doc.textBetween(
+				resolution?.range?.from ?? 0,
+				resolution?.range?.to ?? 0,
+				"\n",
+			),
+		).toBe("TARGET");
+	});
+
+	// Large-document editing lag: with zero threads every keystroke used to
+	// serialize the whole document (`getJSON` + Markdown) before discovering
+	// there was nothing to resolve. The empty fast path must do no
+	// serialization work at all.
+	it("does not serialize the document on edits when there are no threads", async () => {
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([]),
+		});
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+		expect(latest?.resolvedThreads).toEqual([]);
+
+		const getJSON = vi.spyOn(editor, "getJSON");
+		act(() => {
+			editor.view.dispatch(editor.state.tr.insertText("x", 2));
+		});
+		await flush(root);
+
+		expect(getJSON).not.toHaveBeenCalled();
+		getJSON.mockRestore();
+	});
+
+	// Threads pinned to the same revision share one backing read per resolve
+	// pass instead of one read (plus flatten and line diff) per thread.
+	it("reads shared revision content once per resolve pass for threads on the same revision", async () => {
+		const editor = createEditor("TARGET rest of the line");
+		const anchor = buildQuoteAnchor(editor.state.doc, 1, 7);
+		const threads: CommentThread[] = [0, 1, 2].map((index) => ({
+			id: `thread-${index}`,
+			opener: {
+				id: `thread-${index}`,
+				by: { kind: "human", id: "u1" },
+				anchor: { ...anchor, mode: "revision", revisionId: "rev-1" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		}));
+		const readRevisionContent = vi
+			.fn()
+			.mockResolvedValue("TARGET rest of the line");
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue(threads),
+			readRevisionContent,
+		});
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).toHaveLength(3);
+		expect(readRevisionContent).toHaveBeenCalledTimes(1);
+
+		act(() => {
+			editor.view.dispatch(editor.state.tr.insertText("x", 2));
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).toHaveLength(3);
+		expect(readRevisionContent).toHaveBeenCalledTimes(2);
+	});
+
+	// Overlapping async resolve passes (rapid keystrokes) must settle on the
+	// latest document, never an earlier pass's stale result.
+	it("settles rapid successive edits on the latest document positions", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "TARGET", mode: "quote" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+		expect(latest?.resolvedThreads[0]?.anchorResolution.range).toEqual({
+			from: 1,
+			to: 7,
+		});
+
+		act(() => {
+			editor.view.dispatch(
+				editor.state.tr
+					.setSelection(TextSelection.create(editor.state.doc, 1))
+					.insertText("AA "),
+			);
+			editor.view.dispatch(editor.state.tr.insertText("BB ", 1));
+		});
+		await flush(root);
+
+		const range = latest?.resolvedThreads[0]?.anchorResolution.range;
+		expect(range).toEqual({ from: 7, to: 13 });
+		expect(
+			editor.state.doc.textBetween(range?.from ?? 0, range?.to ?? 0, "\n"),
+		).toBe("TARGET");
 	});
 });

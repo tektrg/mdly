@@ -127,6 +127,27 @@ export function reconnectDelayMs(
 }
 
 /**
+ * Error sink kept on a socket across `teardownSocket()`'s `close()` — see
+ * that method for why removing every listener first turns a handshake abort
+ * into a process-killing unhandled 'error'.
+ */
+function noopSocketErrorSink(): void {}
+
+/** `WebSocket.OPEN` — spelled out because `WebSocketLike` carries only the numeric `readyState`, not the named constants. */
+const WEBSOCKET_OPEN = 1;
+
+/**
+ * Upper bound for one handshake to complete. The heartbeat's staleness check
+ * deliberately skips still-connecting sockets (judging them against a
+ * pre-connect timestamp aborted every slow handshake), so without this a
+ * hung handshake would never be retried. Fires teardown + reconnect, like
+ * the staleness branch. Well above any healthy handshake; well below the
+ * ~45 s a hung handshake used to survive by accident (three ticks at the
+ * 15 s default interval: stale only past 2 × interval on the third).
+ */
+const CONNECT_TIMEOUT_MS = 10_000;
+
+/**
  * One logical subscription to a single workspace's broadcast socket, shared
  * between however many `onFilesChanged`/`onAssetsChanged` callers are
  * currently registered for it (R25 — exactly one live connection per
@@ -140,6 +161,8 @@ class WorkspaceConnection {
 	private lastMessageAt = Date.now();
 	private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Bounds one handshake; cleared once the socket opens or dies (see `connect()`). */
+	private connectTimer: ReturnType<typeof setTimeout> | null = null;
 	/** Consecutive failed connection attempts; reset once a socket opens. */
 	private reconnectAttempts = 0;
 	private readonly fileListeners = new Set<Listener>();
@@ -212,21 +235,38 @@ class WorkspaceConnection {
 	}
 
 	private teardownSocket(): void {
-		if (!this.socket) return;
-		this.socket.removeEventListener("open", this.handleOpen);
-		this.socket.removeEventListener("message", this.handleMessage);
-		this.socket.removeEventListener("close", this.handleClose);
-		this.socket.removeEventListener("error", this.handleError);
-		try {
-			this.socket.close();
-		} catch {
-			// already closed/closing
-		}
+		const socket = this.socket;
+		if (!socket) return;
 		this.socket = null;
+		socket.removeEventListener("open", this.handleOpen);
+		socket.removeEventListener("message", this.handleMessage);
+		socket.removeEventListener("close", this.handleClose);
+		socket.removeEventListener("error", this.handleError);
+		// `ws` reports aborting a still-connecting handshake ASYNCHRONOUSLY
+		// (`abortHandshake` defers `emitErrorAndClose` to the next tick), so
+		// removing the `error` listener before `close()` leaves that emit
+		// unhandled — and Node throws an unhandled 'error' event, which kills
+		// the Electron main process with a modal dialog. The try/catch around
+		// `close()` below cannot help: it only covers synchronous throws.
+		// Keep a no-op sink attached for the socket's remaining life instead.
+		// (Only 'error' needs this; unlistened 'close'/'message'/'open'
+		// emits are harmless.) `dispose()` routes through here, so process
+		// exit and `subscriber.close()` are covered by the same change.
+		socket.addEventListener("error", noopSocketErrorSink);
+		try {
+			socket.close();
+		} catch {
+			// already closed/closing (synchronous failures)
+		}
+		this.clearConnectTimeout();
 	}
 
 	private connect(): void {
 		if (this.disposed) return;
+		// Each fresh socket gets a fresh grace window: without this, a
+		// reconnect following an idle gap inherits the pre-drop timestamp
+		// and the first heartbeat tick already reads as stale.
+		this.lastMessageAt = Date.now();
 		if (this.options.auth.kind === "bearer" && !this.options.webSocketFactory) {
 			this.notifyError(
 				new CloudflareClientError(
@@ -256,9 +296,29 @@ class WorkspaceConnection {
 		socket.addEventListener("close", this.handleClose);
 		socket.addEventListener("error", this.handleError);
 		this.startHeartbeat();
+		this.startConnectTimeout();
+	}
+
+	private startConnectTimeout(): void {
+		this.clearConnectTimeout();
+		this.connectTimer = setTimeout(() => {
+			this.connectTimer = null;
+			if (this.disposed) return;
+			// The handshake never completed — tear down and retry rather
+			// than hanging forever. (Safe to close a CONNECTING socket here
+			// only because F1's error sink absorbs the handshake-abort emit.)
+			this.teardownSocket();
+			this.scheduleReconnect();
+		}, CONNECT_TIMEOUT_MS);
+	}
+
+	private clearConnectTimeout(): void {
+		if (this.connectTimer) clearTimeout(this.connectTimer);
+		this.connectTimer = null;
 	}
 
 	private handleOpen = (): void => {
+		this.clearConnectTimeout();
 		this.lastMessageAt = Date.now();
 		// A real open clears the backoff: the next blip retries fast again.
 		this.reconnectAttempts = 0;
@@ -292,6 +352,7 @@ class WorkspaceConnection {
 	};
 
 	private handleClose = (): void => {
+		this.clearConnectTimeout();
 		this.teardownSocket();
 		if (!this.disposed) this.scheduleReconnect();
 	};
@@ -314,6 +375,13 @@ class WorkspaceConnection {
 		this.stopHeartbeat();
 		const interval = this.options.heartbeatIntervalMs ?? 15000;
 		this.heartbeatTimer = setInterval(() => {
+			const socket = this.socket;
+			// A still-connecting socket is judged by the connect timeout,
+			// not here: without this guard, a fresh socket after an idle
+			// gap inherits a stale timestamp and is torn down ~15 s in even
+			// when its handshake would have succeeded — a self-inflicted
+			// reconnect loop.
+			if (!socket || socket.readyState !== WEBSOCKET_OPEN) return;
 			const staleFor = Date.now() - this.lastMessageAt;
 			if (staleFor > interval * 2) {
 				// No message (not even our own ping's echo) for two full

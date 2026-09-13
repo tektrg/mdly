@@ -506,3 +506,239 @@ describe("createCloudflareSubscriber — heartbeat detects a silently-dead conne
 		}
 	});
 });
+
+/**
+ * The teardown race that froze the desktop app with a modal "Uncaught
+ * Exception: WebSocket was closed before the connection was established"
+ * dialog, plus the connect-timeout half of its fix. Unlike
+ * `FakeBroadcastSocket` above (whose `readyState` is always OPEN), these
+ * sockets stay CONNECTING until the test opens them — the state the whole
+ * bug is about.
+ */
+type FakeConnectingSocket = {
+	/** Handed to the subscriber via its `webSocketFactory`. */
+	socket: WebSocketLike;
+	/** Simulates the server accepting the connection and firing `open`. */
+	open(): void;
+	/** Every payload the client sent down this socket. */
+	readonly sent: string[];
+	readonly closed: boolean;
+	/** How many `'error'` events were actually dispatched (into the sink, post-fix). */
+	errorEmits: number;
+};
+
+function createFakeConnectingSocket(): FakeConnectingSocket {
+	const listeners: Record<SocketEventType, Set<SocketEventListener>> = {
+		open: new Set(),
+		message: new Set(),
+		close: new Set(),
+		error: new Set(),
+	};
+	let closed = false;
+	let opened = false;
+	const state = { errorEmits: 0 };
+	const sent: string[] = [];
+
+	function dispatch(type: SocketEventType, event: unknown): void {
+		const set = listeners[type];
+		if (type === "error" && set.size === 0) {
+			// Node EventEmitter semantics: emitting 'error' with no listener
+			// throws. This is what killed the Electron main process.
+			throw event instanceof Error ? event : new Error(String(event));
+		}
+		if (type === "error") state.errorEmits++;
+		for (const listener of [...set]) listener(event);
+	}
+
+	const socket: WebSocketLike = {
+		addEventListener: (type, listener) => listeners[type].add(listener),
+		removeEventListener: (type, listener) => listeners[type].delete(listener),
+		send: (data) => {
+			sent.push(data);
+		},
+		close: () => {
+			closed = true;
+			if (!opened) {
+				// Mirrors `ws`'s `abortHandshake`: the error is reported on
+				// the NEXT TICK, not synchronously out of `close()` — which
+				// is why no try/catch around `close()` can catch it.
+				setTimeout(
+					() =>
+						dispatch(
+							"error",
+							new Error(
+								"WebSocket was closed before the connection was established",
+							),
+						),
+					0,
+				);
+			}
+		},
+		get readyState() {
+			return closed ? 3 : opened ? 1 : 0;
+		},
+	};
+
+	return {
+		socket,
+		open: () => {
+			opened = true;
+			dispatch("open", {});
+		},
+		sent,
+		get closed() {
+			return closed;
+		},
+		get errorEmits() {
+			return state.errorEmits;
+		},
+	};
+}
+
+function createFakeConnectingSocketFactory(): {
+	factory: WebSocketFactory;
+	sockets: FakeConnectingSocket[];
+} {
+	const sockets: FakeConnectingSocket[] = [];
+	const factory: WebSocketFactory = () => {
+		const fake = createFakeConnectingSocket();
+		sockets.push(fake);
+		return fake.socket;
+	};
+	return { factory, sockets };
+}
+
+describe("createCloudflareSubscriber — handshake-abort crash + connect timeout", () => {
+	const FAKE_BASE_URL = "https://fake.mdly.test";
+	const WORKSPACE_ID = "fake-workspace";
+	const HEARTBEAT_INTERVAL_MS = 400;
+
+	function subscribe(
+		factory: WebSocketFactory,
+		opts?: { heartbeatIntervalMs?: number },
+	) {
+		const subscriber = createCloudflareSubscriber({
+			baseUrl: FAKE_BASE_URL,
+			auth: { kind: "bearer", token: "test-token" },
+			webSocketFactory: factory,
+			heartbeatIntervalMs: opts?.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS,
+		});
+		subscriber.onFilesChanged(
+			WORKSPACE_ID,
+			() => {},
+			() => {},
+		);
+		return subscriber;
+	}
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("tearing down a socket that never opened does not produce an unhandled error (crash regression guard)", async () => {
+		// Real timers: the handshake-abort emit is a real macrotask, and
+		// there is no time to fake here anyway (heartbeat is 60 s).
+		const { factory, sockets } = createFakeConnectingSocketFactory();
+		const subscriber = subscribe(factory, { heartbeatIntervalMs: 60000 });
+
+		await flushMicrotasks(); // the constructor's deferred connect() ran
+		expect(sockets).toHaveLength(1);
+
+		await subscriber.close(); // dispose → teardownSocket → close() on a CONNECTING socket
+		// Let the deferred abort emit land. Pre-fix this throws with no
+		// 'error' listener and fails the run as an unhandled error.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(sockets[0]!.closed).toBe(true);
+		// The abort emit happened — and landed in the teardown sink.
+		expect(sockets[0]!.errorEmits).toBe(1);
+	});
+
+	it("a reconnecting socket is not torn down by heartbeat ticks while still connecting", async () => {
+		vi.useFakeTimers();
+		try {
+			const fetchMock = vi
+				.spyOn(globalThis, "fetch")
+				.mockResolvedValue(
+					new Response(JSON.stringify({ version: 6 }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					}),
+				);
+			const { factory, sockets } = createFakeConnectingSocketFactory();
+			const subscriber = subscribe(factory);
+
+			await flushMicrotasks();
+			expect(sockets).toHaveLength(1);
+			sockets[0]!.open();
+
+			// Drive the first socket to a heartbeat-detected silent death
+			// (no events at all, pings unanswered).
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			expect(sockets[0]!.closed).toBe(true);
+
+			// First reconnect is exactly 1000 ms, un-jittered.
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(sockets).toHaveLength(2);
+
+			// Three more heartbeat ticks pass with the replacement still
+			// connecting. Without the fresh-timestamp reset it dies on the
+			// first tick; with the reset but no CONNECTING guard it dies on
+			// the third (staleness past 2 × interval). Either way a reconnect
+			// that would have succeeded is aborted.
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS);
+			expect(sockets[1]!.closed).toBe(false);
+			expect(sockets).toHaveLength(2);
+
+			// And the spared socket still opens normally afterwards.
+			sockets[1]!.open();
+			await flushMicrotasks();
+			expect(fetchMock).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(HEARTBEAT_INTERVAL_MS * 2);
+			expect(sockets[1]!.closed).toBe(false);
+			expect(sockets).toHaveLength(2);
+
+			await subscriber.close();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("a handshake that never completes is torn down and retried by the connect timeout", async () => {
+		vi.useFakeTimers();
+		try {
+			const { factory, sockets } = createFakeConnectingSocketFactory();
+			const subscriber = subscribe(factory);
+
+			await flushMicrotasks();
+			expect(sockets).toHaveLength(1);
+
+			// Heartbeat ticks come and go while the socket connects; the
+			// CONNECTING guard must spare it every time (9.5 s of ticks).
+			await vi.advanceTimersByTimeAsync(9500);
+			expect(sockets[0]!.closed).toBe(false);
+			expect(sockets).toHaveLength(1);
+
+			// At 10 s the connect timeout fires: teardown + reconnect. The
+			// extra 10 ms flushes the handshake-abort emit that close()
+			// defers to a zero-delay timer at the 10 s boundary.
+			await vi.advanceTimersByTimeAsync(510);
+			expect(sockets[0]!.closed).toBe(true);
+			// The abort emit from closing a CONNECTING socket lands in the
+			// sink rather than escaping (F1 covers this path too).
+			expect(sockets[0]!.errorEmits).toBe(1);
+
+			// First retry is exactly 1000 ms, un-jittered.
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(sockets).toHaveLength(2);
+
+			await subscriber.close();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+});

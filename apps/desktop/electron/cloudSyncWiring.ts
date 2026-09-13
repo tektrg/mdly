@@ -1386,9 +1386,15 @@ function readState(handle: RunningCloudSync): CloudSyncWorkspaceState {
 	};
 }
 
-/** Closes the watcher/subscriber/timer without removing the handle from `activeSyncs` — used only for the `workspace-unavailable` case (R24) so `getCloudSyncStatus`/`onCloudSyncStatusChange` keep reporting the error instead of silently resetting to "off". Idempotent. */
+/** Closes the watcher/subscriber/timer without removing the handle from `activeSyncs` — used only for the `workspace-unavailable` case (R24) so `getCloudSyncStatus`/`onCloudSyncStatusChange` keep reporting the error instead of silently resetting to "off". Idempotent. Pass `closeWatchers: false` on process exit: the kernel reclaims FSEvent handles for free, while closing chokidar's per-directory handles one by one blocks the caller for minutes on large workspaces. */
+export interface StopCloudSyncOptions {
+	/** Skip `watcher.close()`. Defaults to true (runtime teardown). Set false only on process exit. */
+	closeWatchers?: boolean;
+}
+
 async function teardownRuntimeKeepingStatus(
 	handle: RunningCloudSync,
+	options?: StopCloudSyncOptions,
 ): Promise<void> {
 	if (handle.disposed) return;
 	handle.disposed = true;
@@ -1401,23 +1407,30 @@ async function teardownRuntimeKeepingStatus(
 		// best-effort teardown
 	}
 	await handle.subscriber?.close().catch(() => {});
-	await handle.watcher?.close().catch(() => {});
+	if (options?.closeWatchers ?? true) {
+		await handle.watcher?.close().catch(() => {});
+	}
 }
 
-/** Stops and fully tears down this workspace's watcher+subscriber, if running, and removes it from the active-sync registry so a later `startCloudSyncWatcherIfEnabled` starts fresh. Safe to call on a workspace that isn't running. Never leaves a dangling watcher/subscription behind (R25). */
+/** Stops and fully tears down this workspace's watcher+subscriber, if running, and removes it from the active-sync registry so a later `startCloudSyncWatcherIfEnabled` starts fresh. Safe to call on a workspace that isn't running. Runtime teardown closes watchers; process-exit teardown passes `{ closeWatchers: false }` and deliberately leaves OS watch handles to the kernel (R25, narrowed: no leak *within* one process lifetime is what matters — a dying process leaks nothing). */
 export async function stopCloudSyncForWorkspace(
 	workspaceRoot: string,
+	options?: StopCloudSyncOptions,
 ): Promise<void> {
 	const handle = activeSyncs.get(workspaceRoot);
 	if (!handle) return;
 	activeSyncs.delete(workspaceRoot);
-	await teardownRuntimeKeepingStatus(handle);
+	await teardownRuntimeKeepingStatus(handle, options);
 }
 
-/** Called on app quit / test teardown so no test (or app shutdown) leaks a live watcher/subscription across runs. */
-export async function stopAllCloudSync(): Promise<void> {
+/** Runtime teardown closes watchers; process-exit teardown passes `{ closeWatchers: false }` so quitting never blocks on per-directory handle closes (R25, narrowed — see `stopCloudSyncForWorkspace`). Called on app quit / test teardown so no test (or app shutdown) leaks a live watcher/subscription across runs. */
+export async function stopAllCloudSync(
+	options?: StopCloudSyncOptions,
+): Promise<void> {
 	await Promise.all(
-		[...activeSyncs.keys()].map((root) => stopCloudSyncForWorkspace(root)),
+		[...activeSyncs.keys()].map((root) =>
+			stopCloudSyncForWorkspace(root, options),
+		),
 	);
 }
 

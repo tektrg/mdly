@@ -14,7 +14,7 @@ interface Position {
  * inline decoration from `CommentExtension.ts`) shows that thread right where
  * it was clicked -- the most direct of the four ways into a thread (the
  * others: side panel, rail marker, paragraph marker). Reuses `ThreadItem` so
- * reply/resolve/reopen behave identically here and in the panel.
+ * reply/resolve/reopen/delete behave identically here and in the panel.
  *
  * Positioned from the clicked mark's own live bounding rect (not a cached
  * pixel snapshot), recomputed on scroll/transaction so it tracks the text if
@@ -30,6 +30,7 @@ export function CommentThreadPopover({
 	onReply,
 	onResolve,
 	onReopen,
+	onDelete,
 }: {
 	editor: Editor | null;
 	viewportRef: RefObject<HTMLElement | null>;
@@ -37,6 +38,7 @@ export function CommentThreadPopover({
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 }) {
 	const [openThreadId, setOpenThreadId] = useState<string | null>(null);
 	const [position, setPosition] = useState<Position | null>(null);
@@ -103,9 +105,9 @@ export function CommentThreadPopover({
 		};
 
 		dom.addEventListener("click", handleClick);
-		// "transaction" (not "update") -- matches CommentGutter/CommentComposer:
-		// external reloads apply via setContent(doc, { emitUpdate: false }),
-		// which still dispatches a transaction.
+		// "transaction" (not "update") -- external reloads apply via
+		// setContent(doc, { emitUpdate: false }), which still dispatches a
+		// transaction.
 		editor.on("transaction", reposition);
 		viewport?.addEventListener("scroll", reposition, { passive: true });
 		window.addEventListener("pointerdown", handlePointerDownOutside, true);
@@ -140,11 +142,13 @@ export function CommentThreadPopover({
 		>
 			<ul className="m-0 list-none p-0">
 				<ThreadItem
+					key={thread.id}
 					thread={thread}
 					focused={false}
 					onReply={onReply}
 					onResolve={onResolve}
 					onReopen={onReopen}
+					onDelete={onDelete}
 				/>
 			</ul>
 		</div>

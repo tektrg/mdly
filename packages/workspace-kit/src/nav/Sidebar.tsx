@@ -59,7 +59,7 @@ import {
 	searchSidebarFiles,
 } from "./buildSearchResults";
 import { buildTagCounts } from "./buildTagCounts";
-import { RecentFilesList } from "./RecentFilesList";
+import { RecentFilesList, type RecentTagAppearance } from "./RecentFilesList";
 import { SearchList } from "./SearchList";
 import { type SidebarPage, SidebarPager } from "./SidebarPager";
 import { TagList } from "./TagList";
@@ -73,7 +73,7 @@ import {
 } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
-export type { SidebarFile, SidebarFolder, SidebarSortMode };
+export type { RecentTagAppearance, SidebarFile, SidebarFolder, SidebarSortMode };
 
 export type SidebarHandle = {
 	/**
@@ -204,10 +204,26 @@ type SidebarProps = {
 	 * a page needs (e.g. scanning for tags only once the Tags page is opened).
 	 */
 	onPageChange?: (pageId: string) => void;
-	/** Per-row leading glyph, e.g. the host's own colored tag badge. */
+	/** Per-row leading glyph on the Tags page, e.g. the host's own colored tag badge. */
 	renderTagIcon?: (name: string) => ReactNode;
-	/** Row label, when the host writes tags differently (e.g. a `#` prefix). */
+	/** Tags-page row label, when the host writes tags differently (e.g. a `#` prefix). */
 	formatTagLabel?: (name: string) => string;
+	/**
+	 * Separator that nests the Tags page into a tree (e.g. `"/"` turns
+	 * `meeting/deep-sync` into a `meeting` group holding a `deep-sync` leaf,
+	 * and expanding the leaf reveals its files inline). Opt-in: absent, the
+	 * Tags page renders the exact flat list it always has. The kit only
+	 * splits on the separator — namespace labels, humanized names and colors
+	 * stay host-owned via `formatTagGroupLabel` / `renderTagGroupIcon`
+	 * (leaves keep `renderTagIcon` / `formatTagLabel`).
+	 */
+	tagSeparator?: string;
+	/** Tree-mode group-row label for a group path (e.g. humanize it). Raw segment when absent. */
+	formatTagGroupLabel?: (groupPath: string) => string;
+	/** Tree-mode group-row leading glyph. */
+	renderTagGroupIcon?: (groupPath: string) => ReactNode;
+	/** Per-tag chip colors on the Recents page, e.g. the host's own tag hue. */
+	getRecentTagAppearance?: (name: string) => RecentTagAppearance;
 	tagsEmptyState?: ReactNode;
 	/**
 	 * Current search query. Host-owned so the same string can also drive the
@@ -267,6 +283,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 		onPageChange,
 		renderTagIcon,
 		formatTagLabel,
+		tagSeparator,
+		formatTagGroupLabel,
+		renderTagGroupIcon,
+		getRecentTagAppearance,
 		tagsEmptyState,
 		searchQuery = "",
 		onSearchChange,
@@ -1035,6 +1055,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 					currentPath={highlightPath}
 					getDisplayPath={getDisplayPath}
 					onSelectFile={onSelectFile}
+					getTagAppearance={getRecentTagAppearance}
 				/>
 			),
 		},
@@ -1054,6 +1075,15 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 					renderIcon={renderTagIcon}
 					formatLabel={formatTagLabel}
 					emptyState={tagsEmptyState}
+					tagSeparator={tagSeparator}
+					formatGroupLabel={formatTagGroupLabel}
+					renderGroupIcon={renderTagGroupIcon}
+					files={files}
+					getFileDisplayPath={getDisplayPath}
+					onSelectFile={onSelectFile}
+					activeFilePath={highlightPath}
+					storageScope={storageScope}
+					sortMode={sortMode}
 				/>
 			),
 		});

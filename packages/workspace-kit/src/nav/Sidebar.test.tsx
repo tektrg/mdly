@@ -297,6 +297,87 @@ describe("Sidebar symlink activation", () => {
 		expect(treePane?.textContent).not.toContain("most recent files");
 	});
 
+	it("renders tag chips on the recent-files page, pixel-exact to the host's recording-view chip, when the host supplies tags and getRecentTagAppearance", async () => {
+		await renderSidebar({
+			files: [
+				{
+					path: "/workspace/meeting.md",
+					modifiedAt: 1,
+					tags: ["work", "follow-up"],
+				},
+			],
+			onSelectTag: vi.fn(),
+			getRecentTagAppearance: (name) =>
+				name === "work"
+					? { background: "rgb(10, 20, 30)", color: "rgb(1, 2, 3)", border: "0.5px solid rgb(9, 9, 9)" }
+					: { background: "rgb(40, 50, 60)", color: "rgb(4, 5, 6)" },
+		});
+
+		await clickPagerDot("Recent files");
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+
+		expect(recentPane?.textContent).toContain("work");
+		expect(recentPane?.textContent).toContain("follow-up");
+		expect(recentPane?.textContent).not.toContain("#work");
+		expect(recentPane?.querySelector('svg[data-testid], [data-testid^="tag-icon-"]')).toBeFalsy();
+		const workTag = Array.from(recentPane?.querySelectorAll("span") ?? []).find(
+			(span) => span.textContent === "work",
+		);
+		// Exactly the reference TagChip's box: 22px tall, 8px/5px left/right
+		// padding, fully rounded, 11.5px/500-weight text -- plus whatever the
+		// host handed back for background/color/border, verbatim.
+		expect(workTag?.style.height).toBe("22px");
+		expect(workTag?.style.padding).toBe("0px 5px 0px 8px");
+		expect(workTag?.style.borderRadius).toBe("999px");
+		expect(workTag?.style.fontSize).toBe("11.5px");
+		expect(workTag?.style.fontWeight).toBe("500");
+		expect(workTag?.style.background).toBe("rgb(10, 20, 30)");
+		expect(workTag?.style.color).toBe("rgb(1, 2, 3)");
+		expect(workTag?.style.border).toBe("0.5px solid rgb(9, 9, 9)");
+	});
+
+	it("recent-files row renders unchanged when tags/getRecentTagAppearance are absent (default-absent guard)", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/plain.md", modifiedAt: 1 }],
+		});
+
+		await clickPagerDot("Recent files");
+		const row = rowButton("plain.md");
+
+		// Same shape as before tags existed on this page: filename + optional
+		// folder line only, no extra tag markup rendered.
+		expect(row?.textContent).toBe("plain.md");
+	});
+
+	it("renders created/updated dates on the recent-files page when the host supplies createdAt", async () => {
+		const createdAt = Date.UTC(2026, 0, 5);
+		const modifiedAt = Date.UTC(2026, 0, 9);
+		await renderSidebar({
+			files: [{ path: "/workspace/meeting.md", modifiedAt, createdAt }],
+		});
+
+		await clickPagerDot("Recent files");
+		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
+
+		// Two icon+date pairs (created, updated), same metadata-row shape as the
+		// host's own recent-recordings list -- no text labels, a leading glyph
+		// per fact instead.
+		expect(recentPane?.textContent).toContain("Jan 5, 2026");
+		expect(recentPane?.textContent).toContain("Jan 9, 2026");
+		expect(recentPane?.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("recent-files row renders unchanged when createdAt is absent (default-absent guard)", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/plain2.md", modifiedAt: 1 }],
+		});
+
+		await clickPagerDot("Recent files");
+		const row = rowButton("plain2.md");
+
+		expect(row?.textContent).toBe("plain2.md");
+	});
+
 	it("opens a file from the recent-files page with no action-menu affordance", async () => {
 		const onSelectFile = vi.fn();
 		await renderSidebar({
@@ -420,6 +501,141 @@ describe("Sidebar symlink activation", () => {
 			'[data-sidebar-page="tags"] [role="option"][aria-selected="true"]',
 		);
 		expect(selected?.textContent).toBe("meeting1");
+	});
+
+	it("tags page renders the exact flat list when no tagSeparator is given (default-absent guard)", async () => {
+		// The guard for existing hosts: omitting tagSeparator must render the
+		// same rows as before tree mode existed -- no groups, no chevrons, no
+		// inline files.
+		await renderSidebar({
+			files: [
+				{ path: "/workspace/a.md", tags: ["work", "meeting"] },
+				{ path: "/workspace/b.md", tags: ["work"] },
+			],
+			onSelectTag: vi.fn(),
+		});
+
+		await clickPagerDot("Tags");
+		const tagsPage = container.querySelector('[data-sidebar-page="tags"]');
+		const options = Array.from(
+			tagsPage?.querySelectorAll('[role="option"]') ?? [],
+		);
+		expect(options.map((option) => option.textContent)).toEqual([
+			"work2",
+			"meeting1",
+		]);
+		expect(tagsPage?.querySelector("[data-tag-group]")).toBeNull();
+		expect(tagsPage?.querySelector("[data-tag-leaf]")).toBeNull();
+		expect(tagsPage?.querySelector("[data-tag-file]")).toBeNull();
+		expect(tagsPage?.querySelector("[data-sidebar-chevron]")).toBeNull();
+	});
+
+	it("nests tags by tagSeparator and reveals files inline under an expanded leaf", async () => {
+		const onSelectTag = vi.fn();
+		const onSelectFile = vi.fn();
+
+		await renderSidebar({
+			files: [
+				{
+					path: "/workspace/2026-09-12 standup.md",
+					tags: ["meeting/deep-sync"],
+				},
+				{
+					path: "/workspace/standup-recording.m4a",
+					tags: ["meeting/deep-sync"],
+				},
+				{ path: "/workspace/weekly.md", tags: ["meeting/e-commerce-weekly"] },
+				{ path: "/workspace/todo.md", tags: ["work"] },
+			],
+			onSelectTag,
+			onSelectFile,
+			tagSeparator: "/",
+		});
+
+		await clickPagerDot("Tags");
+		const tagsPage = container.querySelector('[data-sidebar-page="tags"]');
+
+		// Raw segments, verbatim -- the kit never humanizes ("meeting", not
+		// "Meetings"); labels like that come from the host (next test).
+		expect(tagsPage?.textContent).toContain("meeting");
+		expect(tagsPage?.textContent).not.toContain("Meetings");
+		expect(tagsPage?.textContent).not.toContain("Deep Sync");
+		// Namespace starts collapsed: series and files hidden.
+		expect(tagsPage?.textContent).not.toContain("deep-sync");
+		expect(tagsPage?.textContent).not.toContain("standup.md");
+
+		await clickTagsRow("meeting");
+		expect(tagsPage?.textContent).toContain("deep-sync");
+		expect(tagsPage?.textContent).toContain("e-commerce-weekly");
+		expect(tagsPage?.textContent).not.toContain("standup.md");
+
+		// Expanding a leaf selects the tag AND reveals its files inline.
+		await clickTagsRow("deep-sync");
+		expect(onSelectTag).toHaveBeenCalledWith("meeting/deep-sync");
+		expect(tagsPage?.textContent).toContain("2026-09-12 standup.md");
+		expect(tagsPage?.textContent).toContain("standup-recording.m4a");
+
+		await clickTagsRow("2026-09-12 standup.md");
+		expect(onSelectFile).toHaveBeenCalledWith(
+			"/workspace/2026-09-12 standup.md",
+		);
+	});
+
+	it("labels and icons tree groups through host render-props, keeping leaf formatting separate", async () => {
+		await renderSidebar({
+			files: [{ path: "/workspace/a.md", tags: ["meeting/deep-sync"] }],
+			onSelectTag: vi.fn(),
+			tagSeparator: "/",
+			formatTagGroupLabel: (group) =>
+				group === "meeting" ? "Meetings" : group,
+			renderTagGroupIcon: () => <i data-testid="group-icon" />,
+			formatTagLabel: (name) => `#${name}`,
+		});
+
+		await clickPagerDot("Tags");
+		const tagsPage = container.querySelector('[data-sidebar-page="tags"]');
+		expect(tagsPage?.textContent).toContain("Meetings");
+		expect(tagsPage?.querySelector('[data-testid="group-icon"]')).toBeTruthy();
+
+		await clickTagsRow("Meetings");
+		// Leaves keep the host's tag formatting, not the group's.
+		expect(tagsPage?.textContent).toContain("#meeting/deep-sync");
+	});
+
+	it("orders inline tag files by the nav sort mode, like the folder tree", async () => {
+		const files: SidebarFile[] = [
+			// Alpha order and recent order disagree on purpose: b.md is newer.
+			{ path: "/workspace/b.md", modifiedAt: 2, tags: ["team/aptus"] },
+			{ path: "/workspace/a.md", modifiedAt: 1, tags: ["team/aptus"] },
+		];
+		const inlineFileNames = () =>
+			Array.from(
+				container.querySelectorAll('[data-sidebar-page="tags"] [data-tag-file]'),
+			).map((row) => row.textContent);
+
+		await renderSidebar({
+			files,
+			onSelectTag: vi.fn(),
+			tagSeparator: "/",
+			sortMode: "alpha",
+		});
+		await clickPagerDot("Tags");
+		await clickTagsRow("team");
+		await clickTagsRow("aptus");
+		expect(inlineFileNames()).toEqual(["a.md", "b.md"]);
+
+		cleanupRender();
+		await renderSidebar({
+			files,
+			onSelectTag: vi.fn(),
+			tagSeparator: "/",
+			sortMode: "recent",
+		});
+		await clickPagerDot("Tags");
+		await clickTagsRow("team");
+		await clickTagsRow("aptus");
+		// Most recently modified first, mirroring the folder tree.
+		expect(inlineFileNames()).toEqual(["b.md", "a.md"]);
 	});
 
 	it("swipes across all three pages without wrapping past the ends", async () => {
@@ -864,6 +1080,13 @@ describe("Sidebar symlink activation", () => {
 		searchQuery,
 		storageScope,
 		handleRef,
+		renderTagIcon,
+		formatTagLabel,
+		tagSeparator,
+		formatTagGroupLabel,
+		renderTagGroupIcon,
+		getRecentTagAppearance,
+		sortMode = "alpha",
 	}: {
 		files: SidebarFile[];
 		folders?: SidebarFolder[];
@@ -884,6 +1107,14 @@ describe("Sidebar symlink activation", () => {
 		searchQuery?: string;
 		storageScope?: string | null;
 		handleRef?: { current: SidebarHandle | null };
+		renderTagIcon?: Parameters<typeof Sidebar>[0]["renderTagIcon"];
+		formatTagLabel?: Parameters<typeof Sidebar>[0]["formatTagLabel"];
+		// Opt-in: omitting it must keep the exact flat Tags list (the default).
+		tagSeparator?: Parameters<typeof Sidebar>[0]["tagSeparator"];
+		formatTagGroupLabel?: Parameters<typeof Sidebar>[0]["formatTagGroupLabel"];
+		renderTagGroupIcon?: Parameters<typeof Sidebar>[0]["renderTagGroupIcon"];
+		getRecentTagAppearance?: Parameters<typeof Sidebar>[0]["getRecentTagAppearance"];
+		sortMode?: Parameters<typeof Sidebar>[0]["sortMode"];
 	}) {
 		await act(async () => {
 			root.render(
@@ -893,6 +1124,10 @@ describe("Sidebar symlink activation", () => {
 					currentPath={null}
 					files={files}
 					folders={folders}
+					formatTagLabel={formatTagLabel}
+					tagSeparator={tagSeparator}
+					formatTagGroupLabel={formatTagGroupLabel}
+					renderTagGroupIcon={renderTagGroupIcon}
 					getDisplayPath={getDisplayPath}
 					onBrokenSymlink={onBrokenSymlink}
 					onCollapse={onCollapse}
@@ -905,8 +1140,10 @@ describe("Sidebar symlink activation", () => {
 					onSelectTag={onSelectTag}
 					onSortModeChange={vi.fn()}
 					ref={handleRef}
+					renderTagIcon={renderTagIcon}
+					getRecentTagAppearance={getRecentTagAppearance}
 					searchQuery={searchQuery}
-					sortMode="alpha"
+					sortMode={sortMode}
 					storageScope={storageScope}
 				/>,
 			);
@@ -919,6 +1156,27 @@ describe("Sidebar symlink activation", () => {
 		expect(button).toBeTruthy();
 		await act(async () => {
 			button?.click();
+			await Promise.resolve();
+		});
+	}
+
+	function cleanupRender() {
+		act(() => root.unmount());
+		container.remove();
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	}
+
+	async function clickTagsRow(label: string) {		// Scoped to the Tags pane: file names also exist as rows on the
+		// (hidden) tree page, so an unscoped lookup would click the wrong one.
+		const tagsPage = container.querySelector('[data-sidebar-page="tags"]');
+		const button = Array.from(
+			tagsPage?.querySelectorAll("button") ?? [],
+		).find((candidate) => candidate.textContent?.includes(label));
+		expect(button).toBeTruthy();
+		await act(async () => {
+			(button as HTMLButtonElement | undefined)?.click();
 			await Promise.resolve();
 		});
 	}

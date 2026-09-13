@@ -20,16 +20,15 @@ type PaletteState = {
 
 const floatingChipClass =
 	"border border-border/50 bg-background/78 text-muted-foreground shadow-[var(--shadow-chip)] backdrop-blur-md";
+const CONTENT_COUNT_DEBOUNCE_MS = 2_000;
 
 export function FormattingStatusBar({
 	editor,
 	path,
-	scrollContainer,
 	onOpenRevisionHistory,
 }: {
 	editor: Editor | null;
 	path: string;
-	scrollContainer: HTMLDivElement | null;
 	/** Opt-in (see `EditorViewProps.onOpenRevisionHistory`); omit to render no history affordance. */
 	onOpenRevisionHistory?: (path: string) => void;
 }) {
@@ -43,57 +42,76 @@ export function FormattingStatusBar({
 
 	useEffect(() => {
 		if (!editor) return;
-		const resolvedScrollContainer =
-			scrollContainer ??
-			(editor.view.dom.closest(".editorViewport") as HTMLDivElement | null) ??
-			null;
+		let countUpdateTimer: ReturnType<typeof setTimeout> | undefined;
 
-		const update = () => {
+		// Content counts scan the whole document -- update them only when the
+		// document actually changed, never on cursor movement alone.
+		const updateCounts = () => {
 			const text = editor.getText();
 			const wordCount = countWords(text);
 			const charCount = text.length;
+			setPaletteState((previous) =>
+				previous.wordCount === wordCount && previous.charCount === charCount
+					? previous
+					: { ...previous, wordCount, charCount },
+			);
+		};
+
+		// Cursor formatting reads only selection-local state (stored marks),
+		// so it is cheap enough to refresh on every selection event without
+		// re-scanning the document.
+		const updateCaret = () => {
 			const { state } = editor;
-			if (!editor.isFocused || !state.selection.empty) {
-				setPaletteState({
-					wordCount,
-					charCount,
-					activeMarkNames: [],
-					canEscapeBoundary: false,
-				});
+			const next =
+				!editor.isFocused || !state.selection.empty
+					? { activeMarkNames: [] as string[], canEscapeBoundary: false }
+					: getCaretFormattingState(state);
+			setPaletteState((previous) =>
+				previous.canEscapeBoundary === next.canEscapeBoundary &&
+				sameMarkNames(previous.activeMarkNames, next.activeMarkNames)
+					? previous
+					: { ...previous, ...next },
+			);
+		};
+
+		const scheduleCountUpdate = () => {
+			if (countUpdateTimer !== undefined) clearTimeout(countUpdateTimer);
+			countUpdateTimer = setTimeout(() => {
+				countUpdateTimer = undefined;
+				updateCounts();
+			}, CONTENT_COUNT_DEBOUNCE_MS);
+		};
+
+		// A single keystroke fires both `selectionUpdate` and `transaction`;
+		// keep caret feedback immediate while moving the full-document scan out
+		// of the typing path and collapsing an edit burst into one recount.
+		const onTransaction = (event?: {
+			transaction?: { docChanged?: boolean };
+		}) => {
+			if (event?.transaction && event.transaction.docChanged === false) {
+				updateCaret();
 				return;
 			}
-
-			const caretState = getCaretFormattingState(state);
-			setPaletteState({
-				wordCount,
-				charCount,
-				activeMarkNames: caretState.activeMarkNames,
-				canEscapeBoundary: caretState.canEscapeBoundary,
-			});
+			scheduleCountUpdate();
+			updateCaret();
 		};
 
-		update();
-		requestAnimationFrame(update);
-		editor.on("selectionUpdate", update);
-		editor.on("transaction", update);
-		editor.on("focus", update);
-		editor.on("blur", update);
-		resolvedScrollContainer?.addEventListener("scroll", update, {
-			passive: true,
-		});
-		window.addEventListener("scroll", update, true);
-		window.addEventListener("resize", update);
+		updateCounts();
+		updateCaret();
+		requestAnimationFrame(updateCaret);
+		editor.on("selectionUpdate", updateCaret);
+		editor.on("transaction", onTransaction);
+		editor.on("focus", updateCaret);
+		editor.on("blur", updateCaret);
 
 		return () => {
-			editor.off("selectionUpdate", update);
-			editor.off("transaction", update);
-			editor.off("focus", update);
-			editor.off("blur", update);
-			resolvedScrollContainer?.removeEventListener("scroll", update);
-			window.removeEventListener("scroll", update, true);
-			window.removeEventListener("resize", update);
+			if (countUpdateTimer !== undefined) clearTimeout(countUpdateTimer);
+			editor.off("selectionUpdate", updateCaret);
+			editor.off("transaction", onTransaction);
+			editor.off("focus", updateCaret);
+			editor.off("blur", updateCaret);
 		};
-	}, [editor, scrollContainer]);
+	}, [editor]);
 	if (!editor) return null;
 	const fileName = fileNameFromPath(path);
 	const countLabel =
@@ -173,4 +191,8 @@ function countWords(text: string) {
 	const trimmed = text.trim();
 	if (trimmed.length === 0) return 0;
 	return trimmed.split(/\s+/).length;
+}
+
+function sameMarkNames(a: string[], b: string[]) {
+	return a.length === b.length && a.every((name, index) => name === b[index]);
 }

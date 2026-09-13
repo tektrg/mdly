@@ -1,8 +1,7 @@
 /*
  * Selection-triggered popup (trigger button + draft textarea), positioned
  * absolutely by CommentComposer.tsx via inline top/left. Visual family
- * matches CommentGutter.css's markers and the SidePanel used by
- * ThreadPanel.tsx.
+ * matches the paragraph markers and the SidePanel used by ThreadPanel.tsx.
  */
 .comment-composer-trigger {
 	z-index: 30;

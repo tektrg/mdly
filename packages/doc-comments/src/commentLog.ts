@@ -14,6 +14,7 @@ const VALID_KINDS: readonly CommentEventKind[] = [
 	"replied",
 	"resolved",
 	"reopened",
+	"deleted",
 ];
 
 export function commentsDirPath(workspaceRoot: string): string {

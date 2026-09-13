@@ -1,6 +1,6 @@
 {
 	"name": "@mdly/workspace-kit",
-	"version": "0.5.2",
+  "version": "0.8.3",
 	"description": "Shared Markdown editor engine, editor surface, and file-navigation UI for mdly-based products",
 	"license": "MIT",
 	"type": "module",
@@ -71,6 +71,7 @@
 		"@iconify-json/mingcute": "^1.2.7",
 		"@mdly/doc-comments": "workspace:*",
 		"@mdly/doc-history": "workspace:*",
+		"@mdly/workspace-scan": "workspace:*",
 		"@tailwindcss/vite": "^4.1.18",
 		"@types/hast": "^3.0.4",
 		"@types/mdast": "^4.0.4",

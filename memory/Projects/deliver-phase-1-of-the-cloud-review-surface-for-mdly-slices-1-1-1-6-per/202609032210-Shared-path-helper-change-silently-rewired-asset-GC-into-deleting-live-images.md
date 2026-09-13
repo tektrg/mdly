@@ -59,6 +59,48 @@ Say explicitly whether it may be modified in place or must be wrapped.
 Corollary for review scope: a fix round's blast radius is **not** the set of files the brief
 named. Grep every symbol the diff touched for other callers before signing off.
 
+## Update 2026-09-04 — it recurred twice more, on different axes
+
+Same bug — the asset GC deleting images a live note references — survived **three** fixes,
+each closing a different axis. Recorded because the shape is the lesson, not any one axis:
+
+| Round | Axis closed | What still deleted live images |
+|---|---|---|
+| 4 | structural path normalisation (`./`, `//`, `\`) | folder not named `*.assets` |
+| 5 | the `*.assets` folder gate, `#`/`?` encoding | **reference syntax** |
+| 6 | (in flight) | — |
+
+Round 5's matcher used `visit(tree, "image")`, so it saw only inline `![](…)`. Reference-style
+links, collapsed references, and **HTML `<img src=…>`** were invisible — all three reproduced
+end-to-end being tombstoned and deleted from R2. `<img>` is routine in agent-generated
+Markdown, which is this product's entire input. Separately, rows stored before round 4 are
+non-canonical, and the matcher only ever emits canonical paths, so *referenced* legacy rows
+were tombstoned too.
+
+### The rule that should have been applied at round 4
+
+> **A destructive operation must fail toward keeping data.** Deriving "is this still
+> referenced?" by enumerating the syntaxes a reference might take is unbounded — every round
+> finds another one. Derive it from a check that cannot miss: does the raw note text contain
+> this path at all?
+
+A raw-content containment scan is syntax-agnostic and over-retains (a path mentioned in prose
+keeps its asset alive). Over-retaining costs pennies of storage; over-deleting destroys the
+user's originals, because the tombstone propagates to the desktop and unlinks the local file.
+
+**Test for this class:** when a predicate gates deletion, ask *what happens when the predicate
+is wrong*. If a false negative deletes data, the predicate must be the conservative kind
+(containment, allow-list of what may be deleted) rather than the exhaustive kind (parse every
+form). Three rounds of whack-a-mole is the symptom of having picked the exhaustive kind.
+
+### Second recurrence of the consumer-check failure
+
+Round 5 changed what `totalOps` counts on the shared `SyncPlan`, which broke
+`apps/desktop/electron/cloudSyncWiring.ts` — a workspace with a permanently-rejected file
+never reports `done`. Same root cause as the original note above: a shared shape changed
+without enumerating its consumers, this time across a package boundary the round was told not
+to edit. Grepping consumers is now an explicit done-criterion in every brief.
+
 ## Related, same delivery
 
 The same round also fixed two defects onto `/api/files/batch` — an endpoint with **zero

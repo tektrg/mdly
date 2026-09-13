@@ -49,7 +49,10 @@ export {
 	hasLinkedNotionFrontMatter,
 	normalizeNotionMarkdownBody,
 } from "./notionMarkdownNormalization.js";
-export { tiptapDocToMarkdown } from "./prosemirrorToMarkdown.js";
+export {
+	sliceToMarkdown,
+	tiptapDocToMarkdown,
+} from "./prosemirrorToMarkdown.js";
 export { StoredMarksDecorationExtension } from "./StoredMarksDecorationExtension.js";
 export { StrikethroughShortcutExtension } from "./StrikethroughShortcutExtension.js";
 export {
@@ -59,6 +62,11 @@ export {
 	TableRowExtension,
 	tableExtensions,
 } from "./Table.js";
+export {
+	ToggleExtension,
+	ToggleSummaryExtension,
+	toggleBlockExtensions,
+} from "./ToggleBlock.js";
 export {
 	isSelectionAtStartOfNode,
 	nearestSharedParentOfType,

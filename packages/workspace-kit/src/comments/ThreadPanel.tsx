@@ -18,6 +18,8 @@ function eventVerb(kind: CommentThreadEvent["kind"]): string {
 			return "resolved";
 		case "reopened":
 			return "reopened";
+		case "deleted":
+			return "deleted";
 		default:
 			return kind;
 	}
@@ -42,13 +44,14 @@ function ThreadLogLine({
 	);
 }
 
-/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen) inline, without duplicating it. */
+/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen/delete) inline, without duplicating it. */
 export function ThreadItem({
 	thread,
 	focused,
 	onReply,
 	onResolve,
 	onReopen,
+	onDelete,
 	onJumpToThread,
 }: {
 	thread: ResolvedThread;
@@ -56,10 +59,12 @@ export function ThreadItem({
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
 	const [actionError, setActionError] = useState<string | null>(null);
+	const [confirmingDelete, setConfirmingDelete] = useState(false);
 	const isResolved = thread.state === "resolved";
 	const isOrphaned = thread.anchorResolution.status === "orphaned";
 
@@ -90,6 +95,26 @@ export function ThreadItem({
 			() => setActionError(null),
 			(err: unknown) => setActionError(describeError(err)),
 		);
+	};
+
+	const handleDeleteRequest = () => {
+		setActionError(null);
+		setConfirmingDelete(true);
+	};
+
+	const handleDeleteConfirm = () => {
+		onDelete(thread.id).then(
+			() => {
+				setActionError(null);
+				setConfirmingDelete(false);
+			},
+			(err: unknown) => setActionError(describeError(err)),
+		);
+	};
+
+	const handleDeleteCancel = () => {
+		setConfirmingDelete(false);
+		setActionError(null);
 	};
 
 	return (
@@ -195,6 +220,41 @@ export function ThreadItem({
 						</Button>
 					</>
 				)}
+				{confirmingDelete ? (
+					<>
+						<Button
+							type="button"
+							variant="destructive"
+							size="sm"
+							data-confirm-delete-button
+							data-thread-id={thread.id}
+							onClick={handleDeleteConfirm}
+						>
+							Confirm delete
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							data-cancel-delete-button
+							data-thread-id={thread.id}
+							onClick={handleDeleteCancel}
+						>
+							Cancel
+						</Button>
+					</>
+				) : (
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						data-delete-button
+						data-thread-id={thread.id}
+						onClick={handleDeleteRequest}
+					>
+						Delete
+					</Button>
+				)}
 			</div>
 		</li>
 	);
@@ -209,6 +269,7 @@ export function ThreadPanel(props: {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
 }) {
@@ -220,6 +281,7 @@ export function ThreadPanel(props: {
 		onReply,
 		onResolve,
 		onReopen,
+		onDelete,
 		onJumpToThread,
 		error,
 	} = props;
@@ -250,12 +312,13 @@ export function ThreadPanel(props: {
 	}, [resolvedOpen, focusedThreadId]);
 
 	return (
-		<SidePanel open={resolvedOpen} onOpenChange={handleOpenChange} title="Comments">
+		<SidePanel
+			open={resolvedOpen}
+			onOpenChange={handleOpenChange}
+			title="Comments"
+		>
 			{error ? (
-				<p
-					className="m-0 text-destructive text-sm"
-					data-comment-panel-error
-				>
+				<p className="m-0 text-destructive text-sm" data-comment-panel-error>
 					{error}
 				</p>
 			) : threads.length === 0 ? (
@@ -279,6 +342,7 @@ export function ThreadPanel(props: {
 							onReply={onReply}
 							onResolve={onResolve}
 							onReopen={onReopen}
+							onDelete={onDelete}
 							onJumpToThread={onJumpToThread}
 						/>
 					))}

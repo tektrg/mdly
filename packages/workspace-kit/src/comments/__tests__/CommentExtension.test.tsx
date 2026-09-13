@@ -86,7 +86,9 @@ describe("CommentExtension", () => {
 			makeThread({ anchorResolution: { status: "orphaned" } }),
 		]);
 
-		expect(editor.view.dom.querySelectorAll(".pm-comment-mark")).toHaveLength(0);
+		expect(editor.view.dom.querySelectorAll(".pm-comment-mark")).toHaveLength(
+			0,
+		);
 	});
 
 	it("R17 -- two fully-overlapping threads both render as independent decorations, not merged", () => {
@@ -126,6 +128,45 @@ describe("CommentExtension", () => {
 		// mark, even though ProseMirror's own DOM renderer may coalesce the two
 		// into a single wrapping `<span>` for display.
 		expect(() => setCommentThreads(editor, threads)).not.toThrow();
-		expect(editor.view.dom.querySelectorAll(".pm-comment-mark").length).toBeGreaterThan(0);
+		expect(
+			editor.view.dom.querySelectorAll(".pm-comment-mark").length,
+		).toBeGreaterThan(0);
+	});
+
+	// Regression for the 2026-09-02 renderer-storm crash (crash-trace.log:
+	// ~766K `editor.transaction` dispatches over one 23-minute idle session,
+	// every one carrying only `commentThreadsKey`'s meta, steps:0,
+	// docChanged:false). `useCommentThreads`'s `editor.on("transaction", ...)`
+	// listener re-runs on every dispatch including `setCommentThreads`'s own,
+	// so if `setCommentThreads` dispatches unconditionally, ANY caller that
+	// ever passes a content-identical-but-freshly-allocated `ResolvedThread[]`
+	// (e.g. a refetch racing a no-op) re-ignites that listener with no upper
+	// bound. Before the ignition guard, this test's second call dispatched a
+	// second transaction and failed.
+	it("does not dispatch a second transaction when called again with content-identical (but freshly-allocated) threads", () => {
+		const editor = createEditor();
+		const first = [makeThread()];
+		// A structurally-identical but reference-distinct array/objects -- the
+		// shape a refetch or a re-render produces even when nothing changed.
+		const second = [makeThread()];
+		expect(first).not.toBe(second);
+		expect(first[0]).not.toBe(second[0]);
+
+		let dispatchCount = 0;
+		const originalDispatch = editor.view.dispatch.bind(editor.view);
+		editor.view.dispatch = (tr) => {
+			dispatchCount++;
+			return originalDispatch(tr);
+		};
+
+		setCommentThreads(editor, first);
+		expect(dispatchCount).toBe(1);
+
+		setCommentThreads(editor, second);
+		expect(dispatchCount).toBe(1);
+
+		// A genuinely different list must still get through.
+		setCommentThreads(editor, [makeThread({ state: "resolved" })]);
+		expect(dispatchCount).toBe(2);
 	});
 });

@@ -1,14 +1,14 @@
 # Plan: Local Document History (versions + diff)
 
-**Status:** Approved — progress tracked per slice below. (2026-08-14 not-started → 2026-08-27: slices 1 and 3 shipped, slice 2 pending.)
+**Status:** Approved — progress tracked per slice below. (2026-08-14 not-started → 2026-08-27: slices 1 and 3 shipped, slice 2 pending → 2026-08-28: slice 3's review UX revised, see gate below.)
 **Scope of this doc:** slices 1–3, all in this repo. A second consumer adopts the
 same packages afterwards (see *Second-consumer constraints*).
 
 ## What the user gets
 
-> Claude Code edits a note in your folder. mdly notices, snapshots it, and shows a
-> badge: **"changed outside the app — review"**. You open a diff and accept or
-> reject each changed region.
+> Claude Code edits a note in your folder. mdly notices, snapshots it, and applies
+> the change automatically — no dialog to act on first. If it wasn't wanted, one
+> **Undo** reverts the whole file back to what you had.
 
 Plus the ordinary case: a timeline of past versions of any note, readable offline,
 with no account and no server.
@@ -20,7 +20,7 @@ with no account and no server.
 | Where history lives | In the workspace folder, `.mdly/history/` |
 | Cross-device | Carried by whatever syncs the folder (iCloud/Drive/git). No backend. |
 | When a version is cut | Around external/agent writes, plus idle human sessions |
-| Review granularity | Per changed region (accept/reject), not whole-file |
+| Review granularity | **Revised 2026-08-28: whole-file auto-apply + Undo**, not per-region accept/reject (see gate below) |
 | Comments | **Out of scope here.** Separate follow-on feature. |
 | Cloud | **Not on the critical path.** Everything here works offline. |
 
@@ -93,6 +93,11 @@ Undo covers that window; history does not.
 
 ### Diff and accept/reject
 
+**Revised 2026-08-28:** this machinery is no longer used by the desktop app's
+external-change handling (see gate below) — the app now auto-applies external
+edits and offers one whole-file Undo. It's kept here because slice 2's CLI
+(`diff <note> --json`, the agent-facing surface) still needs it.
+
 - Line-level comparison, with word-level refinement inside changed areas **for
   display only**.
 - A **region** is a contiguous run of changed lines plus context. Each region gets
@@ -125,7 +130,7 @@ to ship a store with no way to read it.
 |---|---|
 | 1 — store (`@mdly/doc-history`) | **Shipped** (`packages/doc-history` exists) |
 | 2 — read side + CLI (`history`/`diff`/`restore`) | **Not done.** `packages/cli` still knows only `cloud` |
-| 3 — diff UI in the kit | **Shipped** (`packages/workspace-kit/src/history/`) |
+| 3 — diff UI in the kit | **Revised, in progress.** Per-region review UI (`DiffReviewPanel`, `ExternalChangeReviewDialog`) removed; replaced with auto-apply + whole-file Undo. See gate below. |
 
 ### Slice 1 — the store *(size: M)*
 
@@ -151,12 +156,12 @@ real notes folder.
 
 ### Slice 3 — diff UI in the kit *(size: M)*
 
-Revision timeline plus inline diff with per-region accept/reject. The
-external-change badge is the demo.
+Revision timeline, plus external edits auto-apply with a whole-file Undo pill
+(revised 2026-08-28 — was per-region accept/reject; see gate below).
 
 **Verified by:** kit unit tests plus a manual pass in the desktop dev app —
-external write (edit a note with another tool while mdly has it open) must produce
-the badge, and accept/reject must land the expected bytes on disk.
+external write (edit a note with another tool while mdly has it open) must
+auto-apply, and Undo must restore the exact prior bytes.
 
 ### Slice 4 — second consumer *(tracked in that repo, not here)*
 
@@ -205,3 +210,43 @@ A rename-chain conformance test belongs in `packages/doc-history` from slice 1.
    it annoys someone.
 3. **Comments** anchor into the same text-matching machinery this builds. Do not
    design the anchor format here, but do not make it impossible either.
+
+---
+
+<details>
+<summary>**Gate cleared — slice 3 review UX simplified to auto-apply + Undo** — gate: `Keep the in-progress rewrite (auto-apply + whole-file Undo) or revert to the approved per-region review UI?` · asked 2026-08-28T00:00:00+00:00</summary>
+
+## Local doc history — slice 3 direction change
+
+Found uncommitted work rewriting how mdly handles a note being edited outside
+the app (e.g. by Claude Code) while it's also open in mdly. It deletes
+`ExternalChangeReviewDialog` and `DiffReviewPanel` and replaces the whole
+conflict/review flow with: the external edit auto-applies immediately, and one
+**Undo** pill restores the whole file to what it was.
+
+### Why this needed a decision before continuing
+
+This directly reverses what this doc had marked **Approved** and **Shipped**:
+the original promise was a badge — *"changed outside the app — review"* — that
+opened a diff and let you accept or reject each changed region individually.
+The new code instead never blocks or asks; it just applies the change and
+gives you one way back out.
+
+### The call
+
+- **Recommended: keep the new auto-apply + Undo model.** Far less code and far
+  fewer edge cases (no more "conflict" vs "review" distinction, no per-region
+  merge state to keep consistent). Trade-off: if an outside tool changes
+  several things at once and only part of it is wanted, there's no way to
+  keep some and discard others — Undo is all-or-nothing for that file.
+- **Alternative: revert to per-region accept/reject**, restoring the deleted
+  dialog/panel. Matches what was already documented as shipped, but keeps the
+  more complex code path — the diff being replaced contains detailed
+  bug-fix-style comments (e.g. referencing issue tags like `R12/QA1a`, a
+  write-echo race) suggesting the old flow had real, hard-to-fix bugs.
+
+**Decision: keep the auto-apply + Undo model.** This doc's "What the user
+gets," decision table, and slice 3 status above are updated accordingly.
+
+</details>
+

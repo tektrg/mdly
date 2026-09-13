@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
 	CloudSyncStatus,
 	DesktopApi,
+	MainProcessErrorNoticePayload,
 	SyncProgress,
 } from "../src/desktopApi/types";
 
@@ -234,6 +235,11 @@ const desktopApi = {
 		),
 	onCommentsChanged: (callback) =>
 		subscribe("desktop:comments-changed", (path: string) => callback(path)),
+	onMainProcessError: (callback) =>
+		subscribe(
+			"desktop:main-process-error",
+			(payload: MainProcessErrorNoticePayload) => callback(payload),
+		),
 } satisfies DesktopApi;
 
 contextBridge.exposeInMainWorld("desktopApi", desktopApi);

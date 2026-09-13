@@ -2,10 +2,6 @@
 import { resolve } from "node:path";
 import { parseArgs as parseNodeArgs } from "node:util";
 import {
-	createConvexBackend,
-	createConvexSubscriber,
-} from "@hubble.md/convex-client";
-import {
 	type CloudSyncConfig,
 	readConfigOrDefault,
 	removeCloudSyncConfig,
@@ -15,12 +11,42 @@ import {
 	writeSyncState,
 } from "@hubble.md/sync";
 import { createNodeFileSystem } from "@hubble.md/sync/node";
+import {
+	createCloudflareBackend,
+	createCloudflareSubscriber,
+} from "@mdly/cloudflare-client";
+import { createNodeWebSocketFactory } from "@mdly/cloudflare-client/node-ws";
 import chokidar from "chokidar";
+import { runDryRunCommand } from "./dryRun.js";
 
 const fs = createNodeFileSystem();
 
-function getConvexUrl(): string {
-	return process.env.CONVEX_URL ?? "http://127.0.0.1:3210";
+function getWorkerUrl(): string {
+	return process.env.HUBBLE_CLOUD_URL ?? "http://127.0.0.1:8787";
+}
+
+/**
+ * Stage 1/3 simplification: the bearer credential IS the shared Worker
+ * password itself (see apps/www/worker/auth.ts) — there's no per-device
+ * token yet, that's Stage 4's Keychain work. Read fresh on every call rather
+ * than once at startup so a `create`+`connect`+`sync` run in one shell always
+ * sees the current value.
+ */
+function getBearerToken(): string {
+	const token = process.env.HUBBLE_CLOUD_PASSWORD;
+	if (!token) {
+		throw new Error(
+			"Missing HUBBLE_CLOUD_PASSWORD. Set it to the shared Cloud Sync password before running any `hubble cloud` command.",
+		);
+	}
+	return token;
+}
+
+function createBackend(baseUrl: string) {
+	return createCloudflareBackend({
+		baseUrl,
+		auth: { kind: "bearer", token: getBearerToken() },
+	});
 }
 
 type CliArgs = {
@@ -83,6 +109,12 @@ async function runCloudCommand(parsed: CliArgs) {
 		case "watch":
 			await runWatch(workspacePath);
 			return;
+		case "dry-run":
+			// D1: zero network calls, reuses the real notes+assets walkers.
+			// Does not require an existing Cloud Sync connection — this is
+			// meant to be run BEFORE the first `cloud create`/`connect`.
+			await runDryRunCommand(workspacePath);
+			return;
 	}
 
 	printUsage();
@@ -116,7 +148,7 @@ async function runCreate(workspacePath: string, opts: CliArgs) {
 	}
 
 	const deploymentUrl = getDeploymentUrl(opts);
-	const backend = createConvexBackend(deploymentUrl);
+	const backend = createBackend(deploymentUrl);
 	const workspaceId = await backend.createWorkspace(opts.workspaceName);
 	await writeCloudConnection(workspacePath, {
 		deploymentUrl,
@@ -138,7 +170,7 @@ async function runConnect(workspacePath: string, opts: CliArgs) {
 	}
 
 	const deploymentUrl = getDeploymentUrl(opts);
-	const backend = createConvexBackend(deploymentUrl);
+	const backend = createBackend(deploymentUrl);
 	const workspaceId =
 		opts.workspaceId ?? (await backend.getWorkspace(opts.workspaceName ?? ""));
 
@@ -166,7 +198,7 @@ async function writeCloudConnection(
 	const current = await readConfigOrDefault(fs, workspacePath);
 	const deviceId = current.cloudSync?.deviceId ?? crypto.randomUUID();
 	const config = await writeCloudSyncConfig(fs, workspacePath, {
-		provider: "convex",
+		provider: "cloudflare",
 		deploymentUrl: opts.deploymentUrl,
 		workspaceId: opts.workspaceId,
 		deviceId,
@@ -179,7 +211,7 @@ async function writeCloudConnection(
 }
 
 function getDeploymentUrl(opts: Pick<CliArgs, "deploymentUrl">): string {
-	return opts.deploymentUrl ?? getConvexUrl();
+	return opts.deploymentUrl ?? getWorkerUrl();
 }
 
 async function syncOnce(
@@ -187,7 +219,7 @@ async function syncOnce(
 	cloudSync: CloudSyncConfig,
 	reason: string,
 ) {
-	const backend = createConvexBackend(cloudSync.deploymentUrl);
+	const backend = createBackend(cloudSync.deploymentUrl);
 	const result = await runSync(backend, fs, workspacePath);
 	logResult(reason, result);
 	return result;
@@ -197,14 +229,18 @@ async function syncContinuously(
 	workspacePath: string,
 	cloudSync: CloudSyncConfig,
 ) {
-	const convexUrl = cloudSync.deploymentUrl;
+	const workerUrl = cloudSync.deploymentUrl;
 	console.log(`Hubble Sync watching ${workspacePath}`);
 	console.log(`Workspace: ${cloudSync.workspaceId}`);
 
 	const scheduler = createSyncScheduler(workspacePath, cloudSync);
 	await scheduler.enqueue("startup");
 
-	const subscriber = createConvexSubscriber(convexUrl);
+	const subscriber = createCloudflareSubscriber({
+		baseUrl: workerUrl,
+		auth: { kind: "bearer", token: getBearerToken() },
+		webSocketFactory: createNodeWebSocketFactory(),
+	});
 	const unsubscribe = subscriber.onFilesChanged(
 		cloudSync.workspaceId,
 		() => {
@@ -387,6 +423,9 @@ function printHelp(args: CliArgs) {
 		case "disconnect":
 			printDisconnectHelp();
 			return;
+		case "dry-run":
+			printDryRunHelp();
+			return;
 		default:
 			printCloudHelp();
 	}
@@ -410,6 +449,15 @@ function printCloudHelp() {
 	console.log("  sync        Run one sync");
 	console.log("  watch       Sync continuously");
 	console.log("  disconnect  Remove Cloud Sync config");
+	console.log("  dry-run     Preview which files would sync, no network calls");
+	console.log("");
+	console.log("Environment:");
+	console.log(
+		"  HUBBLE_CLOUD_PASSWORD  Shared Cloud Sync password (required for create/connect/sync/watch)",
+	);
+	console.log(
+		"  HUBBLE_CLOUD_URL       Default deployment URL if --url is omitted (default http://127.0.0.1:8787)",
+	);
 }
 
 function printCreateHelp() {
@@ -418,7 +466,7 @@ function printCreateHelp() {
 	console.log("");
 	console.log("Options:");
 	console.log("  --name name  Remote workspace name to create");
-	console.log("  --url url    Convex deployment URL");
+	console.log("  --url url    Cloud Sync deployment URL (Worker base URL)");
 }
 
 function printConnectHelp() {
@@ -430,7 +478,7 @@ function printConnectHelp() {
 	console.log("Options:");
 	console.log("  --name name  Existing remote workspace name");
 	console.log("  --id id      Existing remote workspace id");
-	console.log("  --url url    Convex deployment URL");
+	console.log("  --url url    Cloud Sync deployment URL (Worker base URL)");
 }
 
 function printSyncHelp() {
@@ -454,6 +502,19 @@ function printDisconnectHelp() {
 	console.log("Removes cloudSync from .hubble/config.json.");
 }
 
+function printDryRunHelp() {
+	console.log("Usage:");
+	console.log("  hubble [--cwd path] cloud dry-run");
+	console.log("");
+	console.log(
+		"Prints every file that would sync under the current ignore rules —",
+	);
+	console.log(
+		"no network calls, no Cloud Sync connection required. Run this before",
+	);
+	console.log("the first `cloud create`/`connect` to patch .gitignore first.");
+}
+
 function printUsage() {
 	console.error("Usage:");
 	console.error("  hubble [--cwd path] cloud create --name name [--url url]");
@@ -463,6 +524,7 @@ function printUsage() {
 	console.error("  hubble [--cwd path] cloud sync");
 	console.error("  hubble [--cwd path] cloud watch");
 	console.error("  hubble [--cwd path] cloud disconnect");
+	console.error("  hubble [--cwd path] cloud dry-run");
 }
 
 void main();

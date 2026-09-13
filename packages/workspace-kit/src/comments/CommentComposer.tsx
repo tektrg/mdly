@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { type RefObject, useEffect, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
 import { buildCommentAnchor } from "./buildAnchor.js";
 import "./CommentComposer.css";
@@ -40,6 +40,11 @@ export function CommentComposer({
 	const [draft, setDraft] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+	useEffect(() => {
+		if (composing) composerTextareaRef.current?.focus();
+	}, [composing]);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -127,6 +132,7 @@ export function CommentComposer({
 			style={{ position: "absolute", top: position.top, left: position.left }}
 		>
 			<textarea
+				ref={composerTextareaRef}
 				data-comment-composer-textarea
 				value={draft}
 				disabled={submitting}

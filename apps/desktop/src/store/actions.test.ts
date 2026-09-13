@@ -128,7 +128,7 @@ describe("desktop savePathContent", () => {
 		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 	});
 
-	it("does not let an automatic idle/forced history cut silently win an unresolved external-change conflict", async () => {
+	it("force-saves unconditionally even right after an external change was auto-applied", async () => {
 		const api = createDesktopApi();
 		const { appStore, savePathContent, viewerStore } =
 			await loadStoreActions(api);
@@ -142,7 +142,7 @@ describe("desktop savePathContent", () => {
 				lastOpenedPath: path,
 				content: "my local edit",
 				diskContent: "before",
-				externalChange: { kind: "conflict", diskContent: "changed outside" },
+				externalChange: { kind: "applied", previousContent: "original" },
 				status: "ready",
 				error: null,
 			},
@@ -150,68 +150,16 @@ describe("desktop savePathContent", () => {
 
 		// The idle/forced cut always calls savePathContent with force: true and
 		// a historyCause, exactly like DocumentViewer's handleIdleOrForcedCut.
+		// There is nothing left to "silently win" -- an applied external change
+		// never blocks a save, guard-free.
 		await savePathContent(path, "my local edit", {
 			force: true,
 			historyCause: "idle-session",
 		});
-
-		expect(api.writeFileText).not.toHaveBeenCalled();
-		expect(viewerStore.get().externalChange).toEqual({
-			kind: "conflict",
-			diskContent: "changed outside",
+		expect(api.writeFileText).toHaveBeenCalledWith(path, "my local edit", {
+			historyCause: "idle-session",
 		});
-
-		// Resolving the conflict through "Keep My Edits" (force: true, no
-		// historyCause) still works exactly as before this fix.
-		await savePathContent(path, "my local edit", { force: true });
-		expect(api.writeFileText).toHaveBeenCalledWith(path, "my local edit");
 		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
-
-		// Once resolved, a subsequent idle/forced cut behaves normally again.
-		api.writeFileText.mockClear();
-		await savePathContent(path, "later edit", {
-			force: true,
-			historyCause: "idle-session",
-		});
-		expect(api.writeFileText).toHaveBeenCalledWith(path, "later edit", {
-			historyCause: "idle-session",
-		});
-	});
-
-	it("does not let an automatic idle/forced history cut silently win a pending review either (QA1c, R22)", async () => {
-		const api = createDesktopApi();
-		const { appStore, savePathContent, viewerStore } =
-			await loadStoreActions(api);
-		const path = "/workspace/note.md";
-
-		appStore.set((current) => ({
-			...current,
-			document: {
-				...current.document,
-				currentPath: path,
-				lastOpenedPath: path,
-				content: "my local edit",
-				diskContent: "before",
-				externalChange: { kind: "review", diskContent: "changed outside" },
-				status: "ready",
-				error: null,
-			},
-		}));
-
-		// Before the "review" kind existed, this same call only special-cased
-		// "conflict" here, so a pending review would have bypassed the `if
-		// (!force)` preflight entirely and silently overwritten the disk's
-		// reviewed external content with stale local text.
-		await savePathContent(path, "my local edit", {
-			force: true,
-			historyCause: "idle-session",
-		});
-
-		expect(api.writeFileText).not.toHaveBeenCalled();
-		expect(viewerStore.get().externalChange).toEqual({
-			kind: "review",
-			diskContent: "changed outside",
-		});
 	});
 });
 
@@ -220,7 +168,7 @@ describe("desktop external change review", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("classifies a clean external edit as a pending review, not a silent reload (R1)", async () => {
+	it("auto-applies a clean external edit and offers an Undo (R1)", async () => {
 		const api = createDesktopApi();
 		const { appStore, handleExternalFileChange, viewerStore } =
 			await loadStoreActions(api);
@@ -242,16 +190,16 @@ describe("desktop external change review", () => {
 
 		handleExternalFileChange(path, "original\n\nexternal edit");
 
-		// The editor's visible content is untouched until the user acts on it.
-		expect(viewerStore.get().content).toBe("original");
-		expect(viewerStore.get().diskContent).toBe("original");
+		// The external edit lands immediately -- no frozen baseline, no popup.
+		expect(viewerStore.get().content).toBe("original\n\nexternal edit");
+		expect(viewerStore.get().diskContent).toBe("original\n\nexternal edit");
 		expect(viewerStore.get().externalChange).toEqual({
-			kind: "review",
-			diskContent: "original\n\nexternal edit",
+			kind: "applied",
+			previousContent: "original",
 		});
 	});
 
-	it("refreshes a pending review to the cumulative change when a second external edit lands (R11)", async () => {
+	it("keeps auto-applying cumulative external edits, one Undo step at a time", async () => {
 		const api = createDesktopApi();
 		const { appStore, handleExternalFileChange, viewerStore } =
 			await loadStoreActions(api);
@@ -273,20 +221,24 @@ describe("desktop external change review", () => {
 
 		handleExternalFileChange(path, "original\n\nfirst edit");
 		expect(viewerStore.get().externalChange).toEqual({
-			kind: "review",
-			diskContent: "original\n\nfirst edit",
+			kind: "applied",
+			previousContent: "original",
 		});
 
 		handleExternalFileChange(path, "original\n\nfirst edit\n\nsecond edit");
 
-		expect(viewerStore.get().content).toBe("original");
+		expect(viewerStore.get().content).toBe(
+			"original\n\nfirst edit\n\nsecond edit",
+		);
+		// Undo only steps back to just before the latest external edit, not all
+		// the way to the pre-edit original.
 		expect(viewerStore.get().externalChange).toEqual({
-			kind: "review",
-			diskContent: "original\n\nfirst edit\n\nsecond edit",
+			kind: "applied",
+			previousContent: "original\n\nfirst edit",
 		});
 	});
 
-	it("clears a stale pending review when a second external write restores the original content (R32)", async () => {
+	it("still offers Undo when a second external write reverts to the original content", async () => {
 		const api = createDesktopApi();
 		const { appStore, handleExternalFileChange, viewerStore } =
 			await loadStoreActions(api);
@@ -307,13 +259,17 @@ describe("desktop external change review", () => {
 		}));
 
 		handleExternalFileChange(path, "original\n\nexternal edit");
-		expect(viewerStore.get().externalChange.kind).toBe("review");
+		expect(viewerStore.get().externalChange.kind).toBe("applied");
 
-		// The external tool undoes its own edit, restoring the exact pre-review
-		// bytes — nothing is left to review.
+		// The external tool undoes its own edit -- this is just another disk
+		// change, auto-applied like any other, with its own Undo.
 		handleExternalFileChange(path, "original");
 
-		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
+		expect(viewerStore.get().content).toBe("original");
+		expect(viewerStore.get().externalChange).toEqual({
+			kind: "applied",
+			previousContent: "original\n\nexternal edit",
+		});
 	});
 
 	it("keeps silently reloading non-Markdown files instead of raising a review badge (R15)", async () => {
@@ -371,133 +327,43 @@ describe("desktop external change review", () => {
 		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 	});
 
-	describe("resolveExternalChangeReview", () => {
-		function setPendingReview(
-			appStore: Awaited<ReturnType<typeof loadStoreActions>>["appStore"],
-			path: string,
-			{
-				content = "original",
-				diskContent = "original\n\nexternal edit",
-			}: { content?: string; diskContent?: string } = {},
-		) {
+	describe("undoExternalChange", () => {
+		it("restores previousContent, clears the pending applied change, and saves it", async () => {
+			const api = createDesktopApi();
+			api.readFileText.mockImplementation(
+				async () => "original\n\nexternal edit",
+			);
+			const { appStore, undoExternalChange, viewerStore } =
+				await loadStoreActions(api);
+			const path = "/workspace/note.md";
+
 			appStore.set((current) => ({
 				...current,
 				document: {
 					...current.document,
 					currentPath: path,
 					lastOpenedPath: path,
-					content,
-					diskContent: content,
-					externalChange: { kind: "review", diskContent },
+					content: "original\n\nexternal edit",
+					diskContent: "original\n\nexternal edit",
+					externalChange: { kind: "applied", previousContent: "original" },
 					status: "ready",
 					error: null,
 				},
 			}));
-		}
 
-		it("writes the merged text tagged 'manual' and clears the review on success (R6, R7)", async () => {
-			const api = createDesktopApi();
-			const externalEditText = "original\n\nexternal edit";
-			api.readFileText.mockResolvedValue(externalEditText);
-			const { appStore, resolveExternalChangeReview, viewerStore } =
-				await loadStoreActions(api);
-			const path = "/workspace/note.md";
-			setPendingReview(appStore, path, { diskContent: externalEditText });
+			await undoExternalChange();
 
-			const mergedText = "original\n\naccepted region";
-			const applied = await resolveExternalChangeReview(mergedText);
-
-			expect(applied).toBe(true);
-			expect(api.writeFileText).toHaveBeenCalledWith(path, mergedText, {
+			expect(viewerStore.get().content).toBe("original");
+			expect(viewerStore.get().diskContent).toBe("original");
+			expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
+			expect(api.writeFileText).toHaveBeenCalledWith(path, "original", {
 				historyCause: "manual",
 			});
-			expect(viewerStore.get().content).toBe(mergedText);
-			expect(viewerStore.get().diskContent).toBe(mergedText);
-			expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 		});
 
-		it("does not silently discard local edits typed while the review badge was showing (Blocker 3)", async () => {
+		it("is a no-op when there is no applied external change to undo", async () => {
 			const api = createDesktopApi();
-			const externalEditText = "original\n\nexternal edit";
-			api.readFileText.mockResolvedValue(externalEditText);
-			const { appStore, resolveExternalChangeReview, viewerStore } =
-				await loadStoreActions(api);
-			const path = "/workspace/note.md";
-			setPendingReview(appStore, path, { diskContent: externalEditText });
-
-			// The editor stays live while the badge is showing -- simulate the
-			// user typing more into it without the frozen baseline (diskContent)
-			// moving.
-			appStore.set((current) => ({
-				...current,
-				document: {
-					...current.document,
-					content: "original\n\nlocally typed edit",
-				},
-			}));
-
-			const applied = await resolveExternalChangeReview(
-				"original\n\naccepted region",
-			);
-
-			expect(applied).toBe(false);
-			expect(api.writeFileText).not.toHaveBeenCalled();
-			// Neither the pending review nor the user's local typing is discarded.
-			expect(viewerStore.get().externalChange).toEqual({
-				kind: "review",
-				diskContent: externalEditText,
-			});
-			expect(viewerStore.get().content).toBe("original\n\nlocally typed edit");
-		});
-
-		it("preserves the pending review and surfaces an error when the write-back fails (R23, QA2a)", async () => {
-			const api = createDesktopApi();
-			const externalEditText = "original\n\nexternal edit";
-			api.readFileText.mockResolvedValue(externalEditText);
-			api.writeFileText.mockRejectedValue(new Error("disk full"));
-			const { appStore, resolveExternalChangeReview, viewerStore } =
-				await loadStoreActions(api);
-			const path = "/workspace/note.md";
-			setPendingReview(appStore, path, { diskContent: externalEditText });
-
-			await resolveExternalChangeReview("original\n\naccepted region");
-
-			// The picks are not silently discarded — the pending review is exactly
-			// as it was, available to retry.
-			expect(viewerStore.get().externalChange).toEqual({
-				kind: "review",
-				diskContent: externalEditText,
-			});
-			expect(viewerStore.get().content).toBe("original");
-		});
-
-		it("does not clobber a third writer's edit that lands during the write-back window (R24, QA5a)", async () => {
-			const api = createDesktopApi();
-			const externalEditText = "original\n\nexternal edit";
-			const raceContent = "original\n\na third writer's edit";
-			// The disk no longer holds what the merge was computed against by the
-			// time resolveExternalChangeReview re-checks it.
-			api.readFileText.mockResolvedValue(raceContent);
-			const { appStore, resolveExternalChangeReview, viewerStore } =
-				await loadStoreActions(api);
-			const path = "/workspace/note.md";
-			setPendingReview(appStore, path, { diskContent: externalEditText });
-
-			await resolveExternalChangeReview("original\n\naccepted region");
-
-			expect(api.writeFileText).not.toHaveBeenCalled();
-			// Re-pointed at the newer disk content instead of being silently
-			// overwritten.
-			expect(viewerStore.get().externalChange).toEqual({
-				kind: "review",
-				diskContent: raceContent,
-			});
-			expect(viewerStore.get().content).toBe("original");
-		});
-
-		it("is a no-op when there is no pending review to resolve", async () => {
-			const api = createDesktopApi();
-			const { appStore, resolveExternalChangeReview, viewerStore } =
+			const { appStore, undoExternalChange, viewerStore } =
 				await loadStoreActions(api);
 			const path = "/workspace/note.md";
 
@@ -515,61 +381,16 @@ describe("desktop external change review", () => {
 				},
 			}));
 
-			await resolveExternalChangeReview("whatever");
+			await undoExternalChange();
 
+			expect(viewerStore.get().content).toBe("original");
+			expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 			expect(api.writeFileText).not.toHaveBeenCalled();
-			expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
-		});
-
-		it("does not let its own write-back echo re-open the just-resolved review (R12, QA1a)", async () => {
-			const api = createDesktopApi();
-			const externalEditText = "original\n\nexternal edit";
-			const mergedText = "original\n\naccepted region";
-			api.readFileText.mockResolvedValue(externalEditText);
-			let finishWrite: () => void = () => {};
-			api.writeFileText.mockImplementation(
-				() =>
-					new Promise<void>((resolve) => {
-						finishWrite = resolve;
-					}),
-			);
-			const {
-				appStore,
-				resolveExternalChangeReview,
-				handleExternalFileChange,
-				viewerStore,
-			} = await loadStoreActions(api);
-			const path = "/workspace/note.md";
-			setPendingReview(appStore, path, { diskContent: externalEditText });
-
-			const resolve = resolveExternalChangeReview(mergedText);
-			// pendingSelfWrite is recorded synchronously right before this call, so
-			// waiting for it proves the guard is already armed.
-			await vi.waitFor(() => expect(api.writeFileText).toHaveBeenCalled());
-
-			// The file watcher's own echo of this exact write reaches the renderer
-			// before resolveExternalChangeReview's own write promise resolves —
-			// simulated here by firing it out of order, before `finishWrite()`.
-			// Without the self-write-echo guard this would misclassify as a fresh
-			// external edit and refresh the pending review to the merge's own
-			// bytes; with it, the call is a no-op and the state is untouched.
-			handleExternalFileChange(path, mergedText);
-
-			expect(viewerStore.get().externalChange).toEqual({
-				kind: "review",
-				diskContent: externalEditText,
-			});
-
-			finishWrite();
-			await resolve;
-
-			expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
-			expect(viewerStore.get().content).toBe(mergedText);
 		});
 	});
 });
 
-describe("desktop delete while a review is pending (QA4a)", () => {
+describe("desktop delete after an external change was auto-applied (QA4a)", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
 	});
@@ -591,9 +412,9 @@ describe("desktop delete while a review is pending (QA4a)", () => {
 				...current.document,
 				currentPath: path,
 				lastOpenedPath: path,
-				content: "original",
-				diskContent: "original",
-				externalChange: { kind: "review", diskContent: "changed outside" },
+				content: "changed outside",
+				diskContent: "changed outside",
+				externalChange: { kind: "applied", previousContent: "original" },
 				status: "ready",
 				error: null,
 			},
@@ -606,14 +427,14 @@ describe("desktop delete while a review is pending (QA4a)", () => {
 	});
 });
 
-describe("desktop rename/move while a review is pending (Blocker 1)", () => {
+describe("desktop rename/move after an external change was auto-applied", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
 	});
 
 	const externalEditText = "original\n\nexternal edit";
 
-	function setPendingReviewDocument(
+	function setAppliedChangeDocument(
 		appStore: Awaited<ReturnType<typeof loadStoreActions>>["appStore"],
 		path: string,
 	) {
@@ -623,19 +444,18 @@ describe("desktop rename/move while a review is pending (Blocker 1)", () => {
 				...current.document,
 				currentPath: path,
 				lastOpenedPath: path,
-				// While a review is pending, `content`/`diskContent` stay frozen at
-				// the pre-external-edit baseline -- the real, most-recent bytes
-				// already live on disk as `externalChange.diskContent`.
-				content: "original",
-				diskContent: "original",
-				externalChange: { kind: "review", diskContent: externalEditText },
+				// The external edit already landed -- content/diskContent hold the
+				// real, most-recent bytes; only the one-shot Undo option remains.
+				content: externalEditText,
+				diskContent: externalEditText,
+				externalChange: { kind: "applied", previousContent: "original" },
 				status: "ready",
 				error: null,
 			},
 		}));
 	}
 
-	it("renameMarkdownFile does not force-save the frozen baseline over the pending external edit", async () => {
+	it("renameMarkdownFile force-saves the current content before renaming, guard-free", async () => {
 		const api = createDesktopApi();
 		api.readFileText.mockResolvedValue(externalEditText);
 		api.listDirectory.mockResolvedValue({
@@ -654,22 +474,19 @@ describe("desktop rename/move while a review is pending (Blocker 1)", () => {
 				files: [{ path, modified_at: 1 }],
 			},
 		}));
-		setPendingReviewDocument(appStore, path);
+		setAppliedChangeDocument(appStore, path);
 
 		await renameMarkdownFile(path, "renamed");
 
-		// No save happened at all before the rename -- the pending external
-		// edit already on disk was never at risk of being overwritten with the
-		// stale pre-edit baseline.
-		expect(api.writeFileText).not.toHaveBeenCalled();
+		// The rename's pre-move force-save now runs unconditionally -- there is
+		// no frozen baseline left to protect.
+		expect(api.writeFileText).toHaveBeenCalledWith(path, externalEditText);
 		expect(api.renameFile).toHaveBeenCalledWith(path, "/workspace/renamed.md");
-		// The rename still proceeds, and the reload after it picks up the real
-		// (external-edit) content that was on disk all along.
 		expect(viewerStore.get().currentPath).toBe("/workspace/renamed.md");
 		expect(viewerStore.get().content).toBe(externalEditText);
 	});
 
-	it("moveSidebarItem does not force-save the frozen baseline over the pending external edit", async () => {
+	it("moveSidebarItem force-saves the current content before moving, guard-free", async () => {
 		const api = createDesktopApi();
 		api.listDirectory.mockResolvedValue({
 			files: [{ path: "/workspace/archive/note.md", modified_at: 1 }],
@@ -687,25 +504,22 @@ describe("desktop rename/move while a review is pending (Blocker 1)", () => {
 				files: [{ path, modified_at: 1 }],
 			},
 		}));
-		setPendingReviewDocument(appStore, path);
+		setAppliedChangeDocument(appStore, path);
 
 		await moveSidebarItem({ kind: "file", path }, "/workspace/archive");
 
-		expect(api.writeFileText).not.toHaveBeenCalled();
+		expect(api.writeFileText).toHaveBeenCalledWith(path, externalEditText);
 		expect(api.renameFile).toHaveBeenCalledWith(
 			path,
 			"/workspace/archive/note.md",
 		);
 		expect(viewerStore.get().currentPath).toBe("/workspace/archive/note.md");
-		// The pending review itself is untouched by the move -- not silently
-		// cleared or clobbered.
-		expect(viewerStore.get().externalChange).toEqual({
-			kind: "review",
-			diskContent: externalEditText,
-		});
+		// The force-save's own write-back already cleared the applied change --
+		// the Undo pill does not survive a move it was part of saving through.
+		expect(viewerStore.get().externalChange).toEqual({ kind: "none" });
 	});
 
-	it("moveMarkdownFileToFolder does not force-save the frozen baseline over the pending external edit", async () => {
+	it("moveMarkdownFileToFolder force-saves the current content before moving, guard-free", async () => {
 		const api = createDesktopApi();
 		api.readFileText.mockResolvedValue(externalEditText);
 		api.listDirectory.mockResolvedValue({
@@ -724,7 +538,7 @@ describe("desktop rename/move while a review is pending (Blocker 1)", () => {
 				files: [{ path, modified_at: 1 }],
 			},
 		}));
-		setPendingReviewDocument(appStore, path);
+		setAppliedChangeDocument(appStore, path);
 
 		const moved = await moveMarkdownFileToFolder(
 			path,
@@ -733,7 +547,7 @@ describe("desktop rename/move while a review is pending (Blocker 1)", () => {
 		);
 
 		expect(moved).toBe(true);
-		expect(api.writeFileText).not.toHaveBeenCalled();
+		expect(api.writeFileText).toHaveBeenCalledWith(path, externalEditText);
 		expect(api.renameFile).toHaveBeenCalledWith(
 			path,
 			"/workspace/archive/note.md",

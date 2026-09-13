@@ -1,4 +1,5 @@
 import type { JSONContent } from "@tiptap/core";
+import type { Slice } from "@tiptap/pm/model";
 import type { LinkAttrs } from "./Link.js";
 import { wikiDisplayNameForTarget } from "./markdownPath.js";
 
@@ -13,6 +14,45 @@ export function tiptapDocToMarkdown(doc: JSONContent): string {
 
 	const blocks = doc.content.map(blockToMarkdown);
 	return blocks.join("\n\n");
+}
+
+/**
+ * Serialize a ProseMirror Slice to Markdown string for clipboard export.
+ * Preserves inline markdown formatting for textblock selections and block
+ * formatting for complete/multi-block selections.
+ */
+export function sliceToMarkdown(slice: Slice): string {
+	if (!slice || slice.content.size === 0) {
+		return "";
+	}
+
+	let node = slice.content.childCount === 1 ? slice.content.child(0) : null;
+	let openDepth = Math.min(slice.openStart, slice.openEnd);
+
+	// Unwrap open single-child containers (e.g. list -> listItem -> paragraph)
+	// when selection is nested within a single textblock.
+	while (node && openDepth > 0 && node.childCount === 1 && !node.isTextblock) {
+		node = node.child(0);
+		openDepth--;
+	}
+
+	// Code blocks hold literal code text
+	if (node?.isTextblock && node.type.spec.code) {
+		return node.textContent;
+	}
+
+	// If unwrapped to a single textblock (like a paragraph inside a list item)
+	if (node?.isTextblock && node !== slice.content.child(0)) {
+		const inlineJson = (node.content.toJSON() as JSONContent[]) ?? [];
+		return inlineToMarkdown(inlineJson);
+	}
+
+	// Multi-block or top-level block selection (paragraph, heading, list, table, etc.)
+	const blocks = (slice.content.toJSON() as JSONContent[]) ?? [];
+	return blocks
+		.map(blockToMarkdown)
+		.filter((b) => b.length > 0)
+		.join("\n\n");
 }
 
 function blockToMarkdown(node: JSONContent): string {
@@ -109,6 +149,10 @@ function blockToMarkdown(node: JSONContent): string {
 			return "<empty-block/>";
 		}
 
+		case "toggle": {
+			return toggleToMarkdown(node);
+		}
+
 		case "notionHtmlBlock": {
 			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
 		}
@@ -116,6 +160,33 @@ function blockToMarkdown(node: JSONContent): string {
 		default:
 			return "";
 	}
+}
+
+// Open/closed state is never persisted (see ToggleBlock.ts) so the `open`
+// attribute is intentionally never emitted here.
+//
+// Body blocks are joined with a single newline rather than the blank line
+// used elsewhere (e.g. notionCallout): `<details>` is a raw-HTML-block tag,
+// which CommonMark closes at the first blank line, so a blank line between
+// body blocks would split the toggle into unparseable fragments on the next
+// load. Headings/lists/code fences/blockquotes all self-interrupt without a
+// blank line, so this only costs the ability to round-trip two directly
+// adjacent freeform paragraphs (they'd merge into one on reload) — the same
+// compact-body convention already used by Notion's own `<details>` exports.
+function toggleToMarkdown(node: JSONContent): string {
+	const [summaryNode, ...bodyNodes] = node.content ?? [];
+	const summaryMarkdown =
+		summaryNode?.type === "toggleSummary"
+			? inlineToMarkdown(summaryNode.content ?? [])
+			: "";
+	const bodyMarkdown = bodyNodes
+		.map(blockToMarkdown)
+		.filter(Boolean)
+		.join("\n");
+	// An empty body must not leave a blank line before `</details>` — a blank
+	// line is exactly what closes the raw HTML block early (see above).
+	const body = bodyMarkdown ? `${bodyMarkdown}\n` : "";
+	return `<details>\n<summary>${summaryMarkdown}</summary>\n${body}</details>`;
 }
 
 function notionCalloutAttributes(node: JSONContent): string {

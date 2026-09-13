@@ -15,13 +15,10 @@ type Marker = {
 /**
  * One marker per textblock (paragraph/heading/list item/etc.) that has at
  * least one anchored comment, placed at the block's trailing edge --
- * positioned outside the editable content flow via `coordsAtPos`, same
- * technique as `CommentGutter`. Unlike the gutter rail (one marker per
- * thread, R17), this groups every thread anchored in the same textblock into
- * one marker with a count badge -- a deliberate divergence scoped to this
- * marker family only, see charter addendum. Clicking jumps to the first
- * thread in that block, in `threads` array order (no timestamp field exists
- * to sort by "oldest").
+ * positioned outside the editable content flow via `coordsAtPos`. This
+ * groups every thread anchored in the same textblock into one marker with
+ * a count badge -- clicking jumps to the first thread in that block, in
+ * `threads` array order (no timestamp field exists to sort by "oldest").
  */
 export function CommentParagraphMarker({
 	editor,
@@ -88,12 +85,28 @@ export function CommentParagraphMarker({
 		};
 
 		update();
+		// With no threads there is nothing to place and no subscription to
+		// keep; a later arrival re-runs this effect via `threads`.
+		if (threads.length === 0) return;
 		// "transaction" (not "update") -- external reloads apply via
 		// setContent(doc, { emitUpdate: false }), which still dispatches a
-		// transaction, so markers must re-resolve there too.
-		editor.on("transaction", update);
+		// transaction, so markers must re-resolve there too. Gated on
+		// `docChanged`: marker placement depends only on document content
+		// plus `threads`, never on selection or plugin meta, so
+		// selection-only and meta-only transactions (including the
+		// comment plugin's own meta echoes) skip the `coordsAtPos` layout
+		// reads entirely.
+		const onTransaction = (event?: {
+			transaction?: { docChanged?: boolean };
+		}) => {
+			if (event?.transaction && event.transaction.docChanged === false) {
+				return;
+			}
+			update();
+		};
+		editor.on("transaction", onTransaction);
 		return () => {
-			editor.off("transaction", update);
+			editor.off("transaction", onTransaction);
 		};
 	}, [editor, containerRef, threads]);
 

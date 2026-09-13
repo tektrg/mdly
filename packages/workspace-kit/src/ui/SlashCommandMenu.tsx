@@ -16,6 +16,7 @@ import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
 import MingcuteListOrderedLine from "~icons/mingcute/list-ordered-line";
 import MingcuteMindMapLine from "~icons/mingcute/mind-map-line";
 import MingcuteQuoteLeftLine from "~icons/mingcute/quote-left-line";
+import MingcuteRightLine from "~icons/mingcute/right-line";
 import MingcuteStrikethroughLine from "~icons/mingcute/strikethrough-line";
 import MingcuteTextLine from "~icons/mingcute/text-line";
 import { cn } from "../lib/utils";
@@ -96,6 +97,13 @@ const SLASH_COMMANDS: SlashCommand[] = [
 		description: "Create a quote block",
 		aliases: ["blockquote", ">"],
 		icon: MingcuteQuoteLeftLine,
+	},
+	{
+		kind: "toggle",
+		title: "Toggle list",
+		description: "Collapsible content with a hidden section",
+		aliases: ["toggle", "details", "collapse", "expand", "summary"],
+		icon: MingcuteRightLine,
 	},
 	{
 		kind: "mermaid",

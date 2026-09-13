@@ -43,6 +43,17 @@ export type WatchOptions = {
 
 export type Unsubscribe = () => void;
 
+/**
+ * F3: compact main-process fault notice. Mirrors
+ * `MainProcessErrorNoticePayload` in `apps/desktop/electron/mainProcessErrors.ts`
+ * (kept as a separate shape here so the renderer never imports Electron-side
+ * code) — short line for the UI only, stack stays in crash-trace.
+ */
+export type MainProcessErrorNoticePayload = {
+	key: string;
+	message: string;
+};
+
 export type MenuState = {
 	hasWorkspace: boolean;
 };
@@ -573,4 +584,12 @@ export type DesktopApi = {
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
 	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */
 	onCommentsChanged(callback: (path: string) => void): Unsubscribe;
+	/**
+	 * F3: an unexpected main-process fault was logged to crash-trace and the
+	 * app kept running. The payload carries only a short line for the UI —
+	 * the stack stays in the log.
+	 */
+	onMainProcessError(
+		callback: (payload: MainProcessErrorNoticePayload) => void,
+	): Unsubscribe;
 };

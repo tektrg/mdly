@@ -89,7 +89,9 @@ describe("CommentComposer", () => {
 			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
 		});
 
-		expect(container.querySelector("[data-comment-composer-trigger]")).toBeNull();
+		expect(
+			container.querySelector("[data-comment-composer-trigger]"),
+		).toBeNull();
 	});
 
 	it("shows a trigger once text is selected, and a compose box once clicked", () => {
@@ -112,9 +114,35 @@ describe("CommentComposer", () => {
 
 		expect(container.querySelector("[data-comment-composer]")).not.toBeNull();
 		expect(
-			container.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.disabled,
+			container.querySelector<HTMLButtonElement>(
+				"[data-comment-composer-submit]",
+			)?.disabled,
 		).toBe(true);
+	});
+
+	// Starting a new comment must land the keyboard in the compose box at
+	// once -- no extra click into the textarea. Scoped to the new-thread
+	// composer only; reply textareas in ThreadItem intentionally don't steal
+	// focus.
+	it("focuses the comment textarea as soon as the compose box opens", () => {
+		const editor = createEditor();
+		act(() => {
+			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+		});
+		act(() => {
+			editor.commands.setTextSelection({ from: 1, to: 6 });
+		});
+		act(() => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+
+		const textarea = container.querySelector<HTMLTextAreaElement>(
+			"[data-comment-composer-textarea]",
+		);
+		expect(textarea).not.toBeNull();
+		expect(document.activeElement).toBe(textarea);
 	});
 
 	// The trigger renders an icon only (no visible text) -- its accessible
@@ -187,7 +215,9 @@ describe("CommentComposer", () => {
 
 		// Compose box collapses back to a bare trigger once submitted.
 		expect(container.querySelector("[data-comment-composer]")).toBeNull();
-		expect(container.querySelector("[data-comment-composer-trigger]")).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-composer-trigger]"),
+		).not.toBeNull();
 	});
 
 	// R10: a new comment on a note whose live text is byte-identical to its
@@ -200,7 +230,9 @@ describe("CommentComposer", () => {
 		const readRevisionContent = vi
 			.fn()
 			.mockImplementation((revisionId: string) =>
-				Promise.resolve(revisionId === "rev-1" ? currentBody : "different text"),
+				Promise.resolve(
+					revisionId === "rev-1" ? currentBody : "different text",
+				),
 			);
 		act(() => {
 			root.render(
@@ -407,8 +439,9 @@ describe("CommentComposer", () => {
 			)?.value,
 		).toBe("why bold?");
 		expect(
-			container.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.disabled,
+			container.querySelector<HTMLButtonElement>(
+				"[data-comment-composer-submit]",
+			)?.disabled,
 		).toBe(false);
 	});
 
@@ -507,8 +540,9 @@ describe("CommentComposer", () => {
 		});
 
 		expect(
-			container.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
-				?.style.top,
+			container.querySelector<HTMLButtonElement>(
+				"[data-comment-composer-trigger]",
+			)?.style.top,
 		).toBe("10px");
 	});
 });

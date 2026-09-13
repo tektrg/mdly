@@ -47,13 +47,14 @@ export interface TextAnchor {
 }
 
 /** Resolved thread state derived from the event log's head event. */
-export type ThreadState = "open" | "resolved";
+export type ThreadState = "open" | "resolved" | "deleted";
 
 /** Anchor resolution result. */
 export type AnchorStatus = "anchored" | "orphaned" | "fallback-anchored";
 
 export interface AnchorResolution {
 	status: AnchorStatus;
+	/** Live ProseMirror positions, safe to pass to `coordsAtPos`/decorations. Never flattened-markdown offsets (those count markup with no document position). */
 	range?: { from: number; to: number };
 	/** The method used to resolve the anchor (for debugging/testing). */
 	method?: "revision-replay" | "quote-context";
@@ -63,14 +64,15 @@ export type CommentThreadEventKind =
 	| "thread-opened"
 	| "replied"
 	| "resolved"
-	| "reopened";
+	| "reopened"
+	| "deleted";
 
 /** UI-facing log-line shape for a single event in a thread's history. */
 export interface CommentThreadEvent {
 	id: string;
 	kind: CommentThreadEventKind;
 	by: CommentAuthor;
-	/** Message body, present for "thread-opened"/"replied", absent for "resolved"/"reopened". */
+	/** Message body, present for "thread-opened"/"replied", absent for "resolved"/"reopened"/"deleted". */
 	text?: string;
 	/** The id of the previous event in this thread, or null if this is the thread-opened event. */
 	prev: string | null;
@@ -86,7 +88,7 @@ export interface CommentThread {
 		anchor: TextAnchor;
 		text: string;
 	};
-	/** Every reply/resolve/reopen event after the opener, in display order. */
+	/** Every reply/resolve/reopen/delete event after the opener, in display order. */
 	events: CommentThreadEvent[];
 	state: ThreadState;
 }
@@ -106,6 +108,7 @@ export interface CommentOptions {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 	/** Bump this (e.g. a counter) to force a re-fetch of threads without remounting -- used for cross-window refresh (R22). */
 	refreshSignal?: number;
 	/** Controlled open state for the thread panel, so a host can coordinate "only one right-edge panel open" against its own other panels. Omit for an uncontrolled panel (its own internal open state). */
