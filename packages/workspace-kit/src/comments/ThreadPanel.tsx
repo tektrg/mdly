@@ -61,7 +61,7 @@ export function ThreadItem({
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
-	onDelete: (threadId: string) => Promise<void>;
+	onDelete?: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
@@ -100,7 +100,9 @@ export function ThreadItem({
 
 	const handleDelete = () => {
 		if (!window.confirm("Delete this comment thread?")) return;
-		onDelete(thread.id).then(
+		// Optional (mirrors CommentOptions.onDelete): hosts that haven't
+		// wired deletion get a panel that simply can't delete, never a crash.
+		void onDelete?.(thread.id)?.then(
 			() => setActionError(null),
 			(err: unknown) => setActionError(describeError(err)),
 		);
@@ -233,7 +235,7 @@ export function ThreadPanel(props: {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
-	onDelete: (threadId: string) => Promise<void>;
+	onDelete?: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
 }) {
