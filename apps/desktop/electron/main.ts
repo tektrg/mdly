@@ -1709,6 +1709,19 @@ function registerIpc() {
 		},
 	);
 
+	ipcMain.handle(
+		"desktop:comment-delete-thread",
+		async (_event, { path: filePath, threadId }) => {
+			const resolved = assertGranted(filePath);
+			await deleteCommentThreadForPath({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				author: { kind: "human", id: await getActorId() },
+				threadId: String(threadId),
+			});
+		},
+	);
+
 	// Slice 4: agent access. The renderer's WebMCP bridge reaches the tools
 	// through these two channels; the loopback MCP server calls the very same
 	// `AGENT_TOOLS` array directly. One tool table, two transports.

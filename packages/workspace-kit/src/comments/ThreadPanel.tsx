@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from "../lib/useMediaQuery.js";
+import { BottomSheet } from "../primitives/bottomSheet.js";
 import { Button } from "../primitives/button.js";
 import { SidePanel } from "../primitives/sidePanel.js";
 import type { CommentAuthor, CommentThreadEvent } from "./types.js";
@@ -59,7 +61,9 @@ export function ThreadItem({
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
-	onDelete: (threadId: string) => Promise<void>;
+	// Optional (mirrors CommentOptions.onDelete): hosts that haven't wired
+	// deletion get a thread without a Delete button, never a crash.
+	onDelete?: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
@@ -103,6 +107,10 @@ export function ThreadItem({
 	};
 
 	const handleDeleteConfirm = () => {
+		if (!onDelete) {
+			setConfirmingDelete(false);
+			return;
+		}
 		onDelete(thread.id).then(
 			() => {
 				setActionError(null);
@@ -167,7 +175,7 @@ export function ThreadItem({
 			</div>
 
 			<textarea
-				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
+				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
 				data-reply-textarea
 				data-thread-id={thread.id}
 				disabled={isResolved}
@@ -220,41 +228,43 @@ export function ThreadItem({
 						</Button>
 					</>
 				)}
-				{confirmingDelete ? (
-					<>
-						<Button
-							type="button"
-							variant="destructive"
-							size="sm"
-							data-confirm-delete-button
-							data-thread-id={thread.id}
-							onClick={handleDeleteConfirm}
-						>
-							Confirm delete
-						</Button>
+				{onDelete ? (
+					confirmingDelete ? (
+						<>
+							<Button
+								type="button"
+								variant="destructive"
+								size="sm"
+								data-confirm-delete-button
+								data-thread-id={thread.id}
+								onClick={handleDeleteConfirm}
+							>
+								Confirm delete
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								data-cancel-delete-button
+								data-thread-id={thread.id}
+								onClick={handleDeleteCancel}
+							>
+								Cancel
+							</Button>
+						</>
+					) : (
 						<Button
 							type="button"
 							variant="outline"
 							size="sm"
-							data-cancel-delete-button
+							data-delete-button
 							data-thread-id={thread.id}
-							onClick={handleDeleteCancel}
+							onClick={handleDeleteRequest}
 						>
-							Cancel
+							Delete
 						</Button>
-					</>
-				) : (
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						data-delete-button
-						data-thread-id={thread.id}
-						onClick={handleDeleteRequest}
-					>
-						Delete
-					</Button>
-				)}
+					)
+				) : null}
 			</div>
 		</li>
 	);
@@ -269,7 +279,9 @@ export function ThreadPanel(props: {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
-	onDelete: (threadId: string) => Promise<void>;
+	// Optional: hosts without deletion wired get threads with no Delete
+	// button, never a crash.
+	onDelete?: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
 }) {
@@ -311,12 +323,13 @@ export function ThreadPanel(props: {
 			?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 	}, [resolvedOpen, focusedThreadId]);
 
-	return (
-		<SidePanel
-			open={resolvedOpen}
-			onOpenChange={handleOpenChange}
-			title="Comments"
-		>
+	// Below `md` the panel renders as a keyboard-aware bottom sheet (half
+	// height, drag to full) instead of the right-edge SidePanel — same
+	// threads, same actions, same focused-thread scroll. Desktop is untouched.
+	const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+
+	const content = (
+		<>
 			{error ? (
 				<p className="m-0 text-destructive text-sm" data-comment-panel-error>
 					{error}
@@ -348,6 +361,28 @@ export function ThreadPanel(props: {
 					))}
 				</ul>
 			)}
+		</>
+	);
+
+	if (isMobile) {
+		return (
+			<BottomSheet
+				open={resolvedOpen}
+				onOpenChange={handleOpenChange}
+				title="Comments"
+			>
+				{content}
+			</BottomSheet>
+		);
+	}
+
+	return (
+		<SidePanel
+			open={resolvedOpen}
+			onOpenChange={handleOpenChange}
+			title="Comments"
+		>
+			{content}
 		</SidePanel>
 	);
 }

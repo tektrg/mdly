@@ -111,6 +111,8 @@ export {
 	type PortalContainerProviderProps,
 	usePortalContainer,
 } from "./lib/portalContainer";
+export { useKeyboardOffset } from "./lib/useKeyboardOffset";
+export { MOBILE_MEDIA_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 // ---- Navigation (Sidebar, Toolbar, WorkspaceSwitcher, recent files, tags, search) ----
 export {
 	buildSearchResults,
@@ -151,6 +153,7 @@ export { TagList, type TagListProps } from "./nav/TagList";
 export { NewNoteButton, Toolbar } from "./nav/Toolbar";
 export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
 // ---- Shared primitives ----
+export { BottomSheet } from "./primitives/bottomSheet";
 export { Button, buttonVariants } from "./primitives/button";
 export { Input } from "./primitives/input";
 export { Modal } from "./primitives/modal";
@@ -165,5 +168,11 @@ export {
 export { FormattingStatusBar } from "./ui/FormattingStatusBar";
 export { LinkCreationGhostExtension } from "./ui/LinkCreationGhostExtension";
 export { SmartLinkExtension } from "./ui/SmartLinkExtension";
+export { TableOfContentsMenu } from "./ui/TableOfContentsMenu";
+export {
+	collectTableOfContentsHeadings,
+	type TableOfContentsHeading,
+	useTocHeadings,
+} from "./ui/useTocHeadings";
 export { VirtualCursor } from "./ui/VirtualCursor";
 export type { VirtualCursorMode } from "./ui/virtualCursorMode";

@@ -1,6 +1,8 @@
 import { AppShellFrame } from "@hubble.md/ui";
 import { createCloudflareSubscriber } from "@mdly/cloudflare-client";
+import { TableOfContentsMenu } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
+import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isUnauthorizedError } from "../connection/apiError";
 import { saveWorkspace } from "../connection/connection";
@@ -57,6 +59,12 @@ export function AppShell({
 	const workspace = useStoreValue(workspaceStore);
 	const [mobileNavOpen, setMobileNavOpen] = useState(false);
 	const closeMobileNav = useCallback(() => setMobileNavOpen(false), []);
+	// Live editor instance + scroll container for the toolbar ToC menu
+	// (same AppShell-owned-state pattern as mobileNavOpen above). Null until
+	// a file opens; the menu hides itself while null.
+	const [editor, setEditor] = useState<Editor | null>(null);
+	const [editorScrollContainer, setEditorScrollContainer] =
+		useState<HTMLDivElement | null>(null);
 	const selectFile = useCallback(
 		(path: string) => {
 			onSelectFile(path);
@@ -305,7 +313,17 @@ export function AppShell({
 					onLogout={onLogout}
 				/>
 			}
-			toolbar={<Toolbar onOpenMobileNav={() => setMobileNavOpen(true)} />}
+			toolbar={
+				<Toolbar
+					onOpenMobileNav={() => setMobileNavOpen(true)}
+					tableOfContentsMenu={
+						<TableOfContentsMenu
+							editor={editor}
+							scrollContainer={editorScrollContainer}
+						/>
+					}
+				/>
+			}
 			mobileNavOpen={mobileNavOpen}
 			onCloseMobileNav={closeMobileNav}
 		>
@@ -332,6 +350,8 @@ export function AppShell({
 					<EditorView
 						path={viewer.currentPath}
 						initialMarkdown={viewer.content}
+						onEditorReady={setEditor}
+						onScrollContainerChange={setEditorScrollContainer}
 					/>
 				</div>
 			)}

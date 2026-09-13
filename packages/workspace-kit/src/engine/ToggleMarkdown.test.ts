@@ -169,4 +169,84 @@ describe("toggle block markdown conversion", () => {
 			content: [{ type: "toggleSummary" }, { type: "paragraph", content: [] }],
 		});
 	});
+
+	it("parses a toggle whose body is a table (remark splits the html span)", () => {
+		const input =
+			"<details>\n<summary>Title</summary>\n| a | b |\n|---|---|\n| 1 | 2 |\n</details>";
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		expect(
+			doc.content?.[0]?.content?.some((node) => node.type === "table"),
+		).toBe(true);
+		// The table serializer pads delimiter cells (standard behaviour —
+		// see TableMarkdown.test.ts); the toggle span itself round-trips.
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			"<details>\n<summary>Title</summary>\n| a | b |\n| --- | --- |\n| 1 | 2 |\n</details>",
+		);
+		// And the normalized form is stable on reload.
+		expect(
+			markdownToTiptapDoc(tiptapDocToMarkdown(doc)).content?.[0],
+		).toMatchObject({ type: "toggle" });
+	});
+
+	it("parses a toggle whose body has blank lines and mixed blocks", () => {
+		const input = [
+			"<details>",
+			"<summary>Title</summary>",
+			"",
+			"Para one.",
+			"",
+			"| a | b |",
+			"|---|---|",
+			"| 1 | 2 |",
+			"",
+			"</details>",
+			"",
+			"## After",
+		].join("\n");
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		const types = doc.content?.[0]?.content?.map((node) => node.type);
+		expect(types).toContain("paragraph");
+		expect(types).toContain("table");
+		expect(doc.content?.[1]).toMatchObject({ type: "heading" });
+	});
+
+	it("leaves an unclosed details block on the old raw-text fallback", () => {
+		const doc = markdownToTiptapDoc(
+			"<details>\n<summary>Title</summary>\nBody",
+		);
+
+		expect(doc.content?.some((node) => node.type === "toggle")).toBe(false);
+	});
+
+	it("dedents tab-indented prose around column-0 html tags (garden #1870)", () => {
+		// Agent-authored shape: Notion-style tab-indented prose with a pasted
+		// `<table>` at column 0. The html tags must not veto the dedent, or
+		// the tabs become indented code blocks.
+		const input = [
+			"<details>",
+			"<summary>Title</summary>",
+			"\t# Heading",
+			"\tProse with **bold**.",
+			"\t> A quote.",
+			"<table>",
+			"<tr>",
+			"<td>Cell</td>",
+			"</tr>",
+			"</table>",
+			'\t## <span discussion-urls="discussion://abc">Sub</span>',
+			"</details>",
+		].join("\n");
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		const types = doc.content?.[0]?.content?.map((node) => node.type);
+		expect(types).toContain("heading");
+		expect(types).toContain("paragraph");
+		expect(types).toContain("blockquote");
+		expect(types).not.toContain("codeBlock");
+	});
 });

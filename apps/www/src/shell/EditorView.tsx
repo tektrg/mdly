@@ -4,14 +4,17 @@ import {
 	wikiDisplayNameForTarget,
 } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
+import type { Editor } from "@tiptap/core";
+import { useCommentOptions } from "../comments/useCommentOptions";
 import { loadPath, updateEditorContent } from "../store/actions";
 import { filesStore } from "../store/state";
-import { useCommentOptions } from "../comments/useCommentOptions";
 import { createWebImageExtension } from "./WebImageExtension";
 
 type Props = {
 	path: string;
 	initialMarkdown: string;
+	onEditorReady?: (editor: Editor | null) => void;
+	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 };
 
 /**
@@ -26,7 +29,12 @@ type Props = {
  * already part of a synced note (resolves each image's authenticated
  * download URL), which is a read, not a write.
  */
-export function EditorView({ path, initialMarkdown }: Props) {
+export function EditorView({
+	path,
+	initialMarkdown,
+	onEditorReady,
+	onScrollContainerChange,
+}: Props) {
 	const files = useStoreValue(filesStore);
 	const wikiTargets: WikiTarget[] = files.map((file) => ({
 		path: file.path,
@@ -47,6 +55,8 @@ export function EditorView({ path, initialMarkdown }: Props) {
 			onLocalChange={updateEditorContent}
 			onSave={() => {}}
 			commentOptions={commentOptions}
+			onEditorReady={onEditorReady}
+			onScrollContainerChange={onScrollContainerChange}
 			onOpenExternalLink={(href) => {
 				window.open(href, "_blank", "noopener");
 			}}

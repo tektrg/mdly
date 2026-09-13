@@ -1,6 +1,7 @@
 import { Button } from "@hubble.md/ui";
 import { Toolbar as SharedToolbar } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
+import type { ReactNode } from "react";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import { currentPathStore } from "../store/state";
 
@@ -10,7 +11,14 @@ import { currentPathStore } from "../store/state";
  * Convex-era version of this file, which rendered a `NewNoteButton` in
  * `rightSlot`.)
  */
-export function Toolbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
+export function Toolbar({
+	onOpenMobileNav,
+	tableOfContentsMenu,
+}: {
+	onOpenMobileNav: () => void;
+	/** ToC entry point on every width (menu on desktop, sheet on phones). */
+	tableOfContentsMenu?: ReactNode;
+}) {
 	const currentPath = useStoreValue(currentPathStore);
 
 	return (
@@ -30,6 +38,7 @@ export function Toolbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
 					<MingcuteLayoutLeftLine className="size-4" />
 				</Button>
 			}
+			rightSlot={tableOfContentsMenu}
 		/>
 	);
 }

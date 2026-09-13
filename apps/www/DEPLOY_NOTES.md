@@ -1,8 +1,9 @@
 # Deploy notes — garden.theindie.app
 
-**Status: NOT yet deployed.** Everything below is a live checklist for the first
-deploy. `wrangler.toml` in this folder is complete except for one placeholder
-(the KV namespace id), which step 2 fills in.
+**Status: LIVE on `garden.theindie.app`.** First deploy completed (R2
+`mdly-garden-assets` ✅, KV `mdly-garden-SESSIONS` ✅, `APP_PASSWORD` secret ✅).
+Everything below is kept as the checklist for reference and for future
+first-time setup. `wrangler.toml` bindings are all real (no placeholders).
 
 Mirrors the proven pattern in `apps/notion-web` (live on `mdly.theindie.app`
 since 2026-07-07): a Worker that serves the Vite SPA as static assets and runs

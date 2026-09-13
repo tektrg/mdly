@@ -176,7 +176,26 @@ export function SlashCommandMenu({
 			}
 			if (positionedFromRef.current !== nextToken.from) {
 				positionedFromRef.current = nextToken.from;
-				setPosition(null);
+				// Seed an approximate position synchronously so the first paint
+				// lands near the cursor. cmdk scrolls the selected item into
+				// view on mount; rendering hidden at 0,0 before floating-ui
+				// positions the menu would yank the viewport scroll to the top.
+				// floating-ui refines this estimate right after mount.
+				try {
+					const viewportEl = viewportRef.current;
+					if (viewportEl) {
+						const coords = editor.view.coordsAtPos(nextToken.from);
+						const rect = viewportEl.getBoundingClientRect();
+						setPosition({
+							x: coords.left - rect.left + viewportEl.scrollLeft,
+							y: coords.bottom - rect.top + viewportEl.scrollTop + 6,
+						});
+					} else {
+						setPosition(null);
+					}
+				} catch {
+					setPosition(null);
+				}
 			}
 			setToken(nextToken);
 		};
