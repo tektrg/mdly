@@ -3,6 +3,21 @@
 // output; consumers additively import "@mdly/workspace-kit/style.css".
 import "./tailwind.css";
 
+// ---- Comments (local doc-comment thread UI, on top of @mdly/doc-comments) ----
+export {
+	buildQuoteAnchor,
+	CommentComposer,
+	CommentExtension,
+	CommentGutter,
+	type CommentOptions,
+	type CommentThread,
+	commentThreadsKey,
+	type ResolvedThread,
+	setCommentThreads,
+	type TextAnchor,
+	ThreadPanel,
+	useCommentThreads,
+} from "./comments/index.js";
 // ---- Engine (Tiptap/ProseMirror Markdown core, zero UI deps) ----
 export { FakeSelectionExtension } from "./engine/FakeSelectionExtension.js";
 export {
@@ -73,11 +88,8 @@ export {
 	textStartPos,
 } from "./engine/utils.js";
 export { DiffChangeRail } from "./history/DiffChangeRail";
+export { DiffGroupsView } from "./history/DiffGroupsView";
 // ---- History (diff review + revision timeline, on top of @mdly/doc-history) ----
-export {
-	DiffReviewPanel,
-	type DiffReviewPanelProps,
-} from "./history/DiffReviewPanel";
 export {
 	type ReadRevisionContentResult,
 	RevisionDiffView,
@@ -97,6 +109,8 @@ export {
 	type PortalContainerProviderProps,
 	usePortalContainer,
 } from "./lib/portalContainer";
+export { useKeyboardOffset } from "./lib/useKeyboardOffset";
+export { MOBILE_MEDIA_QUERY, useMediaQuery } from "./lib/useMediaQuery";
 // ---- Navigation (Sidebar, Toolbar, WorkspaceSwitcher, recent files, tags, search) ----
 export {
 	buildSearchResults,
@@ -128,6 +142,7 @@ export { TagList } from "./nav/TagList";
 export { NewNoteButton, Toolbar } from "./nav/Toolbar";
 export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
 // ---- Shared primitives ----
+export { BottomSheet } from "./primitives/bottomSheet";
 export { Button, buttonVariants } from "./primitives/button";
 export { Input } from "./primitives/input";
 export { Modal } from "./primitives/modal";
@@ -142,5 +157,11 @@ export {
 export { FormattingStatusBar } from "./ui/FormattingStatusBar";
 export { LinkCreationGhostExtension } from "./ui/LinkCreationGhostExtension";
 export { SmartLinkExtension } from "./ui/SmartLinkExtension";
+export { TableOfContentsMenu } from "./ui/TableOfContentsMenu";
+export {
+	collectTableOfContentsHeadings,
+	type TableOfContentsHeading,
+	useTocHeadings,
+} from "./ui/useTocHeadings";
 export { VirtualCursor } from "./ui/VirtualCursor";
 export type { VirtualCursorMode } from "./ui/virtualCursorMode";

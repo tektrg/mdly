@@ -221,4 +221,32 @@ describe("toggle block markdown conversion", () => {
 
 		expect(doc.content?.some((node) => node.type === "toggle")).toBe(false);
 	});
+
+	it("dedents tab-indented prose around column-0 html tags (garden #1870)", () => {
+		// Agent-authored shape: Notion-style tab-indented prose with a pasted
+		// `<table>` at column 0. The html tags must not veto the dedent, or
+		// the tabs become indented code blocks.
+		const input = [
+			"<details>",
+			"<summary>Title</summary>",
+			"\t# Heading",
+			"\tProse with **bold**.",
+			"\t> A quote.",
+			"<table>",
+			"<tr>",
+			"<td>Cell</td>",
+			"</tr>",
+			"</table>",
+			'\t## <span discussion-urls="discussion://abc">Sub</span>',
+			"</details>",
+		].join("\n");
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.[0]).toMatchObject({ type: "toggle" });
+		const types = doc.content?.[0]?.content?.map((node) => node.type);
+		expect(types).toContain("heading");
+		expect(types).toContain("paragraph");
+		expect(types).toContain("blockquote");
+		expect(types).not.toContain("codeBlock");
+	});
 });

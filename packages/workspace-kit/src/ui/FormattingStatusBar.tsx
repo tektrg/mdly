@@ -125,7 +125,7 @@ export function FormattingStatusBar({
 					</Button>
 				)}
 			</div>
-			<div className="absolute bottom-3 start-3 flex items-center gap-2">
+			<div className="absolute bottom-3 start-3 hidden items-center gap-2 md:flex">
 				<Button
 					variant="ghost"
 					size="xs"

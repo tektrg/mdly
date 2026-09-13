@@ -1,6 +1,10 @@
 import type { Editor } from "@tiptap/core";
 import { type RefObject, useEffect, useState } from "react";
+import MingcuteCheckLine from "~icons/mingcute/check-line";
+import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
+import { useKeyboardOffset } from "../lib/useKeyboardOffset.js";
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from "../lib/useMediaQuery.js";
 import { buildCommentAnchor } from "./buildAnchor.js";
 import "./CommentComposer.css";
 import type { TextAnchor } from "./types.js";
@@ -40,6 +44,12 @@ export function CommentComposer({
 	const [draft, setDraft] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
+	const [copyError, setCopyError] = useState<string | null>(null);
+	// Below `md` the inline popup is replaced by a bar docked above the soft
+	// keyboard (R6). Desktop keeps the exact inline behavior below.
+	const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+	const keyboardOffset = useKeyboardOffset(isMobile && position !== null);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -77,25 +87,6 @@ export function CommentComposer({
 
 	if (!editor || !position) return null;
 
-	if (!composing) {
-		return (
-			<button
-				type="button"
-				data-comment-composer-trigger
-				className="comment-composer-trigger"
-				style={{ position: "absolute", top: position.top, left: position.left }}
-				aria-label="Comment"
-				title="Comment"
-				onClick={() => {
-					setComposing(true);
-					setError(null);
-				}}
-			>
-				<MingcuteMessage3Line aria-hidden="true" />
-			</button>
-		);
-	}
-
 	const submit = () => {
 		const text = draft.trim();
 		if (!text || submitting) return;
@@ -119,6 +110,157 @@ export function CommentComposer({
 				},
 			);
 	};
+
+	// Selected text for the copy-link action. Trimmed to the first words so
+	// the text-fragment URL stays short; falls back to plain-text copy.
+	const selectedText = editor.state.doc
+		.textBetween(position.from, position.to, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+
+	const copyLink = () => {
+		const fragment = selectedText.split(" ").slice(0, 12).join(" ");
+		const base = window.location.href.split("#")[0];
+		const link = fragment
+			? `${base}#:~:text=${encodeURIComponent(fragment)}`
+			: base;
+		setCopyError(null);
+		navigator.clipboard.writeText(link).then(
+			() => {
+				setCopied(true);
+				window.setTimeout(() => setCopied(false), 1500);
+			},
+			() => {
+				// Clipboard API can reject in insecure contexts — still copy
+				// the raw selection so the gesture never silently does nothing.
+				if (selectedText) {
+					navigator.clipboard.writeText(selectedText).then(
+						() => {
+							setCopied(true);
+							window.setTimeout(() => setCopied(false), 1500);
+						},
+						() => setCopyError("Copy failed"),
+					);
+				} else {
+					setCopyError("Copy failed");
+				}
+			},
+		);
+	};
+
+	if (isMobile) {
+		return (
+			<div
+				data-comment-selection-bar
+				className="fixed inset-inline-0 z-30 border-t border-border bg-popover/95 backdrop-blur-md"
+				style={{
+					bottom: keyboardOffset,
+					paddingBlockEnd: "max(env(safe-area-inset-bottom), 0.5rem)",
+				}}
+			>
+				{!composing ? (
+					<div className="flex items-center gap-2 px-4 pt-2">
+						<button
+							type="button"
+							data-comment-composer-trigger
+							className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground"
+							aria-label="Comment"
+							onClick={() => {
+								setComposing(true);
+								setError(null);
+							}}
+						>
+							<MingcuteMessage3Line aria-hidden="true" className="size-4" />
+							Comment
+						</button>
+						<button
+							type="button"
+							data-comment-copy-link
+							className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border border-border bg-secondary px-4 text-sm font-medium text-secondary-foreground"
+							aria-label="Copy link to selection"
+							onClick={copyLink}
+						>
+							{copied ? (
+								<MingcuteCheckLine aria-hidden="true" className="size-4" />
+							) : (
+								<MingcuteLinkLine aria-hidden="true" className="size-4" />
+							)}
+							{copied ? "Copied" : "Copy link"}
+						</button>
+					</div>
+				) : (
+					<div data-comment-composer className="flex flex-col gap-2 px-4 pt-2">
+						<textarea
+							data-comment-composer-textarea
+							value={draft}
+							disabled={submitting}
+							placeholder="Add a comment..."
+							rows={3}
+							className="max-h-36 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-base outline-hidden focus-visible:border-ring"
+							onChange={(event) => {
+								setDraft(event.target.value);
+								setError(null);
+							}}
+						/>
+						{error ? (
+							<p className="comment-composer-error" data-comment-composer-error>
+								{error}
+							</p>
+						) : null}
+						<div className="comment-composer-actions">
+							<button
+								type="button"
+								data-comment-composer-cancel
+								disabled={submitting}
+								onClick={() => {
+									setComposing(false);
+									setDraft("");
+									setError(null);
+								}}
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								data-comment-composer-submit
+								disabled={submitting || draft.trim().length === 0}
+								onClick={submit}
+							>
+								Comment
+							</button>
+						</div>
+					</div>
+				)}
+				{copyError && !composing ? (
+					<p
+						className="comment-composer-error px-4 pt-1"
+						data-comment-copy-error
+					>
+						{copyError}
+					</p>
+				) : null}
+			</div>
+		);
+	}
+
+	if (!composing) {
+		return (
+			<button
+				type="button"
+				data-comment-composer-trigger
+				className="comment-composer-trigger"
+				style={{ position: "absolute", top: position.top, left: position.left }}
+				aria-label="Comment"
+				title="Comment"
+				onClick={() => {
+					setComposing(true);
+					setError(null);
+				}}
+			>
+				<MingcuteMessage3Line aria-hidden="true" />
+			</button>
+		);
+	}
 
 	return (
 		<div

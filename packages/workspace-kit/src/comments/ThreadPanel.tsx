@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { MOBILE_MEDIA_QUERY, useMediaQuery } from "../lib/useMediaQuery.js";
+import { BottomSheet } from "../primitives/bottomSheet.js";
 import { Button } from "../primitives/button.js";
 import { SidePanel } from "../primitives/sidePanel.js";
 import type { CommentAuthor, CommentThreadEvent } from "./types.js";
@@ -18,6 +20,8 @@ function eventVerb(kind: CommentThreadEvent["kind"]): string {
 			return "resolved";
 		case "reopened":
 			return "reopened";
+		case "deleted":
+			return "deleted";
 		default:
 			return kind;
 	}
@@ -42,13 +46,14 @@ function ThreadLogLine({
 	);
 }
 
-/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen) inline, without duplicating it. */
+/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen/delete) inline, without duplicating it. */
 export function ThreadItem({
 	thread,
 	focused,
 	onReply,
 	onResolve,
 	onReopen,
+	onDelete,
 	onJumpToThread,
 }: {
 	thread: ResolvedThread;
@@ -56,6 +61,7 @@ export function ThreadItem({
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 }) {
 	const [draft, setDraft] = useState("");
@@ -87,6 +93,14 @@ export function ThreadItem({
 
 	const handleReopen = () => {
 		onReopen(thread.id).then(
+			() => setActionError(null),
+			(err: unknown) => setActionError(describeError(err)),
+		);
+	};
+
+	const handleDelete = () => {
+		if (!window.confirm("Delete this comment thread?")) return;
+		onDelete(thread.id).then(
 			() => setActionError(null),
 			(err: unknown) => setActionError(describeError(err)),
 		);
@@ -142,7 +156,7 @@ export function ThreadItem({
 			</div>
 
 			<textarea
-				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
+				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
 				data-reply-textarea
 				data-thread-id={thread.id}
 				disabled={isResolved}
@@ -195,6 +209,16 @@ export function ThreadItem({
 						</Button>
 					</>
 				)}
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					data-delete-button
+					data-thread-id={thread.id}
+					onClick={handleDelete}
+				>
+					Delete
+				</Button>
 			</div>
 		</li>
 	);
@@ -209,6 +233,7 @@ export function ThreadPanel(props: {
 	onReply: (threadId: string, text: string) => Promise<void>;
 	onResolve: (threadId: string) => Promise<void>;
 	onReopen: (threadId: string) => Promise<void>;
+	onDelete: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
 }) {
@@ -220,6 +245,7 @@ export function ThreadPanel(props: {
 		onReply,
 		onResolve,
 		onReopen,
+		onDelete,
 		onJumpToThread,
 		error,
 	} = props;
@@ -249,13 +275,15 @@ export function ThreadPanel(props: {
 			?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 	}, [resolvedOpen, focusedThreadId]);
 
-	return (
-		<SidePanel open={resolvedOpen} onOpenChange={handleOpenChange} title="Comments">
+	// Below `md` the panel renders as a keyboard-aware bottom sheet (half
+	// height, drag to full) instead of the right-edge SidePanel — same
+	// threads, same actions, same focused-thread scroll. Desktop is untouched.
+	const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
+
+	const content = (
+		<>
 			{error ? (
-				<p
-					className="m-0 text-destructive text-sm"
-					data-comment-panel-error
-				>
+				<p className="m-0 text-destructive text-sm" data-comment-panel-error>
 					{error}
 				</p>
 			) : threads.length === 0 ? (
@@ -279,11 +307,34 @@ export function ThreadPanel(props: {
 							onReply={onReply}
 							onResolve={onResolve}
 							onReopen={onReopen}
+							onDelete={onDelete}
 							onJumpToThread={onJumpToThread}
 						/>
 					))}
 				</ul>
 			)}
+		</>
+	);
+
+	if (isMobile) {
+		return (
+			<BottomSheet
+				open={resolvedOpen}
+				onOpenChange={handleOpenChange}
+				title="Comments"
+			>
+				{content}
+			</BottomSheet>
+		);
+	}
+
+	return (
+		<SidePanel
+			open={resolvedOpen}
+			onOpenChange={handleOpenChange}
+			title="Comments"
+		>
+			{content}
 		</SidePanel>
 	);
 }

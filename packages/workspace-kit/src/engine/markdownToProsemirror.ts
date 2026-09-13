@@ -146,6 +146,16 @@ function isUnclosedDetailsOpener(node: Content): boolean {
 	return true;
 }
 
+// True for lines remark treats as structure rather than paragraph prose:
+// an html-block opener or a GFM table row (body or delimiter).
+function isStructuralDedentExempt(line: string): boolean {
+	const trimmed = line.trimStart();
+	if (trimmed.startsWith("<")) return true;
+	return (
+		/^\|.*\|\s*$/.test(trimmed) || /^\|?[\s:|-]*\|[\s:|-]*\|?\s*$/.test(trimmed)
+	);
+}
+
 function separateHtmlBlocksFromFollowingMarkdown(markdown: string): string {
 	const lines = markdown.split("\n");
 	const output: string[] = [];
@@ -544,6 +554,13 @@ function dedentNotionBlockMarkdown(markdown: string): string {
 	const lines = markdown.split("\n");
 	const nonEmptyIndents = lines.flatMap((line) => {
 		if (line.trim().length === 0) return [];
+		// Structural lines never veto the dedent: `<tag` lines are html
+		// blocks to remark, and GFM table rows are often injected at column
+		// 0 by normalizeNotionHtmlTables itself — either would otherwise
+		// leave tab-indented prose around them to rot into indented code
+		// blocks (garden #1870). Plain prose at column 0 still vetoes, so
+		// intentional indented code next to real prose is never stripped.
+		if (isStructuralDedentExempt(line)) return [];
 		return [line.match(/^[\t ]*/)?.[0] ?? ""];
 	});
 	const commonIndent = nonEmptyIndents.reduce(

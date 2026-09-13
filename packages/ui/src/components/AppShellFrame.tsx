@@ -15,7 +15,13 @@ export function AppShellFrame({
 	onCloseMobileNav?: () => void;
 }) {
 	return (
-		<main className="flex h-dvh flex-col bg-background text-foreground">
+		<main
+			className="flex h-dvh flex-col bg-background text-foreground"
+			style={{
+				paddingTop: "env(safe-area-inset-top)",
+				paddingBottom: "env(safe-area-inset-bottom)",
+			}}
+		>
 			{toolbar}
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				{sidebar && (
