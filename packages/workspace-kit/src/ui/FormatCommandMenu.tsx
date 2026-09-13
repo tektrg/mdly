@@ -205,7 +205,20 @@ export function FormatCommandMenu({
 			if (!viewport) return;
 			setQuery("");
 			setSelectedKind("paragraph");
-			setPosition(null);
+			// Seed an approximate position synchronously so the first paint
+			// lands near the cursor. cmdk scrolls the selected item into view
+			// on mount; rendering hidden at 0,0 before floating-ui positions
+			// the menu would yank the viewport scroll to the top.
+			try {
+				const coords = editor.view.coordsAtPos(editor.state.selection.from);
+				const rect = viewport.getBoundingClientRect();
+				setPosition({
+					x: coords.left - rect.left + viewport.scrollLeft,
+					y: coords.bottom - rect.top + viewport.scrollTop + 6,
+				});
+			} catch {
+				setPosition(null);
+			}
 			setOpen(true);
 			requestAnimationFrame(() => inputRef.current?.focus());
 		};
