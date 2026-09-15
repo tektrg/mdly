@@ -61,6 +61,7 @@ function ReopenHarness({
 					),
 				);
 			}}
+			onDelete={vi.fn().mockResolvedValue(undefined)}
 		/>
 	);
 }
@@ -129,6 +130,7 @@ describe("ThreadPanel", () => {
 					onReply={onReply}
 					onResolve={vi.fn()}
 					onReopen={vi.fn()}
+					onDelete={vi.fn()}
 				/>,
 			);
 		});
@@ -172,12 +174,15 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn()}
 					onResolve={onResolve}
 					onReopen={vi.fn()}
+					onDelete={vi.fn()}
 				/>,
 			);
 		});
 
 		await act(async () => {
-			document.querySelector<HTMLButtonElement>("[data-resolve-button]")?.click();
+			document
+				.querySelector<HTMLButtonElement>("[data-resolve-button]")
+				?.click();
 		});
 
 		expect(
@@ -197,17 +202,154 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn()}
 					onResolve={vi.fn()}
 					onReopen={onReopen}
+					onDelete={vi.fn()}
 				/>,
 			);
 		});
 
 		await act(async () => {
-			document.querySelector<HTMLButtonElement>("[data-reopen-button]")?.click();
+			document
+				.querySelector<HTMLButtonElement>("[data-reopen-button]")
+				?.click();
 		});
 
 		expect(
 			document.querySelector("[data-thread-action-error]")?.textContent,
 		).toContain("EACCES");
+	});
+
+	it("calls onDelete with the thread id when the confirm is accepted", async () => {
+		const onDelete = vi.fn().mockResolvedValue(undefined);
+		const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+		try {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[makeThread()]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={onDelete}
+					/>,
+				);
+			});
+
+			expect(
+				document.querySelector<HTMLButtonElement>("[data-delete-button]"),
+			).not.toBeNull();
+
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-delete-button]")
+					?.click();
+			});
+
+			expect(onDelete).toHaveBeenCalledWith("thread-1");
+		} finally {
+			confirm.mockRestore();
+		}
+	});
+
+	it("does not call onDelete when the confirm is cancelled", async () => {
+		const onDelete = vi.fn().mockResolvedValue(undefined);
+		const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+		try {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[makeThread()]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={onDelete}
+					/>,
+				);
+			});
+
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-delete-button]")
+					?.click();
+			});
+
+			expect(onDelete).not.toHaveBeenCalled();
+		} finally {
+			confirm.mockRestore();
+		}
+	});
+
+	it("shows Delete on a resolved thread and calls onDelete when confirmed", async () => {
+		const onDelete = vi.fn().mockResolvedValue(undefined);
+		const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+		try {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[makeThread({ state: "resolved" })]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={onDelete}
+					/>,
+				);
+			});
+
+			expect(
+				document.querySelector<HTMLButtonElement>("[data-delete-button]"),
+			).not.toBeNull();
+
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-delete-button]")
+					?.click();
+			});
+
+			expect(onDelete).toHaveBeenCalledWith("thread-1");
+		} finally {
+			confirm.mockRestore();
+		}
+	});
+
+	it("shows a visible error when Delete fails", async () => {
+		const onDelete = vi.fn().mockRejectedValue(new Error("EACCES"));
+		const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+		try {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[makeThread()]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={onDelete}
+					/>,
+				);
+			});
+
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-delete-button]")
+					?.click();
+			});
+
+			expect(
+				document.querySelector("[data-thread-action-error]")?.textContent,
+			).toContain("EACCES");
+		} finally {
+			confirm.mockRestore();
+		}
 	});
 
 	it("calls onJumpToThread when the thread body is clicked, but not when the reply controls are clicked", async () => {
@@ -222,6 +364,7 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn().mockResolvedValue(undefined)}
 					onResolve={vi.fn().mockResolvedValue(undefined)}
 					onReopen={vi.fn()}
+					onDelete={vi.fn()}
 					onJumpToThread={onJumpToThread}
 				/>,
 			);
@@ -234,7 +377,9 @@ describe("ThreadPanel", () => {
 
 		onJumpToThread.mockClear();
 		act(() => {
-			document.querySelector<HTMLTextAreaElement>("[data-reply-textarea]")?.click();
+			document
+				.querySelector<HTMLTextAreaElement>("[data-reply-textarea]")
+				?.click();
 		});
 		expect(onJumpToThread).not.toHaveBeenCalled();
 
@@ -244,7 +389,9 @@ describe("ThreadPanel", () => {
 			document.querySelector<HTMLButtonElement>("[data-reply-button]")?.click();
 		});
 		act(() => {
-			document.querySelector<HTMLButtonElement>("[data-resolve-button]")?.click();
+			document
+				.querySelector<HTMLButtonElement>("[data-resolve-button]")
+				?.click();
 		});
 		expect(onJumpToThread).not.toHaveBeenCalled();
 	});
@@ -261,6 +408,7 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn()}
 					onResolve={vi.fn()}
 					onReopen={vi.fn()}
+					onDelete={vi.fn()}
 					onJumpToThread={onJumpToThread}
 				/>,
 			);
@@ -296,6 +444,7 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn()}
 					onResolve={vi.fn()}
 					onReopen={vi.fn()}
+					onDelete={vi.fn()}
 				/>,
 			);
 		});
@@ -320,19 +469,25 @@ describe("ThreadPanel", () => {
 					onReply={vi.fn()}
 					onResolve={vi.fn()}
 					onReopen={vi.fn().mockResolvedValue(undefined)}
+					onDelete={vi.fn()}
 					onJumpToThread={onJumpToThread}
 				/>,
 			);
 		});
 
 		await act(async () => {
-			document.querySelector<HTMLButtonElement>("[data-reopen-button]")?.click();
+			document
+				.querySelector<HTMLButtonElement>("[data-reopen-button]")
+				?.click();
 		});
 		expect(onJumpToThread).not.toHaveBeenCalled();
 	});
 
 	it("scrolls the focused thread into view within the panel's own list", () => {
-		const threads = [makeThread({ id: "thread-1" }), makeThread({ id: "thread-2" })];
+		const threads = [
+			makeThread({ id: "thread-1" }),
+			makeThread({ id: "thread-2" }),
+		];
 		const renderWith = (focusedThreadId?: string) => {
 			act(() => {
 				root.render(
@@ -345,6 +500,7 @@ describe("ThreadPanel", () => {
 						onReply={vi.fn()}
 						onResolve={vi.fn()}
 						onReopen={vi.fn()}
+						onDelete={vi.fn()}
 					/>,
 				);
 			});
@@ -384,6 +540,7 @@ describe("ThreadPanel", () => {
 						onReply={vi.fn()}
 						onResolve={vi.fn()}
 						onReopen={vi.fn()}
+						onDelete={vi.fn()}
 					/>,
 				);
 			});
@@ -405,15 +562,16 @@ describe("ThreadPanel", () => {
 						onReply={vi.fn()}
 						onResolve={vi.fn()}
 						onReopen={vi.fn()}
+						onDelete={vi.fn()}
 						error="Failed to load comments"
 					/>,
 				);
 			});
 		}).not.toThrow();
 
-		expect(document.querySelector("[data-comment-panel-error]")?.textContent).toBe(
-			"Failed to load comments",
-		);
+		expect(
+			document.querySelector("[data-comment-panel-error]")?.textContent,
+		).toBe("Failed to load comments");
 		expect(document.querySelector("[data-comment-thread-list]")).toBeNull();
 	});
 });

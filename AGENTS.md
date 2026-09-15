@@ -2,7 +2,20 @@ Use logical CSS spacing props (`margin/padding` inline/block/start/end), not phy
 
 Check work: `pnpm build:desktop` (builds packages, runs biome check, tsc, vite build, cargo check). For quick iteration use `pnpm check` and desktop tsc.
 
-Before development handoff for the desktop app, run `pnpm install:dev-app`. It rebuilds the Hubble/mdly dev launcher, installs it to `/Applications/mdly.app`, and opens it, which restarts the `hubble_desktop_dev` tmux session and the Electron app.
+## Ship = build + restart the app, every time
+
+A source-level fix is NOT done until it's rebuilt and running. Passing tests alone does not
+verify a desktop-app change is actually live. Every time you ship a change (finish a fix,
+finish a feature, before any handoff or "done" report):
+
+```bash
+pnpm install:dev-app
+```
+
+This rebuilds the Hubble/mdly dev launcher, installs it to `/Applications/mdly.app`, and opens
+it, which restarts the `hubble_desktop_dev` tmux session and the Electron app. Do this even when
+the user didn't explicitly ask — "implemented and tested" without this step is an incomplete
+report.
 
 After desktop builds, review large derivative artifacts and clean clearly stale ones before handoff. Common candidates include old `.dev-electron` app bundles, repo-local launcher `.app` outputs, stale release packages, and root `.build`; keep current release deliverables, active dev app caches/watchers, and anything ambiguous. Report what was removed and what was kept.
 
@@ -13,14 +26,6 @@ When asked why you made a decision, answer why. Don't take it as a challenge to 
 Comments aren't evil. Use doc comments on complex functions, or inline comments where the "why" behind code isn't immediately clear by the implementation. Continue omitting comments for other cases, by your best judgment.
 
 ## Agent skills
-
-### Issue tracker
-
-GitHub Issues on `bholmesdev/hubble.md` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Defaults: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

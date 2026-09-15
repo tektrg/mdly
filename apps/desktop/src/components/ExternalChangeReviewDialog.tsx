@@ -1,51 +1,61 @@
-import { Modal } from "@hubble.md/ui";
-import { DiffReviewPanel } from "@mdly/workspace-kit";
+import { Button, Modal } from "@hubble.md/ui";
+import { groupChangeRegions } from "@mdly/doc-history";
+import { DiffGroupsView } from "@mdly/workspace-kit";
+import { useMemo } from "react";
 
 /**
- * Modal wrapper around the kit's region-by-region diff/review surface
- * (R2-R6), following the same Modal-wrapping-a-kit-panel pattern already used
- * for `FilePropertiesPanel`. `oldText` is the frozen pre-external-edit
- * baseline (`state.diskContent` while a review is pending); `newText` is the
- * pending external change (`externalChange.diskContent`).
+ * Read-only view of an already-applied external change (R: content/diskContent
+ * are never frozen -- the editor shows `currentContent` live regardless of
+ * whether this dialog is open). `onUndo` reverts to `previousContent`; closing
+ * without undoing leaves the applied change in place and the title-bar pill
+ * up, same as before this dialog existed.
  */
 export function ExternalChangeReviewDialog({
 	open,
 	onOpenChange,
-	oldText,
-	newText,
-	onConfirm,
+	previousContent,
+	currentContent,
+	onUndo,
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	oldText: string;
-	newText: string;
-	/** Resolves to whether the merge actually landed on disk (see
-	 * `resolveExternalChangeReview`). The dialog only closes on `true` — on
-	 * `false` (write failure, stale disk, unsaved local edits) it stays open
-	 * with the user's picks intact so they can see the error and retry. */
-	onConfirm: (mergedText: string) => Promise<boolean>;
+	previousContent: string;
+	currentContent: string;
+	onUndo: () => void;
 }) {
+	const groups = useMemo(
+		() => groupChangeRegions(previousContent, currentContent),
+		[previousContent, currentContent],
+	);
+
 	if (!open) return null;
 
 	return (
 		<Modal
 			open={open}
 			onOpenChange={onOpenChange}
-			title="Review external changes"
-			description="This note changed outside the app. Accept or reject each change, then apply."
+			title="Review external change"
+			description="This note changed outside the app. The change is already applied -- undo to restore what was here before."
 			className="flex h-[70vh] max-w-2xl flex-col"
 		>
-			<DiffReviewPanel
-				oldText={oldText}
-				newText={newText}
-				onCancel={() => onOpenChange(false)}
-				onConfirm={(mergedText) => {
-					void (async () => {
-						const applied = await onConfirm(mergedText);
-						if (applied) onOpenChange(false);
-					})();
-				}}
-			/>
+			<div className="min-h-0 flex-1 overflow-y-auto">
+				<DiffGroupsView groups={groups} emptyMessage="No changes to show." />
+			</div>
+			<div className="mt-3 flex shrink-0 justify-end gap-2">
+				<Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+					Keep it
+				</Button>
+				<Button
+					variant="default"
+					size="sm"
+					onClick={() => {
+						onUndo();
+						onOpenChange(false);
+					}}
+				>
+					Undo
+				</Button>
+			</div>
 		</Modal>
 	);
 }

@@ -1,11 +1,12 @@
 import type { DocHistoryFileSystem } from "@mdly/doc-history";
 import { generateId } from "@mdly/doc-history";
-import { resolveAnchor } from "./anchor.js";
 import type { FlattenDocument, ReadRevisionContent } from "./anchor.js";
+import { resolveAnchor } from "./anchor.js";
 import { appendCommentEvent, readCommentEvents } from "./commentLog.js";
 import type {
 	AnyCommentEvent,
 	CommentThread,
+	DeleteOptions,
 	OpenThreadOptions,
 	ReopenOptions,
 	ReplyOptions,
@@ -124,12 +125,17 @@ async function buildThread(
 		options.flattenDocument,
 	);
 
+	// A deleted tombstone is sticky: later reply/resolve/reopen events still
+	// append (never rejected) but must not resurrect the thread in the list.
+	// Undo later stays migration-free -- it will be a new event kind that this
+	// rule learns to honor, not a rewrite of the log.
+	const deleted = threadEvents.some((e) => e.kind === "deleted");
 	return {
 		id: opener.threadId,
 		docId,
 		opener,
 		events: orderThreadEvents(threadEvents),
-		state: head.kind === "resolved" ? "resolved" : "open",
+		state: deleted ? "deleted" : head.kind === "resolved" ? "resolved" : "open",
 		anchorResolution,
 	};
 }
@@ -158,7 +164,7 @@ export async function listThreads(
 			currentFlattenedText,
 			options,
 		);
-		if (thread) threads.push(thread);
+		if (thread && thread.state !== "deleted") threads.push(thread);
 	}
 
 	return threads.sort((a, b) => a.opener.id.localeCompare(b.opener.id));
@@ -181,7 +187,10 @@ export async function openThread(
 	workspaceRoot: string,
 	options: OpenThreadOptions,
 ): Promise<void> {
-	if (options.anchor.from >= options.anchor.to || options.anchor.quote.length === 0) {
+	if (
+		options.anchor.from >= options.anchor.to ||
+		options.anchor.quote.length === 0
+	) {
 		throw new Error("Cannot create a comment thread on an empty selection");
 	}
 
@@ -266,6 +275,30 @@ export async function reopen(
 			id: generateId(),
 			threadId: options.threadId,
 			kind: "reopened",
+			prev: head?.id ?? null,
+			by: options.author,
+		};
+		await appendCommentEvent(fs, workspaceRoot, options.docId, event);
+	});
+}
+
+/** Soft-deletes a thread by appending a tombstone event. */
+export async function deleteThread(
+	fs: DocHistoryFileSystem,
+	workspaceRoot: string,
+	options: DeleteOptions,
+): Promise<void> {
+	await withDocLock(options.docId, async () => {
+		const head = await currentHead(
+			fs,
+			workspaceRoot,
+			options.docId,
+			options.threadId,
+		);
+		const event: AnyCommentEvent = {
+			id: generateId(),
+			threadId: options.threadId,
+			kind: "deleted",
 			prev: head?.id ?? null,
 			by: options.author,
 		};

@@ -14,12 +14,7 @@ import {
 	touchFile,
 } from "../store/actions";
 import { flushEditorDraft } from "../store/editorDraft";
-import {
-	cleanFileState,
-	getBaseline,
-	isUnresolvedExternalChange,
-	viewerStore,
-} from "../store/state";
+import { cleanFileState, viewerStore } from "../store/state";
 import {
 	applyPatchToMarkdown,
 	type HtmlAppFilePatch,
@@ -329,11 +324,7 @@ export async function applyMarkdownPatch(
 	const hasBody = hasOwn(patch, "body");
 
 	if (isCurrent) {
-		// A pending review (like a real conflict) must not be silently
-		// clobbered by an HTML-embed's programmatic patch (R22).
-		const isDirty =
-			current.content !== getBaseline(current) ||
-			isUnresolvedExternalChange(current.externalChange.kind);
+		const isDirty = current.content !== current.diskContent;
 		if (hasBody && isDirty) {
 			throw new Error(
 				"Cannot update body while the open file has unsaved edits.",

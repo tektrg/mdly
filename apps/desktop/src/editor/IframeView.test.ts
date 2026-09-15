@@ -30,10 +30,8 @@ describe("IframeView applyMarkdownPatch guard (R22, QA1b, QA2c)", () => {
 		api.writeFileText.mockClear();
 	});
 
-	it("blocks a body update while a review is pending, without silently clearing externalChange", async () => {
+	it("blocks a body update while the editor has unsaved edits, without clobbering state", async () => {
 		const path = "/workspace/note.md";
-		const original = "# Original";
-		const externalEditText = "# Original\n\nExternal edit";
 
 		appStore.set((current) => ({
 			...current,
@@ -41,9 +39,9 @@ describe("IframeView applyMarkdownPatch guard (R22, QA1b, QA2c)", () => {
 				...current.document,
 				currentPath: path,
 				lastOpenedPath: path,
-				content: original,
-				diskContent: original,
-				externalChange: { kind: "review", diskContent: externalEditText },
+				content: "# Original\n\nunsaved edit",
+				diskContent: "# Original",
+				externalChange: { kind: "none" },
 				status: "ready",
 				error: null,
 			},
@@ -54,15 +52,12 @@ describe("IframeView applyMarkdownPatch guard (R22, QA1b, QA2c)", () => {
 		).rejects.toThrow(/unsaved edits/i);
 
 		expect(api.writeFileText).not.toHaveBeenCalled();
-		// The pending review must still be there for the user to act on — not
-		// silently discarded by the rejected patch attempt.
-		expect(appStore.get().document.externalChange).toEqual({
-			kind: "review",
-			diskContent: externalEditText,
-		});
+		// The unsaved edit must still be there — not silently discarded by the
+		// rejected patch attempt.
+		expect(appStore.get().document.content).toBe("# Original\n\nunsaved edit");
 	});
 
-	it("still blocks a body update for a real conflict, matching pre-Slice-3 behavior", async () => {
+	it("blocks a body update while an auto-applied external change has not been undone or saved over", async () => {
 		const path = "/workspace/note.md";
 
 		appStore.set((current) => ({
@@ -71,12 +66,13 @@ describe("IframeView applyMarkdownPatch guard (R22, QA1b, QA2c)", () => {
 				...current.document,
 				currentPath: path,
 				lastOpenedPath: path,
-				// Content matches the conflict's own baseline exactly, so the block
-				// below can only come from the "conflict" kind check, not a genuine
-				// content mismatch — isolating the guard-sweep behavior under test.
-				content: "changed outside",
-				diskContent: "before",
-				externalChange: { kind: "conflict", diskContent: "changed outside" },
+				// diskContent tracks live disk state on auto-apply, so dirtiness here
+				// comes only from an unsaved local edit made after the auto-apply —
+				// isolating the same content !== diskContent guard as any other
+				// unsaved-edit case, not from the externalChange kind itself.
+				content: "changed outside\n\nunsaved edit",
+				diskContent: "changed outside",
+				externalChange: { kind: "applied", previousContent: "before" },
 				status: "ready",
 				error: null,
 			},

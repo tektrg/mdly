@@ -67,12 +67,14 @@ function Harness({
 	onReply = () => Promise.resolve(),
 	onResolve = () => Promise.resolve(),
 	onReopen = () => Promise.resolve(),
+	onDelete = () => Promise.resolve(),
 }: {
 	editor: Editor;
 	threads: ResolvedThread[];
 	onReply?: (threadId: string, text: string) => Promise<void>;
 	onResolve?: (threadId: string) => Promise<void>;
 	onReopen?: (threadId: string) => Promise<void>;
+	onDelete?: (threadId: string) => Promise<void>;
 }) {
 	const viewportRef = useRef<HTMLDivElement | null>(null);
 	return (
@@ -84,6 +86,7 @@ function Harness({
 				onReply={onReply}
 				onResolve={onResolve}
 				onReopen={onReopen}
+				onDelete={onDelete}
 			/>
 		</div>
 	);
@@ -116,7 +119,9 @@ describe("CommentThreadPopover", () => {
 
 	it("shows the clicked thread's content, reusing ThreadItem's own markup", () => {
 		const editor = createEditor();
-		const thread = makeThread({ opener: { ...makeThread().opener, text: "why bold?" } });
+		const thread = makeThread({
+			opener: { ...makeThread().opener, text: "why bold?" },
+		});
 		setCommentThreads(editor, [thread]);
 		act(() => {
 			root.render(<Harness editor={editor} threads={[thread]} />);
@@ -130,9 +135,11 @@ describe("CommentThreadPopover", () => {
 
 		const popover = container.querySelector("[data-comment-thread-popover]");
 		expect(popover).not.toBeNull();
-		expect(popover?.querySelector("[data-comment-thread]")?.getAttribute("data-thread-id")).toBe(
-			"thread-1",
-		);
+		expect(
+			popover
+				?.querySelector("[data-comment-thread]")
+				?.getAttribute("data-thread-id"),
+		).toBe("thread-1");
 		expect(popover?.textContent).toContain("why bold?");
 	});
 
@@ -181,21 +188,26 @@ describe("CommentThreadPopover", () => {
 			root.render(<Harness editor={editor} threads={[threadA, threadB]} />);
 		});
 
-		const marks = editor.view.dom.querySelectorAll<HTMLElement>(".pm-comment-mark");
+		const marks =
+			editor.view.dom.querySelectorAll<HTMLElement>(".pm-comment-mark");
 		expect(marks).toHaveLength(2);
 
 		act(() => {
 			marks[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 		expect(
-			container.querySelector("[data-comment-thread]")?.getAttribute("data-thread-id"),
+			container
+				.querySelector("[data-comment-thread]")
+				?.getAttribute("data-thread-id"),
 		).toBe("thread-a");
 
 		act(() => {
 			marks[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 		expect(
-			container.querySelector("[data-comment-thread]")?.getAttribute("data-thread-id"),
+			container
+				.querySelector("[data-comment-thread]")
+				?.getAttribute("data-thread-id"),
 		).toBe("thread-b");
 	});
 
@@ -217,7 +229,9 @@ describe("CommentThreadPopover", () => {
 		act(() => {
 			mark?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
-		expect(container.querySelector("[data-comment-thread-popover]")).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-thread-popover]"),
+		).not.toBeNull();
 
 		act(() => {
 			outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
@@ -238,7 +252,9 @@ describe("CommentThreadPopover", () => {
 		act(() => {
 			mark?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
-		expect(container.querySelector("[data-comment-thread-popover]")).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-thread-popover]"),
+		).not.toBeNull();
 
 		act(() => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -258,7 +274,9 @@ describe("CommentThreadPopover", () => {
 		act(() => {
 			mark?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
-		expect(container.querySelector("[data-comment-thread-popover]")).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-thread-popover]"),
+		).not.toBeNull();
 
 		act(() => {
 			root.render(<Harness editor={editor} threads={[]} />);
@@ -272,7 +290,9 @@ describe("CommentThreadPopover", () => {
 		const thread = makeThread();
 		setCommentThreads(editor, [thread]);
 		act(() => {
-			root.render(<Harness editor={editor} threads={[thread]} onReply={onReply} />);
+			root.render(
+				<Harness editor={editor} threads={[thread]} onReply={onReply} />,
+			);
 		});
 
 		const mark = editor.view.dom.querySelector<HTMLElement>(".pm-comment-mark");
@@ -280,7 +300,9 @@ describe("CommentThreadPopover", () => {
 			mark?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 
-		const textarea = container.querySelector<HTMLTextAreaElement>("[data-reply-textarea]");
+		const textarea = container.querySelector<HTMLTextAreaElement>(
+			"[data-reply-textarea]",
+		);
 		const nativeValueSetter = Object.getOwnPropertyDescriptor(
 			window.HTMLTextAreaElement.prototype,
 			"value",
@@ -290,7 +312,9 @@ describe("CommentThreadPopover", () => {
 			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
 		});
 		await act(async () => {
-			container.querySelector<HTMLButtonElement>("[data-reply-button]")?.click();
+			container
+				.querySelector<HTMLButtonElement>("[data-reply-button]")
+				?.click();
 		});
 
 		expect(onReply).toHaveBeenCalledWith("thread-1", "because");

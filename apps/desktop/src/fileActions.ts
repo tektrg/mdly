@@ -6,14 +6,19 @@ import {
 } from "@mdly/workspace-kit/engine";
 import { desktopApi } from "./desktopApi";
 import type { DocImportResult, NotionSearchResult } from "./desktopApi/types";
-import { basename, dirname, joinPath, markdownAssetFolderPath } from "./lib/filePath";
-import { notionMarkdownContentHash } from "./notion/contentHash";
 import {
 	buildDocSourceMarkdown,
 	buildDocSourceMarkdownFromMetadata,
-	parseDocSourceMetadata,
 	type DocSourceMetadata,
+	parseDocSourceMetadata,
 } from "./docImport/docSourceMarkdown";
+import {
+	basename,
+	dirname,
+	joinPath,
+	markdownAssetFolderPath,
+} from "./lib/filePath";
+import { notionMarkdownContentHash } from "./notion/contentHash";
 import { buildNotionDatabaseMarkdown } from "./notion/notionDatabase";
 import {
 	buildNotionLinkedMarkdown,
@@ -31,7 +36,6 @@ import {
 } from "./store/actions";
 import { flushEditorDraft } from "./store/editorDraft";
 import {
-	getBaseline,
 	sourceRetentionPreferenceStore,
 	viewerStore,
 	workspaceStore,
@@ -427,7 +431,7 @@ export async function pushCurrentNotionPage(options?: {
 
 	const markdownForNotion = notionMarkdownBodyForUpdate(latestContent);
 	const previousMarkdownForNotion = notionMarkdownBodyForUpdate(
-		getBaseline(current),
+		current.diskContent,
 	);
 	const currentMarkdownForNotion = notionMarkdownBodyForUpdate(
 		remoteBeforeUpdate.markdown,
@@ -493,7 +497,7 @@ export async function refreshCurrentNotionPage(options?: {
 	});
 	if (
 		nextMarkdown === current.content &&
-		nextMarkdown === getBaseline(current)
+		nextMarkdown === current.diskContent
 	) {
 		return { kind: "refreshed" };
 	}
@@ -506,7 +510,7 @@ export async function refreshCurrentNotionPage(options?: {
 function localMarkdownForRefreshCheck(currentContent: string): string {
 	const current = viewerStore.get();
 	const currentMarkdown = stripNotionLinkMetadata(currentContent);
-	const baseline = getBaseline(current);
+	const baseline = current.diskContent;
 	const baselineMarkdown = stripNotionLinkMetadata(baseline);
 	if (
 		currentContent !== baseline &&

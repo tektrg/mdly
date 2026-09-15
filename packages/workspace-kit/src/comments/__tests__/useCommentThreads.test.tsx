@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
 
 import { Editor, type JSONContent } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
+import { PluginKey, TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { act } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommentOptions, CommentThread } from "../types";
-import { type UseCommentThreadsResult, useCommentThreads } from "../useCommentThreads";
+import {
+	type UseCommentThreadsResult,
+	useCommentThreads,
+} from "../useCommentThreads";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -47,6 +50,7 @@ function baseOptions(overrides: Partial<CommentOptions> = {}): CommentOptions {
 		onReply: vi.fn(),
 		onResolve: vi.fn(),
 		onReopen: vi.fn(),
+		onDelete: vi.fn(),
 		...overrides,
 	};
 }
@@ -134,7 +138,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -180,7 +186,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -200,7 +208,9 @@ describe("useCommentThreads", () => {
 					content: [
 						{
 							type: "paragraph",
-							content: [{ type: "text", text: "PREFIX TARGET rest of the line" }],
+							content: [
+								{ type: "text", text: "PREFIX TARGET rest of the line" },
+							],
 						},
 					],
 				} satisfies JSONContent,
@@ -227,7 +237,9 @@ describe("useCommentThreads", () => {
 			events: [],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -245,6 +257,75 @@ describe("useCommentThreads", () => {
 		await flush(root);
 
 		expect(latest?.resolvedThreads).toBe(beforeThreads);
+	});
+
+	// Regression for the 2026-09-02 renderer-storm crash (crash-trace.log:
+	// ~766K `editor.transaction` dispatches over one 23-minute idle session,
+	// every one carrying only `commentThreadsKey`'s meta, steps:0,
+	// docChanged:false, editorFocused:false). The "transaction" listener used
+	// to call `resolveAnchor` (and thus `readRevisionContent`) again for EVERY
+	// transaction, including a meta-only one carrying no doc change -- e.g.
+	// `setCommentThreads`'s own dispatch, echoed straight back into this same
+	// listener. `resolvedThreads`'s own content-equality guard (tested above)
+	// stops that particular cycle from free-running once inputs are stable,
+	// but it still means every meta-only echo redoes a full anchor-resolution
+	// pass (an `await readRevisionContent(...)` per thread) for nothing.
+	// Gating on `docChanged` means a transaction that cannot possibly move any
+	// anchor (`resolveAnchor` only ever reads document content, never
+	// selection or plugin meta) does no resolution work at all -- verified
+	// directly here via `readRevisionContent`'s call count, since the
+	// downstream reference-stability test can't distinguish "did no work" from
+	// "did the work again and got the same answer".
+	it("does not call readRevisionContent again for a meta-only transaction that cannot affect any anchor", async () => {
+		const thread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: {
+					from: 0,
+					to: 5,
+					quote: "TARGET",
+					mode: "revision",
+					revisionId: "rev-1",
+				},
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		const readRevisionContent = vi
+			.fn()
+			.mockResolvedValue("TARGET rest of the line");
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+			readRevisionContent,
+		});
+		const editor = createEditor("TARGET rest of the line");
+
+		act(() => {
+			root.render(<Harness options={options} editor={editor} />);
+		});
+		await flush(root);
+
+		expect(latest?.resolvedThreads).toHaveLength(1);
+		const callsAfterInitialResolve = readRevisionContent.mock.calls.length;
+		expect(callsAfterInitialResolve).toBeGreaterThan(0);
+
+		// setCommentThreads's own dispatch shape: meta-only, no doc/selection
+		// change -- dispatched several times, matching the sustained-storm shape
+		// rather than a single occurrence.
+		const dummyKey = new PluginKey<number>("regressionDummy");
+		act(() => {
+			for (let i = 0; i < 5; i++) {
+				editor.view.dispatch(editor.state.tr.setMeta(dummyKey, i));
+			}
+		});
+		await flush(root);
+
+		expect(readRevisionContent.mock.calls.length).toBe(
+			callsAfterInitialResolve,
+		);
 	});
 
 	// The store behind a real `getThreads` (`@mdly/doc-comments`) documents its
@@ -281,7 +362,9 @@ describe("useCommentThreads", () => {
 			],
 			state: "open",
 		};
-		const options = baseOptions({ getThreads: vi.fn().mockResolvedValue([thread]) });
+		const options = baseOptions({
+			getThreads: vi.fn().mockResolvedValue([thread]),
+		});
 		const editor = createEditor("TARGET rest of the line");
 
 		act(() => {
@@ -321,7 +404,14 @@ describe("useCommentThreads", () => {
 		const resolvedThread: CommentThread = {
 			...openThread,
 			state: "resolved",
-			events: [{ id: "event-1", kind: "resolved", by: { kind: "human", id: "u1" }, prev: null }],
+			events: [
+				{
+					id: "event-1",
+					kind: "resolved",
+					by: { kind: "human", id: "u1" },
+					prev: null,
+				},
+			],
 		};
 		getThreads.mockResolvedValue([resolvedThread]);
 

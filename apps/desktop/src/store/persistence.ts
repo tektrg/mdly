@@ -45,8 +45,7 @@ type DocumentState = {
 	diskContent: string;
 	externalChange:
 		| { kind: "none" }
-		| { kind: "conflict"; diskContent: string }
-		| { kind: "review"; diskContent: string };
+		| { kind: "applied"; previousContent: string };
 	status: "idle" | "loading" | "ready" | "error";
 	error: string | null;
 };

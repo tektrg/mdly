@@ -24,12 +24,10 @@ const floatingChipClass =
 export function FormattingStatusBar({
 	editor,
 	path,
-	scrollContainer,
 	onOpenRevisionHistory,
 }: {
 	editor: Editor | null;
 	path: string;
-	scrollContainer: HTMLDivElement | null;
 	/** Opt-in (see `EditorViewProps.onOpenRevisionHistory`); omit to render no history affordance. */
 	onOpenRevisionHistory?: (path: string) => void;
 }) {
@@ -43,10 +41,6 @@ export function FormattingStatusBar({
 
 	useEffect(() => {
 		if (!editor) return;
-		const resolvedScrollContainer =
-			scrollContainer ??
-			(editor.view.dom.closest(".editorViewport") as HTMLDivElement | null) ??
-			null;
 
 		const update = () => {
 			const text = editor.getText();
@@ -78,22 +72,14 @@ export function FormattingStatusBar({
 		editor.on("transaction", update);
 		editor.on("focus", update);
 		editor.on("blur", update);
-		resolvedScrollContainer?.addEventListener("scroll", update, {
-			passive: true,
-		});
-		window.addEventListener("scroll", update, true);
-		window.addEventListener("resize", update);
 
 		return () => {
 			editor.off("selectionUpdate", update);
 			editor.off("transaction", update);
 			editor.off("focus", update);
 			editor.off("blur", update);
-			resolvedScrollContainer?.removeEventListener("scroll", update);
-			window.removeEventListener("scroll", update, true);
-			window.removeEventListener("resize", update);
 		};
-	}, [editor, scrollContainer]);
+	}, [editor]);
 	if (!editor) return null;
 	const fileName = fileNameFromPath(path);
 	const countLabel =

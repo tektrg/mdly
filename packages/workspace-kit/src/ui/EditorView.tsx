@@ -15,6 +15,17 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+	CommentComposer,
+	CommentExtension,
+	CommentGutter,
+	type CommentOptions,
+	CommentParagraphMarker,
+	CommentThreadPopover,
+	setCommentThreads,
+	ThreadPanel,
+	useCommentThreads,
+} from "../comments/index.js";
+import {
 	combineMarkdownFrontMatter,
 	HeadingExtension,
 	hasLinkedNotionFrontMatter,
@@ -32,15 +43,6 @@ import {
 	tiptapDocToMarkdown,
 } from "../engine/index.js";
 import { CODE_BLOCK_COPY_EVENT, HubbleCodeBlock } from "./CodeBlockExtension";
-import {
-	CommentComposer,
-	CommentExtension,
-	CommentGutter,
-	type CommentOptions,
-	setCommentThreads,
-	ThreadPanel,
-	useCommentThreads,
-} from "../comments/index.js";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FindReplaceExtension } from "./FindReplaceExtension";
 import { LinkClickExtension } from "./LinkClickExtension";
@@ -135,6 +137,19 @@ export type EditorViewProps = {
 	onLocalChange: (path: string, markdown: string) => void;
 	onSave: (path: string, markdown: string) => void | Promise<void>;
 	/**
+	 * Whether the editor accepts user edits. Defaults to `true` — today's
+	 * behaviour, unchanged for every existing consumer (the desktop app, the
+	 * vendored second consumer, `apps/notion-web`). `apps/www` is the only
+	 * caller that sets this `false`: the web review surface is read-only
+	 * (charter R31 — "the Mac is the sole author of notes"). When `false`,
+	 * ProseMirror's own `editable` option rejects direct typing, and
+	 * `scheduleSave` below never fires — so `onSave` is never invoked either
+	 * from the autosave debounce or from the unmount/path-change forced-save.
+	 * Same discipline as the existing `chrome` prop: additive, defaulted,
+	 * opt-out only.
+	 */
+	editable?: boolean;
+	/**
 	 * Fires a local-document-history cut distinct from the 500ms autosave
 	 * above: once after `idleCutMs` of no typing, and again every
 	 * `forcedCutMs` during a long uninterrupted typing session, plus once
@@ -193,6 +208,7 @@ export function EditorView({
 	registerDraftFlush,
 	onLocalChange,
 	onSave,
+	editable = true,
 	onIdleOrForcedCut,
 	idleCutMs,
 	forcedCutMs,
@@ -331,6 +347,11 @@ export function EditorView({
 	const initialDoc = useMemo(() => markdownToTiptapDoc(initialBody), []);
 
 	const scheduleSave = useCallback(() => {
+		// R31: the single choke point for every write path below (autosave
+		// debounce here, plus the unmount/path-change forced-save further down,
+		// which only fires when `saveTimerRef.current` was set by this
+		// function). Read-only hosts (`apps/www`) never reach `onSave`.
+		if (!editable) return;
 		const savePath = pathRef.current;
 		if (saveTimerRef.current !== null) {
 			window.clearTimeout(saveTimerRef.current);
@@ -339,7 +360,7 @@ export function EditorView({
 			flushDraft();
 			void onSave(savePath, latestMarkdownRef.current);
 		}, saveDebounceMs);
-	}, [flushDraft, onSave, saveDebounceMs]);
+	}, [editable, flushDraft, onSave, saveDebounceMs]);
 
 	const updateFrontMatter = useCallback(
 		(
@@ -417,6 +438,7 @@ export function EditorView({
 	const editor = useEditor({
 		extensions: editorExtensions,
 		content: initialDoc,
+		editable,
 		onUpdate: ({ editor: current }) => {
 			// Defer O(doc) markdown serialization off the keystroke path: retain the
 			// immutable doc and let flushDraft serialize when the text is needed.
@@ -455,15 +477,79 @@ export function EditorView({
 	});
 	editorRef.current = editor;
 
-	const { resolvedThreads, error: commentsError } = useCommentThreads(
-		commentOptions,
-		editor,
-		identityFlattenDocument,
-	);
+	const {
+		resolvedThreads,
+		error: commentsError,
+		refetch: refetchCommentThreads,
+	} = useCommentThreads(commentOptions, editor, identityFlattenDocument);
 	useEffect(() => {
 		if (!editor) return;
 		setCommentThreads(editor, resolvedThreads);
 	}, [editor, resolvedThreads]);
+
+	// `commentOptions.onOpenThread`/`onReply`/`onResolve`/`onReopen`/`onDelete` only
+	// perform the write (host IPC round-trip); nothing about a successful
+	// write on its own re-triggers `useCommentThreads`'s fetch effect (it's
+	// keyed on `getThreads`/docId/refreshSignal/a manual refetch(), none of
+	// which change just because a mutation succeeded). Every comment mutation
+	// funnels through this one wrapper so every thread surface (panel,
+	// composer, popover) sees the fresh state right after acting, instead of
+	// only after the next unrelated re-fetch trigger.
+	const withThreadsRefetch = useCallback(
+		<Args extends unknown[]>(
+			action: ((...args: Args) => Promise<void>) | undefined,
+		) =>
+			(...args: Args) =>
+				(action?.(...args) ?? Promise.resolve()).then(() => {
+					refetchCommentThreads();
+				}),
+		[refetchCommentThreads],
+	);
+	const handleOpenThread = useMemo(
+		() => withThreadsRefetch(commentOptions?.onOpenThread),
+		[withThreadsRefetch, commentOptions],
+	);
+	const handleReplyToThread = useMemo(
+		() => withThreadsRefetch(commentOptions?.onReply),
+		[withThreadsRefetch, commentOptions],
+	);
+	const handleResolveThread = useMemo(
+		() => withThreadsRefetch(commentOptions?.onResolve),
+		[withThreadsRefetch, commentOptions],
+	);
+	const handleReopenThread = useMemo(
+		() => withThreadsRefetch(commentOptions?.onReopen),
+		[withThreadsRefetch, commentOptions],
+	);
+	const handleDeleteThread = useMemo(
+		() => withThreadsRefetch(commentOptions?.onDelete),
+		[withThreadsRefetch, commentOptions],
+	);
+
+	// Shared by both the gutter rail marker and the paragraph-end marker
+	// (CommentGutter's "one marker per thread" vs. CommentParagraphMarker's
+	// "one marker per textblock" -- both funnel into the same panel-focus
+	// contract either way).
+	const handleSelectThread = useCallback(
+		(threadId: string) => {
+			setFocusedThreadId(threadId);
+			commentOptions?.onPanelOpenChange?.(true);
+		},
+		[commentOptions],
+	);
+	// Scrolls the document to a comment's anchored text when its panel item is
+	// clicked. Scoped to `editor.view.dom` (the ProseMirror content root)
+	// rather than `editorRootRef`, so it can only ever match the real
+	// `data-thread-id` decoration span (`CommentExtension.ts`), never the
+	// gutter/paragraph marker buttons that also carry the same attribute.
+	const handleJumpToThread = useCallback(
+		(threadId: string) => {
+			editor?.view.dom
+				.querySelector<HTMLElement>(`[data-thread-id="${threadId}"]`)
+				?.scrollIntoView({ block: "center", behavior: "smooth" });
+		},
+		[editor],
+	);
 
 	const onEditorReadyRef = useRef(onEditorReady);
 	onEditorReadyRef.current = onEditorReady;
@@ -605,25 +691,41 @@ export function EditorView({
 				/>
 				<SlashCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
-				<TableOfContents editor={editor} scrollContainer={editorViewportEl} />
+				<TableOfContents
+					editor={editor}
+					scrollContainer={editorViewportEl}
+					threads={commentOptions ? resolvedThreads : undefined}
+				/>
 				{commentOptions ? (
 					<>
 						<CommentGutter
 							editor={editor}
 							containerRef={editorRootRef}
 							threads={resolvedThreads}
-							onSelectThread={(threadId) => {
-								setFocusedThreadId(threadId);
-								commentOptions.onPanelOpenChange?.(true);
-							}}
+							onSelectThread={handleSelectThread}
+						/>
+						<CommentParagraphMarker
+							editor={editor}
+							containerRef={editorRootRef}
+							threads={resolvedThreads}
+							onSelectThread={handleSelectThread}
 						/>
 						<CommentComposer
 							editor={editor}
 							viewportRef={editorViewportRef}
 							getHeadRevisionId={commentOptions.getHeadRevisionId}
 							readRevisionContent={commentOptions.readRevisionContent}
-							onOpenThread={commentOptions.onOpenThread}
+							onOpenThread={handleOpenThread}
 							onPanelOpenChange={commentOptions.onPanelOpenChange}
+						/>
+						<CommentThreadPopover
+							editor={editor}
+							viewportRef={editorViewportRef}
+							threads={resolvedThreads}
+							onReply={handleReplyToThread}
+							onResolve={handleResolveThread}
+							onReopen={handleReopenThread}
+							onDelete={handleDeleteThread}
 						/>
 					</>
 				) : null}
@@ -641,7 +743,6 @@ export function EditorView({
 			<FormattingStatusBar
 				editor={editor}
 				path={path}
-				scrollContainer={editorViewportEl}
 				onOpenRevisionHistory={onOpenRevisionHistory}
 			/>
 			{commentOptions ? (
@@ -651,9 +752,11 @@ export function EditorView({
 					focusedThreadId={focusedThreadId}
 					open={commentOptions.panelOpen}
 					onOpenChange={commentOptions.onPanelOpenChange}
-					onReply={commentOptions.onReply}
-					onResolve={commentOptions.onResolve}
-					onReopen={commentOptions.onReopen}
+					onReply={handleReplyToThread}
+					onResolve={handleResolveThread}
+					onReopen={handleReopenThread}
+					onDelete={handleDeleteThread}
+					onJumpToThread={handleJumpToThread}
 					error={commentsError}
 				/>
 			) : null}

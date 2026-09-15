@@ -1,5 +1,3 @@
-import type { Editor, JSONContent } from "@tiptap/core";
-import { useCallback, useEffect, useState } from "react";
 // Real runtime import of the pure `resolveAnchor` function (D2: anchor
 // *resolution* is kit-side, using the live editor draft, not whatever the
 // host last persisted). Only the runtime value is imported -- every type
@@ -13,12 +11,25 @@ import { useCallback, useEffect, useState } from "react";
 // function into `dist/index.js` at build time, so it never becomes a runtime
 // resolution requirement for downstream consumers of the kit.
 import { resolveAnchor } from "@mdly/doc-comments";
+import type { Editor, JSONContent } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
+import { useCallback, useEffect, useState } from "react";
 import { tiptapDocToMarkdown } from "../engine/prosemirrorToMarkdown.js";
-import type { AnchorResolution, CommentOptions, CommentThread } from "./types.js";
+import type {
+	AnchorResolution,
+	CommentOptions,
+	CommentThread,
+	CommentThreadEvent,
+} from "./types.js";
 
-export type ResolvedThread = CommentThread & { anchorResolution: AnchorResolution };
+export type ResolvedThread = CommentThread & {
+	anchorResolution: AnchorResolution;
+};
 
-function sameAnchorResolution(a: AnchorResolution, b: AnchorResolution): boolean {
+function sameAnchorResolution(
+	a: AnchorResolution,
+	b: AnchorResolution,
+): boolean {
 	return (
 		a.status === b.status &&
 		a.method === b.method &&
@@ -27,21 +38,35 @@ function sameAnchorResolution(a: AnchorResolution, b: AnchorResolution): boolean
 	);
 }
 
-function sameResolvedThreads(a: ResolvedThread[], b: ResolvedThread[]): boolean {
+// Events are immutable once appended (a reply/resolve/reopen never mutates an
+// earlier event in place), so same length + same ids in order means same
+// content -- no need to diff `text`/`by`/`kind` per event too.
+function sameEvents(a: CommentThreadEvent[], b: CommentThreadEvent[]): boolean {
+	if (a === b) return true;
+	if (a.length !== b.length) return false;
+	return a.every((event, index) => event.id === b[index]?.id);
+}
+
+/**
+ * Exported (not just used internally) because `CommentExtension.ts`'s
+ * `setCommentThreads` also needs it, as an ignition guard comparing an
+ * incoming thread list against whatever the plugin already holds -- see that
+ * function's doc comment and
+ * memory/Areas/editor-architecture/202607160130-mdly-oom-react-update-queue-explosion.md
+ * for why a reference-based guard here isn't enough on its own.
+ */
+export function sameResolvedThreads(
+	a: ResolvedThread[],
+	b: ResolvedThread[],
+): boolean {
 	if (a.length !== b.length) return false;
 	return a.every((thread, index) => {
 		const next = b[index];
-		// `state`/`events` are compared by reference, not just `id`: both sides
-		// of this comparison are built from the same `rawThreads` closure
-		// within one resolveAll() run, so an untouched thread keeps the exact
-		// same `state`/`events` references, while an actual re-fetch (a
-		// resolve/reopen/reply landing) always produces fresh ones -- so this
-		// guard only ever swallows a resolve when nothing about the thread,
-		// including its resolved/open state, could have changed.
 		return (
+			next !== undefined &&
 			thread.id === next.id &&
 			thread.state === next.state &&
-			thread.events === next.events &&
+			sameEvents(thread.events, next.events) &&
 			sameAnchorResolution(thread.anchorResolution, next.anchorResolution)
 		);
 	});
@@ -82,6 +107,7 @@ export function useCommentThreads(
 
 	// Fetch (or re-fetch) the raw thread list on mount and whenever docId,
 	// refreshSignal (R22 cross-window refresh), or a manual refetch() fires.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshSignal/fetchTick are manual refetch triggers, not data dependencies.
 	useEffect(() => {
 		if (!getThreads || !docId) {
 			setRawThreads([]);
@@ -102,7 +128,9 @@ export function useCommentThreads(
 				setRawThreads(
 					threads.map((thread) => ({
 						...thread,
-						events: thread.events.filter((event) => event.id !== thread.opener.id),
+						events: thread.events.filter(
+							(event) => event.id !== thread.opener.id,
+						),
 					})),
 				);
 				setError(null);
@@ -115,7 +143,6 @@ export function useCommentThreads(
 		return () => {
 			cancelled = true;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: fetchTick is a manual refetch trigger, not a data dependency.
 	}, [getThreads, docId, refreshSignal, fetchTick]);
 
 	// Re-resolve every raw thread's anchor against the LIVE editor draft
@@ -162,10 +189,24 @@ export function useCommentThreads(
 		// `setContent(doc, { emitUpdate: false })`, which suppresses "update"
 		// but still dispatches a transaction, so anchors must re-resolve there
 		// too or highlights go stale against the old document.
-		editor.on("transaction", resolveAll);
+		//
+		// Gated on `docChanged` (loop-breaker, same shape as FindReplaceBar's
+		// `findMatchesAffectedByTransaction` fix -- see
+		// memory/Areas/editor-architecture/202607160130-mdly-oom-react-update-queue-explosion.md):
+		// `resolveAnchor` only ever depends on document content
+		// (`tiptapDocToMarkdown(editor.getJSON())`), never on selection or
+		// plugin meta, so a meta-only/selection-only transaction can never
+		// change its result -- including `setCommentThreads`'s own dispatch of
+		// `commentThreadsKey` meta, which otherwise re-enters this listener on
+		// every render of its own output.
+		const onTransaction = ({ transaction }: { transaction: Transaction }) => {
+			if (!transaction.docChanged) return;
+			resolveAll();
+		};
+		editor.on("transaction", onTransaction);
 		return () => {
 			cancelled = true;
-			editor.off("transaction", resolveAll);
+			editor.off("transaction", onTransaction);
 		};
 	}, [readRevisionContent, rawThreads, editor, flattenDocument]);
 

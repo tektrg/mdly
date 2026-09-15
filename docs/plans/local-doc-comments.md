@@ -59,6 +59,11 @@ requirement — but it is not WebMCP and changes the plan.
 
 ## Phase 2 — later, and NOT a comments project
 
+> **Superseded 2026-08-31 by `docs/plans/cloud-review-surface.md`.** That plan is
+> the current one: Cloudflare (Worker + Durable Object + R2) replaces Convex, the
+> browser surface is read-only for notes, and Convex is deleted from the monorepo.
+> The three constraints below still hold verbatim and are what make it work.
+
 Wiring `packages/sync` into the desktop app, adding auth to the Convex backend, and
 deploying a browser surface is **whole-workspace sync work**. Comments ride along
 for free — provided Phase 1 honours the three constraints below.

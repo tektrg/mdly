@@ -8,48 +8,26 @@ import { ExternalChangeReviewDialog } from "./ExternalChangeReviewDialog";
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-// Stand-ins for the kit's real Modal/DiffReviewPanel: only what this test
-// needs to drive `onConfirm`/`onCancel` and observe whether the dialog is
-// still mounted, matching the pattern already used in
-// NotionDatabaseViewer.test.tsx for mocking @hubble.md/ui.
 vi.mock("@hubble.md/ui", () => ({
 	Modal: ({ open, children }: { open: boolean; children: ReactNode }) =>
 		open ? <div data-testid="modal">{children}</div> : null,
-}));
-
-vi.mock("@mdly/workspace-kit", () => ({
-	DiffReviewPanel: ({
-		onConfirm,
-		onCancel,
+	Button: ({
+		children,
+		onClick,
 	}: {
-		onConfirm: (mergedText: string) => void;
-		onCancel?: () => void;
+		children: ReactNode;
+		onClick?: () => void;
 	}) => (
-		<div>
-			<button
-				type="button"
-				data-testid="apply"
-				onClick={() => onConfirm("merged-text")}
-			>
-				Apply
-			</button>
-			{onCancel && (
-				<button type="button" data-testid="cancel" onClick={onCancel}>
-					Cancel
-				</button>
-			)}
-		</div>
+		<button type="button" onClick={onClick}>
+			{children}
+		</button>
 	),
 }));
 
-/**
- * Blocker 4: the dialog used to close synchronously right after calling
- * `onConfirm`, without waiting for `resolveExternalChangeReview`'s result. On
- * a failed write, the dialog vanished even though the store correctly kept
- * the pending review/picks around -- the user had nothing left to retry
- * from. These tests prove the dialog now awaits the result and only closes
- * on success.
- */
+vi.mock("@mdly/workspace-kit", () => ({
+	DiffGroupsView: () => <div data-testid="diff-groups" />,
+}));
+
 describe("ExternalChangeReviewDialog", () => {
 	let container: HTMLDivElement;
 	let root: Root;
@@ -65,64 +43,74 @@ describe("ExternalChangeReviewDialog", () => {
 		container.remove();
 	});
 
-	async function clickApply() {
-		const applyButton = container.querySelector<HTMLButtonElement>(
-			'[data-testid="apply"]',
+	function clickButton(label: string) {
+		const button = [...container.querySelectorAll("button")].find(
+			(el) => el.textContent === label,
 		);
-		await act(async () => {
-			applyButton?.click();
-			// Flush the microtask queue so the dialog's own `await onConfirm(...)`
-			// settles before assertions run.
-			await Promise.resolve();
-			await Promise.resolve();
-		});
+		act(() => button?.click());
 	}
 
-	it("stays open with the modal still mounted when the confirm write fails", async () => {
-		const onOpenChange = vi.fn();
-		const onConfirm = vi.fn(async () => false);
-
-		await act(async () => {
+	it("renders nothing when closed", () => {
+		act(() => {
 			root.render(
 				<ExternalChangeReviewDialog
-					open={true}
-					onOpenChange={onOpenChange}
-					oldText="old"
-					newText="new"
-					onConfirm={onConfirm}
+					open={false}
+					onOpenChange={vi.fn()}
+					previousContent="old"
+					currentContent="new"
+					onUndo={vi.fn()}
 				/>,
 			);
 		});
 
-		await clickApply();
-
-		expect(onConfirm).toHaveBeenCalledWith("merged-text");
-		// The dialog must not have been told to close -- the user's picks
-		// (held inside the real DiffReviewPanel) are never torn down.
-		expect(onOpenChange).not.toHaveBeenCalled();
-		expect(container.querySelector('[data-testid="modal"]')).not.toBeNull();
-		expect(container.querySelector('[data-testid="apply"]')).not.toBeNull();
+		expect(container.querySelector('[data-testid="modal"]')).toBeNull();
 	});
 
-	it("closes only after the confirm write actually succeeds", async () => {
+	it("shows the diff and closes without undoing on Keep it", () => {
 		const onOpenChange = vi.fn();
-		const onConfirm = vi.fn(async () => true);
+		const onUndo = vi.fn();
 
-		await act(async () => {
+		act(() => {
 			root.render(
 				<ExternalChangeReviewDialog
 					open={true}
 					onOpenChange={onOpenChange}
-					oldText="old"
-					newText="new"
-					onConfirm={onConfirm}
+					previousContent="old"
+					currentContent="new"
+					onUndo={onUndo}
 				/>,
 			);
 		});
 
-		await clickApply();
+		expect(
+			container.querySelector('[data-testid="diff-groups"]'),
+		).not.toBeNull();
 
-		expect(onConfirm).toHaveBeenCalledWith("merged-text");
+		clickButton("Keep it");
+
+		expect(onUndo).not.toHaveBeenCalled();
+		expect(onOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("calls onUndo and closes on Undo", () => {
+		const onOpenChange = vi.fn();
+		const onUndo = vi.fn();
+
+		act(() => {
+			root.render(
+				<ExternalChangeReviewDialog
+					open={true}
+					onOpenChange={onOpenChange}
+					previousContent="old"
+					currentContent="new"
+					onUndo={onUndo}
+				/>,
+			);
+		});
+
+		clickButton("Undo");
+
+		expect(onUndo).toHaveBeenCalledTimes(1);
 		expect(onOpenChange).toHaveBeenCalledWith(false);
 	});
 });

@@ -5,8 +5,11 @@ import StarterKit from "@tiptap/starter-kit";
 import { act, createElement } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { collectTableOfContentsHeadings, TableOfContents } from "./TableOfContents";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	collectTableOfContentsHeadings,
+	TableOfContents,
+} from "./TableOfContents";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -65,6 +68,85 @@ describe("collectTableOfContentsHeadings", () => {
 	});
 });
 
+describe("TableOfContents scroll/resize throttling (R-hang-1b)", () => {
+	let container: HTMLDivElement;
+	let root: ReturnType<typeof createRoot>;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	it("coalesces a burst of scroll/resize events into a single measurement pass per frame", () => {
+		const editor = createEditor({
+			type: "doc",
+			content: [
+				{
+					type: "heading",
+					attrs: { level: 1 },
+					content: [{ type: "text", text: "One" }],
+				},
+				{ type: "paragraph", content: [{ type: "text", text: "Body" }] },
+				{
+					type: "heading",
+					attrs: { level: 2 },
+					content: [{ type: "text", text: "Two" }],
+				},
+			],
+		});
+		const scrollContainer = document.createElement("div");
+		document.body.append(scrollContainer);
+
+		const nodeDomSpy = vi.spyOn(editor.view, "nodeDOM");
+		const rafCallbacks: FrameRequestCallback[] = [];
+		const rafSpy = vi
+			.spyOn(window, "requestAnimationFrame")
+			.mockImplementation((callback: FrameRequestCallback) => {
+				rafCallbacks.push(callback);
+				return rafCallbacks.length;
+			});
+
+		act(() => {
+			root.render(createElement(TableOfContents, { editor, scrollContainer }));
+		});
+
+		nodeDomSpy.mockClear();
+		rafSpy.mockClear();
+		rafCallbacks.length = 0;
+
+		act(() => {
+			for (let i = 0; i < 10; i++) {
+				scrollContainer.dispatchEvent(new Event("scroll"));
+				window.dispatchEvent(new Event("resize"));
+			}
+		});
+
+		expect(rafSpy).toHaveBeenCalledTimes(1);
+		expect(nodeDomSpy).not.toHaveBeenCalled();
+
+		act(() => {
+			for (const callback of rafCallbacks) callback(0);
+		});
+
+		expect(nodeDomSpy).toHaveBeenCalledTimes(2);
+
+		rafSpy.mockClear();
+		rafCallbacks.length = 0;
+		act(() => {
+			scrollContainer.dispatchEvent(new Event("scroll"));
+		});
+		expect(rafSpy).toHaveBeenCalledTimes(1);
+
+		rafSpy.mockRestore();
+		scrollContainer.remove();
+	});
+});
 
 describe("TableOfContents comment indicator", () => {
 	let container: HTMLDivElement;
