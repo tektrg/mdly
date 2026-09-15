@@ -24,6 +24,12 @@ export class CloudflareResponseError extends CloudflareClientError {
 		message: string,
 		public readonly status: number,
 		public readonly code?: string,
+		/**
+		 * The full parsed error body, when the Worker sent extra fields
+		 * beyond `{error, code}` — e.g. a 409 conflict's `currentContentHash`
+		 * + `currentContent`. Untrusted wire data: narrow before use.
+		 */
+		public readonly details?: unknown,
 	) {
 		super(message);
 		this.name = "CloudflareResponseError";

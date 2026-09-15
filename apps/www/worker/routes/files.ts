@@ -28,6 +28,10 @@ function pushErrorStatus(code: string): number {
 	if (code === "BATCH_EMPTY") return 400;
 	if (code === "BATCH_BYTE_LIMIT") return 413;
 	if (code === "FILE_TOO_LARGE") return 413;
+	// Belt-and-suspenders: handlePushFile intercepts WRITE_CONFLICT above
+	// with a richer body, so this arm only fires for a future caller that
+	// maps codes without its own conflict branch.
+	if (code === "WRITE_CONFLICT") return 409;
 	if (code === "REQUEST_TOO_LARGE") return 413;
 	if (code === "FIELD_TOO_LARGE") return 413;
 	if (code === "INVALID_PATH") return 400;
@@ -47,10 +51,7 @@ function oversizedFieldResponse(field: string, value: string): Response | null {
 	const bytes = utf8ByteLength(value);
 	if (bytes > MAX_FIELD_BYTES) {
 		const error = new FieldTooLargeError(field, bytes, MAX_FIELD_BYTES);
-		return json(
-			{ error: error.message, code: error.code },
-			{ status: 413 },
-		);
+		return json({ error: error.message, code: error.code }, { status: 413 });
 	}
 	return null;
 }
@@ -99,7 +100,10 @@ export async function handleGetFiles(
 	);
 	if (cursor === "invalid") {
 		return json(
-			{ error: "cursorUpdatedAt and cursorPath must be passed together and valid" },
+			{
+				error:
+					"cursorUpdatedAt and cursorPath must be passed together and valid",
+			},
 			{ status: 400 },
 		);
 	}
@@ -124,18 +128,22 @@ export async function handlePushFile(
 		contentHash?: string;
 		content?: string;
 		deviceId?: string;
+		expectedContentHash?: string;
 	}>(request);
 	const workspaceId = body?.workspaceId;
 	const path = body?.path;
 	const content = body?.content;
 	const deviceId = body?.deviceId;
 	const contentHash = body?.contentHash;
+	const expectedContentHash = body?.expectedContentHash;
 	if (
 		!isNonEmptyString(workspaceId) ||
 		!isNonEmptyString(path) ||
 		!isNonEmptyString(deviceId) ||
 		typeof content !== "string" ||
-		(contentHash !== undefined && typeof contentHash !== "string")
+		(contentHash !== undefined && typeof contentHash !== "string") ||
+		(expectedContentHash !== undefined &&
+			typeof expectedContentHash !== "string")
 	) {
 		return json(
 			{
@@ -167,10 +175,7 @@ export async function handlePushFile(
 			MAX_PUSH_FILE_BYTES,
 			path,
 		);
-		return json(
-			{ error: error.message, code: error.code },
-			{ status: 413 },
-		);
+		return json({ error: error.message, code: error.code }, { status: 413 });
 	}
 
 	const result = await workspaceStub(env, workspaceId).pushFile({
@@ -178,8 +183,23 @@ export async function handlePushFile(
 		contentHash: contentHash ?? "",
 		content,
 		deviceId,
+		...(expectedContentHash !== undefined ? { expectedContentHash } : {}),
 	});
 	if (!result.ok) {
+		// Narrowed on the conflict-only field, not on `code`: "WRITE_CONFLICT"
+		// also lives in the generic variant's code union (via toRpcError's
+		// return type), so a code comparison wouldn't discriminate.
+		if (result.code === "WRITE_CONFLICT" && "currentContentHash" in result) {
+			return json(
+				{
+					error: result.message,
+					code: result.code,
+					currentContentHash: result.currentContentHash,
+					content: result.currentContent,
+				},
+				{ status: 409 },
+			);
+		}
 		return json(
 			{ error: result.message, code: result.code },
 			{ status: pushErrorStatus(result.code) },
@@ -208,8 +228,7 @@ export async function handleSoftDeleteFile(
 	) {
 		return json(
 			{
-				error:
-					"workspaceId, path and deviceId are required non-empty strings",
+				error: "workspaceId, path and deviceId are required non-empty strings",
 			},
 			{ status: 400 },
 		);
@@ -305,18 +324,12 @@ export async function handlePushFilesBatch(
 				MAX_PUSH_FILE_BYTES,
 				file?.path ?? "",
 			);
-			return json(
-				{ error: error.message, code: error.code },
-				{ status: 413 },
-			);
+			return json({ error: error.message, code: error.code }, { status: 413 });
 		}
 	}
 	if (files.length > MAX_PUSH_BATCH_FILES) {
 		const error = new BatchTooLargeError(files.length, MAX_PUSH_BATCH_FILES);
-		return json(
-			{ error: error.message, code: error.code },
-			{ status: 400 },
-		);
+		return json({ error: error.message, code: error.code }, { status: 400 });
 	}
 	const batchBytes = files.reduce(
 		(sum, file) => sum + (file?.content?.length ?? 0),
@@ -324,10 +337,7 @@ export async function handlePushFilesBatch(
 	);
 	if (batchBytes > MAX_PUSH_BATCH_BYTES) {
 		const error = new BatchByteLimitError(batchBytes, MAX_PUSH_BATCH_BYTES);
-		return json(
-			{ error: error.message, code: error.code },
-			{ status: 413 },
-		);
+		return json({ error: error.message, code: error.code }, { status: 413 });
 	}
 
 	const result = await workspaceStub(env, workspaceId).pushFilesBatch({

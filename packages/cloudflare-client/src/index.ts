@@ -3,6 +3,7 @@ export {
 	type CreateCloudflareBackendOptions,
 	createCloudflareBackend,
 } from "./backend.js";
+export { registerDeviceSlot } from "./devices.js";
 export {
 	CloudflareClientError,
 	CloudflareResponseError,

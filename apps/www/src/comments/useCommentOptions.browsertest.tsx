@@ -2,11 +2,39 @@
 import type { CommentOptions } from "@mdly/workspace-kit";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { initActions, teardownActions } from "../store/actions";
 import type { SidecarEntry } from "../store/sidecars";
 import { resetState, workspaceStore } from "../store/state";
 import { resetDocIdCache } from "./docId";
 import { useCommentOptions } from "./useCommentOptions";
+
+const { pushFileMock, registerSlotMock, remoteRows } = vi.hoisted(() => ({
+	pushFileMock: vi.fn(),
+	registerSlotMock: vi.fn(),
+	remoteRows: new Map<string, { path: string; content: string }>(),
+}));
+
+vi.mock("@mdly/cloudflare-client", async () => {
+	const actual = await vi.importActual("@mdly/cloudflare-client");
+	return {
+		...(actual as Record<string, unknown>),
+		createCloudflareBackend: () => ({
+			pushFile: pushFileMock,
+			getFiles: async () =>
+				[...remoteRows.values()].map((row) => ({
+					...row,
+					contentHash: "hash",
+					updatedAt: 1,
+					deleted: false,
+				})),
+			getAssets: async () => [],
+		}),
+		createVersionLedger: () => ({ record() {}, has: () => false }),
+		listWorkspaces: async () => [],
+		registerDeviceSlot: registerSlotMock,
+	};
+});
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -20,7 +48,11 @@ const anchor = {
 };
 
 const macBy = { kind: "human", id: "mac-1", label: "Mac" } as const;
-const phoneBy = { kind: "human", id: "phone-1", label: "Safari - iPhone" } as const;
+const phoneBy = {
+	kind: "human",
+	id: "phone-1",
+	label: "Safari - iPhone",
+} as const;
 
 const e1 = {
 	id: "e1",
@@ -107,11 +139,12 @@ async function renderPath(path: string) {
 }
 
 afterEach(() => {
+	teardownActions();
 	resetState();
 	resetDocIdCache();
 });
 
-describe("useCommentOptions (read-only)", () => {
+describe("useCommentOptions", () => {
 	it("merges three sibling logs: every thread visible, deduped by event id", async () => {
 		seedSidecars();
 		const unmount = await renderPath("note.md");
@@ -169,20 +202,43 @@ describe("useCommentOptions (read-only)", () => {
 		}
 	});
 
-	it("mutations reject with a coming-soon explanation (Step 8 replaces them)", async () => {
+	it("mutations write through to this browser's slot log (write-back slice 6)", async () => {
+		pushFileMock.mockReset();
+		pushFileMock.mockImplementation(
+			async (args: { path: string; content: string }) => {
+				remoteRows.set(args.path, { path: args.path, content: args.content });
+			},
+		);
+		registerSlotMock.mockReset();
+		registerSlotMock.mockResolvedValue(3);
+		remoteRows.clear();
+		localStorage.clear();
+		teardownActions();
+		initActions("ws-comments-ui");
 		seedSidecars();
 		const unmount = await renderPath("note.md");
 		try {
-			await expect(latest?.onReply("t1", "x")).rejects.toThrow("coming soon");
-			await expect(latest?.onResolve("t1")).rejects.toThrow("coming soon");
-			await expect(latest?.onReopen("t1")).rejects.toThrow("coming soon");
-			await expect(latest?.onDelete("t1")).rejects.toThrow("coming soon");
-			await expect(
-				latest?.onOpenThread(
-					{ from: 0, to: 1, quote: "h", mode: "quote" },
-					"x",
-				),
-			).rejects.toThrow("coming soon");
+			await latest?.onReply("t1", "web reply");
+			await latest?.onResolve("t2");
+			// Both mutations landed in this browser's slot-3 log, never the
+			// canonical log.
+			const paths = pushFileMock.mock.calls.map(
+				(call) => (call[0] as { path: string }).path,
+			);
+			expect(paths).toEqual([
+				".mdly/comments/doc-1 (3).jsonl",
+				".mdly/comments/doc-1 (3).jsonl",
+			]);
+			const lastContent = (
+				pushFileMock.mock.calls[1]?.[0] as { content: string }
+			).content;
+			const kinds = lastContent
+				.trim()
+				.split("\n")
+				.map((line) => (JSON.parse(line) as { kind: string }).kind);
+			expect(kinds).toEqual(["replied", "resolved"]);
+			// Slot registered exactly once across both mutations (cached).
+			expect(registerSlotMock).toHaveBeenCalledTimes(1);
 		} finally {
 			unmount();
 		}

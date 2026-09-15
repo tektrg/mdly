@@ -21,13 +21,16 @@ export type AssetEntry = {
 type ViewerStatus = "idle" | "loading" | "ready" | "error";
 
 /**
- * R31: apps/www's editor is read-only, so a local edit can never diverge
- * from the remote copy — there is no "conflict" kind here (unlike the
- * desktop app's editable ExternalChange union). "deleted" is the only
- * remote-state banner left: purely informational (the file the browser is
- * looking at was removed on the Mac), not a save/conflict-resolution path.
+ * Remote-state banner for the open file. The viewer is writable (web
+ * write-back), so a remote change CAN race a local edit: when our guarded
+ * push is rejected (409), the loser's words are preserved in a conflict copy
+ * and this flips to "conflict" until the user reloads. "deleted" stays
+ * purely informational: the open file was removed on the Mac.
  */
-export type ExternalChange = { kind: "none" } | { kind: "deleted" };
+export type ExternalChange =
+	| { kind: "none" }
+	| { kind: "deleted" }
+	| { kind: "conflict"; copyPath: string };
 
 const NO_EXTERNAL_CHANGE: ExternalChange = { kind: "none" };
 
@@ -39,6 +42,13 @@ export type ViewerState = {
 	externalChange: ExternalChange;
 	status: ViewerStatus;
 	error: string | null;
+	/**
+	 * Last failed web save, if any. Kept separate from `error` on purpose:
+	 * a failed push must never flip `status` to "error" (that would unmount
+	 * the editor). The banner dismisses on the next successful push, and
+	 * the next keystroke re-stages a push anyway (auto-retry).
+	 */
+	saveError: string | null;
 };
 
 export type WorkspaceState = {
@@ -90,6 +100,7 @@ function getInitialState(
 			externalChange: NO_EXTERNAL_CHANGE,
 			status: "idle",
 			error: null,
+			saveError: null,
 		},
 	};
 }

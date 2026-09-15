@@ -1,10 +1,12 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "../env.js";
 import { workspaceStorageCapBytes } from "../env.js";
+import { utf8ByteLength } from "../http.js";
+import { canonicalFilePath } from "../paths.js";
 import {
-	clearAssetOrphaned,
 	type AssetCursor,
 	type AssetPage,
+	clearAssetOrphaned,
 	type GcAssetCursor,
 	type GcAssetPage,
 	listAssetsForGcPage,
@@ -41,15 +43,29 @@ import {
 	currentVersion,
 	ensureSchema,
 } from "./schema.js";
-import { canonicalFilePath } from "../paths.js";
-import { utf8ByteLength } from "../http.js";
 
 export type { RemoteAssetLike } from "./assets.js";
 export type { RemoteFileLike } from "./files.js";
 
 export type PushResult =
 	| { ok: true; version: number }
-	| { ok: false; code: WorkerErrorCode | "UNKNOWN"; message: string };
+	| { ok: false; code: WorkerErrorCode | "UNKNOWN"; message: string }
+	/**
+	 * Optimistic-concurrency rejection (web write-back): the caller sent
+	 * `expectedContentHash` and the stored row moved underneath it. NOT an
+	 * error in the R9 sense — the caller's edit is intact on its side; the
+	 * current server content rides along so it can preserve both copies.
+	 * A separate variant (not folded into the generic `ok:false` one) so the
+	 * route can 409 with a body and no caller can mistake it for a failure
+	 * that dropped the write.
+	 */
+	| {
+			ok: false;
+			code: "WRITE_CONFLICT";
+			message: string;
+			currentContentHash: string;
+			currentContent: string;
+	  };
 
 /** Maximum files per `pushFilesBatch` call — see that method's docstring. */
 export const MAX_PUSH_BATCH_FILES = 100;
@@ -164,6 +180,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 		contentHash: string;
 		content: string;
 		deviceId: string;
+		expectedContentHash?: string;
 	}): PushResult {
 		try {
 			const path = canonicalFilePath(args.path);
@@ -176,14 +193,47 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 				args.content.length - this.liveBytesForPath(path),
 			);
 			const contentBytes =
-				typeof args.content === "string"
-					? utf8ByteLength(args.content)
-					: 0;
+				typeof args.content === "string" ? utf8ByteLength(args.content) : 0;
 			if (contentBytes > MAX_PUSH_FILE_BYTES) {
 				throw new FileTooLargeError(contentBytes, MAX_PUSH_FILE_BYTES, path);
 			}
 			this.assertFieldSize("contentHash", args.contentHash);
 			this.assertFieldSize("deviceId", args.deviceId);
+			// Optimistic-concurrency guard (web write-back): compare BEFORE
+			// any write, synchronously in the same try (no awaits between
+			// this read and `upsertFile` below, so the check-and-set is
+			// atomic within this DO instance — same R8 guarantee as the
+			// upsert itself). Absent guard = legacy last-writer-wins.
+			// A missing/tombstoned row counts as moved (null never equals a
+			// well-formed expected hash) — creating over a deletion still
+			// goes through the conflict path so both sides survive. Empty
+			// string means "must not exist" (create-guard for brand-new
+			// logs — a SHA-256 hex hash is never empty, so this is a safe
+			// sentinel).
+			if (args.expectedContentHash !== undefined) {
+				const current = this.sql
+					.exec<{ contentHash: string; content: string; deleted: number }>(
+						`SELECT contentHash, content, deleted FROM files WHERE path = ?`,
+						path,
+					)
+					.toArray()[0];
+				const liveHash =
+					current && current.deleted === 0 ? current.contentHash : null;
+				const guardedMiss =
+					args.expectedContentHash === ""
+						? liveHash !== null
+						: liveHash !== args.expectedContentHash;
+				if (guardedMiss) {
+					return {
+						ok: false,
+						code: "WRITE_CONFLICT",
+						message: `Write conflict on "${path}": file changed since this edit began.`,
+						currentContentHash: liveHash ?? "",
+						currentContent:
+							current && current.deleted === 0 ? current.content : "",
+					};
+				}
+			}
 			// Inside the try: a SQLite throw (too big, storage full) becomes
 			// a typed result through `toRpcError` — never an opaque 500 with
 			// an unhandled rejection.
@@ -248,8 +298,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 	 * coerces or throws exactly as before this check existed).
 	 */
 	private assertFieldSize(field: string, value: unknown): void {
-		const bytes =
-			typeof value === "string" ? utf8ByteLength(value) : 0;
+		const bytes = typeof value === "string" ? utf8ByteLength(value) : 0;
 		if (bytes > MAX_FIELD_BYTES) {
 			throw new FieldTooLargeError(field, bytes, MAX_FIELD_BYTES);
 		}
@@ -307,10 +356,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 		}[];
 		try {
 			if (args.files.length > MAX_PUSH_BATCH_FILES) {
-				throw new BatchTooLargeError(
-					args.files.length,
-					MAX_PUSH_BATCH_FILES,
-				);
+				throw new BatchTooLargeError(args.files.length, MAX_PUSH_BATCH_FILES);
 			}
 			if (args.files.length === 0) {
 				throw new BatchEmptyError();
@@ -338,9 +384,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 				// Non-strings pass through here (the write then throws and
 				// the transaction rolls back — covered by the rollback test).
 				const contentBytes =
-					typeof file.content === "string"
-						? utf8ByteLength(file.content)
-						: 0;
+					typeof file.content === "string" ? utf8ByteLength(file.content) : 0;
 				if (contentBytes > MAX_PUSH_FILE_BYTES) {
 					throw new FileTooLargeError(
 						contentBytes,
@@ -395,8 +439,7 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 	): number {
 		let delta = 0;
 		for (const file of files) {
-			const newLen =
-				typeof file.content === "string" ? file.content.length : 0;
+			const newLen = typeof file.content === "string" ? file.content.length : 0;
 			delta += newLen - this.liveBytesForPath(file.path);
 		}
 		return delta;
@@ -476,7 +519,9 @@ export class WorkspaceDurableObject extends DurableObject<Env> {
 	registerDeviceSlot(
 		deviceId: string,
 		label?: string,
-	): { ok: true; device: DeviceRow } | { ok: false; code: WorkerErrorCode | "UNKNOWN"; message: string } {
+	):
+		| { ok: true; device: DeviceRow }
+		| { ok: false; code: WorkerErrorCode | "UNKNOWN"; message: string } {
 		try {
 			this.assertFieldSize("deviceId", deviceId);
 			this.assertFieldSize("label", label ?? "");
