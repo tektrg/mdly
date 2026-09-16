@@ -54,7 +54,6 @@ import {
 	editorFontPreferenceStore,
 	emptyDoc,
 	type FileEntry,
-	type FolderEntry,
 	isInWorkspace,
 	LOADING_DELAY_MS,
 	MAX_RECENT,
