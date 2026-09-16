@@ -98,6 +98,7 @@ export {
 	type RevisionDiffViewProps,
 } from "./history/RevisionDiffView";
 export {
+	formatRevisionTime,
 	type Revision,
 	type RevisionAuthor,
 	type RevisionAuthorKind,
@@ -151,6 +152,11 @@ export {
 } from "./nav/searchScore";
 export { TagList, type TagListProps } from "./nav/TagList";
 export { NewNoteButton, Toolbar } from "./nav/Toolbar";
+export {
+	SIDEBAR_VIRTUAL_ROW_HEIGHT,
+	useVirtualSidebarRows,
+	type VirtualSidebarRow,
+} from "./nav/useVirtualSidebarRows";
 export { WorkspaceSwitcherMenu } from "./nav/WorkspaceSwitcherMenu";
 // ---- Shared primitives ----
 export { BottomSheet } from "./primitives/bottomSheet";

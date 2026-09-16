@@ -3,6 +3,7 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 
@@ -70,11 +71,38 @@ export function useVirtualSidebarRows<T>({
 		}
 	}, [isVirtualized]);
 
+	/**
+	 * Total height of the row model, read through a ref so `scrollToIndex` keeps
+	 * a stable identity. Consumers list that callback in effect dependency
+	 * arrays precisely so the scroll fires on *their* trigger (the open document,
+	 * a key press) and nothing else; a new identity on every row-count change
+	 * would re-fire it during a filter, sort or folder expand and yank the
+	 * viewport away from a reading user.
+	 */
+	const contentHeightRef = useRef(0);
+	contentHeightRef.current = rows.length * rowHeight;
+
+	/**
+	 * Brings a row into view, virtualized or not.
+	 *
+	 * `virtualizationThreshold` governs *rendering* — which rows exist in the
+	 * DOM — and nothing else; it must never gate scrolling. A list overflows its
+	 * viewport long before 120 rows (~17 rows in the 44px document table, ~24 in
+	 * the 28px sidebar), so gating this on `isVirtualized` made "scroll the
+	 * selected row into view" a silent no-op across the most common list sizes:
+	 * opening a document from the command palette, a wiki link or Finder left
+	 * the list looking like nothing was selected, because the highlighted row
+	 * sat below the fold. The only precondition that matters is whether the
+	 * content actually overflows the viewport.
+	 *
+	 * Row offsets are estimated as `index * rowHeight` (the same uniform-height
+	 * assumption the virtual windowing above already makes), not measured.
+	 */
 	const scrollToIndex = useCallback(
 		(index: number) => {
-			if (!isVirtualized) return;
 			const scrollEl = scrollRef.current;
 			if (!scrollEl) return;
+			if (contentHeightRef.current <= scrollEl.clientHeight) return;
 			const rowTop = index * rowHeight;
 			const rowBottom = rowTop + rowHeight;
 			const viewportTop = scrollEl.scrollTop;
@@ -84,7 +112,7 @@ export function useVirtualSidebarRows<T>({
 				scrollEl.scrollTop = rowBottom - scrollEl.clientHeight;
 			}
 		},
-		[isVirtualized, rowHeight, scrollRef],
+		[rowHeight, scrollRef],
 	);
 
 	const virtualRows = useMemo(() => {
