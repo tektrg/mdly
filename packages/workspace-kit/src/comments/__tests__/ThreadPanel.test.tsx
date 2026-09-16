@@ -5,7 +5,7 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadPanel } from "../ThreadPanel";
-import type { CommentAuthor } from "../types";
+import type { CommentAuthor, TextAnchor } from "../types";
 import type { ResolvedThread } from "../useCommentThreads";
 
 (
@@ -588,5 +588,373 @@ describe("ThreadPanel", () => {
 			document.querySelector("[data-comment-panel-error]")?.textContent,
 		).toBe("Failed to load comments");
 		expect(document.querySelector("[data-comment-thread-list]")).toBeNull();
+	});
+
+	const COMPOSING_ANCHOR: TextAnchor = {
+		from: 0,
+		to: 5,
+		quote: "Hello",
+		mode: "quote",
+	};
+
+	describe("composing a new thread", () => {
+		it("renders the composer pinned above the thread list when composing is set", () => {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[makeThread()]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={{ anchor: COMPOSING_ANCHOR, quoteText: "Hello" }}
+						onSubmitNewThread={vi.fn().mockResolvedValue(undefined)}
+						onCancelCompose={vi.fn()}
+					/>,
+				);
+			});
+
+			const composer = document.querySelector("[data-new-thread-composer]");
+			expect(composer).not.toBeNull();
+			expect(composer?.textContent).toContain("Hello");
+			expect(document.querySelector("[data-comment-thread]")).not.toBeNull();
+		});
+
+		it("auto-opens the panel when composing becomes non-null", () => {
+			function Harness({ composing }: { composing: boolean }) {
+				return (
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={
+							composing
+								? { anchor: COMPOSING_ANCHOR, quoteText: "Hello" }
+								: null
+						}
+						onSubmitNewThread={vi.fn().mockResolvedValue(undefined)}
+						onCancelCompose={vi.fn()}
+					/>
+				);
+			}
+
+			act(() => {
+				root.render(<Harness composing={false} />);
+			});
+			expect(document.querySelector("[data-new-thread-composer]")).toBeNull();
+
+			act(() => {
+				root.render(<Harness composing={true} />);
+			});
+			expect(
+				document.querySelector("[data-new-thread-composer]"),
+			).not.toBeNull();
+		});
+
+		// Regression guard: the "auto-open on composing" effect above is keyed
+		// on the `composing` prop's own identity (`[composing]` deps), by
+		// design -- so a HOST that reconstructs a fresh `{ anchor, quoteText }`
+		// object every render (instead of passing a stable state reference)
+		// would re-fire this effect, and force the panel back open, on every
+		// unrelated re-render while composing -- fighting a user who just
+		// closed it via the panel's own Close/Escape. A stable reference must
+		// not re-trigger the open call once the host has since closed it.
+		it("does not force the panel back open on a re-render with the same composing reference, once the host has closed it", () => {
+			const onOpenChange = vi.fn();
+			const composing = { anchor: COMPOSING_ANCHOR, quoteText: "Hello" };
+			function Harness({ open }: { open: boolean }) {
+				return (
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						open={open}
+						onOpenChange={onOpenChange}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={composing}
+						onSubmitNewThread={vi.fn().mockResolvedValue(undefined)}
+						onCancelCompose={vi.fn()}
+					/>
+				);
+			}
+
+			act(() => {
+				root.render(<Harness open={true} />);
+			});
+			expect(onOpenChange).toHaveBeenCalledTimes(1);
+			expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+			// The host closes the panel (e.g. its own Close button/Escape
+			// handling flipped its `open` state) -- an unrelated re-render with
+			// the exact same `composing` reference must not call onOpenChange
+			// again, or the panel could never actually stay closed.
+			act(() => {
+				root.render(<Harness open={false} />);
+			});
+			expect(onOpenChange).toHaveBeenCalledTimes(1);
+		});
+
+		it("submits the draft with the composing anchor and clears on success", async () => {
+			const onSubmitNewThread = vi.fn().mockResolvedValue(undefined);
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={{ anchor: COMPOSING_ANCHOR, quoteText: "Hello" }}
+						onSubmitNewThread={onSubmitNewThread}
+						onCancelCompose={vi.fn()}
+					/>,
+				);
+			});
+
+			const textarea = document.querySelector<HTMLTextAreaElement>(
+				"[data-new-thread-textarea]",
+			);
+			const nativeValueSetter = Object.getOwnPropertyDescriptor(
+				window.HTMLTextAreaElement.prototype,
+				"value",
+			)?.set;
+			act(() => {
+				nativeValueSetter?.call(textarea, "why bold?");
+				textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-new-thread-submit]")
+					?.click();
+			});
+
+			expect(onSubmitNewThread).toHaveBeenCalledWith(
+				COMPOSING_ANCHOR,
+				"why bold?",
+			);
+		});
+
+		it("calls onCancelCompose when Cancel is clicked", () => {
+			const onCancelCompose = vi.fn();
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={{ anchor: COMPOSING_ANCHOR, quoteText: "Hello" }}
+						onSubmitNewThread={vi.fn().mockResolvedValue(undefined)}
+						onCancelCompose={onCancelCompose}
+					/>,
+				);
+			});
+
+			act(() => {
+				document
+					.querySelector<HTMLButtonElement>("[data-new-thread-cancel]")
+					?.click();
+			});
+
+			expect(onCancelCompose).toHaveBeenCalledTimes(1);
+		});
+
+		it("shows a visible error and keeps the draft when onSubmitNewThread rejects", async () => {
+			const onSubmitNewThread = vi.fn().mockRejectedValue(new Error("EACCES"));
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={{ anchor: COMPOSING_ANCHOR, quoteText: "Hello" }}
+						onSubmitNewThread={onSubmitNewThread}
+						onCancelCompose={vi.fn()}
+					/>,
+				);
+			});
+
+			const textarea = document.querySelector<HTMLTextAreaElement>(
+				"[data-new-thread-textarea]",
+			);
+			const nativeValueSetter = Object.getOwnPropertyDescriptor(
+				window.HTMLTextAreaElement.prototype,
+				"value",
+			)?.set;
+			act(() => {
+				nativeValueSetter?.call(textarea, "why bold?");
+				textarea?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+			await act(async () => {
+				document
+					.querySelector<HTMLButtonElement>("[data-new-thread-submit]")
+					?.click();
+			});
+
+			expect(
+				document.querySelector("[data-new-thread-error]")?.textContent,
+			).toContain("EACCES");
+			expect(
+				document.querySelector<HTMLTextAreaElement>(
+					"[data-new-thread-textarea]",
+				)?.value,
+			).toBe("why bold?");
+		});
+	});
+
+	// QA finding #4: `ThreadPanel` renders as a `SidePanel` (desktop) or a
+	// `BottomSheet` (mobile) depending on `useMediaQuery`, and the two wrap
+	// their children in different Dialog trees -- crossing that breakpoint
+	// unmounts and remounts `NewThreadComposer`. Before the fix, the draft
+	// text lived in that component's own local state, so a resize mid-draft
+	// silently wiped whatever had been typed while the panel stayed in
+	// "composing" mode. `ThreadPanel` itself does not remount on this switch
+	// (only its returned JSX subtree does), so lifting the draft up to it is
+	// what makes the text survive.
+	describe("draft survives a mobile/desktop breakpoint change while composing (QA finding #4)", () => {
+		let originalMatchMedia: typeof window.matchMedia | undefined;
+
+		beforeEach(() => {
+			originalMatchMedia = window.matchMedia;
+		});
+
+		afterEach(() => {
+			// `useMediaQuery` treats a missing `matchMedia` the same as one set
+			// back to `undefined` (both fail its `typeof ... !== "undefined"`
+			// guard), so this restores happy-dom's original either way without
+			// needing `delete`.
+			window.matchMedia = originalMatchMedia as typeof window.matchMedia;
+		});
+
+		function mockMatchMedia(initialMatches: boolean) {
+			let matches = initialMatches;
+			const listeners = new Set<(event: { matches: boolean }) => void>();
+			const mql = {
+				get matches() {
+					return matches;
+				},
+				media: "",
+				addEventListener: (
+					_type: string,
+					cb: (event: { matches: boolean }) => void,
+				) => listeners.add(cb),
+				removeEventListener: (
+					_type: string,
+					cb: (event: { matches: boolean }) => void,
+				) => listeners.delete(cb),
+				addListener: () => {},
+				removeListener: () => {},
+				dispatchEvent: () => true,
+			};
+			window.matchMedia = vi
+				.fn()
+				.mockReturnValue(mql) as unknown as typeof window.matchMedia;
+			return {
+				setMatches(next: boolean) {
+					matches = next;
+					for (const cb of listeners) cb({ matches: next });
+				},
+			};
+		}
+
+		it("keeps the typed draft text when the panel switches between SidePanel and BottomSheet mid-draft", () => {
+			const { setMatches } = mockMatchMedia(false);
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+						composing={{ anchor: COMPOSING_ANCHOR, quoteText: "Hello" }}
+						onSubmitNewThread={vi.fn().mockResolvedValue(undefined)}
+						onCancelCompose={vi.fn()}
+					/>,
+				);
+			});
+
+			const nativeValueSetter = Object.getOwnPropertyDescriptor(
+				window.HTMLTextAreaElement.prototype,
+				"value",
+			)?.set;
+			act(() => {
+				nativeValueSetter?.call(
+					document.querySelector("[data-new-thread-textarea]"),
+					"half-typed dra",
+				);
+				document
+					.querySelector("[data-new-thread-textarea]")
+					?.dispatchEvent(new Event("input", { bubbles: true }));
+			});
+			expect(
+				document.querySelector<HTMLTextAreaElement>(
+					"[data-new-thread-textarea]",
+				)?.value,
+			).toBe("half-typed dra");
+
+			// Cross into mobile width -- the panel swaps SidePanel for
+			// BottomSheet, remounting the composer underneath it.
+			act(() => {
+				setMatches(true);
+			});
+
+			expect(
+				document.querySelector<HTMLTextAreaElement>(
+					"[data-new-thread-textarea]",
+				)?.value,
+			).toBe("half-typed dra");
+		});
+	});
+
+	describe("Markdown rendering of comment text", () => {
+		it("renders **bold** in the opener text as a <strong>, not literal asterisks", () => {
+			act(() => {
+				root.render(
+					<ThreadPanel
+						threads={[
+							makeThread({
+								opener: { ...makeThread().opener, text: "why **bold**?" },
+							}),
+						]}
+						currentAuthor={AUTHOR}
+						open
+						onOpenChange={() => {}}
+						onReply={vi.fn()}
+						onResolve={vi.fn()}
+						onReopen={vi.fn()}
+						onDelete={vi.fn()}
+					/>,
+				);
+			});
+
+			const logText = document.querySelector("[data-comment-log-text]");
+			expect(logText?.querySelector("strong")?.textContent).toBe("bold");
+			expect(logText?.textContent).not.toContain("**");
+		});
 	});
 });

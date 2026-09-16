@@ -3,7 +3,8 @@ import { MOBILE_MEDIA_QUERY, useMediaQuery } from "../lib/useMediaQuery.js";
 import { BottomSheet } from "../primitives/bottomSheet.js";
 import { Button } from "../primitives/button.js";
 import { SidePanel } from "../primitives/sidePanel.js";
-import type { CommentAuthor, CommentThreadEvent } from "./types.js";
+import { CommentMarkdown } from "./CommentMarkdown.js";
+import type { CommentAuthor, CommentThreadEvent, TextAnchor } from "./types.js";
 import type { ResolvedThread } from "./useCommentThreads.js";
 
 function authorLabel(author: CommentAuthor): string {
@@ -41,12 +42,138 @@ function ThreadLogLine({
 			<span className="text-muted-foreground">
 				{authorLabel(by)} {verb}
 			</span>
-			{text ? <span>{text}</span> : null}
+			{text ? (
+				<div data-comment-log-text>
+					<CommentMarkdown text={text} />
+				</div>
+			) : null}
 		</li>
 	);
 }
 
-/** Exported so `CommentThreadPopover.tsx` can render the same thread markup (reply/resolve/reopen/delete) inline, without duplicating it. */
+/**
+ * Composer for a brand-new thread, pinned above the thread list while
+ * `ThreadPanel`'s `composing` prop is set. Same visual weight as `ThreadItem`'s
+ * own reply box below. The quote is shown read-only for context -- the
+ * document-side highlight for this exact range is a separate decoration
+ * (`pm-comment-mark-pending`, set by the wiring layer via
+ * `setPendingCommentAnchor`), since the panel has no access to the editor.
+ *
+ * The draft text itself is *not* local state here (see the `draft`/
+ * `onDraftChange` props): `ThreadPanel` swaps between rendering this inside a
+ * `SidePanel` or a `BottomSheet` depending on viewport width, and crossing
+ * that breakpoint mid-draft unmounts/remounts this whole component (the two
+ * wrap children in different underlying Dialog trees) -- local state here
+ * would silently wipe whatever the user had typed. Lifting the text up to
+ * `ThreadPanel`, which never itself remounts on that switch, keeps it alive
+ * across a resize.
+ */
+function NewThreadComposer({
+	quoteText,
+	draft,
+	onDraftChange,
+	submitting,
+	onSubmittingChange,
+	error,
+	onErrorChange,
+	onSubmit,
+	onCancel,
+}: {
+	quoteText: string;
+	draft: string;
+	onDraftChange: (value: string) => void;
+	submitting: boolean;
+	onSubmittingChange: (value: boolean) => void;
+	error: string | null;
+	onErrorChange: (value: string | null) => void;
+	onSubmit: (text: string) => Promise<void>;
+	onCancel: () => void;
+}) {
+	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+	// Lands the keyboard in the compose box the moment it opens -- mirrors
+	// the old `CommentComposer`'s own auto-focus behavior for its inline
+	// textarea, now that this composer replaces it. Also refires after a
+	// mobile/desktop remount, which re-focuses the (now-remounted) textarea --
+	// desirable, since the draft text itself survives that remount via the
+	// lifted state above.
+	useEffect(() => {
+		textareaRef.current?.focus();
+	}, []);
+
+	const handleSubmit = () => {
+		const text = draft.trim();
+		if (!text || submitting) return;
+		onSubmittingChange(true);
+		onErrorChange(null);
+		onSubmit(text).then(
+			() => {
+				onDraftChange("");
+				onSubmittingChange(false);
+			},
+			(err: unknown) => {
+				onSubmittingChange(false);
+				onErrorChange(err instanceof Error ? err.message : String(err));
+			},
+		);
+	};
+
+	return (
+		<div
+			className="flex flex-col gap-2 rounded-sm border border-border bg-card p-2"
+			data-new-thread-composer
+		>
+			{quoteText ? (
+				<blockquote
+					className="m-0 border-border border-s-2 ps-2 text-[12px] text-muted-foreground italic"
+					data-new-thread-quote
+				>
+					{quoteText}
+				</blockquote>
+			) : null}
+			<textarea
+				ref={textareaRef}
+				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
+				data-new-thread-textarea
+				disabled={submitting}
+				placeholder="Add a comment..."
+				value={draft}
+				onChange={(event) => {
+					onDraftChange(event.target.value);
+					onErrorChange(null);
+				}}
+			/>
+			{error ? (
+				<p className="m-0 text-destructive text-xs" data-new-thread-error>
+					{error}
+				</p>
+			) : null}
+			<div className="flex items-center gap-2">
+				<Button
+					type="button"
+					size="sm"
+					data-new-thread-submit
+					disabled={submitting || draft.trim().length === 0}
+					onClick={handleSubmit}
+				>
+					Post
+				</Button>
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					data-new-thread-cancel
+					disabled={submitting}
+					onClick={onCancel}
+				>
+					Cancel
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+/** Exported as part of this package's public surface (see `index.ts`) so a host can render this same thread markup (reply/resolve/reopen/delete) outside `ThreadPanel` if it ever needs to, without duplicating it. */
 export function ThreadItem({
 	thread,
 	focused,
@@ -284,6 +411,10 @@ export function ThreadPanel(props: {
 	onDelete?: (threadId: string) => Promise<void>;
 	onJumpToThread?: (threadId: string) => void;
 	error?: string | null;
+	/** Non-null while a brand-new comment is being drafted (from `CommentComposer`'s trigger). Renders a composer pinned above the thread list and auto-opens the panel. */
+	composing?: { anchor: TextAnchor; quoteText: string } | null;
+	onSubmitNewThread?: (anchor: TextAnchor, text: string) => Promise<void>;
+	onCancelCompose?: () => void;
 }) {
 	const {
 		threads,
@@ -296,6 +427,9 @@ export function ThreadPanel(props: {
 		onDelete,
 		onJumpToThread,
 		error,
+		composing,
+		onSubmitNewThread,
+		onCancelCompose,
 	} = props;
 	const listRef = useRef<HTMLUListElement | null>(null);
 
@@ -307,6 +441,36 @@ export function ThreadPanel(props: {
 	const isControlled = open !== undefined && onOpenChange !== undefined;
 	const resolvedOpen = isControlled ? open : internalOpen;
 	const handleOpenChange = isControlled ? onOpenChange : setInternalOpen;
+
+	// A new-comment composer opening is itself a reason to open the panel --
+	// same as a paragraph/gutter marker click focusing a thread already does
+	// via `handleSelectThread` in the wiring layer.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only `composing` becoming non-null should trigger this; `handleOpenChange`'s identity is not itself an "open the panel" event.
+	useEffect(() => {
+		if (composing) handleOpenChange(true);
+	}, [composing]);
+
+	// Draft state for `NewThreadComposer`, lifted up here rather than kept as
+	// that component's own local state: this panel renders as either a
+	// `SidePanel` or a `BottomSheet` depending on `isMobile` below, and the two
+	// wrap children in different Dialog trees, so crossing that breakpoint
+	// mid-draft unmounts and remounts `NewThreadComposer` (this `ThreadPanel`
+	// component itself does not remount -- only its returned JSX subtree
+	// changes). Local state there would reset to "" on every such resize;
+	// state here survives it. Reset to a clean slate whenever a *new* compose
+	// session starts (a freshly-allocated `composing` object -- see
+	// `EditorView.tsx`'s `handleStartComposing`) or ends (`composing` back to
+	// null), so a stale error/draft from a finished session never leaks into
+	// the next one.
+	const [newThreadDraft, setNewThreadDraft] = useState("");
+	const [newThreadSubmitting, setNewThreadSubmitting] = useState(false);
+	const [newThreadError, setNewThreadError] = useState<string | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only `composing`'s own identity changing (a new session, or back to null) should reset the draft; the setters below are stable and reading `composing`'s fields isn't the point here.
+	useEffect(() => {
+		setNewThreadDraft("");
+		setNewThreadSubmitting(false);
+		setNewThreadError(null);
+	}, [composing]);
 
 	// Scrolls the focused thread into view within the panel's own list --
 	// covers both the paragraph-marker/gutter-marker "select" path (which
@@ -330,6 +494,19 @@ export function ThreadPanel(props: {
 
 	const content = (
 		<>
+			{composing && onSubmitNewThread && onCancelCompose ? (
+				<NewThreadComposer
+					quoteText={composing.quoteText}
+					draft={newThreadDraft}
+					onDraftChange={setNewThreadDraft}
+					submitting={newThreadSubmitting}
+					onSubmittingChange={setNewThreadSubmitting}
+					error={newThreadError}
+					onErrorChange={setNewThreadError}
+					onSubmit={(text) => onSubmitNewThread(composing.anchor, text)}
+					onCancel={onCancelCompose}
+				/>
+			) : null}
 			{error ? (
 				<p className="m-0 text-destructive text-sm" data-comment-panel-error>
 					{error}

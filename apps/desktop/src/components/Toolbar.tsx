@@ -40,7 +40,6 @@ export function Toolbar({
 	docImported,
 }: {
 	scrollContainer: HTMLDivElement | null;
-	showSidebarBadge?: boolean;
 	onOpenNotionPage: () => void;
 	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
@@ -86,7 +85,8 @@ export function Toolbar({
 		void desktopApi
 			.getCloudSyncState(workspacePath)
 			.then((initial) => {
-				if (!cancelled) setPendingSyncCount(initial.pendingFolders?.length ?? 0);
+				if (!cancelled)
+					setPendingSyncCount(initial.pendingFolders?.length ?? 0);
 			})
 			.catch(() => {});
 		let unsubscribe: (() => void) | undefined;

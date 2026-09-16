@@ -57,11 +57,7 @@ import {
 } from "./lib/theme";
 import { notionBrowserUrlForMarkdown } from "./notion/notionBrowserUrl";
 import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
-import {
-	COMMENT_THREAD_POPOVER_SELECTOR,
-	EDITABLE_FOCUS_SELECTOR,
-	SIDEBAR_NAV_SELECTOR,
-} from "./selectors";
+import { EDITABLE_FOCUS_SELECTOR, SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
 	autoCollapseSidebarForDocument,
 	createWorkspaceWithSidebar,
@@ -729,11 +725,12 @@ function App() {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [focusedSidebarPath, isAnyDialogOpen, openFilePicker, openSettings]);
 
-	// R7: Escape is a **last resort**, not an owner. Eleven components already
-	// answer Escape; all of them leave `defaultPrevented === true` except the
-	// comment-thread popover, which is why that one is checked by selector. The
-	// listener is bubble-phase on `window`, so every React handler has already
-	// had its say by the time this runs.
+	// R7: Escape is a **last resort**, not an owner. Every other component that
+	// answers Escape leaves `defaultPrevented === true` (comments now included:
+	// the comment panel's compose/view UI lives in workspace-kit's ThreadPanel,
+	// a dialog whose own Escape handling is already covered by `commentsOpen`
+	// below). The listener is bubble-phase on `window`, so every React handler
+	// has already had its say by the time this runs.
 	useEffect(() => {
 		const onEscape = (event: KeyboardEvent) => {
 			if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -748,7 +745,6 @@ function App() {
 			) {
 				return;
 			}
-			if (document.querySelector(COMMENT_THREAD_POPOVER_SELECTOR)) return;
 			void closeDocumentToTable();
 		};
 		window.addEventListener("keydown", onEscape);
@@ -845,7 +841,6 @@ function App() {
 			<WindowDragRegion />
 			<Toolbar
 				scrollContainer={scrollContainerEl}
-				showSidebarBadge={!sidebarVisible && showUpdateCallout}
 				onOpenNotionPage={() => setNotionDialogOpen(true)}
 				onOpenNotionInBrowser={openNotionInBrowser}
 				onPushNotionPage={pushNotionPage}

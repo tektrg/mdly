@@ -51,9 +51,9 @@
 }
 
 [data-hubble-editor] .ProseMirror {
-	--editor-gap: 0.5em;
+	--editor-gap: 0.85em;
 	--editor-heading-gap: 0.35em;
-	--editor-section-gap: 0.9em;
+	--editor-section-gap: 1.5em;
 	--editor-list-gap: 0.25em;
 
 	inline-size: 100%;
@@ -126,6 +126,14 @@
 [data-hubble-editor] .ProseMirror .tableWrapper {
 	max-inline-size: 100%;
 	overflow-x: auto;
+}
+
+[data-hubble-editor] .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+	text-wrap: balance;
+}
+
+[data-hubble-editor] .ProseMirror p {
+	text-wrap: pretty;
 }
 
 [data-hubble-editor] .ProseMirror h1 {
@@ -387,6 +395,47 @@
 [data-hubble-editor] .pm-fake-selection {
 	background: color-mix(in oklab, var(--selected) 70%, transparent);
 	border-radius: 2px;
+}
+
+/*
+ * Comment thread highlights (CommentExtension.ts's `pm-comment-mark*`
+ * decorations). Previously undefined in any real stylesheet -- only present
+ * in a stale, generated build artifact -- so commented text rendered with no
+ * highlight at all in a clean build; these are the first real rules for it.
+ */
+[data-hubble-editor] .ProseMirror .pm-comment-mark {
+	background: color-mix(in oklab, var(--brand) 16%, transparent);
+	border-block-end: 2px solid color-mix(in oklab, var(--brand) 45%, transparent);
+	border-radius: 2px;
+	transition: background-color 160ms var(--ease-snappy);
+}
+
+/* Resolved: same shape, muted to de-emphasize against still-open threads. */
+[data-hubble-editor] .ProseMirror .pm-comment-mark-resolved {
+	background: color-mix(in oklab, var(--muted-foreground) 12%, transparent);
+	border-block-end-color: color-mix(
+		in oklab,
+		var(--muted-foreground) 35%,
+		transparent
+	);
+}
+
+/* Focused: the thread currently selected in ThreadPanel gets a visibly
+ * stronger highlight in the document. */
+[data-hubble-editor] .ProseMirror .pm-comment-mark-focused {
+	background: color-mix(in oklab, var(--brand) 32%, transparent);
+	border-block-end-color: var(--brand);
+}
+
+/* Pending: the exact range a brand-new, not-yet-posted comment is anchored
+ * to, kept highlighted (via a dedicated decoration, not native selection --
+ * see `setPendingCommentAnchor`) once focus leaves the document for the
+ * panel's compose textarea. Same strength as focused, distinguished by hue
+ * (the focus-ring token) so "about to post" reads differently from "already
+ * posted, currently selected". */
+[data-hubble-editor] .ProseMirror .pm-comment-mark-pending {
+	background: color-mix(in oklab, var(--ring) 28%, transparent);
+	border-block-end: 2px solid var(--ring);
 }
 
 [data-hubble-editor]

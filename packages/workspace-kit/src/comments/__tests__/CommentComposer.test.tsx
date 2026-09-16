@@ -8,6 +8,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tiptapDocToMarkdown } from "../../engine/index.js";
 import { CommentComposer } from "../CommentComposer";
+import type { TextAnchor } from "../types.js";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -42,14 +43,16 @@ function createEditor() {
 
 function Harness({
 	editor,
-	onOpenThread,
-	onPanelOpenChange,
+	onStartComposing,
 	getHeadRevisionId = () => Promise.resolve(null),
 	readRevisionContent = () => Promise.resolve(null),
 }: {
 	editor: Editor;
-	onOpenThread: (anchor: unknown, text: string) => Promise<void>;
-	onPanelOpenChange?: (open: boolean) => void;
+	onStartComposing: (
+		anchor: TextAnchor,
+		quoteText: string,
+		range: { from: number; to: number },
+	) => void;
 	getHeadRevisionId?: () => Promise<string | null>;
 	readRevisionContent?: (revisionId: string) => Promise<string | null>;
 }) {
@@ -61,11 +64,19 @@ function Harness({
 				viewportRef={viewportRef}
 				getHeadRevisionId={getHeadRevisionId}
 				readRevisionContent={readRevisionContent}
-				onOpenThread={onOpenThread}
-				onPanelOpenChange={onPanelOpenChange}
+				onStartComposing={onStartComposing}
 			/>
 		</div>
 	);
+}
+
+async function flushMicrotasks(times = 3) {
+	for (let i = 0; i < times; i++) {
+		// eslint-disable-next-line no-await-in-loop
+		await act(async () => {
+			await Promise.resolve();
+		});
+	}
 }
 
 describe("CommentComposer", () => {
@@ -86,7 +97,7 @@ describe("CommentComposer", () => {
 	it("shows no trigger while the selection is collapsed", () => {
 		const editor = createEditor();
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+			root.render(<Harness editor={editor} onStartComposing={vi.fn()} />);
 		});
 
 		expect(
@@ -94,64 +105,29 @@ describe("CommentComposer", () => {
 		).toBeNull();
 	});
 
-	it("shows a trigger once text is selected, and a compose box once clicked", () => {
+	it("shows a Comment trigger and a copy-link trigger once text is selected", () => {
 		const editor = createEditor();
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+			root.render(<Harness editor={editor} onStartComposing={vi.fn()} />);
 		});
 
 		act(() => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
 		});
 
-		const trigger = container.querySelector<HTMLButtonElement>(
-			"[data-comment-composer-trigger]",
-		);
-		expect(trigger).not.toBeNull();
-		expect(container.querySelector("[data-comment-composer]")).toBeNull();
-
-		act(() => trigger?.click());
-
-		expect(container.querySelector("[data-comment-composer]")).not.toBeNull();
 		expect(
-			container.querySelector<HTMLButtonElement>(
-				"[data-comment-composer-submit]",
-			)?.disabled,
-		).toBe(true);
-	});
-
-	// Starting a new comment must land the keyboard in the compose box at
-	// once -- no extra click into the textarea. Scoped to the new-thread
-	// composer only; reply textareas in ThreadItem intentionally don't steal
-	// focus.
-	it("focuses the comment textarea as soon as the compose box opens", () => {
-		const editor = createEditor();
-		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
-		});
-		act(() => {
-			editor.commands.setTextSelection({ from: 1, to: 6 });
-		});
-		act(() => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
-				?.click();
-		});
-
-		const textarea = container.querySelector<HTMLTextAreaElement>(
-			"[data-comment-composer-textarea]",
-		);
-		expect(textarea).not.toBeNull();
-		expect(document.activeElement).toBe(textarea);
+			container.querySelector("[data-comment-composer-trigger]"),
+		).not.toBeNull();
+		expect(container.querySelector("[data-comment-copy-link]")).not.toBeNull();
 	});
 
 	// The trigger renders an icon only (no visible text) -- its accessible
 	// name must come from aria-label/title instead, or it's silently
 	// unlabeled for screen readers.
-	it("labels the icon-only trigger with an accessible name", () => {
+	it("labels both icon-only triggers with an accessible name", () => {
 		const editor = createEditor();
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+			root.render(<Harness editor={editor} onStartComposing={vi.fn()} />);
 		});
 		act(() => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
@@ -162,69 +138,49 @@ describe("CommentComposer", () => {
 		);
 		expect(trigger?.getAttribute("aria-label")).toBe("Comment");
 		expect(trigger?.textContent?.trim()).toBe("");
+
+		const copyLink = container.querySelector<HTMLButtonElement>(
+			"[data-comment-copy-link]",
+		);
+		expect(copyLink?.getAttribute("aria-label")).toBe("Copy link to selection");
 	});
 
-	it("submits a quote-mode anchor built from the exact selection and clears the draft", async () => {
-		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+	it("builds a quote-mode anchor from the exact selection and starts composing", async () => {
+		const onStartComposing = vi.fn();
 		const editor = createEditor();
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={onOpenThread} />);
+			root.render(
+				<Harness editor={editor} onStartComposing={onStartComposing} />,
+			);
 		});
 		act(() => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
 		});
-		act(() => {
+
+		await act(async () => {
 			container
 				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
 				?.click();
 		});
+		await flushMicrotasks();
 
-		const textarea = container.querySelector<HTMLTextAreaElement>(
-			"[data-comment-composer-textarea]",
-		);
-		expect(textarea).not.toBeNull();
-
-		// React overrides the plain `.value` setter on the element instance to
-		// track controlled-input state, so a bare assignment followed by
-		// dispatching "input" is silently ignored -- go through the native
-		// prototype setter instead, which is the standard bypass for driving a
-		// controlled input from outside React's own event system.
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		act(() => {
-			nativeValueSetter?.call(textarea, "why bold?");
-			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.click();
-		});
-
-		expect(onOpenThread).toHaveBeenCalledTimes(1);
-		const [anchor, text] = onOpenThread.mock.calls[0] as [
-			{ quote: string; mode: string },
+		expect(onStartComposing).toHaveBeenCalledTimes(1);
+		const [anchor, quoteText, range] = onStartComposing.mock.calls[0] as [
+			TextAnchor,
 			string,
+			{ from: number; to: number },
 		];
 		expect(anchor.mode).toBe("quote");
 		expect(anchor.quote).toBe("Hello");
-		expect(text).toBe("why bold?");
-
-		// Compose box collapses back to a bare trigger once submitted.
-		expect(container.querySelector("[data-comment-composer]")).toBeNull();
-		expect(
-			container.querySelector("[data-comment-composer-trigger]"),
-		).not.toBeNull();
+		expect(quoteText).toBe("Hello");
+		expect(range).toEqual({ from: 1, to: 6 });
 	});
 
 	// R10: a new comment on a note whose live text is byte-identical to its
 	// head revision gets the more durable 'revision' anchor mode, not always
 	// 'quote'.
-	it("submits a revision-mode anchor when the live body matches the head revision", async () => {
-		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+	it("builds a revision-mode anchor when the live body matches the head revision", async () => {
+		const onStartComposing = vi.fn();
 		const editor = createEditor();
 		const currentBody = tiptapDocToMarkdown(editor.getJSON() as JSONContent);
 		const readRevisionContent = vi
@@ -238,7 +194,7 @@ describe("CommentComposer", () => {
 			root.render(
 				<Harness
 					editor={editor}
-					onOpenThread={onOpenThread}
+					onStartComposing={onStartComposing}
 					getHeadRevisionId={() => Promise.resolve("rev-1")}
 					readRevisionContent={readRevisionContent}
 				/>,
@@ -247,94 +203,26 @@ describe("CommentComposer", () => {
 		act(() => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
 		});
-		act(() => {
+
+		await act(async () => {
 			container
 				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
 				?.click();
 		});
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		act(() => {
-			const textarea = container.querySelector<HTMLTextAreaElement>(
-				"[data-comment-composer-textarea]",
-			);
-			nativeValueSetter?.call(textarea, "matches head revision");
-			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.click();
-		});
+		await flushMicrotasks();
 
 		expect(readRevisionContent).toHaveBeenCalledWith("rev-1");
-		const [anchor] = onOpenThread.mock.calls[0] as [
-			{ mode: string; revisionId?: string },
-			string,
-		];
+		const [anchor] = onStartComposing.mock.calls[0] as [TextAnchor];
 		expect(anchor.mode).toBe("revision");
 		expect(anchor.revisionId).toBe("rev-1");
 	});
 
-	it("falls back to quote mode when the live body differs from the head revision", async () => {
-		const onOpenThread = vi.fn().mockResolvedValue(undefined);
-		const editor = createEditor();
-		const readRevisionContent = vi
-			.fn()
-			.mockResolvedValue("this is not the current body");
-		act(() => {
-			root.render(
-				<Harness
-					editor={editor}
-					onOpenThread={onOpenThread}
-					getHeadRevisionId={() => Promise.resolve("rev-1")}
-					readRevisionContent={readRevisionContent}
-				/>,
-			);
-		});
-		act(() => {
-			editor.commands.setTextSelection({ from: 1, to: 6 });
-		});
-		act(() => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
-				?.click();
-		});
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		act(() => {
-			const textarea = container.querySelector<HTMLTextAreaElement>(
-				"[data-comment-composer-textarea]",
-			);
-			nativeValueSetter?.call(textarea, "still unsaved");
-			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.click();
-		});
-
-		const [anchor] = onOpenThread.mock.calls[0] as [
-			{ mode: string; revisionId?: string },
-			string,
-		];
-		expect(anchor.mode).toBe("quote");
-		expect(anchor.revisionId).toBeUndefined();
-	});
-
 	// R10 regression guard: `getHeadRevisionId` must be re-resolved on every
-	// submit, never cached across the composer's lifetime -- the editor mints
+	// click, never cached across the composer's lifetime -- the editor mints
 	// a new head revision mid-session on its own (idle/forced cuts), so a
 	// value snapshotted once would go stale.
-	it("resolves getHeadRevisionId fresh on every submit rather than caching it", async () => {
-		const onOpenThread = vi.fn().mockResolvedValue(undefined);
+	it("resolves getHeadRevisionId fresh on every trigger click rather than caching it", async () => {
+		const onStartComposing = vi.fn();
 		const editor = createEditor();
 		let currentHeadRevisionId = "rev-1";
 		const getHeadRevisionId = vi
@@ -347,150 +235,63 @@ describe("CommentComposer", () => {
 			root.render(
 				<Harness
 					editor={editor}
-					onOpenThread={onOpenThread}
+					onStartComposing={onStartComposing}
 					getHeadRevisionId={getHeadRevisionId}
 					readRevisionContent={readRevisionContent}
 				/>,
 			);
 		});
 
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		const openAndSubmit = async (text: string) => {
+		const click = async () => {
 			act(() => {
 				editor.commands.setTextSelection({ from: 1, to: 6 });
 			});
-			act(() => {
+			await act(async () => {
 				container
 					.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
 					?.click();
 			});
-			act(() => {
-				const textarea = container.querySelector<HTMLTextAreaElement>(
-					"[data-comment-composer-textarea]",
-				);
-				nativeValueSetter?.call(textarea, text);
-				textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-			});
-			await act(async () => {
-				container
-					.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-					?.click();
-			});
+			await flushMicrotasks();
 		};
 
-		await openAndSubmit("first comment");
+		await click();
 		expect(readRevisionContent).toHaveBeenLastCalledWith("rev-1");
 
 		// A revision cut happens mid-session -- the head moves to "rev-2" with
 		// no re-mount and no new prop passed down, only the callback's own
 		// return value changing.
 		currentHeadRevisionId = "rev-2";
-		await openAndSubmit("second comment");
+		await click();
 
 		expect(getHeadRevisionId).toHaveBeenCalledTimes(2);
 		expect(readRevisionContent).toHaveBeenLastCalledWith("rev-2");
 	});
 
-	// R13: a failed write (e.g. a read-only workspace) must surface visibly
-	// in the composer, not fail silently while quietly re-enabling Submit.
-	it("shows a visible error and keeps the draft when onOpenThread rejects", async () => {
-		const onOpenThread = vi.fn().mockRejectedValue(new Error("EACCES"));
+	it("copies a text-fragment link for the selection to the clipboard", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText },
+			configurable: true,
+		});
 		const editor = createEditor();
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={onOpenThread} />);
+			root.render(<Harness editor={editor} onStartComposing={vi.fn()} />);
 		});
 		act(() => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
 		});
-		act(() => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
-				?.click();
-		});
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		act(() => {
-			const textarea = container.querySelector<HTMLTextAreaElement>(
-				"[data-comment-composer-textarea]",
-			);
-			nativeValueSetter?.call(textarea, "why bold?");
-			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
 
 		await act(async () => {
 			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
+				.querySelector<HTMLButtonElement>("[data-comment-copy-link]")
 				?.click();
 		});
 
-		expect(
-			container.querySelector("[data-comment-composer-error]")?.textContent,
-		).toContain("EACCES");
-		// The compose box stays open with the draft intact so the user can retry.
-		expect(container.querySelector("[data-comment-composer]")).not.toBeNull();
-		expect(
-			container.querySelector<HTMLTextAreaElement>(
-				"[data-comment-composer-textarea]",
-			)?.value,
-		).toBe("why bold?");
-		expect(
-			container.querySelector<HTMLButtonElement>(
-				"[data-comment-composer-submit]",
-			)?.disabled,
-		).toBe(false);
+		expect(writeText).toHaveBeenCalledTimes(1);
+		expect(writeText.mock.calls[0]?.[0]).toContain("Hello");
 	});
 
-	it("opens the panel once a new thread is created from the composer", async () => {
-		const onOpenThread = vi.fn().mockResolvedValue(undefined);
-		const onPanelOpenChange = vi.fn();
-		const editor = createEditor();
-		act(() => {
-			root.render(
-				<Harness
-					editor={editor}
-					onOpenThread={onOpenThread}
-					onPanelOpenChange={onPanelOpenChange}
-				/>,
-			);
-		});
-		act(() => {
-			editor.commands.setTextSelection({ from: 1, to: 6 });
-		});
-		act(() => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
-				?.click();
-		});
-
-		const nativeValueSetter = Object.getOwnPropertyDescriptor(
-			window.HTMLTextAreaElement.prototype,
-			"value",
-		)?.set;
-		act(() => {
-			const textarea = container.querySelector<HTMLTextAreaElement>(
-				"[data-comment-composer-textarea]",
-			);
-			nativeValueSetter?.call(textarea, "why bold?");
-			textarea?.dispatchEvent(new Event("input", { bubbles: true }));
-		});
-
-		expect(onPanelOpenChange).not.toHaveBeenCalled();
-
-		await act(async () => {
-			container
-				.querySelector<HTMLButtonElement>("[data-comment-composer-submit]")
-				?.click();
-		});
-
-		expect(onPanelOpenChange).toHaveBeenCalledWith(true);
-	});
-
-	it("positions the trigger relative to the scrolled viewport, not the unscrolled one", () => {
+	it("positions the toolbar relative to the scrolled viewport, not the unscrolled one", () => {
 		const editor = createEditor();
 		vi.spyOn(editor.view, "coordsAtPos").mockReturnValue({
 			top: 10,
@@ -500,7 +301,7 @@ describe("CommentComposer", () => {
 		});
 
 		act(() => {
-			root.render(<Harness editor={editor} onOpenThread={vi.fn()} />);
+			root.render(<Harness editor={editor} onStartComposing={vi.fn()} />);
 		});
 
 		const viewport = container.firstElementChild as HTMLDivElement;
@@ -528,11 +329,11 @@ describe("CommentComposer", () => {
 			editor.commands.setTextSelection({ from: 1, to: 6 });
 		});
 
-		const trigger = container.querySelector<HTMLButtonElement>(
-			"[data-comment-composer-trigger]",
+		const toolbar = container.querySelector<HTMLElement>(
+			"[data-comment-selection-toolbar]",
 		);
-		expect(trigger?.style.top).toBe("-40px");
-		expect(trigger?.style.left).toBe("-30px");
+		expect(toolbar?.style.top).toBe("-40px");
+		expect(toolbar?.style.left).toBe("-30px");
 
 		Object.defineProperty(viewport, "scrollTop", { value: 90 });
 		act(() => {
@@ -540,9 +341,8 @@ describe("CommentComposer", () => {
 		});
 
 		expect(
-			container.querySelector<HTMLButtonElement>(
-				"[data-comment-composer-trigger]",
-			)?.style.top,
+			container.querySelector<HTMLElement>("[data-comment-selection-toolbar]")
+				?.style.top,
 		).toBe("10px");
 	});
 });

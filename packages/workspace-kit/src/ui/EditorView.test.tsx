@@ -237,7 +237,9 @@ describe("EditorView comment mutations re-fetch threads (QA finding)", () => {
 		container.remove();
 	});
 
-	function baseProps(overrides: Partial<EditorViewProps> = {}): EditorViewProps {
+	function baseProps(
+		overrides: Partial<EditorViewProps> = {},
+	): EditorViewProps {
 		return {
 			path: "/workspace/note.md",
 			initialMarkdown: "Hello world\n",
@@ -298,14 +300,255 @@ describe("EditorView comment mutations re-fetch threads (QA finding)", () => {
 		).not.toBeNull();
 
 		await act(async () => {
-			document.querySelector<HTMLButtonElement>("[data-resolve-button]")?.click();
+			document
+				.querySelector<HTMLButtonElement>("[data-resolve-button]")
+				?.click();
 		});
 		await flushMicrotasks();
 
 		expect(onResolve).toHaveBeenCalledWith("thread-1");
 		expect(getThreads).toHaveBeenCalledTimes(2);
 		expect(
-			document.querySelector('[data-comment-thread][data-thread-state="resolved"]'),
+			document.querySelector(
+				'[data-comment-thread][data-thread-state="resolved"]',
+			),
+		).not.toBeNull();
+	});
+});
+
+function baseCommentOptions(
+	overrides: Partial<CommentOptions> = {},
+): CommentOptions {
+	return {
+		currentAuthor: { kind: "human", id: "u1" },
+		docId: "doc-1",
+		getHeadRevisionId: () => Promise.resolve(null),
+		getThreads: () => Promise.resolve([]),
+		readRevisionContent: () => Promise.resolve(null),
+		onOpenThread: vi.fn().mockResolvedValue(undefined),
+		onReply: vi.fn().mockResolvedValue(undefined),
+		onResolve: vi.fn().mockResolvedValue(undefined),
+		onReopen: vi.fn().mockResolvedValue(undefined),
+		onDelete: vi.fn().mockResolvedValue(undefined),
+		panelOpen: true,
+		onPanelOpenChange: vi.fn(),
+		...overrides,
+	};
+}
+
+/**
+ * QA finding #2: the desktop app's "only one right-edge panel open at a
+ * time" rule (R21) force-closes the comment panel from OUTSIDE
+ * `ThreadPanel`'s own `onOpenChange` -- it flips the host's `panelOpen` state
+ * straight to `false` (e.g. when Revision History opens) rather than routing
+ * through the panel's Close/Escape/Cancel path. Before this fix, that left
+ * the in-progress draft, its pending-highlight decoration, and the hidden
+ * "+Comment" trigger all stuck, with no way to dismiss them short of
+ * reopening the panel and finding the buried Cancel button.
+ */
+describe("EditorView comment composing cleared by an external panel force-close (QA finding #2)", () => {
+	let container: HTMLDivElement;
+	let root: ReturnType<typeof createRoot>;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	function baseProps(
+		overrides: Partial<EditorViewProps> = {},
+	): EditorViewProps {
+		return {
+			path: "/workspace/note.md",
+			initialMarkdown: "Hello world\n",
+			onLocalChange: vi.fn(),
+			onSave: vi.fn(),
+			onOpenExternalLink: vi.fn(),
+			onOpenWikiLink: vi.fn(),
+			...overrides,
+		};
+	}
+
+	it("clears the pending-highlight decoration and re-shows the +Comment trigger when the host force-closes the panel directly", async () => {
+		let liveEditor: Editor | null = null;
+		const commentOptions = baseCommentOptions();
+		act(() => {
+			root.render(
+				<EditorView
+					{...baseProps({
+						commentOptions,
+						onEditorReady: (e) => (liveEditor = e),
+					})}
+				/>,
+			);
+		});
+		await flushMicrotasks();
+		if (!liveEditor) throw new Error("editor did not become ready");
+
+		// Select "world" and start composing a new draft on it.
+		act(() => {
+			(liveEditor as Editor).commands.setTextSelection({ from: 7, to: 12 });
+		});
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+		await flushMicrotasks();
+
+		expect(
+			(liveEditor as Editor).view.dom.querySelector(".pm-comment-mark-pending"),
+		).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-composer-trigger]"),
+		).toBeNull();
+
+		// Mirrors `apps/desktop/src/App.tsx`'s R21 handler: the host flips
+		// `panelOpen` to `false` directly, never calling this panel's own
+		// `onOpenChange`/`onPanelOpenChange`.
+		act(() => {
+			root.render(
+				<EditorView
+					{...baseProps({
+						commentOptions: { ...commentOptions, panelOpen: false },
+						onEditorReady: (e) => (liveEditor = e),
+					})}
+				/>,
+			);
+		});
+		await flushMicrotasks();
+
+		expect(
+			(liveEditor as Editor).view.dom.querySelector(".pm-comment-mark-pending"),
+		).toBeNull();
+
+		// `CommentComposer` itself remounted (it was unmounted while
+		// `composingAnchor ? null : <CommentComposer />` was hiding it) and
+		// only computes its trigger's position reactively, off a
+		// "selectionUpdate"/"transaction" event -- so a fresh selection change
+		// is what proves it's mounted and no longer suppressed by a stuck
+		// composing state, not the unchanged pre-existing selection alone.
+		act(() => {
+			(liveEditor as Editor).commands.setTextSelection({ from: 7, to: 11 });
+		});
+		expect(
+			container.querySelector("[data-comment-composer-trigger]"),
+		).not.toBeNull();
+	});
+});
+
+/**
+ * QA finding #3: clicking an existing comment mark while a new-comment draft
+ * is open used to leave both highlights showing at once (the pending-anchor
+ * decoration for the unfinished draft, and the newly-focused thread's own
+ * highlight), with the composer UI still mounted alongside the now-focused
+ * thread. Focusing an existing thread should implicitly cancel the draft
+ * first -- one active "thing being highlighted" at a time.
+ */
+describe("EditorView selecting an existing thread cancels an in-progress draft (QA finding #3)", () => {
+	let container: HTMLDivElement;
+	let root: ReturnType<typeof createRoot>;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	function baseProps(
+		overrides: Partial<EditorViewProps> = {},
+	): EditorViewProps {
+		return {
+			path: "/workspace/note.md",
+			initialMarkdown: "Hello world\n",
+			onLocalChange: vi.fn(),
+			onSave: vi.fn(),
+			onOpenExternalLink: vi.fn(),
+			onOpenWikiLink: vi.fn(),
+			...overrides,
+		};
+	}
+
+	it("cancels the pending draft and focuses the clicked thread instead of showing both highlights", async () => {
+		const existingThread: CommentThread = {
+			id: "thread-1",
+			opener: {
+				id: "thread-1",
+				by: { kind: "human", id: "u1" },
+				anchor: { from: 0, to: 5, quote: "Hello", mode: "quote" },
+				text: "why?",
+			},
+			events: [],
+			state: "open",
+		};
+		let liveEditor: Editor | null = null;
+		const commentOptions = baseCommentOptions({
+			getThreads: () => Promise.resolve([existingThread]),
+		});
+		act(() => {
+			root.render(
+				<EditorView
+					{...baseProps({
+						commentOptions,
+						onEditorReady: (e) => (liveEditor = e),
+					})}
+				/>,
+			);
+		});
+		await flushMicrotasks();
+		if (!liveEditor) throw new Error("editor did not become ready");
+
+		// Start a new-comment draft on "world" -- a different range from the
+		// existing thread's "Hello".
+		act(() => {
+			(liveEditor as Editor).commands.setTextSelection({ from: 7, to: 12 });
+		});
+		await act(async () => {
+			container
+				.querySelector<HTMLButtonElement>("[data-comment-composer-trigger]")
+				?.click();
+		});
+		await flushMicrotasks();
+		expect(
+			(liveEditor as Editor).view.dom.querySelector(".pm-comment-mark-pending"),
+		).not.toBeNull();
+
+		// A plain click needs a collapsed selection at click time (see
+		// `useCommentMarkClick`'s own guard against drag-selection mouseups).
+		act(() => {
+			(liveEditor as Editor).commands.setTextSelection({ from: 0, to: 0 });
+		});
+		const existingMark = (
+			liveEditor as Editor
+		).view.dom.querySelector<HTMLElement>(
+			'.pm-comment-mark[data-thread-id="thread-1"]',
+		);
+		expect(existingMark).not.toBeNull();
+		act(() => {
+			existingMark?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		await flushMicrotasks();
+
+		// The draft's pending highlight is gone...
+		expect(
+			(liveEditor as Editor).view.dom.querySelector(".pm-comment-mark-pending"),
+		).toBeNull();
+		// ...and the clicked thread is now focused in the panel instead.
+		expect(
+			document.querySelector(
+				'[data-comment-thread][data-thread-id="thread-1"][data-thread-focused="true"]',
+			),
 		).not.toBeNull();
 	});
 });

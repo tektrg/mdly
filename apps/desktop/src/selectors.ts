@@ -11,12 +11,3 @@ export const SIDEBAR_NAV_SELECTOR = `[${SIDEBAR_NAV_ATTR}]`;
  */
 export const EDITABLE_FOCUS_SELECTOR =
 	".ProseMirror, [contenteditable], input, textarea";
-
-/**
- * The one Escape owner in this codebase that closes without calling
- * `preventDefault` (workspace-kit `comments/CommentThreadPopover.tsx`), so
- * `event.defaultPrevented` cannot speak for it. Gating on its own attribute
- * keeps the shared package — and therefore `apps/www` / `apps/notion-web`
- * Escape behaviour — byte-for-byte unchanged.
- */
-export const COMMENT_THREAD_POPOVER_SELECTOR = "[data-comment-thread-popover]";

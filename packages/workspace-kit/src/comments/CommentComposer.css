@@ -1,10 +1,18 @@
 /*
- * Selection-triggered popup (trigger button + draft textarea), positioned
+ * Selection-triggered toolbar (Comment + copy-link triggers), positioned
  * absolutely by CommentComposer.tsx via inline top/left. Visual family
- * matches the paragraph markers and the SidePanel used by ThreadPanel.tsx.
+ * matches the paragraph markers and the SidePanel used by ThreadPanel.tsx --
+ * the actual compose UI lives in ThreadPanel now, not here.
  */
-.comment-composer-trigger {
+.comment-selection-toolbar {
+	position: relative;
 	z-index: 30;
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+}
+
+.comment-composer-trigger {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -25,86 +33,34 @@
 	block-size: 0.85rem;
 }
 
-.comment-composer-trigger:hover {
+.comment-composer-trigger:hover:not(:disabled) {
 	background: var(--muted);
 }
 
-.comment-composer {
-	z-index: 30;
-	display: flex;
-	flex-direction: column;
-	gap: 0.4rem;
-	inline-size: 16rem;
-	border: 1px solid var(--border);
-	border-radius: 8px;
-	background: var(--popover);
-	color: var(--popover-foreground);
-	padding: 0.5rem;
-	box-shadow: 0 4px 16px color-mix(in oklab, var(--foreground) 16%, transparent);
-}
-
-.comment-composer textarea {
-	block-size: 3.5rem;
-	resize: none;
-	border: 1px solid var(--input);
-	border-radius: 4px;
-	background: var(--card);
-	color: inherit;
-	padding: 0.35rem 0.5rem;
-	font-size: 12px;
-	font-family: inherit;
-	outline: none;
-}
-
-.comment-composer textarea:focus-visible {
-	border-color: var(--ring);
-	box-shadow: 0 0 0 1px color-mix(in oklab, var(--ring) 40%, transparent);
-}
-
-.comment-composer textarea:disabled {
+.comment-composer-trigger:disabled {
 	cursor: not-allowed;
 	opacity: 0.5;
+}
+
+/* Touch-sized variant: same absolute-positioned toolbar as desktop, just
+ * with a minimum 44px tap target per platform guidance. */
+.comment-selection-toolbar--mobile .comment-composer-trigger {
+	inline-size: 2.75rem;
+	block-size: 2.75rem;
+}
+
+.comment-selection-toolbar--mobile .comment-composer-trigger svg {
+	inline-size: 1.1rem;
+	block-size: 1.1rem;
 }
 
 .comment-composer-error {
-	margin: 0;
+	position: absolute;
+	inset-block-start: 100%;
+	inset-inline-start: 0;
+	margin: 0.25rem 0 0;
+	inline-size: max-content;
+	max-inline-size: 12rem;
 	color: var(--destructive);
 	font-size: 11px;
-}
-
-.comment-composer-actions {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 0.4rem;
-}
-
-.comment-composer-actions button {
-	border: 1px solid var(--border);
-	border-radius: 4px;
-	background: var(--secondary);
-	color: var(--secondary-foreground);
-	padding: 0.2rem 0.6rem;
-	font-size: 12px;
-	cursor: pointer;
-	transition: background-color 160ms var(--ease-snappy);
-}
-
-.comment-composer-actions button:hover:not(:disabled) {
-	background: color-mix(in oklab, var(--secondary) 80%, var(--foreground) 8%);
-}
-
-.comment-composer-actions button:disabled {
-	cursor: not-allowed;
-	opacity: 0.5;
-}
-
-.comment-composer-actions button[data-comment-composer-submit] {
-	border-color: var(--primary);
-	background: var(--primary);
-	color: var(--primary-foreground);
-}
-
-.comment-composer-actions button[data-comment-composer-submit]:hover:not(:disabled) {
-	background: color-mix(in oklab, var(--primary) 88%, var(--foreground) 8%);
 }

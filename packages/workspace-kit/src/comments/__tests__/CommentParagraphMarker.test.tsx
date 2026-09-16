@@ -174,7 +174,9 @@ describe("CommentParagraphMarker", () => {
 		);
 		expect(markers).toHaveLength(2);
 		expect(
-			Array.from(markers).map((marker) => marker.getAttribute("data-thread-id")),
+			Array.from(markers).map((marker) =>
+				marker.getAttribute("data-thread-id"),
+			),
 		).toEqual(["thread-1", "thread-2"]);
 		for (const marker of markers) {
 			expect(marker.querySelector("[data-comment-count]")).toBeNull();

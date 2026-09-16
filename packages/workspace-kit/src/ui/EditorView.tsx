@@ -19,9 +19,11 @@ import {
 	CommentExtension,
 	type CommentOptions,
 	CommentParagraphMarker,
-	CommentThreadPopover,
 	setCommentThreads,
+	setPendingCommentAnchor,
+	type TextAnchor,
 	ThreadPanel,
+	useCommentMarkClick,
 	useCommentThreads,
 } from "../comments/index.js";
 import {
@@ -56,6 +58,7 @@ import { SlashCommandMenu } from "./SlashCommandMenu";
 import { SmartLinkExtension } from "./SmartLinkExtension";
 import { TableOfContents } from "./TableOfContents";
 import { ToggleBlockViewExtension } from "./ToggleBlockView";
+import { transactionCarriesUserEditIntent } from "./userEditIntentMeta";
 import { VirtualCursor } from "./VirtualCursor";
 import "./EditorView.css";
 import {
@@ -218,6 +221,16 @@ export function EditorView({
 	commentOptions,
 }: EditorViewProps) {
 	const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
+	// Non-null while a brand-new comment is being drafted: set by
+	// `CommentComposer`'s trigger (which builds the anchor eagerly), cleared
+	// on post or cancel. Drives both `ThreadPanel`'s composing UI and the
+	// document-side `pm-comment-mark-pending` highlight (native selection is
+	// lost once focus moves into the panel's textarea).
+	const [composingAnchor, setComposingAnchor] = useState<{
+		anchor: TextAnchor;
+		quoteText: string;
+		range: { from: number; to: number };
+	} | null>(null);
 	const initialFrontMatter = useMemo(
 		() => parseMarkdownFrontMatter(initialMarkdown),
 		[initialMarkdown],
@@ -435,7 +448,13 @@ export function EditorView({
 		extensions: editorExtensions,
 		content: initialDoc,
 		editable,
-		onUpdate: ({ editor: current }) => {
+		onUpdate: ({ editor: current, transaction }) => {
+			// R12 / ruling R-H: a gesture that commits on pointer release (a table
+			// handle drag, a dot-menu Delete) can outlast the 1-second intent
+			// window, so the committing transaction re-marks intent itself. The
+			// window is unchanged and no global mouse-up refresher exists; only a
+			// transaction that explicitly says "this is a user edit" counts.
+			if (transactionCarriesUserEditIntent(transaction)) markUserEditIntent();
 			// Defer O(doc) markdown serialization off the keystroke path: retain the
 			// immutable doc and let flushDraft serialize when the text is needed.
 			pendingDocRef.current = current.state.doc;
@@ -479,10 +498,16 @@ export function EditorView({
 		error: commentsError,
 		refetch: refetchCommentThreads,
 	} = useCommentThreads(commentOptions, editor, markdownToPlainText);
+	// Re-pushed whenever either `resolvedThreads` or `focusedThreadId` changes
+	// on its own (e.g. a paragraph-marker click while the panel is already
+	// open, with no new thread data) -- `setCommentThreads`'s own ignition
+	// guard (comparing the combined {threads, focusedThreadId} against the
+	// plugin's current state) keeps a call that changes neither from ever
+	// dispatching, so one effect covers both triggers safely.
 	useEffect(() => {
 		if (!editor) return;
-		setCommentThreads(editor, resolvedThreads);
-	}, [editor, resolvedThreads]);
+		setCommentThreads(editor, resolvedThreads, focusedThreadId);
+	}, [editor, resolvedThreads, focusedThreadId]);
 
 	// `commentOptions.onOpenThread`/`onReply`/`onResolve`/`onReopen`/`onDelete` only
 	// perform the write (host IPC round-trip); nothing about a successful
@@ -490,8 +515,8 @@ export function EditorView({
 	// keyed on `getThreads`/docId/refreshSignal/a manual refetch(), none of
 	// which change just because a mutation succeeded). Every comment mutation
 	// funnels through this one wrapper so every thread surface (panel,
-	// composer, popover) sees the fresh state right after acting, instead of
-	// only after the next unrelated re-fetch trigger.
+	// document mark click) sees the fresh state right after acting, instead
+	// of only after the next unrelated re-fetch trigger.
 	const withThreadsRefetch = useCallback(
 		<Args extends unknown[]>(
 			action: ((...args: Args) => Promise<void>) | undefined,
@@ -523,16 +548,93 @@ export function EditorView({
 		[withThreadsRefetch, commentOptions],
 	);
 
+	// Builds the new-thread anchor eagerly (CommentComposer's trigger already
+	// resolved it) and hands off to ThreadPanel's composing UI, keeping the
+	// exact selected range highlighted in the document via the dedicated
+	// "pending" decoration (native selection is lost once focus moves into
+	// the panel's textarea).
+	const handleStartComposing = useCallback(
+		(
+			anchor: TextAnchor,
+			quoteText: string,
+			range: { from: number; to: number },
+		) => {
+			setComposingAnchor({ anchor, quoteText, range });
+			if (editor) setPendingCommentAnchor(editor, range);
+		},
+		[editor],
+	);
+	const clearComposing = useCallback(() => {
+		setComposingAnchor(null);
+		if (editor) setPendingCommentAnchor(editor, null);
+	}, [editor]);
+
 	// Shared by the paragraph-end marker (one marker per textblock grouping
-	// every thread anchored in it) -- clicking focuses that block's first
-	// thread in the panel.
+	// every thread anchored in it) and by a direct click on a comment mark in
+	// the document (see `useCommentMarkClick` below) -- both focus that
+	// thread in the panel via the same path. Focusing an existing thread this
+	// way implicitly cancels an in-progress new-comment draft first: without
+	// this, the pending-anchor highlight and the newly-focused thread's own
+	// highlight would both show at once, and the composer UI would stay
+	// mounted alongside the now-focused thread -- one active "thing being
+	// highlighted" at a time.
 	const handleSelectThread = useCallback(
 		(threadId: string) => {
+			if (composingAnchor) clearComposing();
 			setFocusedThreadId(threadId);
 			commentOptions?.onPanelOpenChange?.(true);
 		},
-		[commentOptions],
+		[composingAnchor, clearComposing, commentOptions],
 	);
+	// Clicking a highlighted comment mark directly in the document is the
+	// most direct of the four ways into a thread (the others: side panel,
+	// rail marker, paragraph marker) -- ignores the mouseup of a
+	// drag-selection that happens to start/end on a mark (see the hook's own
+	// doc comment), which `CommentComposer`'s trigger handles instead.
+	useCommentMarkClick(editor, handleSelectThread);
+
+	// Mirrors what CommentComposer's own (now-removed) submit() did: write the
+	// thread, then clear both the composing state and the pending-range
+	// highlight, and make sure the panel is open to show the new thread.
+	const handleSubmitNewThread = useCallback(
+		async (anchor: TextAnchor, text: string) => {
+			await handleOpenThread(anchor, text);
+			clearComposing();
+			commentOptions?.onPanelOpenChange?.(true);
+		},
+		[handleOpenThread, clearComposing, commentOptions],
+	);
+	// Dismissing the panel any other way than the composer's own Post/Cancel
+	// (its Close button, Escape, or the host's own controlled `panelOpen`
+	// flipping to false) must still end the draft -- otherwise the pending
+	// highlight stays lit forever and, since `composingAnchor` also hides the
+	// selection-triggered "Comment" trigger (see below), the user loses the
+	// ability to start any new comment until they dig the buried
+	// Cancel/Post back out of the reopened panel.
+	const handlePanelOpenChange = useCallback(
+		(open: boolean) => {
+			if (!open && composingAnchor) clearComposing();
+			commentOptions?.onPanelOpenChange?.(open);
+		},
+		[composingAnchor, clearComposing, commentOptions],
+	);
+	// The host can also force this panel closed from OUTSIDE that callback --
+	// e.g. the desktop app's "only one right-edge panel open at a time" rule
+	// (R21) flips `commentOptions.panelOpen` straight to `false` when Revision
+	// History opens, without ever calling `handlePanelOpenChange` above. That
+	// left composing state, the draft, and the pending highlight all stuck,
+	// and the "+Comment" trigger hidden (see the `composingAnchor ? null :
+	// <CommentComposer />` below) with no way to dismiss them short of
+	// reopening the panel and finding Cancel. Watching the controlled prop
+	// itself makes cleanup unconditional: however the panel ends up closed,
+	// composing always clears. Guarded by dependency-array identity, so this
+	// only fires on an actual `panelOpen` transition to `false`, never on a
+	// re-render where it was already `false` (e.g. while a fresh draft is
+	// still waiting for `ThreadPanel`'s own "auto-open on composing" effect to
+	// flip it back to `true`).
+	useEffect(() => {
+		if (commentOptions?.panelOpen === false) clearComposing();
+	}, [commentOptions?.panelOpen, clearComposing]);
 	// Scrolls the document to a comment's anchored text when its panel item is
 	// clicked. Scoped to `editor.view.dom` (the ProseMirror content root)
 	// rather than `editorRootRef`, so it can only ever match the real
@@ -700,23 +802,18 @@ export function EditorView({
 							threads={resolvedThreads}
 							onSelectThread={handleSelectThread}
 						/>
-						<CommentComposer
-							editor={editor}
-							viewportRef={editorViewportRef}
-							getHeadRevisionId={commentOptions.getHeadRevisionId}
-							readRevisionContent={commentOptions.readRevisionContent}
-							onOpenThread={handleOpenThread}
-							onPanelOpenChange={commentOptions.onPanelOpenChange}
-						/>
-						<CommentThreadPopover
-							editor={editor}
-							viewportRef={editorViewportRef}
-							threads={resolvedThreads}
-							onReply={handleReplyToThread}
-							onResolve={handleResolveThread}
-							onReopen={handleReopenThread}
-							onDelete={handleDeleteThread}
-						/>
+						{/* Hidden once a draft is in progress -- the panel's own
+						NewThreadComposer is now the one "start a comment" affordance
+						for that selection; without this, both would show at once. */}
+						{composingAnchor ? null : (
+							<CommentComposer
+								editor={editor}
+								viewportRef={editorViewportRef}
+								getHeadRevisionId={commentOptions.getHeadRevisionId}
+								readRevisionContent={commentOptions.readRevisionContent}
+								onStartComposing={handleStartComposing}
+							/>
+						)}
 					</>
 				) : null}
 			</div>
@@ -741,13 +838,23 @@ export function EditorView({
 					currentAuthor={commentOptions.currentAuthor}
 					focusedThreadId={focusedThreadId}
 					open={commentOptions.panelOpen}
-					onOpenChange={commentOptions.onPanelOpenChange}
+					onOpenChange={handlePanelOpenChange}
 					onReply={handleReplyToThread}
 					onResolve={handleResolveThread}
 					onReopen={handleReopenThread}
 					onDelete={handleDeleteThread}
 					onJumpToThread={handleJumpToThread}
 					error={commentsError}
+					// Passed as the `composingAnchor` state reference itself (a
+					// superset of ThreadPanel's `composing` shape), not a freshly
+					// literal-constructed object -- ThreadPanel's own "auto-open on
+					// composing" effect is keyed on this prop's identity, and a new
+					// object every render would re-fire that effect (and force the
+					// panel back open) on every unrelated EditorView re-render while
+					// composing is active, fighting the panel's own Close/Escape.
+					composing={composingAnchor}
+					onSubmitNewThread={handleSubmitNewThread}
+					onCancelCompose={clearComposing}
 				/>
 			) : null}
 		</div>
