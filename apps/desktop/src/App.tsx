@@ -684,9 +684,12 @@ function App() {
 				if (!workspaceStore.get().workspacePath) return;
 				event.preventDefault();
 				setWorkspaceSwitcherOpen(true);
-			} else if (keymatch(event, "CmdOrCtrl+Shift+N")) {
+			} else if (keymatch(event, "CmdOrCtrl+Shift+A")) {
 				event.preventDefault();
 				await openWorkspaceWithSidebar();
+			} else if (keymatch(event, "CmdOrCtrl+Shift+N")) {
+				event.preventDefault();
+				await desktopApi.openNewWindow();
 			} else if (keymatch(event, "CmdOrCtrl+O")) {
 				event.preventDefault();
 				await openFilePicker();

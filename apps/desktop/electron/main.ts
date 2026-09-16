@@ -41,8 +41,8 @@ import {
 import type { AgentToolContext } from "./agentToolContract";
 import { AGENT_TOOL_DESCRIPTORS, AGENT_TOOLS } from "./agentTools";
 import {
-	type CloudSyncWiringDeps,
 	approvePendingFolder,
+	type CloudSyncWiringDeps,
 	disableCloudSyncForWorkspace,
 	enableCloudSyncForWorkspace,
 	excludePendingFolder,
@@ -65,7 +65,6 @@ import {
 	resolveCommentThreadForPath,
 } from "./comments";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
-import { installMainProcessErrorHandlers } from "./mainProcessErrors";
 import {
 	createSelfWriteEchoTracker,
 	getHistoryStoreForWorkspace,
@@ -86,6 +85,7 @@ import {
 import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
 import { scanFrontMatterTags } from "./frontMatterTags";
+import { installMainProcessErrorHandlers } from "./mainProcessErrors";
 import {
 	agentMcpConnectCommand,
 	type RunningAgentMcpServer,
@@ -234,7 +234,7 @@ function cloudSyncDeps(): CloudSyncWiringDeps {
 		// Same existing channel the agent comment path already uses — the
 		// document view listens on it, so no preload/renderer changes.
 		notifyCommentsChanged: (absoluteFilePath: string) =>
-			sendToRenderer("desktop:comments-changed", absoluteFilePath),
+			broadcastToRenderers("desktop:comments-changed", absoluteFilePath),
 	};
 }
 
@@ -297,6 +297,12 @@ const workspaceConfigSchema = z.object({
 	),
 });
 const defaultWindowState: WindowState = { width: 920, height: 720 };
+// A window opened via "New Window" (Cmd+Shift+N) must not land exactly on
+// top of an existing one — window position/size is persisted to a single
+// shared file, so re-reading it for a second window would place it at the
+// same spot as the first. Offset it from the window it was spawned from
+// instead, like every desktop app's cascading-windows behavior.
+const windowCascadeOffset = 32;
 const windowStateSchema = z.object({
 	width: z.number().int().min(640).max(4096),
 	height: z.number().int().min(480).max(4096),
@@ -428,6 +434,24 @@ function resolveWindowState(state: WindowState): WindowState {
 		...state,
 		...clampWindowBounds(bounds, screen.getDisplayMatching(bounds).workArea),
 	};
+}
+
+function cascadeWindowState(from: BrowserWindow): WindowState {
+	// getNormalBounds() reports the un-maximized/un-fullscreened bounds even
+	// while the window is currently maximized or fullscreen, so a cascaded
+	// window is always a normal, offset window rather than inheriting either
+	// state from the window it was spawned from.
+	const bounds = from.getNormalBounds();
+	const offsetBounds: WindowBounds = {
+		x: bounds.x + windowCascadeOffset,
+		y: bounds.y + windowCascadeOffset,
+		width: bounds.width,
+		height: bounds.height,
+	};
+	return clampWindowBounds(
+		offsetBounds,
+		screen.getDisplayMatching(offsetBounds).workArea,
+	);
 }
 
 function clampWindowSize(
@@ -660,6 +684,16 @@ function sendToRenderer(channel: string, ...args: unknown[]) {
 	mainWindow?.webContents.send(channel, ...args);
 }
 
+// Unlike sendToRenderer (targets one window, correct for menu actions the
+// user just triggered in a specific window), app-wide notices have no single
+// correct recipient once multiple windows exist — every open window needs to
+// see an update banner, a crash notice, or a comment change.
+function broadcastToRenderers(channel: string, ...args: unknown[]) {
+	for (const window of BrowserWindow.getAllWindows()) {
+		window.webContents.send(channel, ...args);
+	}
+}
+
 // --- Slice 4: agent access to document comments -------------------------
 // Two transports publish the SAME tool table (`agentTools.ts`): the loopback
 // MCP server below, and the renderer's WebMCP bridge via the
@@ -699,7 +733,7 @@ function agentToolContext(): AgentToolContext {
 		// This is what makes an agent's comment appear in the open panel live
 		// rather than on the next incidental reload.
 		notifyCommentsChanged: (absoluteFilePath: string) =>
-			sendToRenderer("desktop:comments-changed", absoluteFilePath),
+			broadcastToRenderers("desktop:comments-changed", absoluteFilePath),
 	};
 }
 
@@ -869,6 +903,12 @@ function buildMenu() {
 			label: "File",
 			submenu: [
 				{
+					id: "new-window",
+					label: "New Window",
+					accelerator: "CmdOrCtrl+Shift+N",
+					click: () => void createWindow(),
+				},
+				{
 					id: "new-markdown-file",
 					label: "New File",
 					accelerator: "CmdOrCtrl+N",
@@ -877,7 +917,7 @@ function buildMenu() {
 				{
 					id: "new-workspace",
 					label: "Add Folder...",
-					accelerator: "CmdOrCtrl+Shift+N",
+					accelerator: "CmdOrCtrl+Shift+A",
 					click: () => sendToRenderer("desktop:menu-open-folder"),
 				},
 				{ type: "separator" },
@@ -955,6 +995,23 @@ function buildMenu() {
 					: []),
 			],
 		},
+		{
+			label: "Go",
+			submenu: [
+				{
+					id: "go-back",
+					label: "Back",
+					accelerator: "CmdOrCtrl+[",
+					click: () => sendToRenderer("desktop:menu-go-back"),
+				},
+				{
+					id: "go-forward",
+					label: "Forward",
+					accelerator: "CmdOrCtrl+]",
+					click: () => sendToRenderer("desktop:menu-go-forward"),
+				},
+			],
+		},
 	];
 
 	if (process.platform === "darwin") {
@@ -991,7 +1048,7 @@ function buildMenu() {
 function syncUpdateState(nextState: DesktopUpdateState) {
 	updateState = nextState;
 	buildMenu();
-	sendToRenderer("desktop:update-state", updateState);
+	broadcastToRenderers("desktop:update-state", updateState);
 }
 
 function patchUpdateState(patch: Partial<DesktopUpdateState>) {
@@ -1200,7 +1257,16 @@ function matchesGlob(relativePath: string, glob: string): boolean {
 }
 
 async function createWindow() {
-	const windowState = await loadWindowState();
+	const existingWindows = BrowserWindow.getAllWindows();
+	const cascadeSource =
+		existingWindows.length === 0
+			? null
+			: mainWindow && !mainWindow.isDestroyed()
+				? mainWindow
+				: existingWindows[existingWindows.length - 1];
+	const windowState = cascadeSource
+		? cascadeWindowState(cascadeSource)
+		: await loadWindowState();
 	const zoomFactor = loadZoomFactor();
 	const window = new BrowserWindow({
 		title: appName,
@@ -1219,7 +1285,11 @@ async function createWindow() {
 			sandbox: false,
 		},
 	});
-	mainWindow = window;
+	// Only claim the routing pointer if no window currently holds it (the
+	// very first window, or all previous windows closed). A window opened
+	// alongside an already-focused one must not steal menu/dialog routing
+	// away from that window until it actually gains focus itself (below).
+	if (!mainWindow) mainWindow = window;
 	// Trace memory/crash telemetry to userData/logs so a background OOM leaves
 	// a diagnosable record on disk (see crashTrace.ts).
 	startCrashTrace(window);
@@ -1297,12 +1367,22 @@ async function createWindow() {
 		},
 	);
 
-	window.on("focus", () => sendToRenderer("desktop:window-focus"));
+	window.on("focus", () => {
+		// Multiple windows can be open at once (Cmd+Shift+N); menu clicks and
+		// dialogs target whichever window was focused most recently, so keep
+		// this pointer current instead of it staying pinned to whichever
+		// window happened to be created last.
+		mainWindow = window;
+		window.webContents.send("desktop:window-focus");
+	});
+	// Sent straight to this window's own webContents (not via sendToRenderer,
+	// which targets whichever window is currently focused) — a window's
+	// fullscreen state is its own, not necessarily the frontmost window's.
 	window.on("enter-full-screen", () =>
-		sendToRenderer("desktop:fullscreen-change", true),
+		window.webContents.send("desktop:fullscreen-change", true),
 	);
 	window.on("leave-full-screen", () =>
-		sendToRenderer("desktop:fullscreen-change", false),
+		window.webContents.send("desktop:fullscreen-change", false),
 	);
 	window.on("resize", () => queueSaveWindowState(window));
 	window.on("move", () => queueSaveWindowState(window));
@@ -1314,7 +1394,12 @@ async function createWindow() {
 		saveWindowState(window);
 	});
 	window.on("closed", () => {
-		if (mainWindow === window) mainWindow = null;
+		if (mainWindow !== window) return;
+		// Don't leave the routing pointer null while other windows remain
+		// open — that would send the next menu click/dialog nowhere until
+		// some window happens to receive a fresh focus event.
+		const remaining = BrowserWindow.getAllWindows();
+		mainWindow = remaining[remaining.length - 1] ?? null;
 	});
 
 	if (isDev && process.env.ELECTRON_RENDERER_URL) {
@@ -1325,6 +1410,10 @@ async function createWindow() {
 }
 
 function registerIpc() {
+	ipcMain.handle("desktop:new-window", () => {
+		void createWindow();
+	});
+
 	// Diagnostic-only: renderer storm detector forwards abnormal file-list
 	// store-write bursts (with the offending stack) into the crash-trace log.
 	// Fire-and-forget so it never blocks the renderer mid-storm; recording
@@ -1444,7 +1533,13 @@ function registerIpc() {
 		"desktop:cloud-sync-enable",
 		async (
 			_event,
-			{ workspacePath, workspaceName, deploymentUrl, password, excludedFolders },
+			{
+				workspacePath,
+				workspaceName,
+				deploymentUrl,
+				password,
+				excludedFolders,
+			},
 		) =>
 			enableCloudSyncForWorkspace(
 				{
@@ -1521,14 +1616,19 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:cloud-sync-watch-status",
-		(_event, { watchId, workspacePath }) => {
+		(event, { watchId, workspacePath }) => {
 			const resolved = resolvePath(workspacePath);
+			// Sent straight to the requesting window's webContents — this
+			// watch belongs to whichever window registered it, not whichever
+			// window is currently focused (sendToRenderer's target).
+			const sender = event.sender;
 			// Status carries no counts — progress has its own channel below
 			// (one wire, not two).
 			const unsubscribe = onCloudSyncStatusChange(
 				resolved,
 				(status, detail) => {
-					sendToRenderer(`desktop:cloud-sync-status:${watchId}`, {
+					if (sender.isDestroyed()) return;
+					sender.send(`desktop:cloud-sync-status:${watchId}`, {
 						status,
 						detail,
 					});
@@ -1540,10 +1640,12 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:cloud-sync-watch-progress",
-		(_event, { watchId, workspacePath }) => {
+		(event, { watchId, workspacePath }) => {
 			const resolved = resolvePath(workspacePath);
+			const sender = event.sender;
 			const unsubscribe = onCloudSyncProgressChange(resolved, (progress) => {
-				sendToRenderer(`desktop:cloud-sync-progress:${watchId}`, progress);
+				if (sender.isDestroyed()) return;
+				sender.send(`desktop:cloud-sync-progress:${watchId}`, progress);
 			});
 			cloudSyncStatusUnsubscribers.set(String(watchId), unsubscribe);
 		},
@@ -1709,18 +1811,6 @@ function registerIpc() {
 		},
 	);
 
-	ipcMain.handle(
-		"desktop:comment-delete-thread",
-		async (_event, { path: filePath, threadId }) => {
-			const resolved = assertGranted(filePath);
-			await deleteCommentThreadForPath({
-				absoluteFilePath: resolved,
-				grantedRoots,
-				author: { kind: "human", id: await getActorId() },
-				threadId: String(threadId),
-			});
-		},
-	);
 
 	// Slice 4: agent access. The renderer's WebMCP bridge reaches the tools
 	// through these two channels; the loopback MCP server calls the very same
@@ -1998,11 +2088,17 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:watch-path",
-		async (_event, { watchId, path: watchPath }) => {
+		async (event, { watchId, path: watchPath }) => {
 			const id = String(watchId);
 			const resolved = assertGranted(watchPath);
+			// Sent straight to the requesting window's webContents, not via
+			// sendToRenderer (which targets whichever window is currently
+			// focused) — this watch, and its file-change events, belong to
+			// whichever window registered it.
+			const sender = event.sender;
 			const emit = (changedPath: string) => {
-				sendToRenderer(`desktop:watch-path:${watchId}`, [
+				if (sender.isDestroyed()) return;
+				sender.send(`desktop:watch-path:${watchId}`, [
 					path.resolve(changedPath),
 				]);
 			};
@@ -2096,7 +2192,8 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:get-fullscreen",
-		() => mainWindow?.isFullScreen() ?? false,
+		(event) =>
+			BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
 	);
 
 	ipcMain.handle(
@@ -2219,7 +2316,7 @@ if (!singleInstanceLock) {
 	installMainProcessErrorHandlers({
 		recordEvent: (event, data) => recordCrashTraceEvent(event, data),
 		notifyRenderer: (payload) =>
-			sendToRenderer("desktop:main-process-error", payload),
+			broadcastToRenderers("desktop:main-process-error", payload),
 	});
 	app.on("second-instance", (_event, argv) => {
 		const openPath = firstExistingFileArg(argv.slice(1));

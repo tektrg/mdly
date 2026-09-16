@@ -569,6 +569,7 @@ export type DesktopApi = {
 	docImportCheckConverter(): Promise<ConverterStatus>;
 	checkForUpdates(): Promise<void>;
 	installUpdate(): Promise<void>;
+	openNewWindow(): Promise<void>;
 	onOpenFile(callback: (path: string) => void): Unsubscribe;
 	onUpdateStateChange(
 		callback: (state: DesktopUpdateState) => void,

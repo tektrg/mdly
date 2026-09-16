@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
@@ -19,6 +20,11 @@ function subscribe<T extends unknown[]>(
 
 let nextWatchId = 0;
 let nextCloudSyncWatchId = 0;
+// Each window runs its own preload context, so a bare incrementing counter
+// restarts at 0 in every window — two windows' watchers would collide on
+// the same id in the main process's shared watcher map. Scoping ids to this
+// preload instance keeps them unique across all open windows.
+const preloadInstanceId = randomUUID();
 
 const desktopApi = {
 	platform: process.platform,
@@ -66,7 +72,7 @@ const desktopApi = {
 			folderPath,
 		}),
 	onCloudSyncStatusChange: async (workspacePath, callback) => {
-		const watchId = String(++nextCloudSyncWatchId);
+		const watchId = `${preloadInstanceId}:${++nextCloudSyncWatchId}`;
 		const unsubscribeEvents = subscribe(
 			`desktop:cloud-sync-status:${watchId}`,
 			(state: { status: CloudSyncStatus; detail: string | null }) =>
@@ -84,7 +90,7 @@ const desktopApi = {
 		};
 	},
 	onCloudSyncProgressChange: async (workspacePath, callback) => {
-		const watchId = String(++nextCloudSyncWatchId);
+		const watchId = `${preloadInstanceId}:${++nextCloudSyncWatchId}`;
 		const unsubscribeEvents = subscribe(
 			`desktop:cloud-sync-progress:${watchId}`,
 			(progress: SyncProgress) => callback(progress),
@@ -156,7 +162,7 @@ const desktopApi = {
 	saveMarkdownFilePicker: (options) =>
 		ipcRenderer.invoke("desktop:save-markdown-file-picker", options),
 	watchPath: async (path, options, callback) => {
-		const watchId = String(++nextWatchId);
+		const watchId = `${preloadInstanceId}:${++nextWatchId}`;
 		const unsubscribeEvents = subscribe(
 			`desktop:watch-path:${watchId}`,
 			(paths: string[]) => callback(paths),
@@ -211,6 +217,7 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:doc-import-check-converter"),
 	checkForUpdates: () => ipcRenderer.invoke("desktop:check-for-updates"),
 	installUpdate: () => ipcRenderer.invoke("desktop:install-update"),
+	openNewWindow: () => ipcRenderer.invoke("desktop:new-window"),
 	onOpenFile: (callback) =>
 		subscribe("desktop:open-file", (path: string) => callback(path)),
 	onUpdateStateChange: (callback) =>

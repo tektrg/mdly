@@ -426,3 +426,22 @@ describe("loadOrCreateActorId", () => {
 		expect(JSON.parse(raw)).toEqual({ id: first });
 	});
 });
+
+describe("IPC registration uniqueness", () => {
+	it("registers every ipcMain.handle channel name at most once", async () => {
+		const mainSource = await fs.readFile(
+			path.join(__dirname, "main.ts"),
+			"utf8",
+		);
+		const matches = [
+			...mainSource.matchAll(/ipcMain\.handle\(\s*\n?\s*["']([^"']+)["']/g),
+		].map((m) => m[1]);
+		const counts = new Map<string, number>();
+		for (const channel of matches) {
+			counts.set(channel, (counts.get(channel) ?? 0) + 1);
+		}
+		const duplicates = [...counts.entries()].filter(([_, count]) => count > 1);
+		expect(duplicates).toEqual([]);
+	});
+});
+
