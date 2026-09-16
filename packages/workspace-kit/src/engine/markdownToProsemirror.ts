@@ -28,6 +28,7 @@ import {
 	normalizeNotionHtmlTables,
 	notionHtmlTableToMarkdown,
 } from "./notionHtmlTable.js";
+import { createTableUid } from "./tableUid.js";
 
 // Convert Markdown (string) -> TipTap JSONContent (ProseMirror document)
 export function markdownToTiptapDoc(markdown: string): JSONContent {
@@ -375,6 +376,9 @@ function tableToPM(table: Table): JSONContent[] {
 	return [
 		{
 			type: "table",
+			// Session-only identity, minted fresh on every parse so two copies of
+			// the same Markdown are distinct tables (ruling D3 / charter R24).
+			attrs: { uid: createTableUid() },
 			content: rows,
 		},
 	];

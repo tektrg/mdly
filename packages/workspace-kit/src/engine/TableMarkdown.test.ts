@@ -30,6 +30,9 @@ describe("table markdown conversion", () => {
 
 		expect(doc.content?.[0]).toEqual({
 			type: "table",
+			// Session-only identity minted at parse time (ruling D3 / charter R24);
+			// asserted as "some string" because the value is deliberately random.
+			attrs: { uid: expect.any(String) },
 			content: [
 				{
 					type: "tableRow",
@@ -191,7 +194,9 @@ describe("table markdown conversion", () => {
 		const input = "| Example |\n| --- |\n| line1<br/>line2 |";
 		const doc = markdownToTiptapDoc(input);
 
-		expect(tiptapDocToMarkdown(doc)).toBe("| Example |\n| --- |\n| line1<br>line2 |");
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			"| Example |\n| --- |\n| line1<br>line2 |",
+		);
 	});
 
 	it("parses Notion HTML tables with header-row into table nodes", () => {
@@ -254,5 +259,46 @@ describe("table markdown conversion", () => {
 				'| Trial days-left badge (`coach-trial-days-badge`) | Exists | Add inline **"i {{count}} days trial left. Click to upgrade."** CTA under chips -> opens wall (NEW) |',
 			].join("\n"),
 		);
+	});
+
+	// EC11 / REG-9 (charter R24, ruling D3): the per-table session id must never
+	// reach the saved file, and two parsed copies of the same table must be
+	// independently identified.
+	it("EC11: never writes the session id into the saved markdown", () => {
+		const markdown = [
+			"| Column A | Column B |",
+			"| --- | --- |",
+			"| Cell 1 | Cell 2 |",
+		].join("\n");
+
+		const doc = markdownToTiptapDoc(markdown);
+		const uid = doc.content?.[0]?.attrs?.uid as string;
+		const saved = tiptapDocToMarkdown(doc);
+
+		expect(uid).toEqual(expect.any(String));
+		expect(saved).toBe(markdown);
+		expect(saved).not.toContain("uid");
+		expect(saved).not.toContain(uid);
+	});
+
+	it("REG-9: two parses of the same markdown get different session ids", () => {
+		const markdown = "| A |\n| --- |\n| 1 |";
+
+		const first = markdownToTiptapDoc(markdown);
+		const second = markdownToTiptapDoc(markdown);
+
+		expect(first.content?.[0]?.attrs?.uid).not.toBe(
+			second.content?.[0]?.attrs?.uid,
+		);
+		expect(tiptapDocToMarkdown(first)).toBe(tiptapDocToMarkdown(second));
+	});
+
+	it("REG-9: a table with no session id serializes identically to one with", () => {
+		const withUid = markdownToTiptapDoc("| A |\n| --- |\n| 1 |");
+		const withoutUid = structuredClone(withUid);
+		const table = withoutUid.content?.[0];
+		if (table) table.attrs = {};
+
+		expect(tiptapDocToMarkdown(withoutUid)).toBe(tiptapDocToMarkdown(withUid));
 	});
 });

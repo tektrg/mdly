@@ -166,6 +166,18 @@ export { Input } from "./primitives/input";
 export { Modal } from "./primitives/modal";
 export { Separator } from "./primitives/separator";
 export { SidePanel } from "./primitives/sidePanel";
+// ---- In-document table interactions (pure rewrite rules + their commit path) ----
+export {
+	deleteTableColumn,
+	deleteTableRow,
+	moveTableColumn,
+	moveTableRow,
+	readTableShape,
+	type TableShape,
+	type TableTransform,
+	type TableTransformResult,
+	tableTransformTransaction,
+} from "./tables/index.js";
 // ---- Editor surface (slash menu, format menu, find/replace, TOC, etc.) ----
 export {
 	EditorView,

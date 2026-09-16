@@ -206,8 +206,14 @@ function tableToMarkdown(table: JSONContent): string {
 	const rows = (table.content ?? []).filter((row) => row.type === "tableRow");
 	if (rows.length === 0) return "";
 
-	const columnCount = Math.max(...rows.map((row) => row.content?.length ?? 0));
-	if (columnCount === 0) return "";
+	// Charter R5: a table that still exists in the document must never be written
+	// out as nothing. Rows whose cells were all removed still serialize as a
+	// one-column table, so the block survives the round trip instead of silently
+	// vanishing from the file.
+	const columnCount = Math.max(
+		1,
+		...rows.map((row) => row.content?.length ?? 0),
+	);
 
 	const headerCells = cellsForRow(rows[0], columnCount);
 	const bodyRows = rows.slice(1).map((row) => cellsForRow(row, columnCount));

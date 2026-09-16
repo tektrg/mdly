@@ -17,6 +17,19 @@ export const TableExtension = Node.create({
 	content: "tableRow+",
 	isolating: true,
 
+	addAttributes() {
+		return {
+			// Session-only per-table identity minted at parse time (ruling D3 /
+			// charter R24). `rendered: false` keeps it out of the rendered DOM and
+			// therefore out of clipboard HTML; the Markdown serializer reads only
+			// `align`, so it never reaches the file either.
+			uid: {
+				default: null,
+				rendered: false,
+			},
+		};
+	},
+
 	parseHTML() {
 		return [{ tag: "table" }];
 	},
