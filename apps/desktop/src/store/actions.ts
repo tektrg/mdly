@@ -29,7 +29,22 @@ import type {
 	EditorFontPreference,
 	ThemePreference,
 } from "../lib/theme";
+import { closeDocumentToTable } from "./closeDocument";
+import {
+	clearDocNavigationHistory,
+	getDocNavigationHistory,
+	navigateBack,
+	navigateForward,
+	recordDocNavigation,
+	removeDocNavigationPath,
+	setDocNavigationHistory,
+	TABLE_NAV_ENTRY,
+	updateDocNavigationPath,
+	updateDocNavigationPrefix,
+} from "./docNavigationHistory";
 import { flushEditorDraft } from "./editorDraft";
+export { clearDocNavigationHistory };
+
 import type { SourceRetentionPreference } from "./persistence";
 import {
 	applyFileAction,
@@ -39,12 +54,12 @@ import {
 	editorFontPreferenceStore,
 	emptyDoc,
 	type FileEntry,
-	type FolderEntry,
 	isInWorkspace,
 	LOADING_DELAY_MS,
 	MAX_RECENT,
 	type SortMode,
 	showIgnoredWorkspaceFilesStore,
+	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
 	sourceRetentionPreferenceStore,
 	switcherOpenStore,
@@ -63,30 +78,55 @@ type SidebarMoveItem =
 	| { kind: "file"; path: string }
 	| { kind: "folder"; folderId: string };
 
-export async function refreshFiles(
-	path = workspaceStore.get().workspacePath,
-	options?: { notifyOnError?: boolean },
-) {
+export async function refreshFiles(path = workspaceStore.get().workspacePath) {
 	if (!path) return;
 	// Diagnostic: count file scans so a storm's stack names who kicks them off
 	// (the store-write stack is post-`await`, so it cannot). See stormDetector.ts.
 	recordStormEvent("refreshFiles");
+	// R8: an empty listing and a failed listing are not the same thing. Capture
+	// which one happened so the document table can say "couldn't read this
+	// folder" instead of a confident "no documents" for a workspace that was
+	// deleted, unmounted, or had its permission revoked.
+	let listingError: string | null = null;
 	const listing = await desktopApi
 		.listDirectory(path, {
 			includeIgnoredWorkspaceFiles: showIgnoredWorkspaceFilesStore.get(),
 		})
-		.catch((err: unknown): { files: FileEntry[]; folders: FolderEntry[] } => {
-			if (options?.notifyOnError) {
-				toast.error("Failed to load workspace files", {
-					description: errorMessage(err),
-				});
-			}
-			return { files: [], folders: [] };
+		.catch((err: unknown): null => {
+			listingError = errorMessage(err);
+			notifyListingFailed(listingError);
+			return null;
 		});
 
 	workspaceStore.set((state) => {
 		if (state.workspacePath !== path) return state;
-		return { ...state, files: listing.files, folders: listing.folders };
+		// D3: one unreadable moment — a network volume blipping, a folder briefly
+		// locked — must not replace rows that are already on screen with an empty
+		// table. Keep the last good listing and let `listingError` be what changes.
+		if (!listing) return { ...state, hasListedOnce: true, listingError };
+		return {
+			...state,
+			files: listing.files,
+			folders: listing.folders,
+			hasListedOnce: true,
+			listingError,
+		};
+	});
+}
+
+/**
+ * Every failed listing is worth a word: the two refreshes that fire against a
+ * table already on screen — the window-focus refresh and the menu's Sync — used
+ * to fail in silence, because the toast was gated on an option only the
+ * workspace-switch door passed.
+ *
+ * One fixed id, so a watcher storm against an unreachable volume replaces the
+ * toast instead of stacking hundreds of them.
+ */
+function notifyListingFailed(message: string) {
+	toast.error("Failed to load workspace files", {
+		id: "workspace-listing-failed",
+		description: message,
 	});
 }
 
@@ -320,7 +360,7 @@ export async function restorePersistedWorkspace() {
 	const workspacePath = workspaceStore.get().workspacePath;
 	if (!workspacePath) return;
 	await Promise.all([
-		refreshFiles(workspacePath, { notifyOnError: true }),
+		refreshFiles(workspacePath),
 		loadPinnedNotes(workspacePath),
 	]);
 }
@@ -333,8 +373,23 @@ export function setWorkspaceSwitcherOpen(isOpen: boolean) {
 	switcherOpenStore.set(isOpen);
 }
 
+/**
+ * The single writer of the persisted sidebar preference. Any deliberate reveal
+ * or hide also clears the runtime auto-collapse flag (R3), so a manual reopen
+ * sticks until the *next* document open and a resize never re-collapses.
+ */
 export function setSidebarOpen(isOpen: boolean) {
 	sidebarOpenStore.set(isOpen);
+	sidebarAutoCollapsedStore.set(false);
+}
+
+/**
+ * R3: hides the sidebar for a document on a narrow window without touching the
+ * user's saved `sidebarOpen` preference — `sidebarAutoCollapsed` is runtime-only
+ * (absent from `serialize()`), so nothing reaches localStorage.
+ */
+export function autoCollapseSidebarForDocument() {
+	sidebarAutoCollapsedStore.set(true);
 }
 
 export function setThemePreference(themePreference: ThemePreference) {
@@ -364,8 +419,19 @@ export function setSourceRetentionPreference(
 	sourceRetentionPreferenceStore.set(sourceRetentionPreference);
 }
 
+/**
+ * What the user actually sees. `sidebarOpen` is the saved preference;
+ * `sidebarAutoCollapsed` is R3's runtime-only override. Every "is it showing?"
+ * question — including the toggle's own reveal/hide decision — has to ask both,
+ * or a Cmd+Shift+E on an auto-collapsed sidebar would take two presses to
+ * reveal it.
+ */
+export function isSidebarVisible() {
+	return sidebarOpenStore.get() && !sidebarAutoCollapsedStore.get();
+}
+
 export function toggleSidebar() {
-	sidebarOpenStore.set((open) => !open);
+	setSidebarOpen(!isSidebarVisible());
 }
 
 export function clearViewer() {
@@ -376,7 +442,7 @@ export function clearViewer() {
 export async function openWorkspaceWithSidebar() {
 	await openWorkspace();
 	if (workspaceStore.get().workspacePath !== null) {
-		sidebarOpenStore.set(true);
+		setSidebarOpen(true);
 	}
 }
 
@@ -386,7 +452,7 @@ export async function createWorkspaceWithSidebar() {
 	if (typeof created !== "string") return;
 	await openWorkspace(created);
 	if (workspaceStore.get().workspacePath !== null) {
-		sidebarOpenStore.set(true);
+		setSidebarOpen(true);
 	}
 }
 
@@ -399,6 +465,17 @@ export async function openWorkspace(path?: string): Promise<boolean> {
 		nextPath = selected;
 	}
 
+	// R1: a workspace switch lands on the document table, never on that
+	// workspace's last file (`lastOpenedPaths` bookkeeping is untouched). It
+	// leaves through the ordinary close door, so it inherits that door's save of
+	// unsaved edits and its cancel of an in-flight open — a bare `clearViewer()`
+	// here did neither, losing the outgoing draft and letting a slow open land on
+	// the new workspace's table. Before the workspace state moves, so the flush
+	// runs while the file's own workspace is still current and the table appears
+	// without waiting on the new listing. `recordNavigation: false` keeps a
+	// switch out of the document back/forward stack, as before.
+	await closeDocumentToTable({ recordNavigation: false });
+
 	workspaceStore.set((state) => {
 		const filtered = state.recentWorkspaces.filter((p) => p !== nextPath);
 		return {
@@ -407,21 +484,14 @@ export async function openWorkspace(path?: string): Promise<boolean> {
 			recentWorkspaces: [nextPath, ...filtered].slice(0, MAX_RECENT),
 			files: [],
 			pinnedNotes: [],
+			// R8: the new workspace has not been listed yet — an empty `files` here
+			// means "scanning", not "no documents".
+			hasListedOnce: false,
+			listingError: null,
 		};
 	});
 	switcherOpenStore.set(false);
-	await Promise.all([
-		refreshFiles(nextPath, { notifyOnError: true }),
-		loadPinnedNotes(nextPath),
-	]);
-
-	const lastFile = workspaceStore.get().lastOpenedPaths[nextPath];
-	if (lastFile) {
-		await loadPath(lastFile);
-		return true;
-	}
-
-	clearViewer();
+	await Promise.all([refreshFiles(nextPath), loadPinnedNotes(nextPath)]);
 	return true;
 }
 
@@ -608,10 +678,11 @@ export async function renameMarkdownFile(path: string, nextName: string) {
 						: state.document.lastOpenedPath,
 			},
 		}));
+		updateDocNavigationPath(path, nextPath);
 		await syncPinnedNotes();
 		await refreshFiles();
 		if (isCurrentFile) {
-			await loadPath(nextPath);
+			await loadPath(nextPath, { historyAction: "replace" });
 		}
 	} catch (err) {
 		pendingRenames.delete(path);
@@ -740,6 +811,11 @@ export async function moveSidebarItem(
 					: null,
 			},
 		}));
+		if (isFolder) {
+			updateDocNavigationPrefix(sourcePath, nextPath);
+		} else {
+			updateDocNavigationPath(sourcePath, nextPath);
+		}
 		if (movedAssetFolder) movedFiles.push(movedAssetFolder);
 		if (!movesSymlink) await updateMovedLinks(movedFiles, filesBeforeMove);
 		await syncPinnedNotes();
@@ -845,6 +921,7 @@ export async function moveMarkdownFileToFolder(
 			};
 		});
 
+		updateDocNavigationPath(sourcePath, nextPath);
 		if (sameWorkspace) {
 			await updateMovedLinks(movedFiles, filesBeforeMove);
 		}
@@ -852,14 +929,14 @@ export async function moveMarkdownFileToFolder(
 
 		if (isCurrentFile && !sameWorkspace) {
 			await openWorkspace(targetWorkspacePath);
-			await loadPath(nextPath);
-			sidebarOpenStore.set(true);
+			await loadPath(nextPath, { historyAction: "replace" });
+			setSidebarOpen(true);
 			return true;
 		}
 
 		await refreshFiles();
 		if (isCurrentFile) {
-			await loadPath(nextPath);
+			await loadPath(nextPath, { historyAction: "replace" });
 		}
 		return true;
 	} catch (err) {
@@ -926,6 +1003,7 @@ export async function deleteMarkdownFile(
 									: state.document.lastOpenedPath,
 						},
 		}));
+		removeDocNavigationPath(path);
 		await syncPinnedNotes();
 		await refreshFiles();
 	} catch (err) {
@@ -972,6 +1050,7 @@ export async function deleteFolder(path: string) {
 									: state.document.lastOpenedPath,
 						},
 		}));
+		removeDocNavigationPath(path);
 		await syncPinnedNotes();
 		await refreshFiles();
 	} catch (err) {
@@ -1022,19 +1101,29 @@ export async function undoExternalChange() {
 	await savePathContent(path, previousContent, { historyCause: "manual" });
 }
 
-export const loadPath = latest(async ({ isStale }, path: string) => {
-	// Persist unsaved edits of the outgoing file before switching. The editor's
-	// unmount save fires after currentPath has already moved on, so
-	// savePathContent's path guard would silently drop it. This is also the
-	// one place a workspace switch's forced history cut (R17) can actually
-	// land: it runs before currentPath moves, at the file's correct path, so
-	// tagging it with historyCause records a revision for an edit that would
-	// otherwise never get one on a file-to-file switch.
+export type LoadPathOptions = {
+	historyAction?: "push" | "replace" | "skip";
+};
+
+/**
+ * Persists unsaved edits of the outgoing document before the viewer moves on.
+ *
+ * The editor's unmount save fires after `currentPath` has already changed, so
+ * `savePathContent`'s path guard would silently drop it. This is also the one
+ * place a workspace switch's forced history cut (R17) can land: it runs before
+ * `currentPath` moves, at the file's correct path, so tagging it with
+ * `historyCause` records a revision for an edit that would otherwise never get
+ * one on a file-to-file switch.
+ *
+ * `nextPath` is the document about to be opened, or `null` when the document is
+ * being closed outright — a close must flush unconditionally.
+ */
+export async function flushOutgoingEdits(nextPath: string | null = null) {
 	flushEditorDraft();
 	const previous = viewerStore.get();
 	if (
 		previous.currentPath &&
-		previous.currentPath !== path &&
+		previous.currentPath !== nextPath &&
 		previous.status === "ready" &&
 		previous.content !== previous.diskContent
 	) {
@@ -1042,29 +1131,84 @@ export const loadPath = latest(async ({ isStale }, path: string) => {
 			historyCause: "idle-session",
 		});
 	}
+}
 
-	const timer = window.setTimeout(() => {
-		if (isStale()) return;
-		viewerStore.set((state) => ({ ...state, status: "loading", error: null }));
-	}, LOADING_DELAY_MS);
+export const loadPath = latest(
+	async ({ isStale }, path: string, options?: LoadPathOptions) => {
+		// Claim the main panel for this document synchronously, before the first
+		// `await`: the layout flips on the same frame as the click, with no
+		// full-width-table flash and no LOADING_DELAY_MS gap. This is the only
+		// write site of `requestedPath`, so all 17 open-doors inherit it.
+		viewerStore.set((state) => ({ ...state, requestedPath: path }));
+		await flushOutgoingEdits(path);
 
-	try {
-		const content = await desktopApi.readFileText(path);
-		if (isStale()) return;
-		appStore.set((state) => withOpenedDoc(state, path, content));
-	} catch (err) {
-		if (isStale()) return;
-		const message = handleFileError(err);
-		toast.error("Failed to open file", { description: message });
-		viewerStore.set((state) => ({
-			...emptyDoc(state.lastOpenedPath),
-			status: "error",
-			error: message,
-		}));
-	} finally {
-		window.clearTimeout(timer);
+		const timer = window.setTimeout(() => {
+			if (isStale()) return;
+			viewerStore.set((state) => ({
+				...state,
+				status: "loading",
+				error: null,
+			}));
+		}, LOADING_DELAY_MS);
+
+		try {
+			const content = await desktopApi.readFileText(path);
+			if (isStale()) return;
+			appStore.set((state) => withOpenedDoc(state, path, content));
+			if (options?.historyAction !== "skip") {
+				recordDocNavigation(path, {
+					replace: options?.historyAction === "replace",
+				});
+			}
+		} catch (err) {
+			if (isStale()) return;
+			const message = handleFileError(err);
+			toast.error("Failed to open file", { description: message });
+			viewerStore.set((state) => ({
+				...emptyDoc(state.lastOpenedPath),
+				// R5: loading and error are states of the document pane only. Keeping
+				// `requestedPath` here is what stops a failed open from slamming the
+				// user back to the full-width table — the list stays on screen and
+				// another row can be clicked to recover.
+				requestedPath: path,
+				status: "error",
+				error: message,
+			}));
+		} finally {
+			window.clearTimeout(timer);
+		}
+	},
+);
+
+/**
+ * Walks to a history entry. The table is a real stack entry (`TABLE_NAV_ENTRY`),
+ * so a step onto it closes the document instead of trying to read it as a file.
+ */
+async function navigateToHistoryEntry(targetPath: string) {
+	if (targetPath === TABLE_NAV_ENTRY) {
+		await closeDocumentToTable({ recordNavigation: false });
+		return;
 	}
-});
+	await loadPath(targetPath, { historyAction: "skip" });
+}
+
+export async function goBackDocument(): Promise<boolean> {
+	const history = getDocNavigationHistory();
+	const result = navigateBack(history);
+	if (!result) return false;
+	setDocNavigationHistory(result.nextHistory);
+	await navigateToHistoryEntry(result.targetPath);
+	return true;
+}
+
+export async function goForwardDocument(): Promise<boolean> {
+	const history = getDocNavigationHistory();
+	const result = navigateForward(history);
+	if (!result) return false;
+	setDocNavigationHistory(result.nextHistory);
+	await navigateToHistoryEntry(result.targetPath);
+	return true;
+}
 
 export async function togglePinnedNote(path: string) {
 	const workspacePath = workspaceStore.get().workspacePath;

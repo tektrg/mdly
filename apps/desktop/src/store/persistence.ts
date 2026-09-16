@@ -26,6 +26,16 @@ type WorkspaceState = {
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
 	pinnedNotes: string[];
+	/**
+	 * R8: `files: []` alone cannot tell "still scanning" from "scan failed" from
+	 * "genuinely empty". A home screen that renders a deleted / unmounted /
+	 * permission-revoked workspace as a confident "no documents" is a lie, so
+	 * `refreshFiles` records whether a listing has completed at least once for
+	 * the current workspace and why the last one failed. Runtime-only: neither
+	 * field is in `Persisted`/`serialize`, so a stale error can never be rehydrated.
+	 */
+	hasListedOnce: boolean;
+	listingError: string | null;
 };
 
 type WorkspaceEntry = {
@@ -39,6 +49,15 @@ type WorkspaceEntry = {
 };
 
 type DocumentState = {
+	/**
+	 * The document the main panel is showing or trying to show; `null` means the
+	 * full-width document table is home. Written only by `loadPath` (synchronously,
+	 * before its first `await`) and cleared only by `emptyDoc`/`emptyPersistedDoc`,
+	 * so every open- and close-door inherits the layout without per-caller wiring.
+	 * Deliberately absent from `Persisted`/`serialize` — that omission IS the
+	 * guarantee that a relaunch always lands on the table (R1).
+	 */
+	requestedPath: string | null;
 	currentPath: string | null;
 	lastOpenedPath: string | null;
 	content: string;
@@ -52,6 +71,13 @@ type DocumentState = {
 
 type UiState = {
 	sidebarOpen: boolean;
+	/**
+	 * R3: runtime-only "the sidebar was auto-collapsed to make room for a document
+	 * on a narrow window". Kept separate from `sidebarOpen` (which is persisted) so
+	 * a transient narrow-window collapse can never rewrite the user's saved
+	 * preference. Same in-state/not-in-serialize pattern as `isSwitcherOpen`.
+	 */
+	sidebarAutoCollapsed: boolean;
 	isSwitcherOpen: boolean;
 	themePreference: ThemePreference;
 	contrastPreference: ContrastPreference;
@@ -112,6 +138,8 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 		files: [],
 		folders: [],
 		pinnedNotes: [],
+		hasListedOnce: false,
+		listingError: null,
 	};
 }
 
@@ -122,6 +150,7 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 
 	return {
 		sidebarOpen: ui?.sidebarOpen ?? false,
+		sidebarAutoCollapsed: false,
 		isSwitcherOpen: false,
 		themePreference: isThemePreference(ui?.themePreference)
 			? ui.themePreference
@@ -143,6 +172,7 @@ function emptyPersistedDoc(
 	lastOpenedPath: string | null = null,
 ): DocumentState {
 	return {
+		requestedPath: null,
 		currentPath: null,
 		lastOpenedPath,
 		content: "",

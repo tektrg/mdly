@@ -580,6 +580,8 @@ export type DesktopApi = {
 	onMenuImportDocument(callback: () => void): Unsubscribe;
 	onMenuShowWorkspaceSwitcher(callback: () => void): Unsubscribe;
 	onMenuSyncWorkspace(callback: () => void): Unsubscribe;
+	onMenuGoBack(callback: () => void): Unsubscribe;
+	onMenuGoForward(callback: () => void): Unsubscribe;
 	onWindowFocus(callback: () => void): Unsubscribe;
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
 	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */

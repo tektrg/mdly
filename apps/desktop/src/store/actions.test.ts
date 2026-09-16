@@ -1,53 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-type MockDesktopApi = {
-	readFileText: ReturnType<typeof vi.fn>;
-	writeFileText: ReturnType<typeof vi.fn>;
-	listDirectory: ReturnType<typeof vi.fn>;
-	readWorkspaceConfig: ReturnType<typeof vi.fn>;
-	writeWorkspaceConfig: ReturnType<typeof vi.fn>;
-	renameFile: ReturnType<typeof vi.fn>;
-	renameSymlinkTarget: ReturnType<typeof vi.fn>;
-	pathExists: ReturnType<typeof vi.fn>;
-	openFolderPicker: ReturnType<typeof vi.fn>;
-	deleteFile: ReturnType<typeof vi.fn>;
-};
-
-function createDesktopApi(): MockDesktopApi {
-	return {
-		readFileText: vi.fn(async () => "before"),
-		writeFileText: vi.fn(async () => {}),
-		listDirectory: vi.fn(async () => ({ files: [], folders: [] })),
-		readWorkspaceConfig: vi.fn(async () => ({ version: 1, pinnedNotes: [] })),
-		writeWorkspaceConfig: vi.fn(async () => {}),
-		renameFile: vi.fn(async () => {}),
-		renameSymlinkTarget: vi.fn(async () => {}),
-		pathExists: vi.fn(async () => false),
-		openFolderPicker: vi.fn(async () => undefined),
-		deleteFile: vi.fn(async () => {}),
-	};
-}
-
-/**
- * Actions capture window.desktopApi at import time, so each test stubs globals
- * before importing the store modules.
- */
-async function loadStoreActions(api: MockDesktopApi, persisted?: unknown) {
-	vi.resetModules();
-	vi.stubGlobal("localStorage", {
-		getItem: vi.fn(() => (persisted ? JSON.stringify(persisted) : null)),
-		setItem: vi.fn(),
-	});
-	vi.stubGlobal("window", {
-		desktopApi: api,
-		setTimeout,
-		clearTimeout,
-	});
-
-	const actions = await import("./actions");
-	const state = await import("./state");
-	return { ...actions, ...state };
-}
+import { serialize } from "./persistence";
+import { createDesktopApi, loadStoreActions } from "./storeTestHarness";
 
 describe("desktop savePathContent", () => {
 	beforeEach(() => {
@@ -1662,5 +1615,350 @@ describe("desktop pinned notes", () => {
 			version: 1,
 			pinnedNotes: [],
 		});
+	});
+});
+
+describe("desktop document navigation (goBackDocument and goForwardDocument)", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("navigates back and forth between opened documents", async () => {
+		const api = createDesktopApi();
+		const files: Record<string, string> = {
+			"/workspace/doc1.md": "Content of doc 1",
+			"/workspace/doc2.md": "Content of doc 2",
+			"/workspace/doc3.md": "Content of doc 3",
+		};
+		api.readFileText.mockImplementation(async (path: string) => {
+			if (files[path]) return files[path];
+			throw new Error("ENOENT");
+		});
+
+		const {
+			appStore,
+			clearDocNavigationHistory,
+			goBackDocument,
+			goForwardDocument,
+			loadPath,
+			viewerStore,
+		} = await loadStoreActions(api);
+
+		clearDocNavigationHistory();
+
+		appStore.set((state) => ({
+			...state,
+			workspace: {
+				...state.workspace,
+				workspacePath: "/workspace",
+			},
+		}));
+
+		// Open doc1, then doc2, then doc3
+		await loadPath("/workspace/doc1.md");
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc1.md");
+
+		await loadPath("/workspace/doc2.md");
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc2.md");
+
+		await loadPath("/workspace/doc3.md");
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc3.md");
+
+		// Go back to doc2
+		const wentBack1 = await goBackDocument();
+		expect(wentBack1).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc2.md");
+		expect(viewerStore.get().content).toBe("Content of doc 2");
+
+		// Go back to doc1
+		const wentBack2 = await goBackDocument();
+		expect(wentBack2).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc1.md");
+		expect(viewerStore.get().content).toBe("Content of doc 1");
+
+		// Go back again -> already at beginning, returns false
+		const wentBack3 = await goBackDocument();
+		expect(wentBack3).toBe(false);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc1.md");
+
+		// Go forward to doc2
+		const wentForward1 = await goForwardDocument();
+		expect(wentForward1).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc2.md");
+
+		// Go forward to doc3
+		const wentForward2 = await goForwardDocument();
+		expect(wentForward2).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc3.md");
+
+		// Go forward again -> already at end, returns false
+		const wentForward3 = await goForwardDocument();
+		expect(wentForward3).toBe(false);
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc3.md");
+	});
+
+	it("flushes unsaved draft of outgoing document when navigating back", async () => {
+		const api = createDesktopApi();
+		const files: Record<string, string> = {
+			"/workspace/doc1.md": "Content 1",
+			"/workspace/doc2.md": "Content 2",
+		};
+		api.readFileText.mockImplementation(
+			async (path: string) => files[path] ?? "",
+		);
+
+		const {
+			appStore,
+			clearDocNavigationHistory,
+			goBackDocument,
+			loadPath,
+			updateEditorContent,
+			viewerStore,
+		} = await loadStoreActions(api);
+
+		clearDocNavigationHistory();
+
+		appStore.set((state) => ({
+			...state,
+			workspace: {
+				...state.workspace,
+				workspacePath: "/workspace",
+			},
+		}));
+
+		await loadPath("/workspace/doc1.md");
+		await loadPath("/workspace/doc2.md");
+
+		// Modify doc2 in editor
+		updateEditorContent("/workspace/doc2.md", "Content 2 modified");
+
+		// Navigate back to doc1
+		await goBackDocument();
+		expect(viewerStore.get().currentPath).toBe("/workspace/doc1.md");
+
+		// doc2 should have been saved
+		expect(api.writeFileText).toHaveBeenCalledWith(
+			"/workspace/doc2.md",
+			"Content 2 modified",
+			{ historyCause: "idle-session" },
+		);
+	});
+});
+
+describe("desktop document-table seam", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("lands on the document table at launch instead of reopening the last document", async () => {
+		const api = createDesktopApi();
+		api.listDirectory.mockResolvedValue({
+			files: [{ path: "/ws/a.md", modified_at: 10 }],
+			folders: [],
+		});
+		const { restorePersistedWorkspace, viewerStore, workspaceStore } =
+			await loadStoreActions(api, {
+				workspace: {
+					workspacePath: "/ws",
+					lastOpenedPaths: { "/ws": "/ws/a.md" },
+				},
+				document: { lastOpenedPath: "/ws/a.md" },
+			});
+
+		await restorePersistedWorkspace();
+
+		expect(viewerStore.get().requestedPath).toBeNull();
+		expect(viewerStore.get().currentPath).toBeNull();
+		expect(api.readFileText).not.toHaveBeenCalled();
+		// The remembered document is still tracked; it is simply the top row.
+		expect(workspaceStore.get().lastOpenedPaths["/ws"]).toBe("/ws/a.md");
+	});
+
+	it("lands on the document table on a workspace switch and keeps lastOpenedPaths", async () => {
+		const api = createDesktopApi();
+		const { openWorkspace, viewerStore, workspaceStore } =
+			await loadStoreActions(api, {
+				workspace: { lastOpenedPaths: { "/ws": "/ws/a.md" } },
+			});
+
+		await openWorkspace("/ws");
+
+		expect(viewerStore.get().requestedPath).toBeNull();
+		expect(viewerStore.get().currentPath).toBeNull();
+		expect(api.readFileText).not.toHaveBeenCalled();
+		expect(workspaceStore.get().lastOpenedPaths["/ws"]).toBe("/ws/a.md");
+	});
+
+	it("opens a launch file directly, bypassing the table (Finder carve-out)", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("# launched");
+		const { loadPath, viewerStore } = await loadStoreActions(api);
+
+		await loadPath("/outside/note.md");
+
+		expect(viewerStore.get().requestedPath).toBe("/outside/note.md");
+		expect(viewerStore.get().currentPath).toBe("/outside/note.md");
+		expect(viewerStore.get().status).toBe("ready");
+	});
+
+	it("claims the document pane synchronously, before any await", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockReturnValue(new Promise<string>(() => {}));
+		const { loadPath, viewerStore } = await loadStoreActions(api);
+
+		void loadPath("/ws/slow.md");
+
+		expect(viewerStore.get().requestedPath).toBe("/ws/slow.md");
+		expect(viewerStore.get().currentPath).toBeNull();
+	});
+
+	it("keeps the document pane on a failed open instead of falling back to the table", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockRejectedValue(new Error("EACCES: denied"));
+		const { loadPath, viewerStore } = await loadStoreActions(api);
+
+		await loadPath("/ws/gone.md");
+
+		expect(viewerStore.get().requestedPath).toBe("/ws/gone.md");
+		expect(viewerStore.get().status).toBe("error");
+		expect(viewerStore.get().error).toContain("EACCES");
+		expect(viewerStore.get().currentPath).toBeNull();
+	});
+
+	it("saves a dirty draft and then clears the viewer when closing to the table", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("before");
+		const { appStore, closeDocumentToTable, viewerStore } =
+			await loadStoreActions(api);
+		const path = "/ws/note.md";
+		appStore.set((current) => ({
+			...current,
+			document: {
+				...current.document,
+				requestedPath: path,
+				currentPath: path,
+				lastOpenedPath: path,
+				content: "unsaved draft",
+				diskContent: "before",
+				externalChange: { kind: "none" },
+				status: "ready",
+				error: null,
+			},
+		}));
+
+		await closeDocumentToTable();
+
+		expect(api.writeFileText).toHaveBeenCalledWith(path, "unsaved draft", {
+			historyCause: "idle-session",
+		});
+		expect(viewerStore.get().requestedPath).toBeNull();
+		expect(viewerStore.get().currentPath).toBeNull();
+		expect(viewerStore.get().lastOpenedPath).toBe(path);
+	});
+
+	it("cancels an in-flight open so a late read cannot re-open the closed document", async () => {
+		const api = createDesktopApi();
+		let finishRead: (content: string) => void = () => {};
+		api.readFileText.mockReturnValue(
+			new Promise<string>((resolve) => {
+				finishRead = resolve;
+			}),
+		);
+		const { closeDocumentToTable, loadPath, viewerStore } =
+			await loadStoreActions(api);
+
+		const open = loadPath("/ws/slow.md");
+		await closeDocumentToTable();
+		finishRead("# arrived too late");
+		await open;
+
+		expect(viewerStore.get().requestedPath).toBeNull();
+		expect(viewerStore.get().currentPath).toBeNull();
+	});
+
+	it("reopens the just-closed document with Back, and returns to the table with Forward", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("# a");
+		const {
+			closeDocumentToTable,
+			getDocNavigationHistory,
+			goBackDocument,
+			goForwardDocument,
+			loadPath,
+			openWorkspace,
+			TABLE_NAV_ENTRY,
+			viewerStore,
+		} = await loadStoreActions(api);
+
+		await openWorkspace("/ws");
+		await loadPath("/ws/a.md");
+		await closeDocumentToTable();
+
+		expect(getDocNavigationHistory().current).toBe(TABLE_NAV_ENTRY);
+
+		expect(await goBackDocument()).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/ws/a.md");
+		expect(viewerStore.get().requestedPath).toBe("/ws/a.md");
+
+		expect(await goForwardDocument()).toBe(true);
+		expect(viewerStore.get().currentPath).toBeNull();
+		expect(viewerStore.get().requestedPath).toBeNull();
+	});
+
+	it("auto-collapses the sidebar without rewriting the saved preference", async () => {
+		const api = createDesktopApi();
+		const {
+			appStore,
+			autoCollapseSidebarForDocument,
+			setSidebarOpen,
+			toggleSidebar,
+			uiStore,
+		} = await loadStoreActions(api, { ui: { sidebarOpen: true } });
+
+		autoCollapseSidebarForDocument();
+		expect(uiStore.get().sidebarAutoCollapsed).toBe(true);
+		expect(uiStore.get().sidebarOpen).toBe(true);
+		expect(JSON.stringify(serialize(appStore.get()))).not.toContain(
+			"sidebarAutoCollapsed",
+		);
+
+		// Any deliberate reveal clears the flag, so a manual reopen sticks.
+		setSidebarOpen(true);
+		expect(uiStore.get().sidebarAutoCollapsed).toBe(false);
+
+		autoCollapseSidebarForDocument();
+		toggleSidebar();
+		expect(uiStore.get().sidebarAutoCollapsed).toBe(false);
+	});
+
+	it("distinguishes a failed workspace listing from a genuinely empty one", async () => {
+		const api = createDesktopApi();
+		const { openWorkspace, refreshFiles, workspaceStore } =
+			await loadStoreActions(api);
+
+		expect(workspaceStore.get().hasListedOnce).toBe(false);
+
+		await openWorkspace("/ws");
+		expect(workspaceStore.get().hasListedOnce).toBe(true);
+		expect(workspaceStore.get().listingError).toBeNull();
+		expect(workspaceStore.get().files).toEqual([]);
+
+		api.listDirectory.mockRejectedValueOnce(new Error("EACCES: denied"));
+		await refreshFiles("/ws");
+		expect(workspaceStore.get().hasListedOnce).toBe(true);
+		expect(workspaceStore.get().listingError).toContain("EACCES");
+		expect(workspaceStore.get().files).toEqual([]);
+	});
+
+	it("never persists the document the user was last looking at as an open document", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("# a");
+		const { appStore, loadPath } = await loadStoreActions(api);
+
+		await loadPath("/ws/a.md");
+
+		const snapshot = JSON.stringify(serialize(appStore.get()));
+		expect(snapshot).not.toContain("requestedPath");
+		expect(snapshot).toContain("lastOpenedPath");
 	});
 });

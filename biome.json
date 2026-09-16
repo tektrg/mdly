@@ -54,6 +54,16 @@
 					}
 				}
 			}
+		},
+		{
+			"includes": ["**/apps/desktop/src/documentTable/**"],
+			"linter": {
+				"rules": {
+					"a11y": {
+						"useSemanticElements": "off"
+					}
+				}
+			}
 		}
 	]
 }

@@ -1,9 +1,7 @@
 import { Button } from "@hubble.md/ui";
-import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
 import { keymatch } from "keymatch";
 import {
-	type CSSProperties,
 	lazy,
 	Suspense,
 	useCallback,
@@ -16,14 +14,13 @@ import { toast } from "sonner";
 import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { AgentAccessSettings } from "./components/AgentAccessSettings";
-import { DocumentViewer } from "./components/DocumentViewer";
 import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
 import { ImportDocDialog } from "./components/ImportDocDialog";
+import { MainPanel } from "./components/MainPanel";
 import { ReimportDocDialog } from "./components/ReimportDocDialog";
-import { RevisionHistoryPanel } from "./components/RevisionHistoryPanel";
 import {
 	AppearanceSettings,
 	CloudSyncSettings,
@@ -37,7 +34,6 @@ import {
 	SidebarUpdateCallout,
 	UpdatesSection,
 } from "./components/UpdatesSection";
-import { WelcomeScreen } from "./components/WelcomeScreen";
 import { desktopApi } from "./desktopApi";
 import type { DesktopUpdateState, HistoryRevision } from "./desktopApi/types";
 import {
@@ -61,11 +57,19 @@ import {
 } from "./lib/theme";
 import { notionBrowserUrlForMarkdown } from "./notion/notionBrowserUrl";
 import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
-import { SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
+	COMMENT_THREAD_POPOVER_SELECTOR,
+	EDITABLE_FOCUS_SELECTOR,
+	SIDEBAR_NAV_SELECTOR,
+} from "./selectors";
+import {
+	autoCollapseSidebarForDocument,
 	createWorkspaceWithSidebar,
 	getPendingRenameTarget,
+	goBackDocument,
+	goForwardDocument,
 	handleExternalFileChange,
+	isSidebarVisible,
 	loadPath,
 	moveMarkdownFileToFolder,
 	openWorkspace,
@@ -77,11 +81,17 @@ import {
 	setWorkspaceSwitcherOpen,
 } from "./store/actions";
 import {
+	closeDocumentToTable,
+	registerDocumentPanelReset,
+} from "./store/closeDocument";
+import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
+	requestedPathStore,
+	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
+	switcherOpenStore,
 	themePreferenceStore,
-	uiStore,
 	viewerStore,
 	workspacePathStore,
 	workspaceStore,
@@ -174,6 +184,12 @@ function App() {
 	const workspace = useStoreValue(workspaceStore);
 	const workspacePath = useStoreValue(workspacePathStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
+	const sidebarAutoCollapsed = useStoreValue(sidebarAutoCollapsedStore);
+	// The saved preference minus R3's runtime auto-collapse. `sidebarOpen`
+	// itself is never written by auto-collapse, so the user's preference
+	// survives a narrow-window document session untouched.
+	const sidebarVisible = sidebarOpen && !sidebarAutoCollapsed;
+	const requestedPath = useStoreValue(requestedPathStore);
 	const themePreference = useStoreValue(themePreferenceStore);
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
@@ -181,6 +197,7 @@ function App() {
 	const [scrollContainerEl, setScrollContainerEl] =
 		useState<HTMLDivElement | null>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const isSwitcherOpen = useStoreValue(switcherOpenStore);
 	const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(
 		null,
 	);
@@ -194,6 +211,14 @@ function App() {
 	const [commandBarOpen, setCommandBarOpen] = useState(false);
 	const [reimportOpen, setReimportOpen] = useState(false);
 	const [importDocOpen, setImportDocOpen] = useState(false);
+	const isAnyDialogOpen =
+		commandBarOpen ||
+		settingsOpen ||
+		htmlAppsDialogOpen ||
+		notionDialogOpen ||
+		reimportOpen ||
+		importDocOpen ||
+		isSwitcherOpen;
 	const [historyOpen, setHistoryOpen] = useState(false);
 	// Only one right-edge panel open at a time (R21): opening comments closes
 	// history and vice versa. Closing a panel never touches the other.
@@ -618,8 +643,34 @@ function App() {
 	}, [hasWorkspace]);
 
 	useEffect(() => {
-		if (!sidebarOpen) setFocusedSidebarPath(null);
-	}, [sidebarOpen]);
+		if (!sidebarVisible) setFocusedSidebarPath(null);
+	}, [sidebarVisible]);
+
+	// Slice 0's `closeDocumentToTable()` resets the document-scoped panels
+	// through this seam: they are App state, but `ReadyDocument`'s own reset
+	// effect cannot run on a close because closing unmounts it.
+	useEffect(
+		() =>
+			registerDocumentPanelReset(() => {
+				setHistoryOpen(false);
+				setCommentsOpen(false);
+				setViewingRevision(null);
+			}),
+		[],
+	);
+
+	// R3: collapse the sidebar when a document takes the stage on a narrow
+	// window. Deliberately keyed to the null -> non-null transition of
+	// `requestedPath` and nothing else, so it can never fire on a resize, on a
+	// re-render, or on a document-to-document switch.
+	const previousRequestedPathRef = useRef<string | null>(requestedPath);
+	useEffect(() => {
+		const previousRequestedPath = previousRequestedPathRef.current;
+		previousRequestedPathRef.current = requestedPath;
+		if (previousRequestedPath !== null || requestedPath === null) return;
+		if (!window.matchMedia("(max-width: 1199px)").matches) return;
+		autoCollapseSidebarForDocument();
+	}, [requestedPath]);
 
 	useEffect(() => {
 		const onKeyDown = async (event: KeyboardEvent) => {
@@ -656,16 +707,50 @@ function App() {
 				await revealPath(path);
 			} else if (keymatch(event, "CmdOrCtrl+Shift+E")) {
 				event.preventDefault();
-				const opening = !uiStore.get().sidebarOpen;
+				const opening = !isSidebarVisible();
 				setSidebarOpen(opening);
 				if (opening) {
 					requestAnimationFrame(() => focusSidebarNav());
 				}
+			} else if (keymatch(event, "CmdOrCtrl+[")) {
+				if (isAnyDialogOpen) return;
+				event.preventDefault();
+				await goBackDocument();
+			} else if (keymatch(event, "CmdOrCtrl+]")) {
+				if (isAnyDialogOpen) return;
+				event.preventDefault();
+				await goForwardDocument();
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [focusedSidebarPath, openFilePicker, openSettings]);
+	}, [focusedSidebarPath, isAnyDialogOpen, openFilePicker, openSettings]);
+
+	// R7: Escape is a **last resort**, not an owner. Eleven components already
+	// answer Escape; all of them leave `defaultPrevented === true` except the
+	// comment-thread popover, which is why that one is checked by selector. The
+	// listener is bubble-phase on `window`, so every React handler has already
+	// had its say by the time this runs.
+	useEffect(() => {
+		const onEscape = (event: KeyboardEvent) => {
+			if (event.key !== "Escape" || event.defaultPrevented) return;
+			if (isAnyDialogOpen || historyOpen || commentsOpen || viewingRevision) {
+				return;
+			}
+			if (viewerStore.get().requestedPath === null) return;
+			const focused = document.activeElement;
+			if (
+				focused instanceof HTMLElement &&
+				focused.closest(EDITABLE_FOCUS_SELECTOR)
+			) {
+				return;
+			}
+			if (document.querySelector(COMMENT_THREAD_POPOVER_SELECTOR)) return;
+			void closeDocumentToTable();
+		};
+		window.addEventListener("keydown", onEscape);
+		return () => window.removeEventListener("keydown", onEscape);
+	}, [commentsOpen, historyOpen, isAnyDialogOpen, viewingRevision]);
 
 	useEffect(() => {
 		let active = true;
@@ -701,6 +786,8 @@ function App() {
 			),
 			desktopApi.onMenuSyncWorkspace(() => void refreshFiles()),
 			desktopApi.onMenuImportDocument(() => setImportDocOpen(true)),
+			desktopApi.onMenuGoBack(() => void goBackDocument()),
+			desktopApi.onMenuGoForward(() => void goForwardDocument()),
 		];
 		return () => {
 			for (const dispose of disposers) dispose();
@@ -737,19 +824,12 @@ function App() {
 				setSidebarOpen(true);
 				return;
 			}
+			// R1: no auto-reopen of the last document. The remembered document is
+			// still tracked (`lastOpenedPaths`) and is simply the top row of the
+			// document table under the default Modified-desc sort. The Finder
+			// carve-out is the `getLaunchFilePath` branch above, deliberately
+			// untouched.
 			await restorePersistedWorkspace();
-			if (!active) return;
-
-			const nextState = viewerStore.get();
-			const workspace = workspaceStore.get();
-			const lastPath =
-				nextState.lastOpenedPath ??
-				(workspace.workspacePath
-					? workspace.lastOpenedPaths[workspace.workspacePath]
-					: undefined);
-			if (lastPath) {
-				await loadPath(lastPath);
-			}
 		};
 		void init();
 		return () => {
@@ -762,7 +842,7 @@ function App() {
 			<WindowDragRegion />
 			<Toolbar
 				scrollContainer={scrollContainerEl}
-				showSidebarBadge={!sidebarOpen && showUpdateCallout}
+				showSidebarBadge={!sidebarVisible && showUpdateCallout}
 				onOpenNotionPage={() => setNotionDialogOpen(true)}
 				onOpenNotionInBrowser={openNotionInBrowser}
 				onPushNotionPage={pushNotionPage}
@@ -780,7 +860,7 @@ function App() {
 				notionSyncMode={notionSyncMode}
 				docImported={docImported}
 			/>
-			{!sidebarOpen && hasWorkspace && (
+			{!sidebarVisible && hasWorkspace && (
 				<div
 					className="desktop-window-no-drag pointer-events-none fixed top-3 z-30"
 					style={{
@@ -813,40 +893,20 @@ function App() {
 					onMoveFile={openMoveFileCommandBar}
 					footer={sidebarFooter}
 				/>
-				<section className="flex-1 overflow-hidden" aria-live="polite">
-					{state.status === "loading" && <p>Loading…</p>}
-					{state.status === "error" && (
-						<p>{state.error ?? "Failed to open file."}</p>
-					)}
-					{state.status !== "loading" &&
-						state.status !== "error" &&
-						!state.currentPath && (
-							<div className="flex h-full items-center justify-center p-6">
-								{hasWorkspace ? (
-									<Button onClick={() => void openFilePicker()}>
-										Open file
-									</Button>
-								) : (
-									<WelcomeScreen
-										onCreateFolder={() => void createWorkspaceWithSidebar()}
-										onOpenFolder={() => void openWorkspaceWithSidebar()}
-									/>
-								)}
-							</div>
-						)}
-					{state.status === "ready" && state.currentPath && (
-						<ReadyDocument
-							currentPath={state.currentPath}
-							notionDatabaseRefreshToken={notionDatabaseRefreshToken}
-							onScrollContainerChange={setScrollContainerEl}
-							historyOpen={historyOpen}
-							onHistoryOpenChange={setHistoryOpen}
-							commentsOpen={commentsOpen}
-							onCommentsOpenChange={handleCommentsOpenChange}
-							viewingRevision={viewingRevision}
-							onViewingRevisionChange={setViewingRevision}
-						/>
-					)}
+				<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+					<MainPanel
+						hasWorkspace={hasWorkspace}
+						onCreateFolder={() => void createWorkspaceWithSidebar()}
+						onOpenFolder={() => void openWorkspaceWithSidebar()}
+						notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+						onScrollContainerChange={setScrollContainerEl}
+						historyOpen={historyOpen}
+						onHistoryOpenChange={setHistoryOpen}
+						commentsOpen={commentsOpen}
+						onCommentsOpenChange={handleCommentsOpenChange}
+						viewingRevision={viewingRevision}
+						onViewingRevisionChange={setViewingRevision}
+					/>
 				</section>
 			</div>
 			<SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}>
@@ -924,100 +984,6 @@ function NotionLoadingIndicator({ label }: { label: string | null }) {
 				/>
 				<span className="font-medium">{label}</span>
 			</div>
-		</div>
-	);
-}
-
-// Isolates the live-content subscription so per-keystroke content updates
-// re-render only the document view, not the whole App shell.
-function ReadyDocument({
-	currentPath,
-	notionDatabaseRefreshToken,
-	onScrollContainerChange,
-	historyOpen,
-	onHistoryOpenChange,
-	commentsOpen,
-	onCommentsOpenChange,
-	viewingRevision,
-	onViewingRevisionChange,
-}: {
-	currentPath: string;
-	notionDatabaseRefreshToken: number;
-	onScrollContainerChange: (el: HTMLDivElement | null) => void;
-	historyOpen: boolean;
-	onHistoryOpenChange: (open: boolean) => void;
-	commentsOpen: boolean;
-	onCommentsOpenChange: (open: boolean) => void;
-	viewingRevision: HistoryRevision | null;
-	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
-}) {
-	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
-
-	// Only one right-edge panel is ever open at a time (R21), and every such
-	// panel is a fixed overlay (SidePanel, w-80) -- without this offset it
-	// covers the document's centered column instead of the document yielding
-	// the space. Padding the pane by the panel width shifts the centered
-	// content left so it stays fully visible while a panel is open.
-	const rightPanelOpen = historyOpen || commentsOpen;
-
-	// The history panel, the comments panel, and any revision the former is
-	// showing a diff for all belong to the document they were opened for --
-	// close/clear them rather than let them leak onto whatever note this
-	// component next renders for (R27's per-document scoping precedent). The
-	// review/conflict pill lives in the title bar (Toolbar) now and resets
-	// itself the same way, keyed off its own currentPath subscription.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
-	useEffect(() => {
-		onHistoryOpenChange(false);
-		onCommentsOpenChange(false);
-		onViewingRevisionChange(null);
-	}, [currentPath]);
-
-	return (
-		<div
-			className="flex h-full min-h-0 flex-col transition-[padding] duration-300 ease-snappy"
-			style={
-				rightPanelOpen
-					? ({
-							paddingInlineEnd: "min(20rem, calc(100vw - 2rem))",
-							// Keeps the viewport-fixed TOC rail (workspace-kit)
-							// usable: it reads this width to yield the same space.
-							"--hubble-right-panel-inline-size":
-								"min(20rem, calc(100vw - 2rem))",
-						} as CSSProperties)
-					: undefined
-			}
-		>
-			{viewingRevision ? (
-				<RevisionDiffView
-					revision={viewingRevision}
-					currentContent={content}
-					onReadRevisionContent={(revisionId) =>
-						desktopApi.readRevisionContent(currentPath, revisionId)
-					}
-					onBack={() => onViewingRevisionChange(null)}
-				/>
-			) : (
-				<DocumentViewer
-					path={currentPath}
-					content={content}
-					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
-					onScrollContainerChange={onScrollContainerChange}
-					commentsOpen={commentsOpen}
-					onCommentsOpenChange={onCommentsOpenChange}
-				/>
-			)}
-			<RevisionHistoryPanel
-				open={historyOpen}
-				onOpenChange={(open) => {
-					onHistoryOpenChange(open);
-					// Nothing left to browse the diff from once the panel closes.
-					if (!open) onViewingRevisionChange(null);
-				}}
-				path={currentPath}
-				selectedRevisionId={viewingRevision?.id ?? null}
-				onSelectRevision={onViewingRevisionChange}
-			/>
 		</div>
 	);
 }

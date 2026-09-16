@@ -30,6 +30,7 @@ import {
 } from "../store/actions";
 import {
 	currentPathStore,
+	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
 	workspaceStore,
 } from "../store/state";
@@ -46,6 +47,9 @@ function SidebarComponent({
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const sidebarOpen = useStoreValue(sidebarOpenStore);
+	// R3: the sidebar can be hidden for a document on a narrow window without
+	// the user's saved `sidebarOpen` preference ever being rewritten.
+	const sidebarAutoCollapsed = useStoreValue(sidebarAutoCollapsedStore);
 	const currentPath = useStoreValue(currentPathStore);
 	const { workspacePath, files, folders, pinnedNotes, sortMode } = workspace;
 
@@ -146,7 +150,7 @@ function SidebarComponent({
 		[folders],
 	);
 
-	if (!sidebarOpen) return null;
+	if (!sidebarOpen || sidebarAutoCollapsed) return null;
 	const collapseSidebar = () => setSidebarOpen(false);
 	if (!workspacePath) {
 		return (

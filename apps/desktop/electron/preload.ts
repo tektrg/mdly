@@ -228,6 +228,8 @@ const desktopApi = {
 		subscribe("desktop:menu-show-workspace-switcher", callback),
 	onMenuSyncWorkspace: (callback) =>
 		subscribe("desktop:menu-sync-workspace", callback),
+	onMenuGoBack: (callback) => subscribe("desktop:menu-go-back", callback),
+	onMenuGoForward: (callback) => subscribe("desktop:menu-go-forward", callback),
 	onWindowFocus: (callback) => subscribe("desktop:window-focus", callback),
 	onFullScreenChange: (callback) =>
 		subscribe("desktop:fullscreen-change", (isFullScreen: boolean) =>

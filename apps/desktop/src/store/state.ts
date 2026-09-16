@@ -26,6 +26,12 @@ export type ExternalChange =
 	| { kind: "applied"; previousContent: string };
 
 type DocumentState = {
+	/**
+	 * The document the main panel is showing or trying to show; `null` = the
+	 * full-width document table is home. See the twin declaration in
+	 * `persistence.ts` for why this is never serialized.
+	 */
+	requestedPath: string | null;
 	currentPath: string | null;
 	lastOpenedPath: string | null;
 	content: string;
@@ -43,6 +49,7 @@ export const LOADING_DELAY_MS = 150;
 export const emptyDoc = (
 	lastOpenedPath: string | null = null,
 ): DocumentState => ({
+	requestedPath: null,
 	currentPath: null,
 	lastOpenedPath,
 	content: "",
@@ -123,6 +130,7 @@ export function withOpenedDoc(
 		workspace,
 		document: {
 			...state.document,
+			requestedPath: path,
 			currentPath: path,
 			lastOpenedPath: path,
 			...cleanFileState(content),
@@ -154,7 +162,9 @@ workspaceStore.set = ((...args: Parameters<typeof rawWorkspaceSet>) => {
 export const workspacePathStore = workspaceStore.select("workspacePath");
 export const recentWorkspacesStore = workspaceStore.select("recentWorkspaces");
 export const currentPathStore = viewerStore.select("currentPath");
+export const requestedPathStore = viewerStore.select("requestedPath");
 export const sidebarOpenStore = uiStore.select("sidebarOpen");
+export const sidebarAutoCollapsedStore = uiStore.select("sidebarAutoCollapsed");
 export const switcherOpenStore = uiStore.select("isSwitcherOpen");
 export const themePreferenceStore = uiStore.select("themePreference");
 export const contrastPreferenceStore = uiStore.select("contrastPreference");
