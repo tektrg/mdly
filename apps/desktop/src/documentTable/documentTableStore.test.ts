@@ -29,6 +29,8 @@ describe("documentTableStore", () => {
 		expect(documentTableViewStore.get()).toEqual({
 			filter: "",
 			sort: { column: "modified", direction: "desc" },
+			groupBy: null,
+			mode: "browse",
 		});
 	});
 
@@ -45,26 +47,55 @@ describe("documentTableStore", () => {
 		expect(documentTableViewStore.get()).toEqual({
 			filter: "spec",
 			sort: { column: "name", direction: "asc" },
+			groupBy: null,
+			mode: "browse",
 		});
 	});
 
-	it("forgets the filter and the sort on a workspace switch", async () => {
+	it("forgets the filter, the sort, the grouping and the mode on a workspace switch", async () => {
 		const {
 			documentTableViewStore,
 			setDocumentTableFilter,
+			setDocumentTableGroupBy,
+			setDocumentTableMode,
 			toggleDocumentTableSort,
 			workspacePathStore,
 		} = await loadDocumentTableStore();
 
 		setDocumentTableFilter("spec");
 		toggleDocumentTableSort("name");
+		setDocumentTableGroupBy("tag");
+		setDocumentTableMode("search");
 		workspacePathStore.set("/other-workspace");
 		// Store notifications are delivered on a microtask.
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
+		// EC-72: the view resets on a switch the way the sidebar's active page
+		// did, and one store owns all four fields so none can survive alone.
 		expect(documentTableViewStore.get()).toEqual({
 			filter: "",
 			sort: { column: "modified", direction: "desc" },
+			groupBy: null,
+			mode: "browse",
+		});
+	});
+
+	it("carries grouping and mode on the one view store (defect 4)", async () => {
+		const {
+			documentTableViewStore,
+			setDocumentTableGroupBy,
+			setDocumentTableMode,
+			setDocumentTableFilter,
+		} = await loadDocumentTableStore();
+
+		setDocumentTableGroupBy("folder");
+		setDocumentTableMode("search");
+		setDocumentTableFilter("q");
+
+		expect(documentTableViewStore.get()).toMatchObject({
+			groupBy: "folder",
+			mode: "search",
+			filter: "q",
 		});
 	});
 

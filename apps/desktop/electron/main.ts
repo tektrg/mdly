@@ -33,6 +33,7 @@ import {
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
+import { WINDOW_MIN_WIDTH } from "../src/lib/navLayout";
 import {
 	readAgentAccessEnabled,
 	readOrCreateAgentAccessToken,
@@ -304,7 +305,11 @@ const defaultWindowState: WindowState = { width: 920, height: 720 };
 // instead, like every desktop app's cascading-windows behavior.
 const windowCascadeOffset = 32;
 const windowStateSchema = z.object({
-	width: z.number().int().min(640).max(4096),
+	// A11: the floor is the renderer's derived `WINDOW_MIN_WIDTH`, not a second
+	// literal. A width persisted below it fails the parse, so launch falls back
+	// to `defaultWindowState` instead of painting a too-narrow window and
+	// snapping it afterwards.
+	width: z.number().int().min(WINDOW_MIN_WIDTH).max(4096),
 	height: z.number().int().min(480).max(4096),
 	x: z.number().int().optional(),
 	y: z.number().int().optional(),
@@ -1275,6 +1280,9 @@ async function createWindow() {
 			: {}),
 		width: windowState.width,
 		height: windowState.height,
+		// A11: peek's 600px document floor (R13) can never be violated by
+		// dragging the window narrower, because the window cannot get there.
+		minWidth: WINDOW_MIN_WIDTH,
 		show: false,
 		titleBarStyle: "hidden",
 		trafficLightPosition: trafficLightPositionForZoom(zoomFactor),
@@ -1810,7 +1818,6 @@ function registerIpc() {
 			});
 		},
 	);
-
 
 	// Slice 4: agent access. The renderer's WebMCP bridge reaches the tools
 	// through these two channels; the loopback MCP server calls the very same

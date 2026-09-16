@@ -6,6 +6,7 @@ import {
 	type DocumentTableView,
 	toggleSort,
 } from "./documentTableView";
+import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 
 /**
  * The session's document-table view (filter text + sort).
@@ -32,12 +33,30 @@ export function toggleDocumentTableSort(column: DocumentTableColumn) {
 	}));
 }
 
+/**
+ * R2: switching between the flat list, folder view and tag view is a field on
+ * the one view, not a different navigation surface.
+ */
+export function setDocumentTableGroupBy(groupBy: NavGroupBy) {
+	documentTableViewStore.set((view) => ({ ...view, groupBy }));
+}
+
+/** A7: the mode the query is read in. Grouping and pinning follow from it. */
+export function setDocumentTableMode(mode: NavViewMode) {
+	documentTableViewStore.set((view) => ({ ...view, mode }));
+}
+
 export function resetDocumentTableView() {
 	documentTableViewStore.set(createDefaultDocumentTableView());
 }
 
 // A filter typed in one workspace must not survive into the next one, where it
 // means nothing. Same subscription precedent as docNavigationHistory.ts.
+//
+// The grouping and mode added for the navigation views ride the same reset on
+// purpose (defect 4, EC-72): the view resets on a workspace switch exactly as
+// the sidebar's active page did, and survives no relaunch. One store owns it,
+// so there is no second copy to reset in a different order.
 workspacePathStore.subscribe(() => {
 	resetDocumentTableView();
 });

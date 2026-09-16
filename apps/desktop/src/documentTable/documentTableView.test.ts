@@ -212,6 +212,7 @@ describe("applyDocumentTableView filtering", () => {
 
 		expect(
 			applyDocumentTableView(rows, {
+				...createDefaultDocumentTableView(),
 				filter: "spec",
 				sort: { column: "name", direction: "asc" },
 			}).map((row) => row.path),

@@ -10,6 +10,7 @@ import {
 	relativeWorkspacePath,
 } from "../lib/filePath";
 import type { FileEntry } from "../store/state";
+import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 
 export type DocumentTableColumn = "name" | "folder" | "modified";
 export type DocumentTableSortDirection = "asc" | "desc";
@@ -27,6 +28,17 @@ export type DocumentTableSort = {
 export type DocumentTableView = {
 	filter: string;
 	sort: DocumentTableSort;
+	/**
+	 * The field rows are grouped on; `null` is the flat list. Folder view and tag
+	 * view are this one field, not two components (R2).
+	 */
+	groupBy: NavGroupBy;
+	/**
+	 * Browsing, or ranked search. ONE store owns the view, so there is no second
+	 * store for a mode to disagree with (defect 4). `filter` is the query text in
+	 * both modes; only `resolveNavViewSpec` reads the two together (A7).
+	 */
+	mode: NavViewMode;
 };
 
 export type DocumentTableRow = {
@@ -63,7 +75,12 @@ export type DocumentTableRow = {
 export const ROOT_FOLDER_LABEL = "—";
 
 export function createDefaultDocumentTableView(): DocumentTableView {
-	return { filter: "", sort: { column: "modified", direction: "desc" } };
+	return {
+		filter: "",
+		sort: { column: "modified", direction: "desc" },
+		groupBy: null,
+		mode: "browse",
+	};
 }
 
 /**
