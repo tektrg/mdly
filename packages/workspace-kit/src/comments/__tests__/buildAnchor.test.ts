@@ -40,8 +40,8 @@ describe("buildQuoteAnchor", () => {
 
 		expect(anchor.mode).toBe("quote");
 		expect(anchor.quote).toBe("Hello");
-		expect(anchor.from).toBe(1);
-		expect(anchor.to).toBe(6);
+		expect(anchor.from).toBe(0);
+		expect(anchor.to).toBe(5);
 		expect(anchor.contextAfter).toBe(" brave new world");
 		expect(anchor.contextBefore).toBe("");
 	});

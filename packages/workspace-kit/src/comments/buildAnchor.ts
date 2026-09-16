@@ -23,13 +23,24 @@ export function buildQuoteAnchor(
 	to: number,
 ): TextAnchor {
 	const docSize = doc.content.size;
+	const textFrom = doc.textBetween(0, from, "\n").length;
+	const quote = doc.textBetween(from, to, "\n");
+	const textTo = textFrom + quote.length;
 	return {
-		from,
-		to,
-		quote: doc.textBetween(from, to, "\n"),
+		from: textFrom,
+		to: textTo,
+		quote,
 		mode: "quote",
-		contextBefore: doc.textBetween(Math.max(0, from - CONTEXT_LENGTH), from, "\n"),
-		contextAfter: doc.textBetween(to, Math.min(docSize, to + CONTEXT_LENGTH), "\n"),
+		contextBefore: doc.textBetween(
+			Math.max(0, from - CONTEXT_LENGTH),
+			from,
+			"\n",
+		),
+		contextAfter: doc.textBetween(
+			to,
+			Math.min(docSize, to + CONTEXT_LENGTH),
+			"\n",
+		),
 	};
 }
 

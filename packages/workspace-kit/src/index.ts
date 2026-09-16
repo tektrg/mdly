@@ -58,6 +58,7 @@ export {
 	wikiDisplayNameForTarget,
 	withMarkdownExtension,
 } from "./engine/markdownPath.js";
+export { markdownToPlainText } from "./engine/markdownToPlainText.js";
 export { markdownToTiptapDoc } from "./engine/markdownToProsemirror.js";
 export {
 	NotionCalloutExtension,

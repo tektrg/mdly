@@ -30,6 +30,8 @@ import {
 
 const commentsFileSystem = createNodeFileSystem();
 
+import { markdownToPlainText } from "@mdly/workspace-kit/engine";
+
 /**
  * The main process has no concept of "the live editor draft" — only the
  * renderer does, and the kit already resolves anchors client-side against it
@@ -43,7 +45,7 @@ const commentsFileSystem = createNodeFileSystem();
  */
 const NOOP_ANCHOR_RESOLUTION_INPUTS = {
 	readRevisionContent: async () => null,
-	flattenDocument: (docBody: string) => docBody,
+	flattenDocument: markdownToPlainText,
 };
 
 /** Resolves the docId for a document at `relativePath`, sharing the same id space as revision history. Exported for unit tests. */

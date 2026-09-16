@@ -31,6 +31,7 @@ import {
 	LinkExtension,
 	listExtensions,
 	MarkdownRolloverExtension,
+	markdownToPlainText,
 	markdownToTiptapDoc,
 	NotionCalloutExtension,
 	NotionEmptyBlockExtension,
@@ -73,11 +74,6 @@ const DEFAULT_SAVE_DEBOUNCE_MS = 500;
 const USER_EDIT_INTENT_WINDOW_MS = 1000;
 const EDITOR_FONT_ATTRIBUTE_STYLE = "font-family: var(--editor-font-family);";
 const defaultExtraExtensions: NonNullable<EditorOptions["extensions"]> = [];
-// `resolveAnchor` (inside useCommentThreads) already diffs the flattened text
-// it's given against `readRevisionContent`'s own flattened text using the
-// same function on both sides, so identity keeps both sides consistent
-// without EditorView needing its own text-flattening algorithm.
-const identityFlattenDocument = (docBody: string) => docBody;
 type EditorAttributes = NonNullable<
 	NonNullable<EditorOptions["editorProps"]>["attributes"]
 >;
@@ -482,7 +478,7 @@ export function EditorView({
 		resolvedThreads,
 		error: commentsError,
 		refetch: refetchCommentThreads,
-	} = useCommentThreads(commentOptions, editor, identityFlattenDocument);
+	} = useCommentThreads(commentOptions, editor, markdownToPlainText);
 	useEffect(() => {
 		if (!editor) return;
 		setCommentThreads(editor, resolvedThreads);

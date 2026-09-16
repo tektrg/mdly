@@ -237,6 +237,57 @@ describe("agentComments", () => {
 		expect(paths).not.toContain(openPath); // open note has zero threads -> filtered out
 	});
 
+	it("resolves threads on formatted markdown text (bold, backticks, table cells) without orphaning", async () => {
+		const relativePath = "formatted.md";
+		const content = `| Feature | Status |
+|---|---|
+| **Contract registry** | Active |
+
+- **Do segments default to hard or soft boundaries?** Hard boundaries.
+- Here is \`inline_code_target\` in a list.
+`;
+		await writeNote(relativePath, content);
+		const notified: string[] = [];
+		const ctx = makeCtx(null, notified);
+
+		await createAgentThread(
+			{
+				path: relativePath,
+				quote: "Contract registry",
+				text: "Check contract registry",
+			},
+			ctx,
+		);
+		await createAgentThread(
+			{
+				path: relativePath,
+				quote: "Do segments default to hard or soft boundaries?",
+				text: "Clarify default boundary",
+			},
+			ctx,
+		);
+		await createAgentThread(
+			{
+				path: relativePath,
+				quote: "inline_code_target",
+				text: "Explain inline code target",
+			},
+			ctx,
+		);
+
+		const { documents } = await listAgentThreads(
+			{ scope: "workspace", state: "all", path: relativePath },
+			ctx,
+		);
+		const doc = documents.find((d) => d.path === relativePath);
+		expect(doc).toBeDefined();
+		expect(doc?.threads.length).toBe(3);
+		for (const thread of doc?.threads ?? []) {
+			expect(thread.anchorStatus).not.toBe("orphaned");
+			expect(["anchored", "fallback-anchored"]).toContain(thread.anchorStatus);
+		}
+	});
+
 	it("rejects a path outside every granted root without writing (A)", async () => {
 		const notified: string[] = [];
 		const ctx = makeCtx(null, notified);
@@ -601,5 +652,58 @@ describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
 				descriptor.name.includes("delete"),
 			),
 		).toBe(false);
+	});
+});
+
+describe("Agent Context Gap", () => {
+	it("resolves context even if target has markdown formatting", async () => {
+		const relativePath = "gap.md";
+		// "duplicate" appears twice. One in plain text, one in markdown.
+		// Wait, if it appears twice, anchorForUniqueQuote throws.
+		// We want to see if the anchor's context includes markdown, 
+		// and if it causes orphaning when we try to resolve it.
+		// BUT anchorForUniqueQuote only uses context if it's unique in anchorForUniqueQuote!
+		// Wait, if it's unique in anchorForUniqueQuote, it won't need disambiguation in resolveByQuoteContext!
+		// But what if the user edits the document later to ADD a second occurrence of the quote?
+		// Then resolveByQuoteContext WILL need to use the context!
+		// And if the context was saved with markdown syntax, it will fail to match the flattened text, and the comment will be orphaned!
+	});
+});
+
+import { openCommentThreadForPath } from "./comments";
+
+describe("Agent Context Markdown Gap", () => {
+	it("saves flattened context so it can disambiguate later", async () => {
+		const relativePath = "markdown-context.md";
+		// The quote is "unique phrase".
+		// Context before is "This is **bold** and a "
+		const absolutePath = await writeNote(
+			relativePath,
+			"This is **bold** and a unique phrase.\n",
+		);
+		const notified: string[] = [];
+		const ctx = makeCtx(absolutePath, notified);
+
+		await createAgentThread(
+			{ path: relativePath, quote: "unique phrase", text: "comment" },
+			ctx,
+		);
+
+		// Now we simulate the user editing the document to add a second "unique phrase",
+		// without changing the original one.
+		await writeNote(
+			relativePath,
+			"This is **bold** and a unique phrase.\nAnother unique phrase.\n",
+		);
+
+		const { documents } = await listAgentThreads(
+			{ scope: "open", state: "all", path: relativePath },
+			ctx,
+		);
+		const thread = documents[0].threads[0];
+		
+		// If context was saved with markdown (**bold**), resolveByQuoteContext will compare it to 
+		// "This is bold and a ". They won't match, and the thread will be orphaned!
+		expect(thread.anchorStatus).not.toBe("orphaned");
 	});
 });

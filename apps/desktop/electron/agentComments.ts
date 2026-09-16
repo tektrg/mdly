@@ -35,6 +35,7 @@ import {
 import { createNodeFileSystem } from "@mdly/doc-history/node";
 import {
 	hasLinkedNotionFrontMatter,
+	markdownToPlainText,
 	normalizeNotionMarkdownBody,
 	parseMarkdownFrontMatter,
 } from "@mdly/workspace-kit/engine";
@@ -47,6 +48,7 @@ import {
 	resolveCommentThreadForPath,
 } from "./comments";
 import {
+	getHistoryStoreForWorkspace,
 	resolveHistoryWorkspaceRoot,
 	toWorkspaceRelativePath,
 } from "./docHistoryWiring";
@@ -56,16 +58,6 @@ const QUOTE_CONTEXT_LENGTH = 40;
 
 /** Plain Node filesystem, used only for the reads `comments.ts` has no reason to offer: listing a workspace's comment-log directory and reading a note's saved bytes. Store *writes* still go exclusively through `comments.ts`. */
 const agentFileSystem = createNodeFileSystem();
-
-/**
- * The main process has no live editor draft to replay a `revision`-mode
- * anchor against (only the renderer does — see `comments.ts`'s own note on
- * this), so revision replay is always declined here and every anchor falls
- * back to quote(+context) matching against whatever text is passed in. This
- * mirrors `comments.ts`'s `NOOP_ANCHOR_RESOLUTION_INPUTS`.
- */
-const NOOP_READ_REVISION_CONTENT = async () => null;
-const IDENTITY_FLATTEN = (docBody: string) => docBody;
 
 export type AgentThreadScope = "workspace" | "open";
 export type AgentThreadStateFilter = "open" | "resolved" | "all";
@@ -400,7 +392,7 @@ async function readRawFileText(absolutePath: string): Promise<string | null> {
 	}
 }
 
-/** Strips a saved file's raw content to the same BODY text a live editor's doc represents — mirrors `packages/workspace-kit/src/comments/buildAnchor.ts`'s own (unexported) `extractBody`, duplicated here rather than imported since the kit doesn't export it. */
+/** Strips a saved file's raw content to body text (mirrors workspace-kit extractBody). */
 function extractSavedBody(rawFileContent: string): string {
 	const parsed = parseMarkdownFrontMatter(rawFileContent);
 	if (parsed.type === "none") return parsed.body;
@@ -409,7 +401,6 @@ function extractSavedBody(rawFileContent: string): string {
 		: parsed.body;
 }
 
-/** Used by `createAgentThread`: a missing/unreadable file is a hard failure — there is nothing to anchor a quote against. */
 async function readSavedDocumentBodyOrThrow(
 	absolutePath: string,
 	relativePath: string,
@@ -423,7 +414,6 @@ async function readSavedDocumentBodyOrThrow(
 	return extractSavedBody(raw);
 }
 
-/** Used when re-resolving anchor status for reads: a missing/unreadable file just means "can't improve on the fallback" rather than a hard failure — listing threads must not blow up because one note is momentarily gone. */
 async function readSavedDocumentBodyOrNull(
 	absolutePath: string,
 ): Promise<string | null> {
@@ -468,10 +458,12 @@ function anchorForUniqueQuote(
 	quote: string,
 	relativePath: string,
 ): TextAnchor {
-	const occurrences = countOccurrences(body, quote);
+	const targetText = markdownToPlainText(body);
+	const occurrences = countOccurrences(targetText, quote);
+
 	if (occurrences === 0) {
 		throw new Error(
-			`Quote not found in the saved contents of "${relativePath}". It may be unsaved text — only text already saved to disk can be anchored.`,
+			`Quote not found in the saved contents of "${relativePath}". It may be unsaved text, or you may have included markdown formatting. Only provide the plain, rendered text as the quote.`,
 		);
 	}
 	if (occurrences > 1) {
@@ -480,32 +472,28 @@ function anchorForUniqueQuote(
 		);
 	}
 
-	const from = body.indexOf(quote);
+	const from = targetText.indexOf(quote);
 	const to = from + quote.length;
 	return {
 		from,
 		to,
 		quote,
 		mode: "quote",
-		contextBefore: body.slice(Math.max(0, from - QUOTE_CONTEXT_LENGTH), from),
-		contextAfter: body.slice(
+		contextBefore: targetText.slice(
+			Math.max(0, from - QUOTE_CONTEXT_LENGTH),
+			from,
+		),
+		contextAfter: targetText.slice(
 			to,
-			Math.min(body.length, to + QUOTE_CONTEXT_LENGTH),
+			Math.min(targetText.length, to + QUOTE_CONTEXT_LENGTH),
 		),
 	};
 }
 
 /**
- * `comments.ts`'s `listCommentThreadsForPath` always resolves anchors
- * against an empty string (its own doc comment explains why: the renderer
- * already re-resolves anchors against the live draft, so it deliberately
- * discards this field). That would make every thread reported to an agent
- * look permanently `"orphaned"`, regardless of whether the quote is still
- * actually there — nearly useless signal for a caller deciding whether a
- * comment still applies. This re-resolves each thread's `anchorStatus`
- * against the note's current SAVED body instead, best-effort: if the file
- * can't be read right now, the original (always-orphaned) status is left
- * as-is rather than failing the whole listing.
+ * Re-resolves each thread's anchorStatus against the document's saved body,
+ * flattened to rendered plain text space with revision history replay and
+ * quote-context fallback (mirrors EditorView's live draft resolution).
  */
 async function resolveThreadsForDocument(
 	absolutePath: string,
@@ -517,17 +505,60 @@ async function resolveThreadsForDocument(
 	);
 	const body = await readSavedDocumentBodyOrNull(absolutePath);
 	if (body === null) return threads;
+	const flattenedBody = markdownToPlainText(body);
+
+	const workspaceRoot = resolveHistoryWorkspaceRoot(
+		absolutePath,
+		ctx.grantedRoots,
+	);
+	const relativePath = workspaceRoot
+		? toWorkspaceRelativePath(workspaceRoot, absolutePath)
+		: null;
+	const historyStore = workspaceRoot
+		? getHistoryStoreForWorkspace(workspaceRoot)
+		: null;
+
+	const readRevisionContent = async (revisionId: string) => {
+		if (!historyStore || !relativePath) return null;
+		const result = await historyStore.readRevisionContent(
+			relativePath,
+			revisionId,
+		);
+		if (result.status !== "ok") return null;
+		return extractSavedBody(new TextDecoder().decode(result.bytes));
+	};
 
 	return Promise.all(
-		threads.map(async (thread) => ({
-			...thread,
-			anchorResolution: await resolveAnchor(
+		threads.map(async (thread) => {
+			let anchorResolution = await resolveAnchor(
 				thread.opener.anchor,
-				body,
-				NOOP_READ_REVISION_CONTENT,
-				IDENTITY_FLATTEN,
-			),
-		})),
+				flattenedBody,
+				readRevisionContent,
+				markdownToPlainText,
+			);
+
+			// Quote-context rescue: if revision replay returns orphaned, check if the quote
+			// is uniquely present in the flattened text and rescue it (matching EditorView).
+			if (
+				anchorResolution.status === "orphaned" &&
+				thread.opener.anchor.quote.length > 0
+			) {
+				const rescued = await resolveAnchor(
+					{ ...thread.opener.anchor, mode: "quote" },
+					flattenedBody,
+					async () => null,
+					markdownToPlainText,
+				);
+				if (rescued.status !== "orphaned") {
+					anchorResolution = rescued;
+				}
+			}
+
+			return {
+				...thread,
+				anchorResolution,
+			};
+		}),
 	);
 }
 
