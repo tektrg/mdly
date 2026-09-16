@@ -206,7 +206,8 @@ describe("commentStore", () => {
 				text: "Reply 1",
 			});
 			const events2 = await readCommentEvents(fs, WORKSPACE, DOC_ID);
-			const reply1 = events2.find((e) => e.kind === "replied")!;
+			const reply1 = events2.find((e) => e.kind === "replied");
+			if (!reply1) throw new Error("expected a replied event");
 			expect(reply1.prev).toBe(opener.id);
 
 			await reply(fs, WORKSPACE, {
@@ -218,7 +219,8 @@ describe("commentStore", () => {
 			const events3 = await readCommentEvents(fs, WORKSPACE, DOC_ID);
 			const reply2 = events3.find(
 				(e) => e.kind === "replied" && e.id !== reply1.id,
-			)!;
+			);
+			if (!reply2) throw new Error("expected a second replied event");
 			expect(reply2.prev).toBe(reply1.id);
 		});
 	});

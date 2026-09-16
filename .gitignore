@@ -50,3 +50,6 @@ mdly.app/
 .DS_Store
 .idea/
 .vscode/
+
+# local document-history store (runtime app data, per docs/plans/local-doc-history.md)
+.mdly/

@@ -114,15 +114,28 @@ describe("cloud pull vs. the shared echo tracker (R21)", () => {
 			grantedRoots: [workspaceRoot],
 			echoTracker,
 		});
-		expect(await pathExists(path.join(workspaceRoot, ".mdly", "history"))).toBe(
-			false,
-		);
+		// New contract (web write-back slice 5): these pulled bytes had no
+		// local history coverage, so the pull itself cut exactly one
+		// external-write revision — and the watcher's hook above added no
+		// second one (echo skip intact). R21's mechanism holds; only the
+		// "zero revisions" letter changed, deliberately: a timeline hole for
+		// web-authored pulls is worse than one honest revision.
+		const history = getHistoryStoreForWorkspace(workspaceRoot);
+		const revisions = await history.getRevisionHistory(relativePath);
+		expect(revisions).toHaveLength(1);
+		expect(revisions[0]?.cause).toBe("external-write");
+		expect(revisions[0]?.hash).toBe(remoteHash);
 
-		// R21's other half: our own watcher noticing the pull's own disk write
-		// must not push the pulled content back up.
+		// R21's other half, updated for slice 5: our own watcher noticing the
+		// pull's own disk write must not push the pulled NOTE content back up
+		// — but the one history-index sidecar our gap-fill just cut DOES go
+		// up (that sidecar upload is exactly how the web timeline will see
+		// this revision). One push, and only the sidecar.
 		const pushesBeforeWait = calls.pushFile.length;
 		await new Promise((resolve) => setTimeout(resolve, 150));
-		expect(calls.pushFile).toHaveLength(pushesBeforeWait);
+		expect(calls.pushFile.slice(pushesBeforeWait)).toEqual([
+			".mdly/history/index.jsonl",
+		]);
 	}, 10000);
 
 	it("uses a genuinely different tracker for an unrelated instance (negative control)", () => {
@@ -204,6 +217,118 @@ describe("remote deletion goes through delete-history (R22)", () => {
 		const revisions = await freshHistory.getRevisionHistory(relativePath);
 		expect(revisions).toHaveLength(1);
 	}, 10000);
+});
+
+describe("pulled web edits cut a history revision (web write-back slice 5)", () => {
+	async function startSyncWithRemote(
+		relativePath: string,
+		remoteContent: string,
+		remoteHash: string,
+	) {
+		const { backend } = createFakeBackend([
+			{
+				path: relativePath,
+				contentHash: remoteHash,
+				content: remoteContent,
+				deviceId: "web-test-device",
+				deleted: false,
+				updatedAt: Date.now(),
+			},
+		]);
+		const { subscriber } = createFakeSubscriber();
+		const deps = {
+			echoTracker: createSelfWriteEchoTracker(),
+			grantedRoots: [workspaceRoot],
+			keychain: createFakeKeychain({ [SHARED_CLOUD_SYNC_ACCOUNT]: "pw" }),
+			createBackend: () => backend,
+			createSubscriber: () => subscriber,
+			debounceMs: 20,
+		};
+		await startCloudSyncWatcherIfEnabled(workspaceRoot, deps);
+	}
+
+	it("a pulled file with no local revision for its hash gets an external-write revision", async () => {
+		const relativePath = "note.md";
+		const absolutePath = path.join(workspaceRoot, relativePath);
+		await fs.writeFile(absolutePath, "mac words");
+		const history = getHistoryStoreForWorkspace(workspaceRoot);
+		await history.recordRevision(relativePath, "mac words", {
+			by: { kind: "human", id: "device-1" },
+			cause: "manual",
+		});
+		const macHash = await contentHash(new TextEncoder().encode("mac words"));
+		await writeSyncState(createNodeFileSystem(), workspaceRoot, {
+			lastSyncedAt: Date.now(),
+			files: {
+				[relativePath]: { hash: macHash, lastSyncedAt: Date.now() },
+			},
+		});
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+
+		// The web records no history of its own and none will arrive as
+		// sidecars — the pull must cut the revision or the timeline has a
+		// hole where the web edit landed.
+		const webContent = "web words";
+		const webHash = await contentHash(new TextEncoder().encode(webContent));
+		await startSyncWithRemote(relativePath, webContent, webHash);
+		await waitFor(
+			async () => (await fs.readFile(absolutePath, "utf8")) === webContent,
+			10000,
+		);
+		await stopCloudSyncForWorkspace(workspaceRoot);
+
+		const revisions = await history.getRevisionHistory(relativePath);
+		const pulled = revisions.find((r) => r.hash === webHash);
+		expect(pulled).toBeDefined();
+		expect(pulled?.cause).toBe("external-write");
+	}, 15000);
+
+	it("a pulled file whose hash already has a revision records nothing new", async () => {
+		const relativePath = "note.md";
+		const absolutePath = path.join(workspaceRoot, relativePath);
+		await fs.writeFile(absolutePath, "old words");
+		const history = getHistoryStoreForWorkspace(workspaceRoot);
+		await history.recordRevision(relativePath, "old words", {
+			by: { kind: "human", id: "device-1" },
+			cause: "manual",
+		});
+		// Another Mac already pulled + recorded this exact content, and its
+		// history sidecar merged — the head already carries the hash.
+		const sharedContent = "shared words";
+		const sharedHash = await contentHash(
+			new TextEncoder().encode(sharedContent),
+		);
+		await history.recordRevision(relativePath, sharedContent, {
+			by: { kind: "external", id: "external-tool" },
+			cause: "external-write",
+		});
+		const oldHash = await contentHash(new TextEncoder().encode("old words"));
+		await writeSyncState(createNodeFileSystem(), workspaceRoot, {
+			lastSyncedAt: Date.now(),
+			files: {
+				[relativePath]: { hash: oldHash, lastSyncedAt: Date.now() },
+			},
+		});
+		await writeCloudSyncConfigFixture(workspaceRoot, {
+			backgroundSync: true,
+			workspaceId: "ws-1",
+			deploymentUrl: "http://127.0.0.1:8787",
+		});
+		const before = await history.getRevisionHistory(relativePath);
+		await startSyncWithRemote(relativePath, sharedContent, sharedHash);
+		await waitFor(
+			async () => (await fs.readFile(absolutePath, "utf8")) === sharedContent,
+			10000,
+		);
+		await stopCloudSyncForWorkspace(workspaceRoot);
+
+		const after = await history.getRevisionHistory(relativePath);
+		expect(after).toHaveLength(before.length);
+	}, 15000);
 });
 
 describe("no leaked subscription or duplicate watcher on repeated drop/restore (R25)", () => {

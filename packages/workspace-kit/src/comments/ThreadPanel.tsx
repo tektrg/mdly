@@ -28,6 +28,23 @@ function eventVerb(kind: CommentThreadEvent["kind"]): string {
 	}
 }
 
+/** Max collapsed chars kept in the DOM before CSS line-clamp takes over visually. */
+export const MAX_PANEL_QUOTE_CHARS = 180;
+
+/**
+ * Collapses newlines/tabs/runs of whitespace to single spaces and truncates
+ * at a word boundary with an ellipsis, so a long selection reads as one
+ * short quoted line above its thread instead of blowing out the sidebar.
+ */
+export function formatQuoteForPanel(quote: string): string {
+	const collapsed = quote.replace(/\s+/g, " ").trim();
+	if (collapsed.length <= MAX_PANEL_QUOTE_CHARS) return collapsed;
+	const sliced = collapsed.slice(0, MAX_PANEL_QUOTE_CHARS);
+	const lastSpace = sliced.lastIndexOf(" ");
+	const cutAt = lastSpace > 80 ? lastSpace : MAX_PANEL_QUOTE_CHARS;
+	return `${sliced.slice(0, cutAt).trimEnd()}…`;
+}
+
 function ThreadLogLine({
 	by,
 	verb,
@@ -284,6 +301,16 @@ export function ThreadItem({
 						</span>
 					) : null}
 				</div>
+				{thread.opener.anchor.quote.trim() ? (
+					<blockquote
+						className="m-0 line-clamp-3 border-s-2 border-muted-foreground/30 ps-2 text-[11px] text-muted-foreground wrap-break-word"
+						data-thread-quote
+						data-thread-id={thread.id}
+						title={thread.opener.anchor.quote.replace(/\s+/g, " ").trim()}
+					>
+						{formatQuoteForPanel(thread.opener.anchor.quote)}
+					</blockquote>
+				) : null}
 				<ul className="m-0 flex list-none flex-col gap-1.5 p-0">
 					<ThreadLogLine
 						by={thread.opener.by}

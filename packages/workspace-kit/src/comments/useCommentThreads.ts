@@ -220,6 +220,7 @@ export function useCommentThreads(
 
 	// Fetch (or re-fetch) the raw thread list on mount and whenever docId,
 	// refreshSignal (R22 cross-window refresh), or a manual refetch() fires.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refreshSignal/fetchTick are manual refetch triggers, not data dependencies.
 	useEffect(() => {
 		if (!getThreads || !docId) {
 			setRawThreads([]);
@@ -255,7 +256,6 @@ export function useCommentThreads(
 		return () => {
 			cancelled = true;
 		};
-		// biome-ignore lint/correctness/useExhaustiveDependencies: fetchTick is a manual refetch trigger, not a data dependency.
 	}, [getThreads, docId, refreshSignal, fetchTick]);
 
 	// Re-resolve every raw thread's anchor against the LIVE editor draft

@@ -15,6 +15,16 @@ export interface SyncBackend {
 		contentHash: string;
 		content: string;
 		deviceId: string;
+		/**
+		 * Optimistic-concurrency guard (web write-back). When present, the
+		 * server must reject the write unless the stored `contentHash` still
+		 * equals this value — the hash the author's edit is based on — and
+		 * fail with a conflict carrying the current content. Empty string
+		 * means "must not exist" (create-guard; a real content hash is never
+		 * empty). Absent = legacy last-writer-wins (desktop sync never sends
+		 * it; bulk/batch paths never send it).
+		 */
+		expectedContentHash?: string;
 	}): Promise<void>;
 	/**
 	 * Batched push (DO row-read frequency fix): one version bump + one

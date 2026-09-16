@@ -32,7 +32,7 @@ Mac desktop app itself.
 
 | Question | Decision |
 |---|---|
-| Can the web edit `.md`? | **No.** Read + diff + comment only. The Mac is the sole author of notes |
+| Can the web edit `.md`? | **Yes (reversed 2026-09-15).** Web write-back shipped: debounced `POST /api/files` with an optimistic-concurrency guard (`expectedContentHash` → 409 + keep-both conflict copies), web commenting via slot-suffixed logs, pulled web edits cut `external-write` history on the Mac. Original R31 ("No — Mac is sole author") reversed by the user on 2026-09-15 after the dormant-`editable` incident proved the web was already used for editing. |
 | Backend | **Cloudflare only.** Worker + Durable Object (SQLite storage) + R2. No Convex |
 | `packages/sync-backend` and `packages/convex-client` | **Deleted** (see *Deletion is atomic*) |
 | Version history transport | Sync the small JSONL logs; keep version **bytes in R2 keyed by sha256**. Never sync `.mdly/history/objects/**` |

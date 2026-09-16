@@ -21,12 +21,13 @@ export function buildUrl(
 
 async function readErrorBody(
 	response: Response,
-): Promise<{ error?: string; code?: string }> {
+): Promise<{ error?: string; code?: string; details?: unknown }> {
 	try {
 		const body = (await response.json()) as { error?: unknown; code?: unknown };
 		return {
 			error: typeof body.error === "string" ? body.error : undefined,
 			code: typeof body.code === "string" ? body.code : undefined,
+			details: body,
 		};
 	} catch {
 		return {};
@@ -63,6 +64,7 @@ export async function requestJson<Schema extends z.ZodType>(
 			body.error ?? `${routeLabel} failed with HTTP ${response.status}`,
 			response.status,
 			body.code,
+			body.details,
 		);
 	}
 

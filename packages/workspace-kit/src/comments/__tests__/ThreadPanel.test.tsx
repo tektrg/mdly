@@ -4,7 +4,7 @@ import { act, useState } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ThreadPanel } from "../ThreadPanel";
+import { ThreadPanel, formatQuoteForPanel } from "../ThreadPanel";
 import type { CommentAuthor, TextAnchor } from "../types";
 import type { ResolvedThread } from "../useCommentThreads";
 
@@ -952,9 +952,74 @@ describe("ThreadPanel", () => {
 				);
 			});
 
-			const logText = document.querySelector("[data-comment-log-text]");
-			expect(logText?.querySelector("strong")?.textContent).toBe("bold");
-			expect(logText?.textContent).not.toContain("**");
+		const logText = document.querySelector("[data-comment-log-text]");
+		expect(logText?.querySelector("strong")?.textContent).toBe("bold");
+		expect(logText?.textContent).not.toContain("**");
 		});
+	});
+
+	it("renders the anchored quote above the comment text", () => {
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[makeThread()]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={vi.fn()}
+					onDelete={vi.fn()}
+				/>,
+			);
+		});
+
+		const quote = document.querySelector("[data-thread-quote]");
+		expect(quote?.textContent).toBe("Hello");
+		// Full quote survives on hover even when the visible text is truncated.
+		expect(quote?.getAttribute("title")).toBe("Hello");
+	});
+
+	it("omits the quote block when the anchor quote is blank", () => {
+		act(() => {
+			root.render(
+				<ThreadPanel
+					threads={[
+						makeThread({
+							opener: {
+								id: "thread-1",
+								by: AUTHOR,
+								anchor: { from: 0, to: 0, quote: "   ", mode: "quote" },
+								text: "why bold?",
+							},
+						}),
+					]}
+					currentAuthor={AUTHOR}
+					open
+					onOpenChange={() => {}}
+					onReply={vi.fn()}
+					onResolve={vi.fn()}
+					onReopen={vi.fn()}
+					onDelete={vi.fn()}
+				/>,
+			);
+		});
+
+		expect(document.querySelector("[data-thread-quote]")).toBeNull();
+	});
+
+	it("formatQuoteForPanel collapses whitespace and truncates long quotes with an ellipsis", () => {
+		expect(formatQuoteForPanel("line one\n\tline   two")).toBe(
+			"line one line two",
+		);
+		expect(formatQuoteForPanel("Hello")).toBe("Hello");
+
+		const long = `${"word ".repeat(50).trim()}`;
+		const formatted = formatQuoteForPanel(long);
+		expect(formatted.endsWith("…")).toBe(true);
+		expect(formatted.length).toBeLessThan(long.length);
+		// Word-boundary cut: never ends mid-word before the ellipsis.
+		expect(formatted.slice(0, -1).endsWith(" ")).toBe(false);
+		expect(long.startsWith(formatted.slice(0, -1))).toBe(true);
 	});
 });

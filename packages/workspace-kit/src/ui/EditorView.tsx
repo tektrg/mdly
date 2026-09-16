@@ -837,8 +837,8 @@ export function EditorView({
 					threads={resolvedThreads}
 					currentAuthor={commentOptions.currentAuthor}
 					focusedThreadId={focusedThreadId}
-					open={commentOptions.panelOpen}
-					onOpenChange={handlePanelOpenChange}
+				open={commentOptions.panelOpen}
+				onOpenChange={handlePanelOpenChange}
 					onReply={handleReplyToThread}
 					onResolve={handleResolveThread}
 					onReopen={handleReopenThread}

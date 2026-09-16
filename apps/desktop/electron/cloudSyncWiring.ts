@@ -61,6 +61,8 @@ import {
 import { createNodeFileSystem as createDocHistoryNodeFileSystem } from "@mdly/doc-history/node";
 import chokidar, { type FSWatcher } from "chokidar";
 import {
+	getHistoryStoreForWorkspace,
+	logHistoryFailure,
 	recordDeleteHistory,
 	type SelfWriteEchoTracker,
 } from "./docHistoryWiring";
@@ -681,7 +683,7 @@ async function runOnce(
 					done: 0,
 					total: computed.totalOps,
 				});
-				await executeSyncPlan(
+				const syncResult = await executeSyncPlan(
 					computed,
 					backend,
 					cloudFs,
@@ -694,6 +696,13 @@ async function runOnce(
 				// A comment pulled from another device sits on disk invisible
 				// until the note reopens — tell the open document view now.
 				await notifyPulledCommentLogs(workspaceRoot, handle, computed);
+				// Pulled bytes no local revision covers (web-authored) get
+				// their timeline entry here — sidecars already merged above,
+				// so covered pulls record nothing.
+				await recordPulledHistoryGaps(workspaceRoot, [
+					...syncResult.pulled,
+					...syncResult.conflicts,
+				]);
 				setStatus(workspaceRoot, handle, "idle");
 			} catch (error) {
 				if (handle.disposed) return;
@@ -749,6 +758,43 @@ function docIdFromCommentLogPath(sidecarPath: string): string | null {
 		sidecarPath.slice(prefix.length),
 	);
 	return match ? match[1] : null;
+}
+
+/**
+ * Web write-back slice 5: pulled notes whose bytes no local revision covers
+ * (web-authored edits record no history of their own, and none arrives as
+ * sidecars) get one external-write revision here, or they'd land on disk
+ * with no timeline entry. Runs AFTER sidecar execution within the same sync
+ * run, so pulls whose history arrived as sidecars are already covered and
+ * record nothing. Reads post-execute bytes from disk (fresh, not planned)
+ * and never throws — history bookkeeping must not fail a sync.
+ */
+async function recordPulledHistoryGaps(
+	workspaceRoot: string,
+	pulledPaths: readonly string[],
+): Promise<void> {
+	const store = getHistoryStoreForWorkspace(workspaceRoot);
+	for (const relativePath of pulledPaths) {
+		if (!isVersionableMarkdownPath(relativePath)) continue;
+		try {
+			const absolutePath = path.join(workspaceRoot, ...relativePath.split("/"));
+			let bytes: Uint8Array;
+			try {
+				bytes = new Uint8Array(await fs.readFile(absolutePath));
+			} catch {
+				continue; // deleted mid-run — nothing to record
+			}
+			const hash = await contentHash(bytes);
+			const history = await store.getRevisionHistory(relativePath);
+			if (history.some((revision) => revision.hash === hash)) continue;
+			await store.recordRevision(relativePath, bytes, {
+				by: { kind: "external", id: "external-tool" },
+				cause: "external-write",
+			});
+		} catch (error) {
+			logHistoryFailure("cloudSyncPulledHistoryGaps", error);
+		}
+	}
 }
 
 /**

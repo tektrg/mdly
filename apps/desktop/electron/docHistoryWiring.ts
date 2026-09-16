@@ -107,7 +107,7 @@ export function createSelfWriteEchoTracker(
 	};
 }
 
-function logHistoryFailure(context: string, error: unknown) {
+export function logHistoryFailure(context: string, error: unknown) {
 	console.error(
 		`[doc-history] ${context} failed (real write/rename was not affected):`,
 		error,

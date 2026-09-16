@@ -2,15 +2,22 @@ import { listThreads } from "@mdly/doc-comments";
 import type { CommentOptions } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
 import { useEffect, useMemo, useState } from "react";
-import { ensureDeviceId } from "../connection/deviceId";
 import { workspaceStore } from "../store/state";
-import { deviceLabelFor } from "./deviceLabel";
+import {
+	deleteCommentThread,
+	openCommentThread,
+	reopenCommentThread,
+	replyToCommentThread,
+	resolveCommentThread,
+	webAuthor,
+} from "./commentActions";
 import { resolveDocIdForPath } from "./docId";
 import { createRemoteFileSystem } from "./remoteFileSystem";
 
 /**
- * Web `CommentOptions`, READ-ONLY (Round 7). Mirrors the desktop
- * `DocumentViewer` shape minus every write path:
+ * Web `CommentOptions`. Reads mirror the desktop `DocumentViewer` shape;
+ * writes go through this browser's slot-suffixed comment log (server Step 8
+ * slot registration happens on first write), never the Mac's canonical log:
  * - docId from Round 6's index replay. Unknown path → undefined, so the UI
  *   stays cleanly dark instead of mounting a dead composer.
  * - getThreads reads every device slot through the merged log read, over a
@@ -22,7 +29,9 @@ import { createRemoteFileSystem } from "./remoteFileSystem";
  * - refreshSignal is commentsVersion: a websocket arrival repaints threads
  *   without a reload.
  */
-export function useCommentOptions(openPath: string): CommentOptions | undefined {
+export function useCommentOptions(
+	openPath: string,
+): CommentOptions | undefined {
 	const workspace = useStoreValue(workspaceStore);
 	const [docId, setDocId] = useState<string | undefined>(undefined);
 
@@ -44,11 +53,7 @@ export function useCommentOptions(openPath: string): CommentOptions | undefined 
 	return useMemo<CommentOptions | undefined>(() => {
 		if (!docId) return undefined;
 		return {
-			currentAuthor: {
-				kind: "human",
-				id: ensureDeviceId(),
-				label: deviceLabelFor(navigator.userAgent),
-			},
+			currentAuthor: webAuthor(),
 			docId,
 			getHeadRevisionId: async () => null,
 			getThreads: (id) =>
@@ -63,25 +68,17 @@ export function useCommentOptions(openPath: string): CommentOptions | undefined 
 					},
 				),
 			readRevisionContent: async () => null,
-			// Step 8 (slot registration) replaces these: rejecting keeps the
-			// draft and shows the message inline (composer/panel error slots)
-			// instead of silently swallowing text. Never write to the Mac's
-			// unsuffixed log — the server would reject it, correctly.
-			onOpenThread: async () => {
-				throw new Error("Commenting from the web is coming soon.");
-			},
-			onReply: async () => {
-				throw new Error("Replying from the web is coming soon.");
-			},
-			onResolve: async () => {
-				throw new Error("Resolving from the web is coming soon.");
-			},
-			onReopen: async () => {
-				throw new Error("Reopening from the web is coming soon.");
-			},
-			onDelete: async () => {
-				throw new Error("Deleting from the web is coming soon.");
-			},
+			// Real writes (web write-back slice 6): each appends one event
+			// to this browser's slot-suffixed log and re-lists, so the fresh
+			// state in the store is what the withThreadsRefetch wrapper
+			// re-reads right after. A failed write rejects — the composer /
+			// panel error slots show it inline and keep the draft, never
+			// swallowing text.
+			onOpenThread: (anchor, text) => openCommentThread(docId, anchor, text),
+			onReply: (threadId, text) => replyToCommentThread(docId, threadId, text),
+			onResolve: (threadId) => resolveCommentThread(docId, threadId),
+			onReopen: (threadId) => reopenCommentThread(docId, threadId),
+			onDelete: (threadId) => deleteCommentThread(docId, threadId),
 			refreshSignal: workspace.commentsVersion,
 		};
 	}, [docId, workspace.commentsVersion]);

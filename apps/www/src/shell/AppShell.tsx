@@ -11,6 +11,7 @@ import {
 	applyRemoteChange,
 	checkWorkspaceAvailable,
 	clearCurrentPath,
+	clearSaveError,
 	getActionCtx,
 	loadPath,
 	loadWorkspaceSnapshot,
@@ -347,6 +348,21 @@ export function AppShell({
 							}}
 						/>
 					)}
+					{viewer.externalChange.kind === "conflict" && (
+						<ExternalChangeBanner
+							message={`This note changed on another device while you were editing — your words are kept in ${viewer.externalChange.copyPath}. Reload to see the latest, or keep typing to overwrite with yours.`}
+							onReload={() => {
+								if (viewer.currentPath) void loadPath(viewer.currentPath);
+							}}
+						/>
+					)}
+					{viewer.saveError && (
+						<ExternalChangeBanner
+							message={`Couldn't save your last edit (${viewer.saveError}). Keep typing to retry — nothing is lost in the editor.`}
+							actionLabel="Dismiss"
+							onReload={clearSaveError}
+						/>
+					)}
 					<EditorView
 						path={viewer.currentPath}
 						initialMarkdown={viewer.content}
@@ -393,9 +409,11 @@ export function AppShell({
 function ExternalChangeBanner({
 	message,
 	onReload,
+	actionLabel = "Reload",
 }: {
 	message: string;
 	onReload: () => void;
+	actionLabel?: string;
 }) {
 	return (
 		<div className="border-b border-border bg-muted/40">
@@ -406,7 +424,7 @@ function ExternalChangeBanner({
 					onClick={onReload}
 					className="rounded-sm border border-border bg-background px-3 py-1 text-xs hover:bg-sidebar-accent"
 				>
-					Reload
+					{actionLabel}
 				</button>
 			</div>
 		</div>

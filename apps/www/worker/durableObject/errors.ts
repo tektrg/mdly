@@ -21,6 +21,7 @@ export type WorkerErrorCode =
 	| "FILE_TOO_LARGE"
 	| "REQUEST_TOO_LARGE"
 	| "FIELD_TOO_LARGE"
+	| "WRITE_CONFLICT"
 	| "INVALID_PATH";
 
 export class StorageCapExceededError extends Error {

@@ -1,5 +1,6 @@
 import type { RemoteFile, SyncBackend } from "@hubble.md/sync";
 import {
+	CloudflareResponseError,
 	createCloudflareBackend,
 	createVersionLedger,
 	listWorkspaces,
@@ -64,7 +65,17 @@ export function initActions(workspaceId: string): void {
 
 export function teardownActions(): void {
 	ctx = null;
+	discardPendingSave();
 	resetState();
+}
+
+/** Drop any staged edit without pushing (workspace is going away). */
+function discardPendingSave(): void {
+	if (saveTimer !== null) {
+		clearTimeout(saveTimer);
+		saveTimer = null;
+	}
+	pendingSave = null;
 }
 
 function requireCtx(): Ctx {
@@ -202,6 +213,7 @@ export const loadWorkspaceSnapshot = latest(
 							externalChange: { kind: "none" },
 							status: "ready",
 							error: null,
+							saveError: null,
 						}
 					: {
 							currentPath: null,
@@ -211,6 +223,7 @@ export const loadWorkspaceSnapshot = latest(
 							externalChange: { kind: "none" },
 							status: "idle",
 							error: null,
+							saveError: null,
 						},
 			}));
 			return "loaded";
@@ -272,22 +285,33 @@ export function clearCurrentPath(): void {
 		externalChange: { kind: "none" },
 		status: "idle",
 		error: null,
+		saveError: null,
 	}));
 }
 
-async function computeBytesHash(bytes: ArrayBuffer): Promise<string> {
+async function computeBytesHash(bytes: BufferSource): Promise<string> {
 	const hash = await crypto.subtle.digest("SHA-256", bytes);
 	const hashBytes = new Uint8Array(hash);
 	return Array.from(hashBytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
+ * SHA-256 hex of the UTF-8 bytes — byte-identical to `contentHash` in
+ * `@hubble.md/sync` (same algorithm, same encoding), but local: importing
+ * that package for real would drag Node-only modules into the web bundle.
+ * The server stores whatever hash we send and the Mac compares it against
+ * its own hash of the pulled content, so this MUST stay in sync with it.
+ */
+export function computeStringHash(content: string): Promise<string> {
+	return computeBytesHash(new TextEncoder().encode(content));
+}
+
+/**
  * Advance baseline state (content, basedOnHash) and clear any pending
  * "deleted" banner. Use whenever we accept a new authoritative version of
- * the file. R31: there is no "conflict" classification here — apps/www's
- * editor is read-only, so the viewer's content can never diverge from the
- * remote copy the way the desktop app's editable one can
- * (apps/desktop/src/externalFileChange.ts). Every remote update simply wins.
+ * the file — a remote update winning, or our own push landing. (The
+ * "conflict" classification for a remote change racing a local edit arrives
+ * with the base-version guard; until then every remote update simply wins.)
  */
 function cleanState(
 	state: ViewerState,
@@ -301,6 +325,7 @@ function cleanState(
 		externalChange: { kind: "none" },
 		status: "ready",
 		error: null,
+		saveError: null,
 	};
 }
 
@@ -524,13 +549,126 @@ export const loadPath = latest(
 );
 
 /**
- * R31: apps/www never edits or saves note content — this is a deliberate
- * no-op kept only because `EditorView.editable={false}` still requires an
- * `onLocalChange` handler (its ProseMirror surface already rejects direct
- * typing; this is the belt to that suspenders for any other path — e.g. the
- * front-matter properties panel — that might otherwise call it).
+ * Web write-back: stage a local edit for debounced push to the cloud.
+ * Called on every editor update; the actual `pushFile` fires after
+ * `SAVE_DEBOUNCE_MS` of quiet. A path switch with an unsent edit staged
+ * flushes the old path first, so it can never be dropped or written under
+ * the new path.
  */
-export function updateEditorContent(_path: string, _content: string): void {}
+const SAVE_DEBOUNCE_MS = 1000;
+
+type PendingSave = { path: string; content: string };
+let pendingSave: PendingSave | null = null;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function updateEditorContent(path: string, content: string): void {
+	if (pendingSave && pendingSave.path !== path) {
+		void flushPendingSave();
+	}
+	pendingSave = { path, content };
+	if (saveTimer !== null) clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => {
+		saveTimer = null;
+		void flushPendingSave();
+	}, SAVE_DEBOUNCE_MS);
+}
+
+/** Push the staged edit now (if any). The kit's forced-save path calls this. */
+export async function flushPendingSave(): Promise<void> {
+	if (saveTimer !== null) {
+		clearTimeout(saveTimer);
+		saveTimer = null;
+	}
+	const staged = pendingSave;
+	pendingSave = null;
+	if (!staged) return;
+	try {
+		await pushNoteContent(staged.path, staged.content);
+	} catch (err) {
+		// Never break the editor for a failed push: record it for the save
+		// banner and let the next keystroke re-stage a fresh push
+		// (auto-retry). `status`/`error` are untouched on purpose — flipping
+		// those would unmount the editor.
+		const viewer = viewerStore.get();
+		if (viewer.currentPath === staged.path) {
+			viewerStore.set({ ...viewer, saveError: describeApiError(err) });
+		}
+		console.error("updateEditorContent failed:", describeApiError(err));
+	}
+}
+
+/** Stage `content` and push immediately. The kit's `onSave` calls this. */
+export async function saveNoteNow(
+	path: string,
+	content: string,
+): Promise<void> {
+	pendingSave = { path, content };
+	await flushPendingSave();
+}
+
+/** True when an edit for `path` is staged but not yet pushed. */
+export function hasPendingSaveFor(path: string): boolean {
+	return pendingSave?.path === path;
+}
+
+async function pushNoteContent(path: string, content: string): Promise<void> {
+	const { backend, workspaceId, deviceId } = requireCtx();
+	// Snapshot the viewer baseline BEFORE the push: it is the hash this edit
+	// is based on, and the push below advances it on success.
+	const viewer = viewerStore.get();
+	const baseHash = viewer.currentPath === path ? viewer.basedOnHash : null;
+	const hash = await computeStringHash(content);
+	try {
+		await backend.pushFile({
+			workspaceId,
+			path,
+			contentHash: hash,
+			content,
+			deviceId,
+			...(baseHash ? { expectedContentHash: baseHash } : {}),
+		});
+	} catch (err) {
+		const remote = readConflictRemote(err);
+		if (remote && viewer.currentPath === path) {
+			await preserveConflictCopy(path, content, hash, remote);
+			return;
+		}
+		throw err;
+	}
+	// Advance the local baseline to what we just wrote: our own broadcast
+	// echo carries this same hash, so `applyRemoteChange` correctly no-ops
+	// on it instead of "reloading" our own words. (The subscriber's
+	// self-echo ledger suppresses the re-list for our own version; these
+	// store updates are what keeps the sidebar + baseline correct anyway.)
+	// `content` advances too: a remote broadcast arriving between our push
+	// and its echo must compare against OUR words, not stale ones.
+	const current = viewerStore.get();
+	if (current.currentPath === path) {
+		viewerStore.set({
+			...current,
+			content,
+			basedOnHash: hash,
+			saveError: null,
+		});
+	}
+	const workspace = workspaceStore.get();
+	if (workspace.files.some((f) => f.path === path && f.contentHash !== hash)) {
+		workspaceStore.set({
+			...workspace,
+			files: workspace.files.map((f) =>
+				f.path === path ? { ...f, contentHash: hash } : f,
+			),
+		});
+	}
+}
+
+/** Dismiss the save-error banner (the next keystroke retries anyway). */
+export function clearSaveError(): void {
+	const viewer = viewerStore.get();
+	if (viewer.saveError !== null) {
+		viewerStore.set({ ...viewer, saveError: null });
+	}
+}
 
 export function markRemoteDeleted(path: string): void {
 	const state = viewerStore.get();
@@ -543,12 +681,99 @@ export function markRemoteDeleted(path: string): void {
 	});
 }
 
+/** Narrow a caught push error to the 409 conflict's remote side, if any. */
+export function readConflictRemote(
+	err: unknown,
+): { currentContentHash: string; currentContent: string } | null {
+	if (
+		!(err instanceof CloudflareResponseError) ||
+		err.status !== 409 ||
+		err.code !== "WRITE_CONFLICT"
+	) {
+		return null;
+	}
+	// `details` is untrusted wire data — narrow before use.
+	const details = err.details as
+		| { currentContentHash?: unknown; content?: unknown }
+		| null
+		| undefined;
+	if (
+		typeof details?.currentContentHash !== "string" ||
+		typeof details?.content !== "string"
+	) {
+		return null;
+	}
+	return {
+		currentContentHash: details.currentContentHash,
+		currentContent: details.content,
+	};
+}
+
 /**
- * Apply a remote update for the currently-open file. R31: there is no
- * save/conflict-resolution path in apps/www — the viewer is read-only, so
- * the remote copy always simply wins. A no-op when the hash hasn't actually
- * moved, so a redundant broadcast doesn't clear an unrelated "deleted"
- * banner or force an extra render.
+ * Warn-once + keep-both: the server rejected our push because the file moved
+ * under us. Our words go to a timestamped conflict copy (same naming rule as
+ * the desktop sync's `toConflictName` in `packages/sync/src/sync.ts` —
+ * duplicated here because that package isn't browser-importable), the
+ * baseline advances to the remote hash we've now reconciled, and the banner
+ * offers Reload. If the user keeps typing instead, the next push carries the
+ * remote hash as its base and wins openly — warned once, nothing lost.
+ */
+async function preserveConflictCopy(
+	path: string,
+	ourContent: string,
+	ourHash: string,
+	remote: { currentContentHash: string; currentContent: string },
+): Promise<void> {
+	const { backend, workspaceId, deviceId } = requireCtx();
+	const copyPath = toConflictName(path);
+	try {
+		await backend.pushFile({
+			workspaceId,
+			path: copyPath,
+			contentHash: ourHash,
+			content: ourContent,
+			deviceId,
+		});
+	} catch (copyErr) {
+		const viewer = viewerStore.get();
+		if (viewer.currentPath === path) {
+			viewerStore.set({
+				...viewer,
+				saveError: `Conflict detected but the safety copy failed: ${describeApiError(copyErr)} — your words are still in the editor.`,
+			});
+		}
+		console.error("conflict copy failed:", describeApiError(copyErr));
+		return;
+	}
+	const viewer = viewerStore.get();
+	if (viewer.currentPath === path) {
+		viewerStore.set({
+			...viewer,
+			basedOnHash: remote.currentContentHash,
+			externalChange: { kind: "conflict", copyPath },
+			saveError: null,
+		});
+	}
+	await refreshFiles();
+}
+
+/** Timestamped conflict-copy name. Mirrors `toConflictName` in sync.ts. */
+function toConflictName(filePath: string): string {
+	// 14 chars = YYYYMMDDHHmmss. (sync.ts slices 15, which keeps ISO's
+	// trailing "." and yields "..md" — cosmetic wart not worth copying.)
+	const ts = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+	const dot = filePath.lastIndexOf(".");
+	if (dot === -1) return `${filePath}.conflict-${ts}`;
+	return `${filePath.slice(0, dot)}.conflict-${ts}${filePath.slice(dot)}`;
+}
+
+/**
+ * Apply a remote update for the currently-open file. Two guards before the
+ * remote copy wins: (1) identical hash = nothing moved ( absorbs our own
+ * echo and redundant broadcasts); (2) an edit staged but not yet pushed is
+ * NEWER than this broadcast — touch nothing, so the kit doesn't snap the
+ * editor out from under typing fingers. The staged push carries our old
+ * base hash and will 409 into the conflict flow if the remote really moved.
  */
 export function applyRemoteChange(
 	path: string,
@@ -557,11 +782,11 @@ export function applyRemoteChange(
 ): void {
 	const state = viewerStore.get();
 	if (state.currentPath !== path) return;
-	if (
-		state.basedOnHash === remoteHash &&
-		state.externalChange.kind === "none"
-	) {
+	// Hash-identical = nothing moved: absorbs our own echo and redundant
+	// broadcasts WITHOUT clearing an unrelated banner (deleted/conflict).
+	if (state.basedOnHash === remoteHash) {
 		return;
 	}
+	if (hasPendingSaveFor(path)) return;
 	viewerStore.set(cleanState(state, remoteContent, remoteHash));
 }
