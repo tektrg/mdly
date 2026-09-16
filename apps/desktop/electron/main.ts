@@ -33,7 +33,7 @@ import {
 	markdownAssetFolderPath,
 	withMarkdownExtension,
 } from "../src/lib/filePath";
-import { WINDOW_MIN_WIDTH } from "../src/lib/navLayout";
+import { WINDOW_MIN_WIDTH, windowWidthWithFloor } from "../src/lib/navLayout";
 import {
 	readAgentAccessEnabled,
 	readOrCreateAgentAccessToken,
@@ -305,11 +305,11 @@ const defaultWindowState: WindowState = { width: 920, height: 720 };
 // instead, like every desktop app's cascading-windows behavior.
 const windowCascadeOffset = 32;
 const windowStateSchema = z.object({
-	// A11: the floor is the renderer's derived `WINDOW_MIN_WIDTH`, not a second
-	// literal. A width persisted below it fails the parse, so launch falls back
-	// to `defaultWindowState` instead of painting a too-narrow window and
-	// snapping it afterwards.
-	width: z.number().int().min(WINDOW_MIN_WIDTH).max(4096),
+	// A11 deliberately does NOT raise this floor. A width below `WINDOW_MIN_WIDTH`
+	// is a legal saved state from before the floor existed; failing the parse here
+	// would discard the whole record — position and height with it — and reopen at
+	// the default. `loadWindowState` raises only the width instead.
+	width: z.number().int().min(640).max(4096),
 	height: z.number().int().min(480).max(4096),
 	x: z.number().int().optional(),
 	y: z.number().int().optional(),
@@ -405,11 +405,20 @@ async function loadWindowState(): Promise<WindowState> {
 	try {
 		const raw = await fs.readFile(windowStatePath(), "utf8");
 		const parsed = windowStateSchema.safeParse(JSON.parse(raw));
-		if (parsed.success) return resolveWindowState(parsed.data);
+		// A11: raise a pre-floor width to the floor and keep everything else. The
+		// window is never painted too narrow, and nobody loses the position and
+		// height they had. (EC-98)
+		if (parsed.success)
+			return resolveWindowState(withWindowWidthFloor(parsed.data));
 	} catch {
 		// Missing or malformed window state should not block launch.
 	}
 	return defaultWindowState;
+}
+
+function withWindowWidthFloor(state: WindowState): WindowState {
+	const width = windowWidthWithFloor(state.width);
+	return width === state.width ? state : { ...state, width };
 }
 
 function resolveWindowState(state: WindowState): WindowState {
