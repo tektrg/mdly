@@ -1,8 +1,4 @@
-import {
-	formatRevisionTime,
-	SIDEBAR_VIRTUAL_ROW_HEIGHT,
-	useVirtualSidebarRows,
-} from "@mdly/workspace-kit";
+import { useVirtualSidebarRows } from "@mdly/workspace-kit";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type ReactNode,
@@ -10,32 +6,26 @@ import {
 	useEffect,
 	useRef,
 } from "react";
-import { cn } from "../lib/utils";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
+import {
+	DocumentListRow,
+	type DocumentRowDensity,
+	documentRowHeight,
+} from "./DocumentListRow";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
 } from "./documentTableView";
 
-/**
- * Full-table density: the same 28px rhythm the sidebar uses, so the two lists
- * read as one app.
- */
-export const DOCUMENT_TABLE_ROW_HEIGHT = SIDEBAR_VIRTUAL_ROW_HEIGHT;
-/**
- * Narrow-list density. Taller than the table row because the narrow list stacks
- * a secondary metadata line under the name — at `w-64` there is no room to put
- * it on the same line without truncating the document name to nothing.
- */
-export const DOCUMENT_LIST_ROW_HEIGHT = 44;
-
-/**
- * Shared by the header row and the body rows so the two grids cannot drift.
- * Written as a literal (not composed at runtime) because Tailwind only emits
- * classes it can see in the source text.
- */
-export const DOCUMENT_TABLE_GRID_TEMPLATE =
-	"grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,10rem)] items-center gap-2";
+export {
+	DOCUMENT_LIST_ROW_HEIGHT,
+	DOCUMENT_TABLE_GRID_TEMPLATE,
+	DOCUMENT_TABLE_ROW_HEIGHT,
+	type DocumentRowDensity,
+	documentRowHeight,
+	formatModifiedAt,
+	formatModifiedAtTitle,
+} from "./DocumentListRow";
 
 /**
  * Frames a keyboard jump waits for the virtualizer to render its target row.
@@ -43,81 +33,6 @@ export const DOCUMENT_TABLE_GRID_TEMPLATE =
  * enough that a genuinely missing row gives up instead of looping.
  */
 const FOCUS_RETRY_FRAMES = 5;
-
-export type DocumentRowDensity = "table" | "list";
-
-export function documentRowHeight(density: DocumentRowDensity): number {
-	return density === "table"
-		? DOCUMENT_TABLE_ROW_HEIGHT
-		: DOCUMENT_LIST_ROW_HEIGHT;
-}
-
-const TIME_OF_DAY = new Intl.DateTimeFormat(undefined, {
-	hour: "numeric",
-	minute: "2-digit",
-});
-const DAY_THIS_YEAR = new Intl.DateTimeFormat(undefined, {
-	day: "numeric",
-	month: "short",
-});
-const DAY_WITH_YEAR = new Intl.DateTimeFormat(undefined, {
-	day: "numeric",
-	month: "short",
-	year: "numeric",
-});
-
-/**
- * A Modified column is scanned for recency, not read for precision, so it drops
- * whatever the reader can already infer: today's rows show only a time, this
- * year's drop the year. The full timestamp stays reachable as the cell's title.
- * `FileEntry.modified_at` is seconds; the kit's formatter takes milliseconds.
- */
-export function formatModifiedAt(modifiedAt: number, now = new Date()): string {
-	const at = new Date(modifiedAt * 1000);
-	if (Number.isNaN(at.getTime())) return "";
-	if (at.toDateString() === now.toDateString()) return TIME_OF_DAY.format(at);
-	if (at.getFullYear() === now.getFullYear()) return DAY_THIS_YEAR.format(at);
-	return DAY_WITH_YEAR.format(at);
-}
-
-/** The precise timestamp, shown on hover so the compact label stays unambiguous. */
-export function formatModifiedAtTitle(modifiedAt: number): string {
-	return formatRevisionTime(modifiedAt * 1000);
-}
-
-/**
- * The narrow list shows whichever column the table is sorted by, so the sort
- * the user chose stays legible after the table collapses (O10/O17).
- */
-function secondaryLabel(
-	row: DocumentTableRow,
-	sortColumn: DocumentTableColumn,
-): string {
-	return sortColumn === "modified"
-		? formatModifiedAt(row.modifiedAt)
-		: row.folderLabel;
-}
-
-/**
- * Folder and Modified are the table's *content*, not decoration, so they have to
- * stay readable — including on the highlighted row.
- *
- * Two things were wrong before. `text-muted-foreground/70` composites the muted
- * colour onto whatever is behind it, which bottomed out at 1.98:1 in light/soft
- * — WCAG AA wants 4.5:1. And on the active row it kept using the *muted* colour
- * over the darker `--selected` surface, making the worst case worse. Idle rows
- * now use the design system's muted colour at full strength (3.7:1 to 10.8:1
- * across the six permutations — the same level as every other muted label in the
- * app), and the active row inherits `--selected-foreground`, which measures
- * 7.1:1 or better in all six. 11px matches the column header above it; at 10px
- * the body text was smaller than its own heading.
- */
-function secondaryTextClass(isActive: boolean): string {
-	return cn(
-		"min-w-0 truncate text-[11px]",
-		isActive ? "text-selected-foreground" : "text-muted-foreground",
-	);
-}
 
 type DocumentRowListProps = {
 	rows: DocumentTableRow[];
@@ -278,92 +193,17 @@ export function DocumentRowList({
 				style={{ blockSize: rows.length * rowHeight }}
 			>
 				{items.map(({ index, row }) => (
-					<button
+					<DocumentListRow
 						key={row.path}
-						type="button"
-						role="row"
-						aria-rowindex={density === "table" ? index + 2 : index + 1}
-						aria-current={row.isActive ? "true" : undefined}
-						data-document-row-index={index}
-						tabIndex={index === tabbableIndex ? 0 : -1}
-						title={row.path}
-						style={{
-							transform: `translateY(${index * rowHeight}px)`,
-							blockSize: rowHeight,
-						}}
-						className={cn(
-							"absolute start-1 end-1 top-0 flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
-							"[padding-inline:var(--row-pad-inline)]",
-							"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none",
-							"focus-visible:ring-1 focus-visible:ring-ring",
-							// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
-							// escalates to the real selection colour inside
-							// `[data-sidebar-root]:focus-within`, and this list is deliberately
-							// outside the sidebar; worse, all three dark themes define it as
-							// `var(--accent)` — byte-identical to the hover background — which
-							// left the open document invisible. Hover is withheld from the
-							// active row so it cannot wash the selection back out: the two
-							// tokens simply differ (light themes make `--accent` lighter than
-							// `--selected`, dark themes darker), so an unguarded hover would
-							// repaint the open row either way.
-							row.isActive
-								? "bg-selected text-selected-foreground font-medium"
-								: "hover:bg-accent",
-						)}
-						onClick={() => onOpenDocument(row)}
-						onKeyDown={(event) => onRowKeyDown(event, index)}
-					>
-						{density === "table" ? (
-							<span
-								role="presentation"
-								className={DOCUMENT_TABLE_GRID_TEMPLATE}
-							>
-								<span
-									role="gridcell"
-									tabIndex={-1}
-									className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
-								>
-									{row.name}
-								</span>
-								<span
-									role="gridcell"
-									tabIndex={-1}
-									className={secondaryTextClass(row.isActive)}
-								>
-									{row.folderLabel}
-								</span>
-								<span
-									role="gridcell"
-									tabIndex={-1}
-									className={cn(
-										secondaryTextClass(row.isActive),
-										"tabular-nums",
-									)}
-									title={formatModifiedAtTitle(row.modifiedAt)}
-								>
-									{formatModifiedAt(row.modifiedAt)}
-								</span>
-							</span>
-						) : (
-							<span
-								role="gridcell"
-								tabIndex={-1}
-								className="flex min-w-0 flex-col"
-							>
-								<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
-									{row.name}
-								</span>
-								<span
-									className={cn(
-										secondaryTextClass(row.isActive),
-										sortColumn === "modified" && "tabular-nums",
-									)}
-								>
-									{secondaryLabel(row, sortColumn)}
-								</span>
-							</span>
-						)}
-					</button>
+						row={row}
+						index={index}
+						rowHeight={rowHeight}
+						density={density}
+						sortColumn={sortColumn}
+						tabbableIndex={tabbableIndex}
+						onOpenDocument={onOpenDocument}
+						onRowKeyDown={onRowKeyDown}
+					/>
 				))}
 			</div>
 		</div>

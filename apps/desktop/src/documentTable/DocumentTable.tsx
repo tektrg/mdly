@@ -14,6 +14,8 @@ import type {
 	DocumentTableRow,
 	DocumentTableView,
 } from "./documentTableView";
+import { NavFooterStrip } from "./NavFooterStrip";
+import { NavListHeader } from "./NavListHeader";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 const COLUMNS: { column: DocumentTableColumn; label: string }[] = [
@@ -189,6 +191,7 @@ export function DocumentTable({
 				className="flex min-h-0 flex-1 flex-col px-2 pb-2"
 			>
 				<DocumentTableHeader view={view} onToggleSort={onToggleSort} />
+				<NavListHeader />
 				<DocumentRowList
 					rows={rows}
 					density="table"
@@ -202,6 +205,7 @@ export function DocumentTable({
 						/>
 					}
 				/>
+				<NavFooterStrip />
 			</div>
 		</section>
 	);

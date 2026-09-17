@@ -11,6 +11,7 @@ import {
 
 const COMPONENT_FILES = [
 	"./DocumentRowList.tsx",
+	"./DocumentListRow.tsx",
 	"./DocumentTable.tsx",
 	"./DocumentNarrowList.tsx",
 	"./DocumentFilterInput.tsx",
@@ -40,7 +41,7 @@ describe("document table theming", () => {
 	});
 
 	it("uses the app's hover token, not NotionDatabaseViewer's outlier", () => {
-		const source = readComponent("./DocumentRowList.tsx");
+		const source = readComponent("./DocumentListRow.tsx");
 		expect(source).toContain("hover:bg-accent");
 		expect(source).not.toContain("bg-muted/40");
 	});
@@ -51,7 +52,7 @@ describe("document table theming", () => {
 	// inside `[data-sidebar-root]:focus-within`, and every dark permutation defines
 	// it as plain `var(--accent)` — so on this list it WAS the hover colour.
 	it("marks the active row with the selection token, never the sidebar alias", () => {
-		const source = readComponent("./DocumentRowList.tsx");
+		const source = readComponent("./DocumentListRow.tsx");
 		expect(source).toContain("bg-selected");
 		expect(source).not.toContain("bg-sidebar-accent");
 	});

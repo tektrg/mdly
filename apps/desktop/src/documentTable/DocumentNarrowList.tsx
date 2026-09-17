@@ -4,6 +4,8 @@ import { DocumentFilterInput } from "./DocumentFilterInput";
 import { DocumentRowList } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
+import { NavFooterStrip } from "./NavFooterStrip";
+import { NavListHeader } from "./NavListHeader";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 export type DocumentNarrowListProps = {
@@ -99,6 +101,7 @@ export function DocumentNarrowList({
 				aria-rowcount={rows.length}
 				className="flex min-h-0 flex-1 flex-col px-1 pb-2"
 			>
+				<NavListHeader />
 				<DocumentRowList
 					rows={rows}
 					density="list"
@@ -114,6 +117,7 @@ export function DocumentNarrowList({
 						</div>
 					}
 				/>
+				<NavFooterStrip />
 			</div>
 		</div>
 	);
