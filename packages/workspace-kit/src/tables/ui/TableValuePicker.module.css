@@ -1,0 +1,93 @@
+/* Slice 3 — inferred-select chevron and value dropdown. Every colour,
+   radius, shadow and easing resolves through the editor kit's token
+   vocabulary with an inline fallback (charter R44). Spacing and placement
+   use logical properties only.
+   The chevron is a ProseMirror widget decoration: ProseMirror positions it
+   in the cell's flow itself, so it carries no placement of its own — only
+   the inline pill look. The menu portals into the editor viewport container
+   (React-owned, outside ProseMirror's reach) and is placed imperatively when
+   it opens. */
+
+.chevron {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	vertical-align: baseline;
+	inline-size: 1.25rem;
+	block-size: 1.25rem;
+	margin-inline-start: 0.25rem;
+	padding-block: 0;
+	padding-inline: 0;
+	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
+	border-radius: 999px;
+	background: var(--popover);
+	color: var(--muted-foreground, rgb(15 23 42 / 0.55));
+	cursor: pointer;
+	box-shadow: var(--shadow-chip, 0 2px 8px rgb(15 23 42 / 0.045));
+	transition:
+		color var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
+		border-color var(--default-transition-duration, 180ms)
+		var(--ease-snappy, ease);
+}
+
+.chevron:hover {
+	color: var(--foreground, inherit);
+	border-color: color-mix(in oklab, var(--border) 90%, transparent);
+}
+
+.chevronGlyph {
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-inline-end: 1.5px solid currentColor;
+	border-block-end: 1.5px solid currentColor;
+	transform: translateY(-1px) rotate(45deg);
+}
+
+.menu {
+	position: absolute;
+	min-inline-size: 7rem;
+	max-inline-size: 14rem;
+	max-block-size: 12rem;
+	overflow-y: auto;
+	padding-block: 0.25rem;
+	padding-inline: 0.25rem;
+	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
+	border-radius: var(--radius-popover, 0.5rem);
+	background: var(--popover);
+	color: var(--popover-foreground);
+	box-shadow: var(--shadow-overlay, 0 8px 28px rgb(15 23 42 / 0.16));
+	/* Below the editor's own floating controls (composer, format menu, link
+	popover, slash menu, thread popover) so the menu never covers them (R46). */
+	z-index: 3;
+}
+
+.menuItem {
+	display: block;
+	inline-size: 100%;
+	padding-block: 0.375rem;
+	padding-inline: 0.625rem;
+	border: 0;
+	border-radius: var(--radius-inner, 0.25rem);
+	background: transparent;
+	color: var(--foreground, inherit);
+	font-size: 0.8125rem;
+	text-align: start;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+
+.menuItem:hover {
+	background: var(--muted, rgb(15 23 42 / 0.06));
+}
+
+.menuItem[data-current="true"] {
+	color: var(--muted-foreground, rgb(15 23 42 / 0.55));
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.chevron {
+		transition: none;
+	}
+}

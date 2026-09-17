@@ -1,0 +1,129 @@
+/* Slice 1 — hover dots, drop indicators and the Delete menu. Every colour,
+   radius, shadow and easing resolves through the editor kit's token
+   vocabulary with an inline fallback (charter R44). Spacing and placement
+   use logical properties only. */
+
+.overlay {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	overflow: visible;
+	pointer-events: none;
+	/* Below the editor's own floating controls (composer, format menu, link
+	popover, slash menu, thread popover) so the dots never cover them (R46). */
+	z-index: 2;
+}
+
+.colDot,
+.rowDot {
+	position: absolute;
+	inline-size: 12px;
+	block-size: 12px;
+	padding-block: 0;
+	padding-inline: 0;
+	border-radius: 999px;
+	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
+	background: var(--accent, rgb(15 23 42 / 0.55));
+	box-shadow: var(--shadow-overlay, 0 2px 8px rgb(15 23 42 / 0.18));
+	cursor: grab;
+	opacity: 0;
+	visibility: hidden;
+	pointer-events: none;
+	transition:
+		opacity var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
+		transform var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
+		visibility var(--default-transition-duration, 180ms);
+}
+
+.colDot {
+	inset-block-start: 3px;
+	transform: translateX(-50%);
+}
+
+.rowDot {
+	inset-inline-start: 3px;
+	transform: translateY(-50%);
+}
+
+.overlay[data-hovered="true"] .colDot,
+.overlay[data-hovered="true"] .rowDot {
+	opacity: 1;
+	visibility: visible;
+	pointer-events: auto;
+}
+
+.colDot:active,
+.rowDot:active {
+	cursor: grabbing;
+}
+
+.colIndicator,
+.rowIndicator {
+	position: absolute;
+	background: var(--brand, var(--accent, rgb(15 23 42 / 0.55)));
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 120ms var(--ease-snappy, ease);
+}
+
+.colIndicator[data-visible="true"],
+.rowIndicator[data-visible="true"] {
+	opacity: 1;
+}
+
+.colIndicator {
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: 2px;
+	transform: translateX(-50%);
+}
+
+.rowIndicator {
+	inset-inline: 0;
+	inset-block-start: 0;
+	block-size: 2px;
+	transform: translateY(-50%);
+}
+
+.menu {
+	position: absolute;
+	min-inline-size: 7rem;
+	padding-block: 0.25rem;
+	padding-inline: 0.25rem;
+	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
+	border-radius: var(--radius-popover, 0.5rem);
+	background: var(--popover);
+	color: var(--popover-foreground);
+	box-shadow: var(--shadow-overlay, 0 8px 28px rgb(15 23 42 / 0.16));
+	pointer-events: auto;
+	z-index: 3;
+}
+
+.menuItem {
+	display: block;
+	inline-size: 100%;
+	padding-block: 0.375rem;
+	padding-inline: 0.625rem;
+	border: 0;
+	border-radius: var(--radius-inner, 0.25rem);
+	background: transparent;
+	color: var(--foreground, inherit);
+	font-size: 0.8125rem;
+	text-align: start;
+	cursor: pointer;
+}
+
+.menuItem:hover {
+	background: var(--muted, rgb(15 23 42 / 0.06));
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.colDot,
+	.rowDot,
+	.colIndicator,
+	.rowIndicator {
+		transition: none;
+	}
+}

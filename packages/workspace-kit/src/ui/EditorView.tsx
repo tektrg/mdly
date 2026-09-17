@@ -45,6 +45,8 @@ import {
 	tableExtensions,
 	tiptapDocToMarkdown,
 } from "../engine/index.js";
+import { TableInteractionLayer } from "../tables/ui/TableInteractionLayer";
+import { TableValuePicker } from "../tables/ui/TableValuePicker";
 import { CODE_BLOCK_COPY_EVENT, HubbleCodeBlock } from "./CodeBlockExtension";
 import { FindReplaceBar } from "./FindReplaceBar";
 import { FindReplaceExtension } from "./FindReplaceExtension";
@@ -193,6 +195,15 @@ export type EditorViewProps = {
 	 * unaffected by its existence.
 	 */
 	commentOptions?: CommentOptions;
+	/**
+	 * Opt-in in-document table interactivity -- hover dots to reorder/delete
+	 * rows and columns, the full-width expand control, and the inferred-value
+	 * chevron. Desktop-only for phase 1 (ruling R-A, CLOSED): `apps/desktop` is
+	 * the sole caller that passes `true`. Left off, the layer is never created
+	 * at all, so `apps/www`, `apps/web`, `apps/notion-web` and the theming demo
+	 * do no pointer or measurement work whatsoever (charter R33).
+	 */
+	tableInteractivity?: boolean;
 };
 
 export function EditorView({
@@ -219,6 +230,7 @@ export function EditorView({
 	onEditorReady,
 	onOpenRevisionHistory,
 	commentOptions,
+	tableInteractivity = false,
 }: EditorViewProps) {
 	const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 	// Non-null while a brand-new comment is being drafted: set by
@@ -787,6 +799,23 @@ export function EditorView({
 					onMessage={onMessage}
 					onCursorModeChange={setCursorModeOverride}
 				/>
+				{tableInteractivity ? (
+					<>
+						<TableInteractionLayer
+							editor={editor}
+							viewportRef={editorViewportRef}
+							editable={editable}
+						/>
+						{/* R45: no value picker on a read-only surface -- never offer an
+						edit that cannot be saved. */}
+						{editable ? (
+							<TableValuePicker
+								editor={editor}
+								viewportRef={editorViewportRef}
+							/>
+						) : null}
+					</>
+				) : null}
 				<SlashCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<TableOfContents

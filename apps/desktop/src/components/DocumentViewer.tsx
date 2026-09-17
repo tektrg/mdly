@@ -345,6 +345,7 @@ function MarkdownEditor({
 			onMessage={showEditorMessage}
 			onEditorReady={handleEditorReady}
 			commentOptions={commentOptions}
+			tableInteractivity
 		/>
 	);
 }
