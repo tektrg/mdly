@@ -198,6 +198,26 @@ function TableOverlay({
 		};
 	}, [target.wrapperEl]);
 
+	// Real hover detection lives on the wrapper, not the overlay div: the
+	// overlay is `pointer-events: none` (so it never steals clicks/selection
+	// from the table underneath) and sits as the table's DOM *sibling*, not
+	// its ancestor, inside the wrapper -- so a genuine pointer entering the
+	// visible table can neither hit-test to the overlay nor bubble up into
+	// it. The wrapper spans the same box, keeps `pointer-events: auto`, and
+	// is a real ancestor of the table content, so it is the only element
+	// that can actually observe the pointer entering/leaving the table.
+	useEffect(() => {
+		const wrapper = target.wrapperEl;
+		const handleEnter = () => onHover(target.uid);
+		const handleLeave = () => onHover(null);
+		wrapper.addEventListener("pointerenter", handleEnter);
+		wrapper.addEventListener("pointerleave", handleLeave);
+		return () => {
+			wrapper.removeEventListener("pointerenter", handleEnter);
+			wrapper.removeEventListener("pointerleave", handleLeave);
+		};
+	}, [target.wrapperEl, target.uid, onHover]);
+
 	// Place dots from live cell boxes: one layout read per hover-enter and
 	// one per committed rescan while hovered — never per pointer move, and
 	// the numbers go straight onto the buttons, never into React state (R35).
@@ -361,8 +381,6 @@ function TableOverlay({
 			className={styles.overlay}
 			data-table-overlay={target.uid}
 			data-hovered={hovered}
-			onPointerEnter={() => onHover(target.uid)}
-			onPointerLeave={() => onHover(null)}
 		>
 			{editable
 				? Array.from({ length: target.columnCount }, (_, index) => (

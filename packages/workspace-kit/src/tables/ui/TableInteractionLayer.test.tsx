@@ -109,13 +109,19 @@ describe("TableInteractionLayer (slice 1)", () => {
 		mount();
 		const overlay = container.querySelector("[data-table-overlay]");
 		if (!overlay) throw new Error("Expected the table overlay to mount");
+		// Real hover is detected on the wrapper, not the overlay itself: the
+		// overlay is `pointer-events: none` and a DOM sibling of the table (not
+		// an ancestor), so a genuine pointer entering the table can only ever
+		// be observed by the wrapper that contains both.
+		const wrapper = overlay.closest(".tableWrapper");
+		if (!wrapper) throw new Error("Expected the table wrapper");
 		expect(overlay.getAttribute("data-hovered")).toBe("false");
 		act(() => {
-			overlay.dispatchEvent(new Event("pointerover", { bubbles: true }));
+			wrapper.dispatchEvent(new Event("pointerenter"));
 		});
 		expect(overlay.getAttribute("data-hovered")).toBe("true");
 		act(() => {
-			overlay.dispatchEvent(new Event("pointerout", { bubbles: true }));
+			wrapper.dispatchEvent(new Event("pointerleave"));
 		});
 		expect(overlay.getAttribute("data-hovered")).toBe("false");
 	});
@@ -125,9 +131,11 @@ describe("TableInteractionLayer (slice 1)", () => {
 		const before = markdownOf(live);
 		const overlay = container.querySelector("[data-table-overlay]");
 		if (!overlay) throw new Error("Expected the table overlay to mount");
+		const wrapper = overlay.closest(".tableWrapper");
+		if (!wrapper) throw new Error("Expected the table wrapper");
 		act(() => {
-			overlay.dispatchEvent(new Event("pointerover", { bubbles: true }));
-			overlay.dispatchEvent(new Event("pointerout", { bubbles: true }));
+			wrapper.dispatchEvent(new Event("pointerenter"));
+			wrapper.dispatchEvent(new Event("pointerleave"));
 		});
 		expect(markdownOf(live)).toBe(before);
 	});
