@@ -90,9 +90,9 @@ describe("isIgnoredCloudSyncWatchPath (quit-hang fix)", () => {
 		// excluding the whole subtree (not just filtering its files by
 		// extension) removes both the file AND directory handles under it.
 		const header = await writeFixture("fe/apps/mobile/ios/Pods/boost/a.h", "h");
-		expect(ignored(path.join(workspaceRoot, "fe/apps/mobile/ios/Pods"), "dir")).toBe(
-			true,
-		);
+		expect(
+			ignored(path.join(workspaceRoot, "fe/apps/mobile/ios/Pods"), "dir"),
+		).toBe(true);
 		expect(ignored(header)).toBe(true);
 	});
 

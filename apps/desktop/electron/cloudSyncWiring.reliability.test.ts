@@ -131,8 +131,12 @@ describe("cloud pull vs. the shared echo tracker (R21)", () => {
 		// — but the one history-index sidecar our gap-fill just cut DOES go
 		// up (that sidecar upload is exactly how the web timeline will see
 		// this revision). One push, and only the sidecar.
+		// Polls rather than a fixed sleep: under full-suite CPU contention a
+		// real filesystem watcher's event delivery is not bounded tightly
+		// enough for a flat 150ms wait to be reliable (flaked pre-existing
+		// chokidar-backed and native fs.watch-backed watchers alike).
 		const pushesBeforeWait = calls.pushFile.length;
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		await waitFor(() => calls.pushFile.length > pushesBeforeWait);
 		expect(calls.pushFile.slice(pushesBeforeWait)).toEqual([
 			".mdly/history/index.jsonl",
 		]);

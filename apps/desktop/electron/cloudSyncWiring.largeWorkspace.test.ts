@@ -181,11 +181,15 @@ describe("engine-backed review preview (items 2+3)", () => {
 	it("preview counts come from the real plan: .gitignore-d files are absent", async () => {
 		// Item-3 repro: the old third walker reported 2 files here while the
 		// real sync synced 1. One walker (plan) cannot disagree with itself.
-		await fs.writeFile(path.join(workspaceRoot, ".gitignore"), "build/\n");
+		// Uses "out" rather than "build": "build" joined
+		// `DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES` in the quit-hang exclude-list
+		// widening (2026-09-18), which would exercise the exclude-list path
+		// instead of the .gitignore path this test targets.
+		await fs.writeFile(path.join(workspaceRoot, ".gitignore"), "out/\n");
 		await fs.writeFile(path.join(workspaceRoot, "top.md"), "hello");
-		await fs.mkdir(path.join(workspaceRoot, "build"), { recursive: true });
+		await fs.mkdir(path.join(workspaceRoot, "out"), { recursive: true });
 		await fs.writeFile(
-			path.join(workspaceRoot, "build", "generated.md"),
+			path.join(workspaceRoot, "out", "generated.md"),
 			"generated",
 		);
 		const { deps } = prepareDeps();
@@ -201,7 +205,7 @@ describe("engine-backed review preview (items 2+3)", () => {
 
 		expect(plan.toPush.map((p) => p.path)).toEqual(["top.md"]);
 		expect(plan.totalOps).toBe(1);
-		expect(folders.some((f) => f.folder === "build")).toBe(false);
+		expect(folders.some((f) => f.folder === "out")).toBe(false);
 	});
 
 	it("excluded tops come back as greyed rows with engine reasons", async () => {

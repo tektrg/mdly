@@ -4,7 +4,7 @@
  * without a real Electron app (matching `fileDiscovery.ts`/`docImport.ts`/
  * `comments.ts`'s pattern).
  *
- * This module owns a SECOND, independent whole-workspace chokidar watcher
+ * This module owns a SECOND, independent whole-workspace filesystem watcher
  * per opted-in workspace (R19), separate from the existing single-active-file
  * watcher (`desktop:watch-path` in main.ts). It never reimplements sync
  * logic: every push/pull goes through the untouched `sync()` from
@@ -16,7 +16,7 @@
  * delete already goes through (R22).
  */
 import fs from "node:fs/promises";
-import type { Stats } from "node:fs";
+import { watch as watchFs, type Stats } from "node:fs";
 import path from "node:path";
 import type { SyncBackend } from "@hubble.md/sync";
 import {
@@ -60,7 +60,6 @@ import {
 	resolvePathIndex,
 } from "@mdly/doc-history";
 import { createNodeFileSystem as createDocHistoryNodeFileSystem } from "@mdly/doc-history/node";
-import chokidar, { type FSWatcher } from "chokidar";
 import { hasDocumentExtension } from "../src/lib/filePath";
 import {
 	getHistoryStoreForWorkspace,
@@ -107,11 +106,28 @@ export interface CloudSyncWorkspaceState {
 }
 
 /**
+ * Minimal watcher surface Cloud Sync depends on. Loosened from chokidar's own
+ * `FSWatcher` (round 3 of the quit-hang fix, 2026-09-18: this module now
+ * watches with a single native `fs.watch(root, {recursive:true})` handle
+ * instead of chokidar) to exactly the events/methods used below — the shape
+ * every test fake already implemented, and the shape chokidar's real
+ * `FSWatcher` also satisfies structurally, if a caller ever passes one in.
+ */
+export interface CloudSyncWatcher {
+	on(
+		event: "add" | "change" | "unlink" | "addDir" | "unlinkDir",
+		listener: (path?: string) => void,
+	): void;
+	on(event: "error", listener: (error: unknown) => void): void;
+	close(): Promise<void>;
+}
+
+/**
  * Injected dependencies (R21's whole point: the caller passes in the SAME
  * `SelfWriteEchoTracker`/`grantedRoots` `main.ts` already threads through
  * `docHistoryWiring.ts`'s functions — this module never constructs its own).
  * The three `create*` overrides exist purely for tests: default to the real
- * Cloudflare backend/subscriber/chokidar watcher.
+ * Cloudflare backend/subscriber/native watcher.
  */
 export interface CloudSyncWiringDeps {
 	echoTracker: SelfWriteEchoTracker;
@@ -133,7 +149,7 @@ export interface CloudSyncWiringDeps {
 	createWatcher?: (
 		workspaceRoot: string,
 		excludedFolders: readonly string[],
-	) => FSWatcher;
+	) => CloudSyncWatcher;
 	/**
 	 * Deletes a workspace's cloud copy (R36). Not a `SyncBackend` method — same
 	 * reasoning as `createBackend` not covering `listWorkspaces` — so it's its
@@ -342,21 +358,114 @@ function defaultCreateSubscriber(opts: {
 function defaultCreateWatcher(
 	workspaceRoot: string,
 	excludedFolders: readonly string[],
-): FSWatcher {
-	// The Set is built once per watcher rather than once per candidate path:
-	// chokidar calls `ignored` for every entry it walks, and the workspaces this
-	// setting exists for have hundreds of thousands of them.
+): CloudSyncWatcher {
+	return createRecursiveFsWatcher(workspaceRoot, excludedFolders);
+}
+
+/**
+ * Cloud Sync's real watcher (quit-hang fix, round 3, 2026-09-18). Rounds 1-2
+ * (widened prune list, Markdown-only file filter) cut chokidar's handle count
+ * from 41,359 to 5,322 and quit from ~230s to ~117s, but chokidar v4 has no
+ * native FSEvents backend — every watched path, file OR directory, is still
+ * its own `fs.watch` handle, and macOS FSEvents directory-handle teardown
+ * (~22ms each) was the dominant remaining cost across ~3,745 watched dirs.
+ * One `fs.watch(root, {recursive:true})` subscription replaces that whole
+ * population with a single handle, using the same underlying FSEvents
+ * mechanism on macOS — so filtering below can only control event VOLUME now,
+ * not handle count, which is the point: it no longer needs to.
+ *
+ * `fs.watch`'s raw `(eventType, filename)` is coarser than chokidar's
+ * add/change/unlink/addDir/unlinkDir, so each event is reconstructed with a
+ * `stat()`. `isIgnoredCloudSyncWatchPath` (fix #2, unchanged) is reused
+ * twice: once with no `stats` right after the prune-cheap path check (skips
+ * the `stat()` syscall entirely for a `git checkout`/`node_modules` churn,
+ * while still letting the `.mdly` sidecar exception through), and once with
+ * the resolved `stats` to apply the file-extension filter.
+ */
+export function createRecursiveFsWatcher(
+	workspaceRoot: string,
+	excludedFolders: readonly string[],
+): CloudSyncWatcher {
 	const excluded = new Set(excludedFolders);
-	return chokidar.watch(workspaceRoot, {
-		ignoreInitial: true,
-		ignored: (candidatePath: string, stats?: Stats) =>
-			isIgnoredCloudSyncWatchPath(
-				candidatePath,
-				workspaceRoot,
-				excluded,
-				stats,
-			),
-	});
+	const listeners = new Map<string, Set<(arg?: unknown) => void>>();
+	const emit = (event: string, arg?: unknown) => {
+		for (const listener of listeners.get(event) ?? []) listener(arg);
+	};
+
+	const raw = watchFs(
+		workspaceRoot,
+		{ recursive: true },
+		(_eventType, filename) => {
+			// Node's docs call out that `filename` can be omitted on some
+			// platforms/filesystems — there's no path to reconstruct a type
+			// from, so fall through to the same bare no-path trigger
+			// `unlinkDir` fires below and skip path-specific vetting. Worst
+			// case is a slightly-delayed vet check, never a missed sync: the
+			// sync walk stays the source of truth regardless of which event
+			// woke it.
+			if (!filename) {
+				emit("unlinkDir");
+				return;
+			}
+			const absPath = path.join(workspaceRoot, filename.toString());
+			if (isIgnoredCloudSyncWatchPath(absPath, workspaceRoot, excluded))
+				return;
+			fs.stat(absPath)
+				.then((stats) => {
+					if (
+						isIgnoredCloudSyncWatchPath(
+							absPath,
+							workspaceRoot,
+							excluded,
+							stats,
+						)
+					)
+						return;
+					if (stats.isDirectory()) {
+						emit("addDir", absPath);
+					} else if (stats.isFile()) {
+						// chokidar's `add` and `change` reach the identical
+						// `onFileEvent` handler below either way — no need to
+						// tell a first-seen file from an edited one.
+						emit("change", absPath);
+					} else {
+						// Symlink, socket, FIFO, etc. — conservative fallback,
+						// same as the existing "unknown: don't over-interpret"
+						// posture.
+						emit("unlinkDir");
+					}
+				})
+				.catch((error: NodeJS.ErrnoException) => {
+					if (error?.code === "ENOENT") {
+						// `onFileEvent` (bound to `unlink` below) does pure
+						// string manipulation on the relative path and also
+						// refreshes the "known top" vetting bookkeeping that
+						// the bare no-path trigger skips — a strict superset
+						// of chokidar's real `unlinkDir` behavior, so it's
+						// safe to use for a removed directory too.
+						emit("unlink", absPath);
+						return;
+					}
+					emit("error", error);
+				});
+		},
+	);
+	raw.on("error", (error) => emit("error", error));
+
+	return {
+		on(event: string, listener: (arg?: unknown) => void) {
+			let set = listeners.get(event);
+			if (!set) {
+				set = new Set();
+				listeners.set(event, set);
+			}
+			set.add(listener);
+		},
+		close() {
+			raw.close();
+			return Promise.resolve();
+		},
+	} as CloudSyncWatcher;
 }
 
 /**
@@ -516,7 +625,7 @@ function createCloudAwareFileSystem(
 }
 
 interface RunningCloudSync {
-	watcher: FSWatcher;
+	watcher: CloudSyncWatcher;
 	subscriber: Subscriber;
 	unsubscribeFiles: () => void;
 	status: CloudSyncStatus;
@@ -1218,7 +1327,7 @@ export async function startCloudSyncWatcherIfEnabled(
 
 	const token = await deps.keychain.getPassword(SHARED_CLOUD_SYNC_ACCOUNT);
 	const handle: RunningCloudSync = {
-		watcher: null as unknown as FSWatcher,
+		watcher: null as unknown as CloudSyncWatcher,
 		subscriber: null as unknown as Subscriber,
 		unsubscribeFiles: () => {},
 		status: "connecting",
@@ -1492,7 +1601,7 @@ function readState(handle: RunningCloudSync): CloudSyncWorkspaceState {
 	};
 }
 
-/** Closes the watcher/subscriber/timer without removing the handle from `activeSyncs` — used only for the `workspace-unavailable` case (R24) so `getCloudSyncStatus`/`onCloudSyncStatusChange` keep reporting the error instead of silently resetting to "off". Idempotent. Pass `closeWatchers: false` on process exit: the kernel reclaims FSEvent handles for free, while closing chokidar's per-directory handles one by one blocks the caller for minutes on large workspaces. */
+/** Closes the watcher/subscriber/timer without removing the handle from `activeSyncs` — used only for the `workspace-unavailable` case (R24) so `getCloudSyncStatus`/`onCloudSyncStatusChange` keep reporting the error instead of silently resetting to "off". Idempotent. `closeWatchers: false` predates the round-3 single-handle watcher (when it was the fix for a minutes-long chokidar per-directory-handle teardown); kept as the process-exit default since the kernel reclaims any watch handle for free regardless, but a single `fs.watch` handle's own `close()` is no longer the risk it names. */
 export interface StopCloudSyncOptions {
 	/** Skip `watcher.close()`. Defaults to true (runtime teardown). Set false only on process exit. */
 	closeWatchers?: boolean;
