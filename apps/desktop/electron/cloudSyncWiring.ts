@@ -198,6 +198,17 @@ const SYNC_MAX_DIRECTORIES = 20_000;
  * Single source of truth for the list: `PRUNED_DIR_NAMES` is derived from it,
  * and a workspace's `cloudSync.excludedFolders` overrides it wholesale.
  */
+/**
+ * Round 2 (2026-09-18, quit-hang follow-up): dependency/build-output folder
+ * names added on top of the original seven. These are pure watch-budget
+ * pruning, same mechanism as the rest of the list — a name newly added here
+ * also changes what `notesWalker`/`fs.listMarkdownFiles` return, so any file
+ * under a newly-excluded name that was PREVIOUSLY synced reads as "deleted
+ * locally" on the next sync and is soft-deleted on the server (see
+ * `sync.ts`'s `plan()` "decide local deletions" loop). Accepted risk for
+ * these specific names: source-controlled build/dependency output is not
+ * where anyone keeps authored notes. No migration built for this.
+ */
 export const DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES: readonly string[] = [
 	".git",
 	"node_modules",
@@ -206,6 +217,14 @@ export const DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES: readonly string[] = [
 	".hubble",
 	".mdly",
 	".claude",
+	"Pods",
+	"build",
+	"DerivedData",
+	".expo",
+	"vendor",
+	".venv",
+	"target",
+	".next",
 ];
 
 const PRUNED_DIR_NAMES = new Set(DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES);

@@ -70,19 +70,30 @@ describe("isIgnoredCloudSyncWatchPath (quit-hang fix)", () => {
 	it("keeps directories walkable so nested notes stay synced", async () => {
 		const nested = await writeFixture("fe/apps/mobile/notes/deep.md", "# d");
 		await writeFixture("fe/apps/mobile/ios/Pods/boost/a.h", "h");
-		// Every ancestor dir must NOT be ignored, or chokidar prunes the
-		// whole subtree and the nested note silently stops syncing.
+		// Every ancestor dir of the real note must NOT be ignored, or chokidar
+		// prunes the whole subtree and the nested note silently stops syncing.
 		for (const dir of [
 			"fe",
 			"fe/apps",
 			"fe/apps/mobile",
 			"fe/apps/mobile/notes",
 			"fe/apps/mobile/ios",
-			"fe/apps/mobile/ios/Pods",
 		]) {
 			expect(ignored(path.join(workspaceRoot, dir), "dir")).toBe(false);
 		}
 		expect(ignored(nested)).toBe(false);
+	});
+
+	it("prunes Pods entirely (Round 2 exclude-list addition, 2026-09-18)", async () => {
+		// `Pods` joined DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES after this test file
+		// was written — CocoaPods vendored headers are never authored notes, and
+		// excluding the whole subtree (not just filtering its files by
+		// extension) removes both the file AND directory handles under it.
+		const header = await writeFixture("fe/apps/mobile/ios/Pods/boost/a.h", "h");
+		expect(ignored(path.join(workspaceRoot, "fe/apps/mobile/ios/Pods"), "dir")).toBe(
+			true,
+		);
+		expect(ignored(header)).toBe(true);
 	});
 
 	it("keeps the sidecar exception behaving as before", async () => {
