@@ -30,6 +30,13 @@ type WorkspaceState = {
 	 * `localStoragePersist` middleware — no second mechanism.
 	 */
 	peekListWidths: Record<string, number>;
+	/**
+	 * R2: group expansion per workspace, as expanded group ids. Seeded from
+	 * `defaultExpandedIds` when a workspace has no record yet — a missing
+	 * record is "never toggled", not an error. Same per-workspace-map shape
+	 * and middleware as `peekListWidths`; no second mechanism.
+	 */
+	navExpandedGroups: Record<string, string[]>;
 	sortMode: SortMode;
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
@@ -106,6 +113,7 @@ type Persisted = {
 		recentWorkspaces?: string[];
 		lastOpenedPaths?: Record<string, string>;
 		peekListWidths?: Record<string, number>;
+		navExpandedGroups?: Record<string, string[]>;
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
@@ -148,6 +156,26 @@ function sanitizePeekListWidths(value: unknown): Record<string, number> {
 	return widths;
 }
 
+/**
+ * Keeps only string-id arrays: same "legal record, drop bad entries" rule as
+ * the width map above.
+ */
+function sanitizeNavExpandedGroups(value: unknown): Record<string, string[]> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const groups: Record<string, string[]> = {};
+	for (const [workspacePath, ids] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		if (
+			Array.isArray(ids) &&
+			ids.every((id): id is string => typeof id === "string")
+		) {
+			groups[workspacePath] = [...ids];
+		}
+	}
+	return groups;
+}
+
 function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 	return {
 		workspacePath: ws?.workspacePath ?? null,
@@ -161,6 +189,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 				? ws.lastOpenedPaths
 				: {},
 		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
+		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
 		folders: [],
@@ -226,6 +255,7 @@ export function serialize(state: DesktopState): Persisted {
 			recentWorkspaces: state.workspace.recentWorkspaces,
 			lastOpenedPaths: state.workspace.lastOpenedPaths,
 			peekListWidths: state.workspace.peekListWidths,
+			navExpandedGroups: state.workspace.navExpandedGroups,
 			sortMode: state.workspace.sortMode,
 		},
 		document: {

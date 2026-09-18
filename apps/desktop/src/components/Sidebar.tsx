@@ -25,7 +25,6 @@ import {
 	openWorkspace,
 	renameMarkdownFile,
 	setSidebarOpen,
-	setSortMode,
 	togglePinnedNote,
 } from "../store/actions";
 import {
@@ -202,7 +201,7 @@ function SidebarComponent({
 			footer={footer}
 			getDisplayPath={relativePath}
 			onCollapse={collapseSidebar}
-			onSortModeChange={setSortMode}
+			showSortControl={false}
 			onSelectFile={(path) => void loadPath(path)}
 			onRevealFile={(path) => void desktopApi.revealFile(path)}
 			onCopyFilePath={(path) => void copyFilePath(path)}

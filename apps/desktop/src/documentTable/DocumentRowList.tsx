@@ -1,21 +1,45 @@
 import { useVirtualSidebarRows } from "@mdly/workspace-kit";
+import { useStoreValue } from "@simplestack/store/react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type ReactNode,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 } from "react";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
+import { workspacePathStore, workspaceStore } from "../store/state";
+import { DocumentGroupHeader } from "./DocumentGroupHeader";
 import {
 	DocumentListRow,
 	type DocumentRowDensity,
 	documentRowHeight,
 } from "./DocumentListRow";
-import type {
-	DocumentTableColumn,
-	DocumentTableRow,
+import {
+	type DocumentTableColumn,
+	type DocumentTableRow,
+	type DocumentTableView,
+	ROOT_FOLDER_LABEL,
 } from "./documentTableView";
+import { setNavExpandedIds } from "./navExpandedGroups";
+import {
+	buildGroupTree,
+	buildNavRows,
+	defaultExpandedIds,
+	type NavDocument,
+	type NavGroupNode,
+	type NavView,
+	resolveNavViewSpec,
+} from "./navGroupTree";
+import { TagScanStateView } from "./TagScanState";
+import {
+	beginTagScan,
+	isTagScanReadyFor,
+	resetTagScan,
+	tagScanStore,
+	tagsForScope,
+} from "./tagScanStore";
 
 export {
 	DOCUMENT_LIST_ROW_HEIGHT,
@@ -44,7 +68,27 @@ type DocumentRowListProps = {
 	emptyState: ReactNode;
 	/** R9 Rail: hide the list density's secondary line. Defaults to false. */
 	hideSecondary?: boolean;
+	/**
+	 * R2: the grouping query. Absent means the flat list — every existing
+	 * caller without a view renders exactly as before.
+	 */
+	view?: DocumentTableView;
 };
+
+/** The engine's document shape over the table's own row: identity preserved. */
+type GroupableRow = DocumentTableRow & NavDocument;
+
+function collectGroupIds(root: NavGroupNode): Set<string> {
+	const ids = new Set<string>();
+	const walk = (node: NavGroupNode) => {
+		for (const child of node.children) {
+			ids.add(child.id);
+			walk(child);
+		}
+	};
+	walk(root);
+	return ids;
+}
 
 /**
  * The one row surface, at two densities.
@@ -61,6 +105,10 @@ type DocumentRowListProps = {
  * Markup is a CSS grid of `<button>` rows rather than a `<table>`: transforms
  * are unreliable on `<tr>`, and a grid lets the full table and the narrow list
  * be literally the same component.
+ *
+ * R2: when `view` groups, the flat rows go through `buildNavRows` first and
+ * the list renders group headers interleaved with documents. Headers share
+ * the list's one fixed row height, so the windowing math below is unaffected.
  */
 export function DocumentRowList({
 	rows,
@@ -69,17 +117,118 @@ export function DocumentRowList({
 	onOpenDocument,
 	emptyState,
 	hideSecondary = false,
+	view,
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const rowHeight = documentRowHeight(density);
+
+	const workspacePath = useStoreValue(workspacePathStore);
+	const pinnedNotes = useStoreValue(
+		workspaceStore,
+		(workspace) => workspace.pinnedNotes,
+	);
+	const storedExpandedIds = useStoreValue(workspaceStore, (workspace) =>
+		workspacePath ? (workspace.navExpandedGroups[workspacePath] ?? null) : null,
+	);
+	const tagScanState = useStoreValue(tagScanStore);
+
+	const navView: NavView = useMemo(
+		() => ({
+			groupBy: view?.groupBy ?? null,
+			mode: view?.mode ?? "browse",
+			filter: view?.filter ?? "",
+		}),
+		[view?.groupBy, view?.mode, view?.filter],
+	);
+	const spec = useMemo(() => resolveNavViewSpec(navView), [navView]);
+	const scanScope = workspacePath ?? null;
+	const tagsByPath = tagsForScope(tagScanState, scanScope);
+	const tagsReady = isTagScanReadyFor(tagScanState, scanScope);
+	const navDocs = useMemo<GroupableRow[]>(
+		() =>
+			rows.map((row) => ({
+				...row,
+				folderPath:
+					row.folderLabel === ROOT_FOLDER_LABEL ? "" : row.folderLabel,
+				tags: tagsByPath?.[row.path],
+				isUserPinned: pinnedNotes.includes(row.path),
+			})),
+		[rows, tagsByPath, pinnedNotes],
+	);
+
+	// The tree is built twice — once here for the expansion defaults, once
+	// inside `buildNavRows`. Kept because the seam owns flattening and the
+	// defaults need the tree before the set can be merged.
+	const tree = useMemo(() => buildGroupTree(navDocs, spec), [navDocs, spec]);
+	const prevGroupIdsRef = useRef<Set<string> | null>(null);
+	const expandedIds = useMemo(() => {
+		const defaults = defaultExpandedIds(tree);
+		const stored = storedExpandedIds;
+		let merged: Set<string>;
+		if (stored === null) {
+			merged = new Set(defaults);
+		} else {
+			merged = new Set(stored);
+			const prev = prevGroupIdsRef.current;
+			if (prev) {
+				// Groups that did not exist on the last build keep their
+				// default: a new folder arrives expanded, a collapsed one stays
+				// collapsed, and Untagged stays collapsed until toggled.
+				for (const id of defaults) if (!prev.has(id)) merged.add(id);
+			}
+		}
+		prevGroupIdsRef.current = collectGroupIds(tree);
+		return merged;
+		// storedExpandedIds already encodes the workspace through its selector,
+		// so the workspace itself is not a separate dependency.
+	}, [tree, storedExpandedIds]);
+	const navRows = useMemo(
+		() =>
+			buildNavRows({
+				docs: navDocs,
+				view: navView,
+				expandedIds,
+				tagsReady,
+			}).rows,
+		[navDocs, navView, expandedIds, tagsReady],
+	);
+
+	const toggleGroup = useCallback(
+		(groupId: string) => {
+			if (!workspacePath) return;
+			const next = new Set(expandedIds);
+			if (next.has(groupId)) next.delete(groupId);
+			else next.add(groupId);
+			setNavExpandedIds(workspacePath, [...next]);
+		},
+		[workspacePath, expandedIds],
+	);
+
+	// A9: entering the tag view starts a scan for this workspace. Fires from
+	// idle and when the store still holds another workspace's outcome — never
+	// when this workspace is already scanning, failed or scanned.
+	useEffect(() => {
+		if (spec.groupBy !== "tag" || !workspacePath) return;
+		const scope = tagScanState.kind === "idle" ? undefined : tagScanState.scope;
+		if (scope !== workspacePath) beginTagScan(workspacePath);
+	}, [spec.groupBy, tagScanState, workspacePath]);
+
+	const retryTagScan = useCallback(() => {
+		resetTagScan();
+	}, []);
+
 	const { items, scrollToIndex } = useVirtualSidebarRows({
-		rows,
+		rows: navRows,
 		rowHeight,
 		scrollRef,
 	});
 
-	const activeIndex = rows.findIndex((row) => row.isActive);
-	const activePath = activeIndex === -1 ? null : rows[activeIndex].path;
+	const activeIndex = navRows.findIndex(
+		(navRow) => navRow.kind === "document" && navRow.doc.isActive,
+	);
+	const activeRow = activeIndex === -1 ? null : navRows[activeIndex];
+	const activePath =
+		activeRow && activeRow.kind === "document" ? activeRow.doc.path : null;
 	// The index is read through a ref so the effect below can depend on *which
 	// document is open* and nothing else. The sidebar keys the same effect on the
 	// index (`Sidebar.tsx`), which it can afford because its rows never reorder
@@ -121,7 +270,7 @@ export function DocumentRowList({
 
 	const focusRowAt = useCallback(
 		(index: number) => {
-			if (index < 0 || index >= rows.length) return;
+			if (index < 0 || index >= navRows.length) return;
 			scrollToIndex(index);
 			const focusRendered = () => {
 				const rowEl = scrollRef.current?.querySelector<HTMLElement>(
@@ -143,7 +292,7 @@ export function DocumentRowList({
 			};
 			requestAnimationFrame(retry);
 		},
-		[rows.length, scrollToIndex],
+		[navRows.length, scrollToIndex],
 	);
 
 	const onRowKeyDown = useCallback(
@@ -159,19 +308,36 @@ export function DocumentRowList({
 				focusRowAt(0);
 			} else if (event.key === "End") {
 				event.preventDefault();
-				focusRowAt(rows.length - 1);
+				focusRowAt(navRows.length - 1);
 			}
 		},
-		[focusRowAt, rows.length],
+		[focusRowAt, navRows.length],
 	);
 
 	const scrollClassName =
 		"min-h-0 flex-1 overflow-auto overscroll-contain [padding-block:var(--row-pad-block)]";
 
-	if (rows.length === 0) {
+	if (navRows.length === 0) {
 		// Not a `rowgroup`: an empty grid body would announce phantom structure,
 		// and the message is prose. The filter box lives in the parent, outside
 		// this scroll container, so it keeps its text and its focus either way.
+		if (spec.groupBy === "tag" && !tagsReady) {
+			// A9: zero groups while scanning or failed — no Untagged bucket in
+			// either state — in the narrow list's own visual shape.
+			const failed =
+				tagScanState.kind === "failed" && tagScanState.scope === scanScope;
+			return (
+				<div className={scrollClassName}>
+					<div className="p-2">
+						{failed ? (
+							<TagScanStateView status="failed" onRetry={retryTagScan} />
+						) : (
+							<TagScanStateView status="scanning" onRetry={retryTagScan} />
+						)}
+					</div>
+				</div>
+			);
+		}
 		return <div className={scrollClassName}>{emptyState}</div>;
 	}
 
@@ -193,22 +359,49 @@ export function DocumentRowList({
 			<div
 				role="presentation"
 				className="relative"
-				style={{ blockSize: rows.length * rowHeight }}
+				style={{ blockSize: navRows.length * rowHeight }}
 			>
-				{items.map(({ index, row }) => (
-					<DocumentListRow
-						key={row.path}
-						row={row}
-						index={index}
-						rowHeight={rowHeight}
-						density={density}
-						sortColumn={sortColumn}
-						tabbableIndex={tabbableIndex}
-						onOpenDocument={onOpenDocument}
-						onRowKeyDown={onRowKeyDown}
-						hideSecondary={hideSecondary}
-					/>
-				))}
+				{items.map(({ index, row: navRow }) =>
+					navRow.kind === "group" ? (
+						<DocumentGroupHeader
+							key={navRow.id}
+							label={navRow.label}
+							count={navRow.count}
+							depth={navRow.depth}
+							expanded={navRow.expanded}
+							onToggle={() => toggleGroup(navRow.groupId)}
+							specId={navRow.specId}
+							groupId={navRow.groupId}
+							index={index}
+							ariaRowIndex={density === "table" ? index + 2 : index + 1}
+							tabIndex={index === tabbableIndex ? 0 : -1}
+							rowHeight={rowHeight}
+							onKeyDown={(event) => {
+								// Group headers are never tag drag sources — and
+								// never drop targets through this surface either.
+								if (event.key === "Enter" || event.key === " ") {
+									event.preventDefault();
+									toggleGroup(navRow.groupId);
+								} else {
+									onRowKeyDown(event, index);
+								}
+							}}
+						/>
+					) : (
+						<DocumentListRow
+							key={navRow.id}
+							row={navRow.doc}
+							index={index}
+							rowHeight={rowHeight}
+							density={density}
+							sortColumn={sortColumn}
+							tabbableIndex={tabbableIndex}
+							onOpenDocument={onOpenDocument}
+							onRowKeyDown={onRowKeyDown}
+							hideSecondary={hideSecondary}
+						/>
+					),
+				)}
 			</div>
 		</div>
 	);

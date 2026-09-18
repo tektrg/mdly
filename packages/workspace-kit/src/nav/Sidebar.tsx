@@ -73,7 +73,12 @@ import {
 } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
-export type { RecentTagAppearance, SidebarFile, SidebarFolder, SidebarSortMode };
+export type {
+	RecentTagAppearance,
+	SidebarFile,
+	SidebarFolder,
+	SidebarSortMode,
+};
 
 export type SidebarHandle = {
 	/**
@@ -174,7 +179,13 @@ type SidebarProps = {
 	emptyState?: ReactNode;
 	getDisplayPath?: (path: string) => string;
 	onCollapse?: () => void;
-	onSortModeChange: (mode: SidebarSortMode) => void;
+	/**
+	 * Hides the header's sort control. The desktop app moved it into the
+	 * navigation list header so it shows at every density tier; `sortMode`
+	 * itself still drives the tree order. Defaults to shown.
+	 */
+	showSortControl?: boolean;
+	onSortModeChange?: (mode: SidebarSortMode) => void;
 	onSelectFile: (path: string) => void;
 	onRevealFile?: (path: string) => void;
 	onCopyFilePath?: (path: string) => void;
@@ -262,6 +273,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 		emptyState,
 		getDisplayPath = (path) => path,
 		onCollapse,
+		showSortControl = true,
 		onSortModeChange,
 		onSelectFile,
 		onRevealFile,
@@ -936,13 +948,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 										// it, the same whether it stands for two files or
 										// twenty (stackCount is a presence signal, not a
 										// number to display).
-										<span aria-hidden="true" data-sidebar-stack-effect className="contents">
-											<span
-												className="pointer-events-none absolute inset-x-2 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] delay-75 duration-180 ease-snappy group-hover/sidebar-row:translate-y-2 group-hover/sidebar-row:opacity-70 motion-reduce:transition-none"
-											/>
-											<span
-												className="pointer-events-none absolute inset-x-1 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] duration-180 ease-snappy group-hover/sidebar-row:translate-y-1 group-hover/sidebar-row:opacity-100 motion-reduce:transition-none"
-											/>
+										<span
+											aria-hidden="true"
+											data-sidebar-stack-effect
+											className="contents"
+										>
+											<span className="pointer-events-none absolute inset-x-2 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] delay-75 duration-180 ease-snappy group-hover/sidebar-row:translate-y-2 group-hover/sidebar-row:opacity-70 motion-reduce:transition-none" />
+											<span className="pointer-events-none absolute inset-x-1 bottom-0 h-1 translate-y-0 rounded-b-[var(--radius-inner)] bg-sidebar-border opacity-0 shadow-[var(--shadow-chip)] transition-[transform,opacity] duration-180 ease-snappy group-hover/sidebar-row:translate-y-1 group-hover/sidebar-row:opacity-100 motion-reduce:transition-none" />
 										</span>
 									)}
 									<div className="absolute inset-y-0 end-0.5 flex items-center gap-0.5">
@@ -1151,45 +1163,47 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 							<MingcuteEditLine className="size-3.5" />
 						</Button>
 					)}
-					<Select.Root
-						value={sortMode}
-						onValueChange={(mode) => {
-							if (mode) onSortModeChange(mode);
-						}}
-					>
-						<Select.Trigger
-							render={
-								<Button
-									variant="ghost"
-									size="icon-xs"
-									aria-label="Sort by..."
-									title="Sort by..."
-								/>
-							}
+					{showSortControl ? (
+						<Select.Root
+							value={sortMode}
+							onValueChange={(mode) => {
+								if (mode) onSortModeChange?.(mode);
+							}}
 						>
-							{sortMode === "alpha" ? (
-								<MingcuteAzSortAscendingLettersLine className="size-3.5" />
-							) : (
-								<MingcuteSortDescendingLine className="size-3.5" />
-							)}
-						</Select.Trigger>
-						<Select.Portal container={portalContainer}>
-							<Select.Positioner
-								className="z-50"
-								align="end"
-								side="bottom"
-								sideOffset={4}
+							<Select.Trigger
+								render={
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										aria-label="Sort by..."
+										title="Sort by..."
+									/>
+								}
 							>
-								<Select.Popup className="w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-									<p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
-										Sort by
-									</p>
-									<SortOption value="recent" label="Recent" />
-									<SortOption value="alpha" label="Name" />
-								</Select.Popup>
-							</Select.Positioner>
-						</Select.Portal>
-					</Select.Root>
+								{sortMode === "alpha" ? (
+									<MingcuteAzSortAscendingLettersLine className="size-3.5" />
+								) : (
+									<MingcuteSortDescendingLine className="size-3.5" />
+								)}
+							</Select.Trigger>
+							<Select.Portal container={portalContainer}>
+								<Select.Positioner
+									className="z-50"
+									align="end"
+									side="bottom"
+									sideOffset={4}
+								>
+									<Select.Popup className="w-36 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+										<p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+											Sort by
+										</p>
+										<SortOption value="recent" label="Recent" />
+										<SortOption value="alpha" label="Name" />
+									</Select.Popup>
+								</Select.Positioner>
+							</Select.Portal>
+						</Select.Root>
+					) : null}
 				</div>
 			</div>
 			<SidebarPager

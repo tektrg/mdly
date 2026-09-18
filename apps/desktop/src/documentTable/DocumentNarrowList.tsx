@@ -127,6 +127,7 @@ export function DocumentNarrowList({
 					density="list"
 					sortColumn={view.sort.column}
 					hideSecondary={!showSecondary}
+					view={view}
 					onOpenDocument={onOpenDocument}
 					emptyState={
 						<div className="p-2">

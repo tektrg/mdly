@@ -196,6 +196,7 @@ export function DocumentTable({
 					rows={rows}
 					density="table"
 					sortColumn={view.sort.column}
+					view={view}
 					onOpenDocument={onOpenDocument}
 					emptyState={
 						<DocumentTableEmptyState
