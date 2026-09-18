@@ -42,6 +42,8 @@ type DocumentRowListProps = {
 	onOpenDocument: (row: DocumentTableRow) => void;
 	/** Rendered instead of the row body when there is nothing to list. */
 	emptyState: ReactNode;
+	/** R9 Rail: hide the list density's secondary line. Defaults to false. */
+	hideSecondary?: boolean;
 };
 
 /**
@@ -66,6 +68,7 @@ export function DocumentRowList({
 	sortColumn,
 	onOpenDocument,
 	emptyState,
+	hideSecondary = false,
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const rowHeight = documentRowHeight(density);
@@ -203,6 +206,7 @@ export function DocumentRowList({
 						tabbableIndex={tabbableIndex}
 						onOpenDocument={onOpenDocument}
 						onRowKeyDown={onRowKeyDown}
+						hideSecondary={hideSecondary}
 					/>
 				))}
 			</div>

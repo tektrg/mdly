@@ -79,6 +79,11 @@ type DocumentListRowProps = {
 	tabbableIndex: number;
 	onOpenDocument: (row: DocumentTableRow) => void;
 	onRowKeyDown: (event: ReactKeyboardEvent<HTMLElement>, index: number) => void;
+	/**
+	 * R9 Rail: the narrowest tier shows the title only. Browse never sets this,
+	 * so the full-width table is untouched by construction.
+	 */
+	hideSecondary?: boolean;
 };
 
 function secondaryLabel(
@@ -106,6 +111,7 @@ export function DocumentListRow({
 	tabbableIndex,
 	onOpenDocument,
 	onRowKeyDown,
+	hideSecondary = false,
 }: DocumentListRowProps) {
 	return (
 		<button
@@ -124,7 +130,7 @@ export function DocumentListRow({
 			className={cn(
 				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
 				"[padding-inline:var(--row-pad-inline)]",
-				"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none",
+				"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none [[data-resizing]_&]:transition-none",
 				"focus-visible:ring-1 focus-visible:ring-ring",
 				// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
 				// escalates to the real selection colour inside
@@ -166,6 +172,12 @@ export function DocumentListRow({
 						title={formatModifiedAtTitle(row.modifiedAt)}
 					>
 						{formatModifiedAt(row.modifiedAt)}
+					</span>
+				</span>
+			) : hideSecondary ? (
+				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
+					<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
+						{row.name}
 					</span>
 				</span>
 			) : (

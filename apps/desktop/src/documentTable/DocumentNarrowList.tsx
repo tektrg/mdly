@@ -1,4 +1,5 @@
 import { Button } from "@hubble.md/ui";
+import type { RefObject } from "react";
 import MingcuteArrowLeftLine from "~icons/mingcute/arrow-left-line";
 import { DocumentFilterInput } from "./DocumentFilterInput";
 import { DocumentRowList } from "./DocumentRowList";
@@ -6,6 +7,8 @@ import type { DocumentListingState } from "./documentListingState";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
+import { columnsForTier, type NavDensityTier } from "./navDensity";
+import { PEEK_LIST_DEFAULT_WIDTH } from "./peekListWidth";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 export type DocumentNarrowListProps = {
@@ -16,6 +19,12 @@ export type DocumentNarrowListProps = {
 	onFilterChange: (filter: string) => void;
 	onShowAllDocuments: () => void;
 	onRetryListing: () => void;
+	/** Measured by `useNavContainerWidth` in the peek split; drives the tier. */
+	listRef?: RefObject<HTMLDivElement | null>;
+	/** R9 tier for the measured list width. Defaults to "list" unmeasured. */
+	navTier?: NavDensityTier;
+	/** Rendered list inline-size; defaults to the pre-resize `w-64`. */
+	listInlineSize?: number;
 };
 
 const NARROW_MESSAGE_CLASS =
@@ -65,8 +74,9 @@ function NarrowListEmptyState({
 }
 
 /**
- * The table after a document takes the stage. Fixed `w-64` — this codebase has
- * no resizable-split primitive, and inventing one is out of phase-1 scope.
+ * The table after a document takes the stage. Resizable through the peek
+ * divider — the inline size comes from the clamped desired width, and the R9
+ * density tier from the measured list width.
  *
  * Stays mounted and clickable through a slow or failed open (R5): loading and
  * error are states of the document pane next to it, never of this list.
@@ -79,9 +89,19 @@ export function DocumentNarrowList({
 	onFilterChange,
 	onShowAllDocuments,
 	onRetryListing,
+	listRef,
+	navTier = "list",
+	listInlineSize = PEEK_LIST_DEFAULT_WIDTH,
 }: DocumentNarrowListProps) {
+	// R9: Rail shows the title only; every wider tier keeps the secondary line.
+	const showSecondary = columnsForTier(navTier).length > 1;
 	return (
-		<div className="flex w-64 shrink-0 flex-col border-e border-sidebar-border bg-sidebar">
+		<div
+			ref={listRef}
+			data-nav-tier={navTier}
+			className="flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar"
+			style={{ inlineSize: listInlineSize }}
+		>
 			<header
 				className={`flex shrink-0 flex-col gap-1 px-2 [padding-block-end:0.25rem] ${WINDOW_CHROME_INSET_CLASS}`}
 			>
@@ -106,6 +126,7 @@ export function DocumentNarrowList({
 					rows={rows}
 					density="list"
 					sortColumn={view.sort.column}
+					hideSecondary={!showSecondary}
 					onOpenDocument={onOpenDocument}
 					emptyState={
 						<div className="p-2">

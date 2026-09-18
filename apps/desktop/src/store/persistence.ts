@@ -22,6 +22,14 @@ type WorkspaceState = {
 	workspacePath: string | null;
 	recentWorkspaces: string[];
 	lastOpenedPaths: Record<string, string>;
+	/**
+	 * R13: the peek list's desired width per workspace path. The RENDERED width
+	 * is `clampPeekListWidth` applied to this desire at render time, so a narrow
+	 * window clamps without rewriting the user's choice (EC-30). Same
+	 * per-workspace-map shape as `lastOpenedPaths`, persisted through the same
+	 * `localStoragePersist` middleware — no second mechanism.
+	 */
+	peekListWidths: Record<string, number>;
 	sortMode: SortMode;
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
@@ -97,6 +105,7 @@ type Persisted = {
 		workspacePath?: string | null;
 		recentWorkspaces?: string[];
 		lastOpenedPaths?: Record<string, string>;
+		peekListWidths?: Record<string, number>;
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
@@ -122,6 +131,23 @@ function readStorage<T>(key: string): T | null {
 	}
 }
 
+/**
+ * Keeps only finite positive widths: a hand-edited or older-version value is a
+ * legal record, not corruption, so bad entries are dropped and the rest kept.
+ */
+function sanitizePeekListWidths(value: unknown): Record<string, number> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const widths: Record<string, number> = {};
+	for (const [workspacePath, width] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		if (typeof width === "number" && Number.isFinite(width) && width > 0) {
+			widths[workspacePath] = width;
+		}
+	}
+	return widths;
+}
+
 function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 	return {
 		workspacePath: ws?.workspacePath ?? null,
@@ -134,6 +160,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 			!Array.isArray(ws.lastOpenedPaths)
 				? ws.lastOpenedPaths
 				: {},
+		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
 		folders: [],
@@ -198,6 +225,7 @@ export function serialize(state: DesktopState): Persisted {
 			workspacePath: state.workspace.workspacePath,
 			recentWorkspaces: state.workspace.recentWorkspaces,
 			lastOpenedPaths: state.workspace.lastOpenedPaths,
+			peekListWidths: state.workspace.peekListWidths,
 			sortMode: state.workspace.sortMode,
 		},
 		document: {

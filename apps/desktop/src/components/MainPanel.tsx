@@ -1,6 +1,12 @@
 import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
-import { type CSSProperties, useEffect } from "react";
+import {
+	type CSSProperties,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { desktopApi } from "../desktopApi";
 import type { HistoryRevision } from "../desktopApi/types";
@@ -11,10 +17,22 @@ import {
 	setDocumentTableFilter,
 	toggleDocumentTableSort,
 } from "../documentTable/documentTableStore";
+import { clampPeekListWidth, densityTier } from "../documentTable/navDensity";
+import { PeekListDivider } from "../documentTable/PeekListDivider";
+import {
+	PEEK_LIST_DEFAULT_WIDTH,
+	setPeekListDesiredWidth,
+} from "../documentTable/peekListWidth";
 import { useDocumentTableRows } from "../documentTable/useDocumentTableRows";
+import { useNavContainerWidth } from "../documentTable/useNavContainerWidth";
+import { PEEK_DOCUMENT_MIN_WIDTH } from "../lib/navLayout";
 import { loadPath, refreshFiles } from "../store/actions";
 import { closeDocumentToTable } from "../store/closeDocument";
-import { viewerStore, workspaceStore } from "../store/state";
+import {
+	viewerStore,
+	workspacePathStore,
+	workspaceStore,
+} from "../store/state";
 import { DocumentViewer } from "./DocumentViewer";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -68,6 +86,33 @@ export function MainPanel({
 		workspaceStore,
 		useShallow((workspace) => resolveDocumentListingState(workspace)),
 	);
+	// Peek split wiring. Declared before the early returns below so hook order
+	// never changes; the browse branch simply never reads these values.
+	const workspacePath = useStoreValue(workspacePathStore);
+	const peekDesiredWidth = useStoreValue(workspaceStore, (workspace) => {
+		if (!workspacePath) return PEEK_LIST_DEFAULT_WIDTH;
+		const stored = workspace.peekListWidths[workspacePath];
+		return typeof stored === "number" && Number.isFinite(stored) && stored > 0
+			? stored
+			: PEEK_LIST_DEFAULT_WIDTH;
+	});
+	const splitRef = useRef<HTMLDivElement | null>(null);
+	const listRef = useRef<HTMLDivElement | null>(null);
+	const [peekResizing, setPeekResizing] = useState(false);
+	const { splitWidth, listWidth } = useNavContainerWidth(splitRef, listRef);
+	const handlePeekResize = useCallback(
+		(rawWidth: number) => {
+			const measured = splitRef.current?.getBoundingClientRect().width ?? 0;
+			const availableWidth =
+				measured > 0 ? measured : rawWidth + PEEK_DOCUMENT_MIN_WIDTH;
+			const { listWidth: clamped } = clampPeekListWidth({
+				availableWidth,
+				desiredWidth: rawWidth,
+			});
+			setPeekListDesiredWidth(workspacePath ?? null, clamped);
+		},
+		[workspacePath],
+	);
 	// A document that is still loading — or that failed — is still the row the
 	// user is looking at, so the list highlights `requestedPath`, not the
 	// document that finished loading.
@@ -100,8 +145,25 @@ export function MainPanel({
 		);
 	}
 
+	// R13 at render time only: a narrow window clamps the list without
+	// rewriting the persisted desire, so widening restores it (EC-30).
+	const peekAvailableWidth =
+		splitWidth > 0 ? splitWidth : peekDesiredWidth + PEEK_DOCUMENT_MIN_WIDTH;
+	const { listWidth: clampedPeekWidth } = clampPeekListWidth({
+		availableWidth: peekAvailableWidth,
+		desiredWidth: peekDesiredWidth,
+	});
+	// R9 reads the MEASURED list, falling back to the clamped desire before
+	// the observers have fired (or where there is no layout at all).
+	const peekTier = densityTier(listWidth > 0 ? listWidth : clampedPeekWidth);
+
 	return (
-		<div className="flex h-full min-h-0 flex-1 overflow-hidden">
+		<div
+			ref={splitRef}
+			data-peek-split
+			{...(peekResizing ? { "data-resizing": "" } : {})}
+			className="flex h-full min-h-0 flex-1 overflow-hidden"
+		>
 			<DocumentNarrowList
 				rows={rows}
 				view={view}
@@ -110,6 +172,16 @@ export function MainPanel({
 				onFilterChange={setDocumentTableFilter}
 				onShowAllDocuments={() => void closeDocumentToTable()}
 				onRetryListing={() => void refreshFiles()}
+				listRef={listRef}
+				navTier={peekTier}
+				listInlineSize={clampedPeekWidth}
+			/>
+			<PeekListDivider
+				splitRef={splitRef}
+				listWidth={clampedPeekWidth}
+				onResize={handlePeekResize}
+				onResizeStart={() => setPeekResizing(true)}
+				onResizeEnd={() => setPeekResizing(false)}
 			/>
 			<div
 				data-document-pane
