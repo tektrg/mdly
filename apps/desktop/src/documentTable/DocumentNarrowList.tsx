@@ -121,7 +121,7 @@ export function DocumentNarrowList({
 				aria-rowcount={rows.length}
 				className="flex min-h-0 flex-1 flex-col px-1 pb-2"
 			>
-				<NavListHeader />
+				<NavListHeader navTier={navTier} />
 				<DocumentRowList
 					rows={rows}
 					density="list"

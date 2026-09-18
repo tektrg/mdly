@@ -154,6 +154,11 @@ export {
 export { TagList, type TagListProps } from "./nav/TagList";
 export { NewNoteButton, Toolbar } from "./nav/Toolbar";
 export {
+	type SwipeNavResult,
+	type SwipeNavState,
+	useSidebarSwipeNav,
+} from "./nav/useSidebarSwipeNav";
+export {
 	SIDEBAR_VIRTUAL_ROW_HEIGHT,
 	useVirtualSidebarRows,
 	type VirtualSidebarRow,

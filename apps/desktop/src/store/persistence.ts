@@ -37,6 +37,12 @@ type WorkspaceState = {
 	 * and middleware as `peekListWidths`; no second mechanism.
 	 */
 	navExpandedGroups: Record<string, string[]>;
+	/**
+	 * A12: views hidden from the Rail dot strip, per workspace. Empty means
+	 * both dots show. Same per-workspace-map shape and middleware as the maps
+	 * above; no second mechanism.
+	 */
+	navHiddenViews: Record<string, string[]>;
 	sortMode: SortMode;
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
@@ -114,6 +120,7 @@ type Persisted = {
 		lastOpenedPaths?: Record<string, string>;
 		peekListWidths?: Record<string, number>;
 		navExpandedGroups?: Record<string, string[]>;
+		navHiddenViews?: Record<string, string[]>;
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
@@ -176,6 +183,25 @@ function sanitizeNavExpandedGroups(value: unknown): Record<string, string[]> {
 	return groups;
 }
 
+/**
+ * Keeps only the two engine group-by values: anything else in the record is
+ * dropped, an all-dropped workspace reads as "nothing hidden".
+ */
+function sanitizeNavHiddenViews(value: unknown): Record<string, string[]> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const hidden: Record<string, string[]> = {};
+	for (const [workspacePath, views] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		if (!Array.isArray(views)) continue;
+		const kept = [...new Set(views)].filter(
+			(view): view is string => view === "folder" || view === "tag",
+		);
+		if (kept.length > 0) hidden[workspacePath] = kept;
+	}
+	return hidden;
+}
+
 function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 	return {
 		workspacePath: ws?.workspacePath ?? null,
@@ -190,6 +216,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 				: {},
 		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
 		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
+		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
 		folders: [],
@@ -256,6 +283,7 @@ export function serialize(state: DesktopState): Persisted {
 			lastOpenedPaths: state.workspace.lastOpenedPaths,
 			peekListWidths: state.workspace.peekListWidths,
 			navExpandedGroups: state.workspace.navExpandedGroups,
+			navHiddenViews: state.workspace.navHiddenViews,
 			sortMode: state.workspace.sortMode,
 		},
 		document: {
