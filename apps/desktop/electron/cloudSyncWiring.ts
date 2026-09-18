@@ -16,6 +16,7 @@
  * delete already goes through (R22).
  */
 import fs from "node:fs/promises";
+import type { Stats } from "node:fs";
 import path from "node:path";
 import type { SyncBackend } from "@hubble.md/sync";
 import {
@@ -60,6 +61,7 @@ import {
 } from "@mdly/doc-history";
 import { createNodeFileSystem as createDocHistoryNodeFileSystem } from "@mdly/doc-history/node";
 import chokidar, { type FSWatcher } from "chokidar";
+import { hasDocumentExtension } from "../src/lib/filePath";
 import {
 	getHistoryStoreForWorkspace,
 	logHistoryFailure,
@@ -328,11 +330,50 @@ function defaultCreateWatcher(
 	const excluded = new Set(excludedFolders);
 	return chokidar.watch(workspaceRoot, {
 		ignoreInitial: true,
-		ignored: (candidatePath: string) =>
-			isWatchedSidecarPath(candidatePath, workspaceRoot)
-				? false
-				: isPrunedCloudSyncPath(candidatePath, workspaceRoot, excluded),
+		ignored: (candidatePath: string, stats?: Stats) =>
+			isIgnoredCloudSyncWatchPath(
+				candidatePath,
+				workspaceRoot,
+				excluded,
+				stats,
+			),
 	});
+}
+
+/**
+ * Watch-scope filter for the Cloud Sync chokidar watcher (quit-hang fix).
+ * The watcher exists only to wake a debounced sync run — the sync walk
+ * discovers notes/sidecars independently — so a path earns an OS watch
+ * handle only when a change to it could matter to sync. chokidar v4 dropped
+ * the native FSEvents backend, so every watched path is a separate Node
+ * `fs.watch` handle; watching a 30k-file workspace one-handle-per-file is
+ * what blocked process exit for ~4 minutes. Filtering to documents collapses
+ * that population to roughly the Markdown count plus one handle per
+ * directory (directories must stay watched — see below).
+ *
+ * Order is load-bearing: the sidecar exception first (it punches through
+ * the `.mdly` prune), then the prune list, then the extension filter.
+ * Exported for direct unit testing without a real chokidar watcher.
+ */
+export function isIgnoredCloudSyncWatchPath(
+	candidatePath: string,
+	workspaceRoot: string,
+	excludedNames: Iterable<string> = PRUNED_DIR_NAMES,
+	stats?: Stats,
+): boolean {
+	if (isWatchedSidecarPath(candidatePath, workspaceRoot)) return false;
+	if (isPrunedCloudSyncPath(candidatePath, workspaceRoot, excludedNames))
+		return true;
+	// chokidar calls `ignored` for directories too, and ignoring a directory
+	// prunes its whole subtree — so directories always stay walkable and only
+	// FILES get the document-extension filter. A naive "ignore non-*.md"
+	// would silently stop syncing every nested note. Symlinks and stat-less
+	// paths stay watched for the same reason: ignoring them could prune a
+	// subtree the sync walk still discovers.
+	if (stats && stats.isFile()) {
+		return !hasDocumentExtension(candidatePath);
+	}
+	return false;
 }
 
 function defaultDeleteWorkspaceRemote(opts: {
