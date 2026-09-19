@@ -9,14 +9,15 @@ import type { DocumentTableColumn } from "./documentTableView";
  * One external store (not component state) so the header and the virtualized
  * rows — mounted together but in different subtrees — can never disagree.
  * Persisted globally in localStorage: the column set is fixed, so there is
- * nothing per-workspace to key on. Name is pinned first; only folder and
- * modified participate in reorder.
+ * nothing per-workspace to key on. Name is pinned first; only folder,
+ * modified and created participate in reorder.
  */
 
 export const DEFAULT_COLUMN_ORDER: DocumentTableColumn[] = [
 	"name",
 	"folder",
 	"modified",
+	"created",
 ];
 
 const DEFAULT_TRACK: Record<DocumentTableColumn, string> = {
@@ -25,6 +26,7 @@ const DEFAULT_TRACK: Record<DocumentTableColumn, string> = {
 	name: "minmax(0,1fr)",
 	folder: "minmax(0,11rem)",
 	modified: "minmax(0,10rem)",
+	created: "minmax(0,10rem)",
 };
 
 const ORDER_STORAGE_KEY = "mdly-doc-table-column-order";
@@ -34,7 +36,12 @@ export const MIN_COLUMN_WIDTH_PX = 80;
 export const MAX_COLUMN_WIDTH_PX = 640;
 
 function isTableColumn(value: unknown): value is DocumentTableColumn {
-	return value === "name" || value === "folder" || value === "modified";
+	return (
+		value === "name" ||
+		value === "folder" ||
+		value === "modified" ||
+		value === "created"
+	);
 }
 
 /** Pure reorder with the Name-first pin baked in: index 0 never moves. */

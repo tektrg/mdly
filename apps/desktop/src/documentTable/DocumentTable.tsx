@@ -31,6 +31,7 @@ const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
 	name: "Name",
 	folder: "Folder",
 	modified: "Modified",
+	created: "Created",
 };
 
 function ariaSortFor(

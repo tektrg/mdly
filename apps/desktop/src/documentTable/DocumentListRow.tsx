@@ -27,7 +27,7 @@ export const DOCUMENT_LIST_ROW_HEIGHT = 44;
  * classes it can see in the source text.
  */
 export const DOCUMENT_TABLE_GRID_TEMPLATE =
-	"grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,10rem)] items-center gap-2";
+	"grid grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,10rem)_minmax(0,10rem)] items-center gap-2";
 
 export type DocumentRowDensity = "table" | "list";
 
@@ -70,6 +70,10 @@ export function formatModifiedAtTitle(modifiedAt: number): string {
 	return formatRevisionTime(modifiedAt * 1000);
 }
 
+/** Created cells share Modified's compact date rendering — one formatter, two columns. */
+export const formatCreatedAt = formatModifiedAt;
+export const formatCreatedAtTitle = formatModifiedAtTitle;
+
 type DocumentListRowProps = {
 	row: DocumentTableRow;
 	index: number;
@@ -100,15 +104,16 @@ function TableCell({
 	row: DocumentTableRow;
 	isActive: boolean;
 }) {
-	if (column === "modified") {
+	if (column === "modified" || column === "created") {
+		const timestamp = column === "modified" ? row.modifiedAt : row.createdAt;
 		return (
 			<span
 				role="gridcell"
 				tabIndex={-1}
 				className={cn(secondaryTextClass(isActive), "tabular-nums")}
-				title={formatModifiedAtTitle(row.modifiedAt)}
+				title={formatModifiedAtTitle(timestamp)}
 			>
-				{formatModifiedAt(row.modifiedAt)}
+				{formatModifiedAt(timestamp)}
 			</span>
 		);
 	}
@@ -140,9 +145,11 @@ function secondaryLabel(
 ): string {
 	return secondaryColumn === "modified"
 		? formatModifiedAt(row.modifiedAt)
-		: secondaryColumn === "folder"
-			? row.folderLabel
-			: row.name;
+		: secondaryColumn === "created"
+			? formatModifiedAt(row.createdAt)
+			: secondaryColumn === "folder"
+				? row.folderLabel
+				: row.name;
 }
 
 function secondaryTextClass(isActive: boolean): string {
@@ -230,7 +237,9 @@ export function DocumentListRow({
 					<span
 						className={cn(
 							secondaryTextClass(row.isActive),
-							secondaryColumn === "modified" && "tabular-nums",
+							(secondaryColumn === "modified" ||
+								secondaryColumn === "created") &&
+								"tabular-nums",
 						)}
 					>
 						{secondaryLabel(row, secondaryColumn)}

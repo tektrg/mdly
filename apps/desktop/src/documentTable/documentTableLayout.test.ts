@@ -42,13 +42,20 @@ describe("documentTableLayout", () => {
 			"name",
 			"modified",
 			"folder",
+			"created",
 		]);
 		expect(normalizeColumnOrder(["bogus"])).toEqual([
 			"name",
 			"folder",
 			"modified",
+			"created",
 		]);
-		expect(normalizeColumnOrder(null)).toEqual(["name", "folder", "modified"]);
+		expect(normalizeColumnOrder(null)).toEqual([
+			"name",
+			"folder",
+			"modified",
+			"created",
+		]);
 	});
 
 	it("clamps resize drags to the usable band", () => {
@@ -59,7 +66,9 @@ describe("documentTableLayout", () => {
 	});
 
 	it("leaves the Tailwind literal alone while the layout is stock", () => {
-		expect(gridTemplateFor(["name", "folder", "modified"], {})).toBeUndefined();
+		expect(
+			gridTemplateFor(["name", "folder", "modified", "created"], {}),
+		).toBeUndefined();
 	});
 
 	it("emits per-column tracks in live order once customized", () => {
