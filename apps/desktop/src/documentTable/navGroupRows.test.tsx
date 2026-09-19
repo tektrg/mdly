@@ -46,7 +46,6 @@ describe("nav group rows (R2)", () => {
 				<DocumentRowList
 					rows={buildRows({ view: resolved })}
 					density="table"
-					sortColumn={resolved.sort.column}
 					view={view}
 					onOpenDocument={vi.fn()}
 					emptyState={<p>No documents</p>}
@@ -153,7 +152,6 @@ describe("nav group rows (R2)", () => {
 					<DocumentRowList
 						rows={buildRows({ view })}
 						density={density}
-						sortColumn={view.sort.column}
 						view={view}
 						onOpenDocument={vi.fn()}
 						emptyState={<p>No documents</p>}

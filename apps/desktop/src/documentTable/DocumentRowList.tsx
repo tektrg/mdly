@@ -16,8 +16,8 @@ import {
 	type DocumentRowDensity,
 	documentRowHeight,
 } from "./DocumentListRow";
+import { useDocumentTableLayout } from "./documentTableLayout";
 import {
-	type DocumentTableColumn,
 	type DocumentTableRow,
 	type DocumentTableView,
 	ROOT_FOLDER_LABEL,
@@ -61,8 +61,6 @@ const FOCUS_RETRY_FRAMES = 5;
 type DocumentRowListProps = {
 	rows: DocumentTableRow[];
 	density: DocumentRowDensity;
-	/** Drives the narrow list's secondary line; unused at table density. */
-	sortColumn: DocumentTableColumn;
 	onOpenDocument: (row: DocumentTableRow) => void;
 	/** Rendered instead of the row body when there is nothing to list. */
 	emptyState: ReactNode;
@@ -113,7 +111,6 @@ function collectGroupIds(root: NavGroupNode): Set<string> {
 export function DocumentRowList({
 	rows,
 	density,
-	sortColumn,
 	onOpenDocument,
 	emptyState,
 	hideSecondary = false,
@@ -121,6 +118,9 @@ export function DocumentRowList({
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const rowHeight = documentRowHeight(density);
+	// Live column order + widths (one store shared with the table header).
+	// The narrow list's secondary line is the first data column in this order.
+	const { columns, gridStyle, secondaryColumn } = useDocumentTableLayout();
 
 	const workspacePath = useStoreValue(workspacePathStore);
 	const pinnedNotes = useStoreValue(
@@ -394,7 +394,9 @@ export function DocumentRowList({
 							index={index}
 							rowHeight={rowHeight}
 							density={density}
-							sortColumn={sortColumn}
+							columns={columns}
+							gridStyle={gridStyle}
+							secondaryColumn={secondaryColumn}
 							tabbableIndex={tabbableIndex}
 							onOpenDocument={onOpenDocument}
 							onRowKeyDown={onRowKeyDown}

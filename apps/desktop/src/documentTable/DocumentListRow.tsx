@@ -2,7 +2,7 @@ import {
 	formatRevisionTime,
 	SIDEBAR_VIRTUAL_ROW_HEIGHT,
 } from "@mdly/workspace-kit";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../lib/utils";
 import type {
 	DocumentTableColumn,
@@ -75,7 +75,12 @@ type DocumentListRowProps = {
 	index: number;
 	rowHeight: number;
 	density: DocumentRowDensity;
-	sortColumn: DocumentTableColumn;
+	/** Live column order (Name pinned first); drives table cells. */
+	columns: DocumentTableColumn[];
+	/** Inline grid override while reordered/resized; undefined keeps the literal. */
+	gridStyle: CSSProperties | undefined;
+	/** Narrow list's secondary line: first data column in the live order. */
+	secondaryColumn: DocumentTableColumn;
 	tabbableIndex: number;
 	onOpenDocument: (row: DocumentTableRow) => void;
 	onRowKeyDown: (event: ReactKeyboardEvent<HTMLElement>, index: number) => void;
@@ -86,13 +91,58 @@ type DocumentListRowProps = {
 	hideSecondary?: boolean;
 };
 
+function TableCell({
+	column,
+	row,
+	isActive,
+}: {
+	column: DocumentTableColumn;
+	row: DocumentTableRow;
+	isActive: boolean;
+}) {
+	if (column === "modified") {
+		return (
+			<span
+				role="gridcell"
+				tabIndex={-1}
+				className={cn(secondaryTextClass(isActive), "tabular-nums")}
+				title={formatModifiedAtTitle(row.modifiedAt)}
+			>
+				{formatModifiedAt(row.modifiedAt)}
+			</span>
+		);
+	}
+	if (column === "folder") {
+		return (
+			<span
+				role="gridcell"
+				tabIndex={-1}
+				className={secondaryTextClass(isActive)}
+			>
+				{row.folderLabel}
+			</span>
+		);
+	}
+	return (
+		<span
+			role="gridcell"
+			tabIndex={-1}
+			className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+		>
+			{row.name}
+		</span>
+	);
+}
+
 function secondaryLabel(
 	row: DocumentTableRow,
-	sortColumn: DocumentTableColumn,
+	secondaryColumn: DocumentTableColumn,
 ): string {
-	return sortColumn === "modified"
+	return secondaryColumn === "modified"
 		? formatModifiedAt(row.modifiedAt)
-		: row.folderLabel;
+		: secondaryColumn === "folder"
+			? row.folderLabel
+			: row.name;
 }
 
 function secondaryTextClass(isActive: boolean): string {
@@ -107,7 +157,9 @@ export function DocumentListRow({
 	index,
 	rowHeight,
 	density,
-	sortColumn,
+	columns,
+	gridStyle,
+	secondaryColumn,
 	tabbableIndex,
 	onOpenDocument,
 	onRowKeyDown,
@@ -150,29 +202,19 @@ export function DocumentListRow({
 			onKeyDown={(event) => onRowKeyDown(event, index)}
 		>
 			{density === "table" ? (
-				<span role="presentation" className={DOCUMENT_TABLE_GRID_TEMPLATE}>
-					<span
-						role="gridcell"
-						tabIndex={-1}
-						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
-					>
-						{row.name}
-					</span>
-					<span
-						role="gridcell"
-						tabIndex={-1}
-						className={secondaryTextClass(row.isActive)}
-					>
-						{row.folderLabel}
-					</span>
-					<span
-						role="gridcell"
-						tabIndex={-1}
-						className={cn(secondaryTextClass(row.isActive), "tabular-nums")}
-						title={formatModifiedAtTitle(row.modifiedAt)}
-					>
-						{formatModifiedAt(row.modifiedAt)}
-					</span>
+				<span
+					role="presentation"
+					style={gridStyle}
+					className={DOCUMENT_TABLE_GRID_TEMPLATE}
+				>
+					{columns.map((column) => (
+						<TableCell
+							key={column}
+							column={column}
+							row={row}
+							isActive={row.isActive}
+						/>
+					))}
 				</span>
 			) : hideSecondary ? (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
@@ -188,10 +230,10 @@ export function DocumentListRow({
 					<span
 						className={cn(
 							secondaryTextClass(row.isActive),
-							sortColumn === "modified" && "tabular-nums",
+							secondaryColumn === "modified" && "tabular-nums",
 						)}
 					>
-						{secondaryLabel(row, sortColumn)}
+						{secondaryLabel(row, secondaryColumn)}
 					</span>
 				</span>
 			)}

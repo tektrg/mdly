@@ -55,7 +55,6 @@ describe("tag scan view (A9)", () => {
 				<DocumentRowList
 					rows={buildRows({ view })}
 					density="table"
-					sortColumn={view.sort.column}
 					view={view}
 					onOpenDocument={vi.fn()}
 					emptyState={<p>No documents</p>}
@@ -106,7 +105,6 @@ describe("tag scan view (A9)", () => {
 				<DocumentRowList
 					rows={buildRows({ view })}
 					density="table"
-					sortColumn={view.sort.column}
 					view={view}
 					onOpenDocument={vi.fn()}
 					emptyState={<p>No documents</p>}

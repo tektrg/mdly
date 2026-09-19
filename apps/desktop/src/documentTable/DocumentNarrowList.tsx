@@ -125,7 +125,6 @@ export function DocumentNarrowList({
 				<DocumentRowList
 					rows={rows}
 					density="list"
-					sortColumn={view.sort.column}
 					hideSecondary={!showSecondary}
 					view={view}
 					onOpenDocument={onOpenDocument}

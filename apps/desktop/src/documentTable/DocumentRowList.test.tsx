@@ -56,7 +56,6 @@ describe("DocumentRowList virtualized behaviour", () => {
 				<DocumentRowList
 					rows={rows}
 					density={density}
-					sortColumn="modified"
 					onOpenDocument={vi.fn()}
 					emptyState={<p>No documents</p>}
 				/>,
@@ -228,7 +227,6 @@ describe("DocumentRowList close-focus seam", () => {
 				<DocumentRowList
 					rows={buildRows({ files: manyMarkdownFiles(200) })}
 					density="table"
-					sortColumn="modified"
 					onOpenDocument={vi.fn()}
 					emptyState={<p>No documents</p>}
 				/>,

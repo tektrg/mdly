@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DocumentNarrowList } from "./DocumentNarrowList";
 import { formatModifiedAt } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
+import { resetDocumentTableLayoutForTests } from "./documentTableLayout";
 import type { DocumentTableRow } from "./documentTableView";
 import { buildRows, viewWith } from "./testFixtures";
 
@@ -30,6 +31,8 @@ describe("DocumentNarrowList", () => {
 		onShowAllDocuments = vi.fn();
 		onFilterChange = vi.fn();
 		onRetryListing = vi.fn();
+		localStorage.clear();
+		resetDocumentTableLayoutForTests();
 	});
 
 	afterEach(() => {
@@ -73,14 +76,19 @@ describe("DocumentNarrowList", () => {
 		);
 	}
 
-	it("shows the folder under each name while sorting by name", () => {
+	it("shows the folder under each name in the default column order", () => {
 		const view = viewWith({ sort: { column: "name", direction: "asc" } });
 		renderList({ rows: buildRows({ view }), view });
 
 		expect(secondaryLines()).toEqual(["—", "notes", "notes/deep"]);
 	});
 
-	it("shows the timestamp under each name while sorting by modified", () => {
+	it("shows the first ordered data column under each name", () => {
+		localStorage.setItem(
+			"mdly-doc-table-column-order",
+			JSON.stringify(["name", "modified", "folder"]),
+		);
+		resetDocumentTableLayoutForTests();
 		renderList({ rows: buildRows() });
 
 		expect(secondaryLines()[0]).toBe(formatModifiedAt(1_700_000_300));
