@@ -9,9 +9,11 @@ import {
 	useCallback,
 	useEffect,
 	useRef,
+	useState,
 } from "react";
 import { cn } from "../lib/utils";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
+import { type DocumentRowListMenu, DocumentRowMenu } from "./DocumentRowMenu";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
@@ -127,6 +129,12 @@ type DocumentRowListProps = {
 	onOpenDocument: (row: DocumentTableRow) => void;
 	/** Rendered instead of the row body when there is nothing to list. */
 	emptyState: ReactNode;
+	/**
+	 * Title-column menu, wired by the host to the same file actions the
+	 * sidebar rows offer. Absent in unit tests that only exercise layout and
+	 * keyboard behaviour.
+	 */
+	menu?: DocumentRowListMenu;
 };
 
 /**
@@ -151,6 +159,7 @@ export function DocumentRowList({
 	sortColumn,
 	onOpenDocument,
 	emptyState,
+	menu,
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const rowHeight = documentRowHeight(density);
@@ -159,6 +168,9 @@ export function DocumentRowList({
 		rowHeight,
 		scrollRef,
 	});
+	// Which row's "..." menu is open, by path. Right-clicking a row opens the
+	// same menu the trigger does — exactly how the sidebar's row menu behaves.
+	const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
 
 	const activeIndex = rows.findIndex((row) => row.isActive);
 	const activePath = activeIndex === -1 ? null : rows[activeIndex].path;
@@ -278,92 +290,119 @@ export function DocumentRowList({
 				style={{ blockSize: rows.length * rowHeight }}
 			>
 				{items.map(({ index, row }) => (
-					<button
+					<div
 						key={row.path}
-						type="button"
-						role="row"
-						aria-rowindex={density === "table" ? index + 2 : index + 1}
-						aria-current={row.isActive ? "true" : undefined}
-						data-document-row-index={index}
-						tabIndex={index === tabbableIndex ? 0 : -1}
-						title={row.path}
+						role="presentation"
+						className="group/document-row absolute start-1 end-1 top-0"
 						style={{
 							transform: `translateY(${index * rowHeight}px)`,
 							blockSize: rowHeight,
 						}}
-						className={cn(
-							"absolute start-1 end-1 top-0 flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
-							"[padding-inline:var(--row-pad-inline)]",
-							"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none",
-							"focus-visible:ring-1 focus-visible:ring-ring",
-							// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
-							// escalates to the real selection colour inside
-							// `[data-sidebar-root]:focus-within`, and this list is deliberately
-							// outside the sidebar; worse, all three dark themes define it as
-							// `var(--accent)` — byte-identical to the hover background — which
-							// left the open document invisible. Hover is withheld from the
-							// active row so it cannot wash the selection back out: the two
-							// tokens simply differ (light themes make `--accent` lighter than
-							// `--selected`, dark themes darker), so an unguarded hover would
-							// repaint the open row either way.
-							row.isActive
-								? "bg-selected text-selected-foreground font-medium"
-								: "hover:bg-accent",
-						)}
-						onClick={() => onOpenDocument(row)}
-						onKeyDown={(event) => onRowKeyDown(event, index)}
 					>
-						{density === "table" ? (
-							<span
-								role="presentation"
-								className={DOCUMENT_TABLE_GRID_TEMPLATE}
-							>
+						<button
+							type="button"
+							role="row"
+							aria-rowindex={density === "table" ? index + 2 : index + 1}
+							aria-current={row.isActive ? "true" : undefined}
+							data-document-row-index={index}
+							tabIndex={index === tabbableIndex ? 0 : -1}
+							title={row.path}
+							className={cn(
+								"flex h-full w-full flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
+								"[padding-inline:var(--row-pad-inline)]",
+								"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none",
+								"focus-visible:ring-1 focus-visible:ring-ring",
+								// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
+								// escalates to the real selection colour inside
+								// `[data-sidebar-root]:focus-within`, and this list is deliberately
+								// outside the sidebar; worse, all three dark themes define it as
+								// `var(--accent)` — byte-identical to the hover background — which
+								// left the open document invisible. Hover is withheld from the
+								// active row so it cannot wash the selection back out: the two
+								// tokens simply differ (light themes make `--accent` lighter than
+								// `--selected`, dark themes darker), so an unguarded hover would
+								// repaint the open row either way.
+								row.isActive
+									? "bg-selected text-selected-foreground font-medium"
+									: "hover:bg-accent",
+							)}
+							onClick={() => onOpenDocument(row)}
+							onKeyDown={(event) => onRowKeyDown(event, index)}
+							onContextMenu={
+								menu
+									? (event) => {
+											event.preventDefault();
+											setOpenMenuPath(row.path);
+										}
+									: undefined
+							}
+						>
+							{density === "table" ? (
+								<span
+									role="presentation"
+									className={DOCUMENT_TABLE_GRID_TEMPLATE}
+								>
+									<span
+										role="gridcell"
+										tabIndex={-1}
+										className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+									>
+										{row.name}
+									</span>
+									<span
+										role="gridcell"
+										tabIndex={-1}
+										className={secondaryTextClass(row.isActive)}
+									>
+										{row.folderLabel}
+									</span>
+									<span
+										role="gridcell"
+										tabIndex={-1}
+										className={cn(
+											secondaryTextClass(row.isActive),
+											"tabular-nums",
+										)}
+										title={formatModifiedAtTitle(row.modifiedAt)}
+									>
+										{formatModifiedAt(row.modifiedAt)}
+									</span>
+								</span>
+							) : (
 								<span
 									role="gridcell"
 									tabIndex={-1}
-									className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+									className="flex min-w-0 flex-col"
 								>
-									{row.name}
+									<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
+										{row.name}
+									</span>
+									<span
+										className={cn(
+											secondaryTextClass(row.isActive),
+											sortColumn === "modified" && "tabular-nums",
+										)}
+									>
+										{secondaryLabel(row, sortColumn)}
+									</span>
 								</span>
-								<span
-									role="gridcell"
-									tabIndex={-1}
-									className={secondaryTextClass(row.isActive)}
-								>
-									{row.folderLabel}
-								</span>
-								<span
-									role="gridcell"
-									tabIndex={-1}
-									className={cn(
-										secondaryTextClass(row.isActive),
-										"tabular-nums",
-									)}
-									title={formatModifiedAtTitle(row.modifiedAt)}
-								>
-									{formatModifiedAt(row.modifiedAt)}
-								</span>
-							</span>
-						) : (
-							<span
-								role="gridcell"
-								tabIndex={-1}
-								className="flex min-w-0 flex-col"
-							>
-								<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
-									{row.name}
-								</span>
-								<span
-									className={cn(
-										secondaryTextClass(row.isActive),
-										sortColumn === "modified" && "tabular-nums",
-									)}
-								>
-									{secondaryLabel(row, sortColumn)}
-								</span>
-							</span>
-						)}
-					</button>
+							)}
+						</button>
+						{menu ? (
+							<div className="absolute inset-y-0 end-0.5 flex items-center">
+								<DocumentRowMenu
+									row={row}
+									pinned={menu.isPinned(row.path)}
+									revealLabel={menu.revealLabel}
+									open={openMenuPath === row.path}
+									onOpenChange={(open) =>
+										setOpenMenuPath(open ? row.path : null)
+									}
+									handlers={menu}
+								/>
+							</div>
+						) : null}
+					</div>
 				))}
 			</div>
 		</div>

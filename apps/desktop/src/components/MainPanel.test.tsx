@@ -76,6 +76,7 @@ describe("MainPanel", () => {
 					hasWorkspace={hasWorkspace}
 					onCreateFolder={vi.fn()}
 					onOpenFolder={vi.fn()}
+					onMoveFile={vi.fn()}
 					notionDatabaseRefreshToken={0}
 					onScrollContainerChange={vi.fn()}
 					historyOpen={false}

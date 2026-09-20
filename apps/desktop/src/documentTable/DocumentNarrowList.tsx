@@ -2,6 +2,7 @@ import { Button } from "@hubble.md/ui";
 import MingcuteArrowLeftLine from "~icons/mingcute/arrow-left-line";
 import { DocumentFilterInput } from "./DocumentFilterInput";
 import { DocumentRowList } from "./DocumentRowList";
+import type { DocumentRowListMenu } from "./DocumentRowMenu";
 import type { DocumentListingState } from "./documentListingState";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
@@ -14,6 +15,8 @@ export type DocumentNarrowListProps = {
 	onFilterChange: (filter: string) => void;
 	onShowAllDocuments: () => void;
 	onRetryListing: () => void;
+	/** Title menu; omitted in tests that only exercise the list. */
+	rowMenu?: DocumentRowListMenu;
 };
 
 const NARROW_MESSAGE_CLASS =
@@ -77,6 +80,7 @@ export function DocumentNarrowList({
 	onFilterChange,
 	onShowAllDocuments,
 	onRetryListing,
+	rowMenu,
 }: DocumentNarrowListProps) {
 	return (
 		<div className="flex w-64 shrink-0 flex-col border-e border-sidebar-border bg-sidebar">
@@ -104,6 +108,7 @@ export function DocumentNarrowList({
 					density="list"
 					sortColumn={view.sort.column}
 					onOpenDocument={onOpenDocument}
+					menu={rowMenu}
 					emptyState={
 						<div className="p-2">
 							<NarrowListEmptyState

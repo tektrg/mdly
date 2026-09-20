@@ -134,6 +134,8 @@ export {
 } from "./nav/buildTagTree";
 export { SearchList } from "./nav/SearchList";
 export {
+	ActionItem,
+	ActionsMenu,
 	type RecentTagAppearance,
 	Sidebar,
 	type SidebarFile,

@@ -1,10 +1,12 @@
 import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
 import { type CSSProperties, useEffect } from "react";
+import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { desktopApi } from "../desktopApi";
 import type { HistoryRevision } from "../desktopApi/types";
 import { DocumentNarrowList } from "../documentTable/DocumentNarrowList";
+import type { DocumentRowListMenu } from "../documentTable/DocumentRowMenu";
 import { DocumentTable } from "../documentTable/DocumentTable";
 import { resolveDocumentListingState } from "../documentTable/documentListingState";
 import {
@@ -12,7 +14,13 @@ import {
 	toggleDocumentTableSort,
 } from "../documentTable/documentTableStore";
 import { useDocumentTableRows } from "../documentTable/useDocumentTableRows";
-import { loadPath, refreshFiles } from "../store/actions";
+import { revealFileLabel } from "../lib/revealFile";
+import {
+	deleteMarkdownFile,
+	loadPath,
+	refreshFiles,
+	togglePinnedNote,
+} from "../store/actions";
 import { closeDocumentToTable } from "../store/closeDocument";
 import { viewerStore, workspaceStore } from "../store/state";
 import { DocumentViewer } from "./DocumentViewer";
@@ -23,6 +31,8 @@ type MainPanelProps = {
 	hasWorkspace: boolean;
 	onCreateFolder: () => void;
 	onOpenFolder: () => void;
+	/** Opens the "Move to…" destination picker for a table row's file. */
+	onMoveFile: (path: string) => void;
 	notionDatabaseRefreshToken: number;
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
 	historyOpen: boolean;
@@ -46,6 +56,7 @@ export function MainPanel({
 	hasWorkspace,
 	onCreateFolder,
 	onOpenFolder,
+	onMoveFile,
 	notionDatabaseRefreshToken,
 	onScrollContainerChange,
 	historyOpen,
@@ -68,12 +79,37 @@ export function MainPanel({
 		workspaceStore,
 		useShallow((workspace) => resolveDocumentListingState(workspace)),
 	);
+	const pinnedNotes = useStoreValue(
+		workspaceStore,
+		(workspace) => workspace.pinnedNotes,
+	);
 	// A document that is still loading — or that failed — is still the row the
 	// user is looking at, so the list highlights `requestedPath`, not the
 	// document that finished loading.
 	const { rows, view } = useDocumentTableRows(
 		requestedPath === null ? null : requestedPath,
 	);
+	// Title-column menu: the sidebar file row's actions (minus Rename, which
+	// needs inline UI the table doesn't have yet), wired to the same store
+	// actions and the same failure toasts as the sidebar.
+	const rowMenu: DocumentRowListMenu = {
+		isPinned: (path) => pinnedNotes.includes(path),
+		revealLabel: revealFileLabel(desktopApi.platform),
+		onRevealPath: (path) => {
+			void desktopApi
+				.revealFile(path)
+				.catch(() => toast.error("Failed to reveal file"));
+		},
+		onCopyPath: (path) => {
+			void navigator.clipboard
+				.writeText(path)
+				.then(() => toast.success("File path copied"))
+				.catch(() => toast.error("Failed to copy file path"));
+		},
+		onMovePath: (path) => onMoveFile(path),
+		onTogglePin: (path) => void togglePinnedNote(path),
+		onDeletePath: (path) => void deleteMarkdownFile(path),
+	};
 
 	if (!hasWorkspace) {
 		return (
@@ -96,6 +132,7 @@ export function MainPanel({
 				onFilterChange={setDocumentTableFilter}
 				onToggleSort={toggleDocumentTableSort}
 				onRetryListing={() => void refreshFiles()}
+				rowMenu={rowMenu}
 			/>
 		);
 	}
@@ -110,6 +147,7 @@ export function MainPanel({
 				onFilterChange={setDocumentTableFilter}
 				onShowAllDocuments={() => void closeDocumentToTable()}
 				onRetryListing={() => void refreshFiles()}
+				rowMenu={rowMenu}
 			/>
 			<div
 				data-document-pane

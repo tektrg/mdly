@@ -896,6 +896,7 @@ function App() {
 						hasWorkspace={hasWorkspace}
 						onCreateFolder={() => void createWorkspaceWithSidebar()}
 						onOpenFolder={() => void openWorkspaceWithSidebar()}
+						onMoveFile={openMoveFileCommandBar}
 						notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 						onScrollContainerChange={setScrollContainerEl}
 						historyOpen={historyOpen}

@@ -223,8 +223,12 @@ describe("DocumentTable", () => {
 		renderTable({ rows: buildRows() });
 
 		const first = bodyRowElements()[0];
-		expect(first?.style.transform).toBe("translateY(0px)");
-		expect(bodyRowElements()[1]?.style.transform).toBe("translateY(28px)");
+		// Positioning lives on each row's wrapper (which also hosts the "..."
+		// menu overlay); the row button itself keeps the transition.
+		expect(first?.parentElement?.style.transform).toBe("translateY(0px)");
+		expect(bodyRowElements()[1]?.parentElement?.style.transform).toBe(
+			"translateY(28px)",
+		);
 		expect(first?.className).toContain("transition-[transform");
 		expect(first?.className).toContain("motion-reduce:transition-none");
 	});

@@ -1861,16 +1861,26 @@ function FileActionsMenu({
 	);
 }
 
-function ActionsMenu({
+/**
+ * Row "..." menu shell, shared with hosts that render their own row surfaces
+ * (the desktop document table reuses it so its title column offers exactly the
+ * sidebar's menu). The trigger reveals on the row's hover group; hosts whose
+ * rows use a different group name pass `triggerClassName` with their own
+ * `group-hover/<name>:opacity-100` arm. Additive reuse — the sidebar's own
+ * call sites pass nothing and render byte-for-byte as before.
+ */
+export function ActionsMenu({
 	label,
 	open,
 	onOpenChange,
 	children,
+	triggerClassName = sidebarRowActionButtonClass,
 }: {
 	label: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: React.ReactNode;
+	triggerClassName?: string;
 }) {
 	const portalContainer = usePortalContainer();
 	return (
@@ -1879,7 +1889,7 @@ function ActionsMenu({
 				render={
 					<button
 						type="button"
-						className={sidebarRowActionButtonClass}
+						className={triggerClassName}
 						aria-label={`Actions for ${label}`}
 						title={`Actions for ${label}`}
 						onContextMenu={(event) => {
@@ -1907,7 +1917,8 @@ function ActionsMenu({
 	);
 }
 
-function ActionItem({
+/** One menu row. Reused by the desktop document table's title-column menu. */
+export function ActionItem({
 	children,
 	destructive,
 	icon,

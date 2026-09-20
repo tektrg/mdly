@@ -8,6 +8,7 @@ import {
 	DOCUMENT_TABLE_GRID_TEMPLATE,
 	DocumentRowList,
 } from "./DocumentRowList";
+import type { DocumentRowListMenu } from "./DocumentRowMenu";
 import type { DocumentListingState } from "./documentListingState";
 import type {
 	DocumentTableColumn,
@@ -151,6 +152,8 @@ export type DocumentTableProps = {
 	onFilterChange: (filter: string) => void;
 	onToggleSort: (column: DocumentTableColumn) => void;
 	onRetryListing: () => void;
+	/** Title-column menu; omitted in tests that only exercise the grid. */
+	rowMenu?: DocumentRowListMenu;
 };
 
 /** The full-width home surface: every Markdown document in the workspace. */
@@ -162,6 +165,7 @@ export function DocumentTable({
 	onFilterChange,
 	onToggleSort,
 	onRetryListing,
+	rowMenu,
 }: DocumentTableProps) {
 	return (
 		<section className="flex h-full min-h-0 flex-col bg-background">
@@ -194,6 +198,7 @@ export function DocumentTable({
 					density="table"
 					sortColumn={view.sort.column}
 					onOpenDocument={onOpenDocument}
+					menu={rowMenu}
 					emptyState={
 						<DocumentTableEmptyState
 							listing={listing}
