@@ -203,6 +203,176 @@ describe("DocumentRowList virtualized behaviour", () => {
 	});
 });
 
+describe("DocumentRowList title-column menu", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	function renderList({
+		menu = true,
+		pinned = [],
+	}: {
+		menu?: boolean;
+		pinned?: string[];
+	} = {}) {
+		const onOpenDocument = vi.fn();
+		const handlers = {
+			onRevealPath: vi.fn(),
+			onCopyPath: vi.fn(),
+			onMovePath: vi.fn(),
+			onTogglePin: vi.fn(),
+			onDeletePath: vi.fn(),
+		};
+		const pinnedSet = new Set(pinned);
+		act(() => {
+			root.render(
+				<DocumentRowList
+					rows={buildRows()}
+					density="table"
+					onOpenDocument={onOpenDocument}
+					emptyState={<p>No documents</p>}
+					menu={
+						menu
+							? {
+									...handlers,
+									isPinned: (path: string) => pinnedSet.has(path),
+									revealLabel: "Reveal in Finder",
+								}
+							: undefined
+					}
+				/>,
+			);
+		});
+		return { onOpenDocument, handlers };
+	}
+
+	function menuTriggers(): HTMLElement[] {
+		return Array.from(
+			container.querySelectorAll<HTMLElement>(
+				'button[aria-label^="Actions for"]',
+			),
+		);
+	}
+
+	function openMenuItems(): HTMLElement[] {
+		return Array.from(
+			document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+		);
+	}
+
+	function menuText(): string {
+		return openMenuItems()
+			.map((el) => el.textContent ?? "")
+			.join("\n");
+	}
+
+	it("renders one ... trigger per row only when the menu is provided", () => {
+		renderList({ menu: false });
+		expect(menuTriggers()).toHaveLength(0);
+
+		renderList({ menu: true });
+		// Three markdown fixtures; the .html/.png never become rows.
+		expect(menuTriggers()).toHaveLength(3);
+	});
+
+	it("opens the sidebar's items on right-click, without Rename", () => {
+		renderList();
+		const row = container.querySelector<HTMLElement>(
+			"[data-document-row-index]",
+		);
+		if (!row) throw new Error("no row rendered");
+		act(() => {
+			row.dispatchEvent(
+				new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+			);
+		});
+
+		expect(openMenuItems()).toHaveLength(5);
+		const text = menuText();
+		for (const label of [
+			"Reveal in Finder",
+			"Copy file path",
+			"Move to...",
+			"Pin",
+			"Delete",
+		]) {
+			expect(text).toContain(label);
+		}
+		expect(text).not.toContain("Rename");
+	});
+
+	it("opens the same menu from the ... trigger", () => {
+		renderList();
+		const trigger = menuTriggers()[0];
+		if (!trigger) throw new Error("no menu trigger rendered");
+		act(() => {
+			trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+
+		expect(openMenuItems()).toHaveLength(5);
+		expect(menuText()).toContain("Copy file path");
+	});
+
+	it("labels the pin item from workspace pin state", () => {
+		// Newest-first puts /ws/alpha.md first.
+		renderList({ pinned: ["/ws/alpha.md"] });
+		const row = container.querySelector<HTMLElement>(
+			"[data-document-row-index]",
+		);
+		if (!row) throw new Error("no row rendered");
+		act(() => {
+			row.dispatchEvent(
+				new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+			);
+		});
+
+		expect(menuText()).toContain("Unpin");
+		expect(menuText()).not.toContain("\nPin\n");
+	});
+
+	it("routes menu clicks to the row's path and keeps left-click opening", () => {
+		const { onOpenDocument, handlers } = renderList();
+		const row = container.querySelector<HTMLElement>(
+			"[data-document-row-index]",
+		);
+		if (!row) throw new Error("no row rendered");
+		act(() => {
+			row.dispatchEvent(
+				new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
+			);
+		});
+
+		const deleteItem = openMenuItems().find((el) =>
+			(el.textContent ?? "").includes("Delete"),
+		);
+		if (!deleteItem) throw new Error("Delete item not rendered");
+		act(() => {
+			deleteItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		expect(handlers.onDeletePath).toHaveBeenCalledTimes(1);
+		expect(handlers.onDeletePath).toHaveBeenCalledWith("/ws/alpha.md");
+		expect(onOpenDocument).not.toHaveBeenCalled();
+
+		act(() => {
+			row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		});
+		expect(onOpenDocument).toHaveBeenCalledTimes(1);
+		expect(onOpenDocument).toHaveBeenCalledWith(
+			expect.objectContaining({ path: "/ws/alpha.md" }),
+		);
+	});
+});
+
 describe("DocumentRowList close-focus seam", () => {
 	let container: HTMLDivElement;
 	let root: Root;

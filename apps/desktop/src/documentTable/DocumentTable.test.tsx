@@ -226,6 +226,9 @@ describe("DocumentTable", () => {
 		renderTable({ rows: buildRows() });
 
 		const first = bodyRowElements()[0];
+		// Positioning lives on the row button itself (the `contents` wrapper
+		// only hosts the "..." menu overlay); the button also keeps the
+		// transition.
 		expect(first?.style.transform).toBe("translateY(0px)");
 		expect(bodyRowElements()[1]?.style.transform).toBe("translateY(28px)");
 		expect(first?.className).toContain("transition-[transform");

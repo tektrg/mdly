@@ -2,7 +2,11 @@ import {
 	formatRevisionTime,
 	SIDEBAR_VIRTUAL_ROW_HEIGHT,
 } from "@mdly/workspace-kit";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type {
+	CSSProperties,
+	KeyboardEvent as ReactKeyboardEvent,
+	MouseEvent as ReactMouseEvent,
+} from "react";
 import { cn } from "../lib/utils";
 import type {
 	DocumentTableColumn,
@@ -93,6 +97,8 @@ type DocumentListRowProps = {
 	 * so the full-width table is untouched by construction.
 	 */
 	hideSecondary?: boolean;
+	/** Right-click opens the host-wired row menu. Absent means no menu. */
+	onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 };
 
 function TableCell({
@@ -171,6 +177,7 @@ export function DocumentListRow({
 	onOpenDocument,
 	onRowKeyDown,
 	hideSecondary = false,
+	onContextMenu,
 }: DocumentListRowProps) {
 	return (
 		<button
@@ -207,6 +214,7 @@ export function DocumentListRow({
 			)}
 			onClick={() => onOpenDocument(row)}
 			onKeyDown={(event) => onRowKeyDown(event, index)}
+			onContextMenu={onContextMenu}
 		>
 			{density === "table" ? (
 				<span

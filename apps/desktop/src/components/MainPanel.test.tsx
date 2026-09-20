@@ -76,6 +76,7 @@ describe("MainPanel", () => {
 					hasWorkspace={hasWorkspace}
 					onCreateFolder={vi.fn()}
 					onOpenFolder={vi.fn()}
+					onMoveFile={vi.fn()}
 					notionDatabaseRefreshToken={0}
 					onScrollContainerChange={vi.fn()}
 					historyOpen={false}
@@ -133,7 +134,9 @@ describe("MainPanel", () => {
 		setViewer({ requestedPath: null, status: "idle" });
 		renderPanel();
 
-		expect(container.querySelectorAll('[role="columnheader"]')).toHaveLength(3);
+		// Four since the created column joined the defaults (name, folder,
+		// modified, created).
+		expect(container.querySelectorAll('[role="columnheader"]')).toHaveLength(4);
 		expect(listRows()).toHaveLength(3);
 		expect(documentPane()).toBeNull();
 		expect(

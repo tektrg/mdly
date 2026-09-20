@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import MingcuteArrowLeftLine from "~icons/mingcute/arrow-left-line";
 import { DocumentFilterInput } from "./DocumentFilterInput";
 import { DocumentRowList } from "./DocumentRowList";
+import type { DocumentRowListMenu } from "./DocumentRowMenu";
 import type { DocumentListingState } from "./documentListingState";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
@@ -25,6 +26,8 @@ export type DocumentNarrowListProps = {
 	navTier?: NavDensityTier;
 	/** Rendered list inline-size; defaults to the pre-resize `w-64`. */
 	listInlineSize?: number;
+	/** Title menu; omitted in tests that only exercise the list. */
+	rowMenu?: DocumentRowListMenu;
 };
 
 const NARROW_MESSAGE_CLASS =
@@ -92,6 +95,7 @@ export function DocumentNarrowList({
 	listRef,
 	navTier = "list",
 	listInlineSize = PEEK_LIST_DEFAULT_WIDTH,
+	rowMenu,
 }: DocumentNarrowListProps) {
 	// R9: Rail shows the title only; every wider tier keeps the secondary line.
 	const showSecondary = columnsForTier(navTier).length > 1;
@@ -128,6 +132,7 @@ export function DocumentNarrowList({
 					hideSecondary={!showSecondary}
 					view={view}
 					onOpenDocument={onOpenDocument}
+					menu={rowMenu}
 					emptyState={
 						<div className="p-2">
 							<NarrowListEmptyState

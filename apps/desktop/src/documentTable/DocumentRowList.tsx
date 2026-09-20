@@ -7,6 +7,7 @@ import {
 	useEffect,
 	useMemo,
 	useRef,
+	useState,
 } from "react";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
 import { workspacePathStore, workspaceStore } from "../store/state";
@@ -16,6 +17,7 @@ import {
 	type DocumentRowDensity,
 	documentRowHeight,
 } from "./DocumentListRow";
+import { type DocumentRowListMenu, DocumentRowMenu } from "./DocumentRowMenu";
 import { useDocumentTableLayout } from "./documentTableLayout";
 import {
 	type DocumentTableRow,
@@ -74,6 +76,12 @@ type DocumentRowListProps = {
 	 * caller without a view renders exactly as before.
 	 */
 	view?: DocumentTableView;
+	/**
+	 * Title-column menu, wired by the host to the same file actions the
+	 * sidebar rows offer. Absent in unit tests that only exercise layout and
+	 * keyboard behaviour.
+	 */
+	menu?: DocumentRowListMenu;
 };
 
 /** The engine's document shape over the table's own row: identity preserved. */
@@ -118,6 +126,7 @@ export function DocumentRowList({
 	emptyState,
 	hideSecondary = false,
 	view,
+	menu,
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	// Horizontal swipe anywhere over the list flips the nav view (recent /
@@ -242,6 +251,9 @@ export function DocumentRowList({
 		rowHeight,
 		scrollRef,
 	});
+	// Which row's "..." menu is open, by path. Right-clicking a row opens the
+	// same menu the trigger does — exactly how the sidebar's row menu behaves.
+	const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
 
 	const activeIndex = navRows.findIndex(
 		(navRow) => navRow.kind === "document" && navRow.doc.isActive,
@@ -412,20 +424,55 @@ export function DocumentRowList({
 							}}
 						/>
 					) : (
-						<DocumentListRow
+						// `contents` keeps the menu trigger's `group/document-row`
+						// hover working with zero layout or accessibility impact.
+						<div
 							key={navRow.id}
-							row={navRow.doc}
-							index={index}
-							rowHeight={rowHeight}
-							density={density}
-							columns={columns}
-							gridStyle={gridStyle}
-							secondaryColumn={secondaryColumn}
-							tabbableIndex={tabbableIndex}
-							onOpenDocument={onOpenDocument}
-							onRowKeyDown={onRowKeyDown}
-							hideSecondary={hideSecondary}
-						/>
+							role="presentation"
+							className="contents group/document-row"
+						>
+							<DocumentListRow
+								row={navRow.doc}
+								index={index}
+								rowHeight={rowHeight}
+								density={density}
+								columns={columns}
+								gridStyle={gridStyle}
+								secondaryColumn={secondaryColumn}
+								tabbableIndex={tabbableIndex}
+								onOpenDocument={onOpenDocument}
+								onRowKeyDown={onRowKeyDown}
+								hideSecondary={hideSecondary}
+								onContextMenu={
+									menu
+										? (event) => {
+												event.preventDefault();
+												setOpenMenuPath(navRow.doc.path);
+											}
+										: undefined
+								}
+							/>
+							{menu ? (
+								<div
+									className="absolute end-0.5 top-0 flex items-center"
+									style={{
+										transform: `translateY(${index * rowHeight}px)`,
+										blockSize: rowHeight,
+									}}
+								>
+									<DocumentRowMenu
+										row={navRow.doc}
+										pinned={menu.isPinned(navRow.doc.path)}
+										revealLabel={menu.revealLabel}
+										open={openMenuPath === navRow.doc.path}
+										onOpenChange={(open) =>
+											setOpenMenuPath(open ? navRow.doc.path : null)
+										}
+										handlers={menu}
+									/>
+								</div>
+							) : null}
+						</div>
 					),
 				)}
 			</div>
