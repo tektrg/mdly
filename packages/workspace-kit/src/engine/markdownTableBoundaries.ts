@@ -43,14 +43,55 @@ function tableAt(
 		return null;
 	}
 
+	const columnCount = cellCount(headerLine);
 	const tableLines = [headerLine, delimiterLine];
 	let endIndex = startIndex + 1;
-	while (isTableRowLine(lines[endIndex + 1] ?? "")) {
-		endIndex += 1;
-		tableLines.push(lines[endIndex] ?? "");
+
+	while (true) {
+		const nextLine = lines[endIndex + 1];
+		if (nextLine !== undefined && isTableRowLine(nextLine)) {
+			endIndex += 1;
+			tableLines.push(nextLine);
+			continue;
+		}
+
+		// A single blank line followed by a row of matching shape is almost
+		// always an accidental split of the same table (e.g. pasted content),
+		// not an intentional new table — GFM would otherwise silently render
+		// that row as a stray "|"-delimited paragraph. Skip the blank line so
+		// it parses as one continuous table. A row immediately followed by
+		// its own delimiter line is a real new table's header, not a
+		// continuation, so that case is excluded.
+		if (
+			nextLine !== undefined &&
+			nextLine.trim() === "" &&
+			isContinuationRow(lines, endIndex + 2, columnCount)
+		) {
+			endIndex += 2;
+			tableLines.push(lines[endIndex] ?? "");
+			continue;
+		}
+
+		break;
 	}
 
 	return { lines: tableLines, endIndex };
+}
+
+function isContinuationRow(
+	lines: string[],
+	index: number,
+	columnCount: number,
+): boolean {
+	const line = lines[index];
+	if (line === undefined || !isTableRowLine(line)) return false;
+	if (cellCount(line) !== columnCount) return false;
+	if (isDelimiterLine(lines[index + 1] ?? "")) return false;
+	return true;
+}
+
+function cellCount(line: string): number {
+	return line.trim().split("|").slice(1, -1).length;
 }
 
 function isInsideFence(lines: string[], targetIndex: number): boolean {

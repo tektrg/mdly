@@ -78,9 +78,16 @@ describe("buildDocumentRows", () => {
 		expect(rows[0].openPath).toBe("/elsewhere/target.md");
 	});
 
-	it("derives name, folder and modified from the listing without reading disk", () => {
+	it("derives name, folder, modified and created from the listing without reading disk", () => {
 		const rows = buildDocumentRows(
-			[file("/ws/notes/release-notes.md", 1700000000), file("/ws/root.md", 5)],
+			[
+				{
+					path: "/ws/notes/release-notes.md",
+					modified_at: 1700000000,
+					created_at: 1699000000,
+				},
+				file("/ws/root.md", 5),
+			],
 			WORKSPACE,
 		);
 
@@ -89,10 +96,13 @@ describe("buildDocumentRows", () => {
 			name: "release-notes",
 			folderLabel: "notes",
 			modifiedAt: 1700000000,
+			createdAt: 1699000000,
 			isActive: false,
 			isPinnedOffFilter: false,
 		});
 		expect(rows[1].folderLabel).toBe(ROOT_FOLDER_LABEL);
+		// Listings predating the created column still sort: created falls back to modified.
+		expect(rows[1].createdAt).toBe(5);
 	});
 
 	it("reprojects when the listing array is replaced (no stale memo)", () => {
@@ -162,6 +172,27 @@ describe("applyDocumentTableView sorting", () => {
 				viewWith({ sort: { column: "folder", direction: "asc" } }),
 			),
 		).toEqual(["/ws/top.md", "/ws/alpha/one.md", "/ws/zed/deep.md"]);
+	});
+
+	it("sorts by created, oldest first ascending and newest first descending", () => {
+		const files = [
+			{ path: "/ws/old.md", modified_at: 100, created_at: 10 },
+			{ path: "/ws/new.md", modified_at: 100, created_at: 30 },
+			{ path: "/ws/mid.md", modified_at: 100, created_at: 20 },
+		];
+		expect(
+			pathsFor(
+				files,
+				viewWith({ sort: { column: "created", direction: "asc" } }),
+			),
+		).toEqual(["/ws/old.md", "/ws/mid.md", "/ws/new.md"]);
+		resetDocumentRowsMemo();
+		expect(
+			pathsFor(
+				files,
+				viewWith({ sort: { column: "created", direction: "desc" } }),
+			),
+		).toEqual(["/ws/new.md", "/ws/mid.md", "/ws/old.md"]);
 	});
 
 	it("returns a 5000-entry fixture in one synchronous call", () => {
@@ -384,7 +415,7 @@ describe("toggleSort", () => {
 		});
 	});
 
-	it("starts a new text column ascending and modified descending", () => {
+	it("starts a new text column ascending and date columns descending", () => {
 		const modifiedDesc = createDefaultDocumentTableView().sort;
 		expect(toggleSort(modifiedDesc, "name")).toEqual({
 			column: "name",
@@ -397,5 +428,8 @@ describe("toggleSort", () => {
 		expect(
 			toggleSort({ column: "name", direction: "asc" }, "modified"),
 		).toEqual({ column: "modified", direction: "desc" });
+		expect(toggleSort({ column: "name", direction: "asc" }, "created")).toEqual(
+			{ column: "created", direction: "desc" },
+		);
 	});
 });

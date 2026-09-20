@@ -74,9 +74,9 @@ describe("rail view switcher (A12)", () => {
 		).map((el) => el.getAttribute("data-nav-view-dot"));
 	}
 
-	it("renders exactly 2 dots at Rail and the inline switcher above Rail", () => {
+	it("renders recent, folder, tag dots at Rail and the inline switcher above Rail", () => {
 		renderNarrow("rail");
-		expect(dotViews()).toEqual(["folder", "tag"]);
+		expect(dotViews()).toEqual(["recent", "folder", "tag"]);
 		expect(container.querySelector("[data-nav-view-switcher]")).toBeNull();
 
 		renderNarrow("list");
@@ -102,7 +102,17 @@ describe("rail view switcher (A12)", () => {
 		expect(container.querySelector("[data-nav-view-dots]")).toBeNull();
 	});
 
-	it("clicking a dot selects the view; clicking it again returns to flat", async () => {
+	it("recent is the default view", () => {
+		renderNarrow("rail");
+		expect(documentTableViewStore.get().groupBy).toBeNull();
+		expect(
+			container
+				.querySelector('[data-nav-view-dot="recent"]')
+				?.getAttribute("aria-pressed"),
+		).toBe("true");
+	});
+
+	it("clicking a dot selects the view; clicking the active one again is a no-op", async () => {
 		renderNarrow("rail");
 		const folder = container.querySelector<HTMLElement>(
 			'[data-nav-view-dot="folder"]',
@@ -119,7 +129,7 @@ describe("rail view switcher (A12)", () => {
 				.querySelector<HTMLElement>('[data-nav-view-dot="folder"]')
 				?.click();
 		});
-		expect(documentTableViewStore.get().groupBy).toBeNull();
+		expect(documentTableViewStore.get().groupBy).toBe("folder");
 	});
 
 	it("wheel right advances folder to tag", async () => {
@@ -160,7 +170,7 @@ describe("rail view switcher (A12)", () => {
 		expect(documentTableViewStore.get().groupBy).toBe("folder");
 	});
 
-	it("right-click hides a dot; the last remaining view shows with no strip", async () => {
+	it("right-click hides a dot; the active view falls back to recent", async () => {
 		setDocumentTableGroupBy("folder");
 		renderNarrow("rail");
 
@@ -170,14 +180,34 @@ describe("rail view switcher (A12)", () => {
 				?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
 		});
 		expect(getNavHiddenViews(WORKSPACE)).toEqual(["folder"]);
-		// Hiding the active view falls back to the remainder.
-		expect(documentTableViewStore.get().groupBy).toBe("tag");
-		// One view left: no strip, nothing to switch between.
+		expect(documentTableViewStore.get().groupBy).toBeNull();
+		expect(dotViews()).toEqual(["recent", "tag"]);
+	});
+
+	it("recent can never be hidden; hiding every other view leaves no strip", async () => {
+		renderNarrow("rail");
+		await act(async () => {
+			container
+				.querySelector<HTMLElement>('[data-nav-view-dot="recent"]')
+				?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+		});
+		expect(getNavHiddenViews(WORKSPACE)).toEqual([]);
+		expect(dotViews()).toEqual(["recent", "folder", "tag"]);
+
+		for (const view of ["folder", "tag"]) {
+			await act(async () => {
+				container
+					.querySelector<HTMLElement>(`[data-nav-view-dot="${view}"]`)
+					?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+			});
+		}
+		expect(getNavHiddenViews(WORKSPACE)).toEqual(["folder", "tag"]);
+		// Recent alone: nothing to switch between.
 		expect(container.querySelector("[data-nav-view-dots]")).toBeNull();
 	});
 
-	it("hiding the last visible view is a no-op", () => {
-		expect(toggleHiddenView(["folder"], "tag")).toBeNull();
+	it("toggling a hidden view is symmetric and never refuses", () => {
+		expect(toggleHiddenView(["folder"], "tag")).toEqual(["folder", "tag"]);
 		expect(toggleHiddenView([], "folder")).toEqual(["folder"]);
 		expect(toggleHiddenView(["folder"], "folder")).toEqual([]);
 	});
@@ -214,10 +244,10 @@ describe("rail view switcher (A12)", () => {
 		expect(documentTableViewStore.get().groupBy).toBe("folder");
 	});
 
-	it("search mode keeps exactly the 2 view dots — search is not a dot", () => {
+	it("search mode keeps exactly the 3 view dots — search is not a dot", () => {
 		const searchView = viewWith({ mode: "search", filter: "budget" });
 		renderNarrow("rail", searchView);
-		expect(dotViews()).toEqual(["folder", "tag"]);
+		expect(dotViews()).toEqual(["recent", "folder", "tag"]);
 	});
 
 	it("EC-110: entering search still suspends Pinned per A7, unchanged", () => {

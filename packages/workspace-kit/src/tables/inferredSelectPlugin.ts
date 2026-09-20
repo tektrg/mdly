@@ -7,6 +7,7 @@ import {
 	isPlainTextCell,
 	pickTargetAtSelection,
 } from "./inferredSelect.js";
+import { pastelForValue } from "./pastelForValue.js";
 import styles from "./ui/TableValuePicker.module.css";
 
 /**
@@ -50,9 +51,14 @@ export function createValuePickerPlugin(onChevronToggle: () => void): {
 	// a different cell, never per keystroke within it.
 	let cached: ChevronDom | null = null;
 
-	const buttonFor = (key: string, values: string[]): HTMLButtonElement => {
+	const buttonFor = (
+		key: string,
+		values: string[],
+		current: string,
+	): HTMLButtonElement => {
 		if (cached && cached.key === key && cached.button.isConnected) {
 			cached.button.setAttribute("aria-label", chevronLabel(values));
+			paintChip(cached.button, current);
 			return cached.button;
 		}
 		cached?.cleanup();
@@ -65,10 +71,9 @@ export function createValuePickerPlugin(onChevronToggle: () => void): {
 		button.setAttribute("data-table-value-chevron", "");
 		button.setAttribute("aria-haspopup", "listbox");
 		button.setAttribute("aria-label", chevronLabel(values));
-		const glyph = document.createElement("span");
-		glyph.className = styles.chevronGlyph;
-		glyph.setAttribute("aria-hidden", "true");
-		button.append(glyph);
+		// The trigger is a pastel chip, not a dropdown arrow: no glyph child.
+		// Its color follows the cell's current value (see paintChip).
+		paintChip(button, current);
 		const onMouseDown = (event: MouseEvent) => {
 			// R30 — the press never moves the caret out of the cell and never
 			// takes focus; typing stays exactly as today. Stopped before it
@@ -114,7 +119,7 @@ export function createValuePickerPlugin(onChevronToggle: () => void): {
 					if (values.length === 0) return DecorationSet.empty;
 					const key = `${target.tablePos}:${target.cellPos}`;
 					const current = focusedCellValue(cellJson) ?? "";
-					const button = buttonFor(key, values);
+					const button = buttonFor(key, values, current);
 					button.setAttribute("aria-expanded", "false");
 					button.dataset.current = current;
 					// Parked at the end of the cell's content: reads as a select
@@ -134,4 +139,12 @@ export function createValuePickerPlugin(onChevronToggle: () => void): {
 
 function chevronLabel(values: string[]): string {
 	return `Choose a value for this column: ${values.join(", ")}`;
+}
+
+/** Paint the chip trigger with the pastel for the cell's current value. */
+function paintChip(button: HTMLButtonElement, current: string): void {
+	const pastel = pastelForValue(current);
+	button.style.backgroundColor = pastel.background;
+	button.style.borderColor = pastel.border;
+	button.dataset.current = current;
 }

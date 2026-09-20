@@ -1,15 +1,19 @@
 import { store } from "@simplestack/store";
 import { workspacePathStore } from "../store/state";
 import {
-	createDefaultDocumentTableView,
+	createDefaultSessionView,
 	type DocumentTableColumn,
-	type DocumentTableView,
+	type DocumentTableSessionView,
 	toggleSort,
 } from "./documentTableView";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
+import { groupByToViewId } from "./navHiddenViews";
+import { getNavViewSort, setNavViewSort } from "./navViewSort";
 
 /**
- * The session's document-table view (filter text + sort).
+ * The session's document-table view (filter text, grouping, mode). Sort is not
+ * here: it is persisted per nav view (`navViewSort.ts`) and composed in by
+ * `useDocumentTableRows`.
  *
  * Declared **outside** `appStore` on purpose. `appStore` runs through
  * `localStoragePersist`, so filter text living there would be one whitelist edit
@@ -18,19 +22,23 @@ import type { NavGroupBy, NavViewMode } from "./navGroupTree";
  * to persistence at all: R-"filter is transient" holds by construction rather
  * than by review.
  */
-export const documentTableViewStore = store<DocumentTableView>(
-	createDefaultDocumentTableView(),
+export const documentTableViewStore = store<DocumentTableSessionView>(
+	createDefaultSessionView(),
 );
 
 export function setDocumentTableFilter(filter: string) {
 	documentTableViewStore.set((view) => ({ ...view, filter }));
 }
 
+/** Header-click sort: edits the current view's persisted sort only. */
 export function toggleDocumentTableSort(column: DocumentTableColumn) {
-	documentTableViewStore.set((view) => ({
-		...view,
-		sort: toggleSort(view.sort, column),
-	}));
+	const workspacePath = workspacePathStore.get() ?? null;
+	const view = groupByToViewId(documentTableViewStore.get().groupBy);
+	setNavViewSort(
+		workspacePath,
+		view,
+		toggleSort(getNavViewSort(workspacePath, view), column),
+	);
 }
 
 /**
@@ -47,7 +55,7 @@ export function setDocumentTableMode(mode: NavViewMode) {
 }
 
 export function resetDocumentTableView() {
-	documentTableViewStore.set(createDefaultDocumentTableView());
+	documentTableViewStore.set(createDefaultSessionView());
 }
 
 // A filter typed in one workspace must not survive into the next one, where it

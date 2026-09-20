@@ -1,3 +1,4 @@
+import type { DocumentTableSort } from "../documentTable/documentTableView";
 import {
 	type ContrastPreference,
 	type EditorFontPreference,
@@ -17,6 +18,8 @@ export function isSourceRetentionPreference(
 ): value is SourceRetentionPreference {
 	return value === "ask" || value === "keep" || value === "delete";
 }
+
+type NavViewSorts = Partial<Record<string, DocumentTableSort>>;
 
 type WorkspaceState = {
 	workspacePath: string | null;
@@ -43,6 +46,12 @@ type WorkspaceState = {
 	 * above; no second mechanism.
 	 */
 	navHiddenViews: Record<string, string[]>;
+	/**
+	 * The document list's sort, remembered per view ("recent" | "folder" |
+	 * "tag") per workspace. A missing entry means the shared default sort.
+	 * Same per-workspace-map shape and middleware as `navHiddenViews`.
+	 */
+	navViewSorts: Record<string, NavViewSorts>;
 	sortMode: SortMode;
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
@@ -62,6 +71,7 @@ type WorkspaceState = {
 type WorkspaceEntry = {
 	path: string;
 	modified_at: number;
+	created_at?: number;
 	is_symlink?: boolean;
 	symlink_target?: string | null;
 	symlink_target_exists?: boolean;
@@ -121,6 +131,7 @@ type Persisted = {
 		peekListWidths?: Record<string, number>;
 		navExpandedGroups?: Record<string, string[]>;
 		navHiddenViews?: Record<string, string[]>;
+		navViewSorts?: Record<string, NavViewSorts>;
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
@@ -202,6 +213,43 @@ function sanitizeNavHiddenViews(value: unknown): Record<string, string[]> {
 	return hidden;
 }
 
+function isValidNavViewSort(value: unknown): value is DocumentTableSort {
+	if (!value || typeof value !== "object") return false;
+	const { column, direction } = value as Record<string, unknown>;
+	return (
+		(column === "name" ||
+			column === "folder" ||
+			column === "modified" ||
+			column === "created") &&
+		(direction === "asc" || direction === "desc")
+	);
+}
+
+/** Drops unknown views and malformed sorts; an all-dropped workspace is omitted. */
+function sanitizeNavViewSorts(value: unknown): Record<string, NavViewSorts> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const sorts: Record<string, NavViewSorts> = {};
+	for (const [workspacePath, byView] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		// A `__proto__` key from JSON.parse would reassign the map's prototype
+		// instead of adding an entry.
+		if (workspacePath === "__proto__") continue;
+		if (!byView || typeof byView !== "object" || Array.isArray(byView)) {
+			continue;
+		}
+		const kept: NavViewSorts = {};
+		for (const view of ["recent", "folder", "tag"]) {
+			const sort = (byView as Record<string, unknown>)[view];
+			if (isValidNavViewSort(sort)) {
+				kept[view] = { column: sort.column, direction: sort.direction };
+			}
+		}
+		if (Object.keys(kept).length > 0) sorts[workspacePath] = kept;
+	}
+	return sorts;
+}
+
 function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 	return {
 		workspacePath: ws?.workspacePath ?? null,
@@ -217,6 +265,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
 		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
 		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
+		navViewSorts: sanitizeNavViewSorts(ws?.navViewSorts),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
 		folders: [],
@@ -284,6 +333,7 @@ export function serialize(state: DesktopState): Persisted {
 			peekListWidths: state.workspace.peekListWidths,
 			navExpandedGroups: state.workspace.navExpandedGroups,
 			navHiddenViews: state.workspace.navHiddenViews,
+			navViewSorts: state.workspace.navViewSorts,
 			sortMode: state.workspace.sortMode,
 		},
 		document: {

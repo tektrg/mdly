@@ -15,6 +15,7 @@ import {
 	createValuePickerPlugin,
 	inferredSelectPluginKey,
 } from "../inferredSelectPlugin.js";
+import { pastelForValue } from "../pastelForValue.js";
 import styles from "./TableValuePicker.module.css";
 import type { TableValuePickerProps } from "./tableInteractionTypes.js";
 
@@ -321,30 +322,38 @@ function ValueMenu({
 			role="listbox"
 			data-table-value-menu=""
 		>
-			{offer.values.map((value) => (
-				<button
-					key={value}
-					type="button"
-					tabIndex={-1}
-					role="option"
-					aria-selected={value === offer.current}
-					className={styles.menuItem}
-					data-current={value === offer.current}
-					title={value}
-					onMouseDown={(event) => {
-						// The caret never leaves the cell; the menu never
-						// takes focus (R30).
-						event.preventDefault();
-					}}
-					onClick={(event) => {
-						event.stopPropagation();
-						onPick(value);
-					}}
-					onDragStart={(event) => event.preventDefault()}
-				>
-					{value}
-				</button>
-			))}
+			{offer.values.map((value) => {
+				const pastel = pastelForValue(value);
+				return (
+					<button
+						key={value}
+						type="button"
+						tabIndex={-1}
+						role="option"
+						aria-selected={value === offer.current}
+						className={styles.menuItem}
+						data-current={value === offer.current}
+						title={value}
+						style={{
+							backgroundColor: pastel.background,
+							borderColor: pastel.border,
+							color: pastel.text,
+						}}
+						onMouseDown={(event) => {
+							// The caret never leaves the cell; the menu never
+							// takes focus (R30).
+							event.preventDefault();
+						}}
+						onClick={(event) => {
+							event.stopPropagation();
+							onPick(value);
+						}}
+						onDragStart={(event) => event.preventDefault()}
+					>
+						{value}
+					</button>
+				);
+			})}
 		</div>
 	);
 }

@@ -14,6 +14,8 @@ export type WorkspaceSymlinkInfo = {
 export type WorkspaceFileEntry = WorkspaceSymlinkInfo & {
 	path: string;
 	modified_at: number;
+	/** Seconds since the epoch from `birthtimeMs`, falling back to `modified_at` where birthtime is unavailable. */
+	created_at?: number;
 	/** Raw byte size from the `stat` the walk already performed — lets sync use the stat hint without a second syscall per file. */
 	size?: number;
 };
@@ -271,6 +273,17 @@ function recordError(
 
 function modifiedAtSeconds(stat: { mtimeMs: number | bigint }): number {
 	return Math.floor(Number(stat.mtimeMs) / 1000);
+}
+
+function createdAtSeconds(stat: {
+	birthtimeMs?: number | bigint;
+	mtimeMs: number | bigint;
+}): number {
+	const birthtimeMs =
+		stat.birthtimeMs === undefined ? null : Number(stat.birthtimeMs);
+	if (birthtimeMs === null || !Number.isFinite(birthtimeMs) || birthtimeMs <= 0)
+		return modifiedAtSeconds(stat);
+	return Math.floor(birthtimeMs / 1000);
 }
 
 function isPathInside(parentPath: string, candidatePath: string): boolean {
@@ -592,6 +605,7 @@ async function walkDirectory(
 				folders.push({
 					path: entryPath,
 					modified_at: modifiedAtSeconds(targetStat),
+					created_at: createdAtSeconds(targetStat),
 					...symlinkInfo,
 				});
 				if (targetRealPath) {
@@ -605,6 +619,7 @@ async function walkDirectory(
 				files.push({
 					path: entryPath,
 					modified_at: modifiedAtSeconds(targetStat),
+					created_at: createdAtSeconds(targetStat),
 					size: Number(targetStat.size),
 					...symlinkInfo,
 				});
@@ -619,6 +634,7 @@ async function walkDirectory(
 				const brokenEntry = {
 					path: entryPath,
 					modified_at: modifiedAtSeconds(linkStat),
+					created_at: createdAtSeconds(linkStat),
 					...symlinkInfo,
 				};
 				if (options.isSupportedFile(entryPath)) files.push(brokenEntry);
@@ -645,7 +661,11 @@ async function walkDirectory(
 				recordError(context, entryPath, error);
 				continue;
 			}
-			folders.push({ path: entryPath, modified_at: modifiedAtSeconds(stat) });
+			folders.push({
+				path: entryPath,
+				modified_at: modifiedAtSeconds(stat),
+				created_at: createdAtSeconds(stat),
+			});
 			await walkDirectory(entryPath, options, files, folders, rules, context);
 			continue;
 		}
@@ -668,6 +688,7 @@ async function walkDirectory(
 		files.push({
 			path: entryPath,
 			modified_at: modifiedAtSeconds(stat),
+			created_at: createdAtSeconds(stat),
 			size: Number(stat.size),
 		});
 	}

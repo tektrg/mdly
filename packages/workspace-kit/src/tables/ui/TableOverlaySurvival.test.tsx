@@ -76,6 +76,11 @@ describe("TableInteractionLayer overlay survival", () => {
 	function hoverTable() {
 		const table = container.querySelector("table");
 		if (!table) throw new Error("no table rendered");
+		// The layer tracks the cell the pointer is in (`pointermove` on the
+		// wrapper), so a real hover means entering the wrapper AND landing in a
+		// cell — a table-level hover alone draws nothing.
+		const cell = table.querySelector("td");
+		if (!cell) throw new Error("no body cell rendered");
 		act(() => {
 			table.dispatchEvent(
 				new Event("pointerenter", { bubbles: true, cancelable: true }),
@@ -83,8 +88,8 @@ describe("TableInteractionLayer overlay survival", () => {
 			table.dispatchEvent(
 				new Event("pointerover", { bubbles: true, cancelable: true }),
 			);
-			table.dispatchEvent(
-				new Event("mouseenter", { bubbles: true, cancelable: true }),
+			cell.dispatchEvent(
+				new Event("pointermove", { bubbles: true, cancelable: true }),
 			);
 		});
 	}
@@ -119,13 +124,13 @@ describe("TableInteractionLayer overlay survival", () => {
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 3, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 		await settle(6);
 		expect({
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 3, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 
 		// The overlay anchors inside the table's own scroll box (R36) via the
 		// NodeView-owned mount, which ProseMirror agrees to leave alone.
@@ -152,7 +157,7 @@ describe("TableInteractionLayer overlay survival", () => {
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 3, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 	});
 
 	it("survives a ProseMirror re-render of the table node in place", async () => {
@@ -179,7 +184,7 @@ describe("TableInteractionLayer overlay survival", () => {
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 3, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 		// Re-hovering after the re-render still finds the same overlay.
 		hoverTable();
 		await settle(1);
@@ -187,7 +192,7 @@ describe("TableInteractionLayer overlay survival", () => {
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 3, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 	});
 
 	it("dots recount after a table-shape edit without losing the overlay", async () => {
@@ -197,7 +202,7 @@ describe("TableInteractionLayer overlay survival", () => {
 		const dot = container.querySelector<HTMLButtonElement>(
 			"[data-table-col-handle]",
 		);
-		if (!dot) throw new Error("expected a column dot");
+		if (!dot) throw new Error("expected a column handle");
 		act(() => {
 			dot.dispatchEvent(
 				Object.assign(new Event("pointerdown", { bubbles: true }), {
@@ -225,11 +230,12 @@ describe("TableInteractionLayer overlay survival", () => {
 			deleteButton.dispatchEvent(new Event("click", { bubbles: true }));
 		});
 		await settle(5);
-		// One column gone, overlay intact, dots recount to the new shape.
+		// One column gone, overlay intact, and the handle the pointer is still
+		// in (column 0) survives the shape change.
 		expect({
 			dots: dots(),
 			overlays: overlays(),
 			wrappers: wrappers(),
-		}).toEqual({ dots: 2, overlays: 1, wrappers: 1 });
+		}).toEqual({ dots: 1, overlays: 1, wrappers: 1 });
 	});
 });

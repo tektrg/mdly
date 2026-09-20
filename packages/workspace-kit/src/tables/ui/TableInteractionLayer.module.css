@@ -1,4 +1,4 @@
-/* Slice 1 — hover dots, drop indicators and the Delete menu. Every colour,
+/* Slice 1 — hover handles, drop indicators and the Delete menu. Every colour,
    radius, shadow and easing resolves through the editor kit's token
    vocabulary with an inline fallback (charter R44). Spacing and placement
    use logical properties only. */
@@ -12,51 +12,128 @@
 	overflow: visible;
 	pointer-events: none;
 	/* Below the editor's own floating controls (composer, format menu, link
-	popover, slash menu, thread popover) so the dots never cover them (R46). */
+	popover, slash menu, thread popover) so the handles never cover them (R46). */
 	z-index: 2;
 }
 
-.colDot,
-.rowDot {
+/* The chrome frame the layer puts on the table's own scroll box.
+ *
+ * The wrapper is `overflow-x: auto`, which makes `overflow-y` compute to
+ * `auto` too — so it clips on both axes, and anything drawn above its top edge
+ * or to the inline-start of it is cut away. The two handles must sit *outside*
+ * the table (column grip above its top edge, row grip to the left of it), so
+ * the wrapper buys the room itself: block-start padding and an inline-start
+ * gutter, each paid for by the same amount of extra negative margin on that
+ * same wrapper. Its box grows outward into the space around the table while
+ * the table's own flow position is untouched, and the borrowed band/gutter —
+ * being padding — is inside the clip region rather than outside it.
+ *
+ * The gutter can never be wider than the prose column's own side padding, so a
+ * gutter-bearing wrapper's box stays inside the pane — which clips
+ * horizontally (`overflow-x: hidden`) and would otherwise slice the row grip
+ * on a narrow pane, even in full-width mode (charter R21). */
+.chrome {
+	--table-chrome-band: 26px;
+	--table-chrome-gutter: min(22px, var(--editor-content-padding-inline, 22px));
+	/* Breathing room between each handle and the table edge it sits off. */
+	--table-handle-gap: 4px;
+	/* The editor's base rule caps every table wrapper at the column width
+	   (`EditorView.css`); that cap excludes this wrapper, and this line keeps
+	   the layer honest if it ever lands on a wrapper without the attribute. */
+	max-inline-size: none;
+	/* The editor sets the wrapper's block-start margin per neighbour, so the
+	   live value is handed in by the layer as `--table-flow-margin-block-start`
+	   (`FLOW_MARGIN_VAR` in TableInteractionLayer.tsx). The inline-start margin
+	   is the gutter, bought back from the padding on the next line. */
+	margin-block-start: calc(
+		var(--table-flow-margin-block-start, 0px) -
+		var(--table-chrome-band)
+	);
+	padding-block-start: var(--table-chrome-band);
+	margin-inline-start: calc(-1 * var(--table-chrome-gutter));
+	padding-inline-start: var(--table-chrome-gutter);
+}
+
+/* Exactly two handles are ever drawn — the one column and the one body row
+   under the pointer — and they share one shell: a rounded grip of six dots. */
+.colHandle,
+.rowHandle {
 	position: absolute;
-	inline-size: 12px;
-	block-size: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	padding-block: 0;
 	padding-inline: 0;
-	border-radius: 999px;
-	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
-	background: var(--accent, rgb(15 23 42 / 0.55));
-	box-shadow: var(--shadow-overlay, 0 2px 8px rgb(15 23 42 / 0.18));
+	border: 1px solid var(--border, rgb(15 23 42 / 0.08));
+	border-radius: var(--radius-md, 0.375rem);
+	background: var(--popover, rgb(255 255 255 / 0.72));
+	box-shadow: 0 1px 3px rgb(15 23 42 / 0.07);
 	cursor: grab;
-	opacity: 0;
-	visibility: hidden;
-	pointer-events: none;
-	transition:
-		opacity var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
-		transform var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
-		visibility var(--default-transition-duration, 180ms);
-}
-
-.colDot {
-	inset-block-start: 3px;
-	transform: translateX(-50%);
-}
-
-.rowDot {
-	inset-inline-start: 3px;
-	transform: translateY(-50%);
-}
-
-.overlay[data-hovered="true"] .colDot,
-.overlay[data-hovered="true"] .rowDot {
-	opacity: 1;
-	visibility: visible;
 	pointer-events: auto;
+	animation: handleIn var(--default-transition-duration, 140ms)
+		var(--ease-snappy, ease);
 }
 
-.colDot:active,
-.rowDot:active {
+/* Column handle — above the hovered column's top edge, fully outside the
+   table, its bottom edge one handle-gap off that border. The inline position
+   is the column's measured centre (`placeHandles`), the block position is
+   the table's own top edge, which is exactly one band below the wrapper's
+   padding box. The pill is landscape, mirroring the grip it holds. */
+.colHandle {
+	inline-size: 18px;
+	block-size: 15px;
+	inset-block-start: var(--table-chrome-band, 26px);
+	transform: translate(-50%, calc(-100% - var(--table-handle-gap, 4px)));
+}
+
+/* Row handle — in the gutter to the inline-start of the table, centred on the
+   hovered body row. The overlay measures from the wrapper's border box while
+   the table itself starts one gutter further in (the gutter is that same
+   wrapper's inline-start padding), so the grip is pulled back by its own
+   width plus one handle-gap to leave breathing room off the table's leading
+   edge. */
+.rowHandle {
+	inline-size: 15px;
+	block-size: 18px;
+	inset-inline-start: var(--table-chrome-gutter, 0px);
+	transform: translate(calc(-100% - var(--table-handle-gap, 4px)), -50%);
+}
+
+/* The six dots, two columns by three rows. */
+.gripDots {
+	display: grid;
+	grid-template-columns: repeat(2, 2px);
+	grid-template-rows: repeat(3, 2px);
+	gap: 2px;
+}
+
+/* The column's grip is that same six-dot icon turned on its side — three
+   across, two down — matching the axis it drags. */
+.colHandle .gripDots {
+	grid-template-columns: repeat(3, 2px);
+	grid-template-rows: repeat(2, 2px);
+}
+
+.gripDot {
+	inline-size: 2px;
+	block-size: 2px;
+	border-radius: 999px;
+	background: var(--muted-foreground, rgb(15 23 42 / 0.26));
+	opacity: 0.75;
+}
+
+.colHandle:active,
+.rowHandle:active {
 	cursor: grabbing;
+}
+
+@keyframes handleIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
 }
 
 .colIndicator,
@@ -73,15 +150,20 @@
 	opacity: 1;
 }
 
+/* Both drop indicators mark the table's own edges, so each starts one band /
+   gutter inside the wrapper's padding box — otherwise the drag line reaches up
+   into the chrome band or out into the gutter, neither of which is table. */
 .colIndicator {
-	inset-block: 0;
+	inset-block-start: var(--table-chrome-band, 26px);
+	inset-block-end: 0;
 	inset-inline-start: 0;
 	inline-size: 2px;
 	transform: translateX(-50%);
 }
 
 .rowIndicator {
-	inset-inline: 0;
+	inset-inline-start: var(--table-chrome-gutter, 0px);
+	inset-inline-end: 0;
 	inset-block-start: 0;
 	block-size: 2px;
 	transform: translateY(-50%);
@@ -120,10 +202,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.colDot,
-	.rowDot,
+	.colHandle,
+	.rowHandle,
 	.colIndicator,
 	.rowIndicator {
+		animation: none;
 		transition: none;
 	}
 }

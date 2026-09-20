@@ -69,6 +69,12 @@ export function collectTableTargets(editor: Editor): TableHandleTarget[] {
 			? dom
 			: dom.querySelector(".tableWrapper");
 		if (!(wrapperEl instanceof HTMLElement)) return false;
+		// The view can hand back a wrapper it has already torn down (a
+		// NodeView destroyed ahead of its replacement, or a rescan racing
+		// the view's own attach on mount). Portalling into detached DOM
+		// renders an invisible overlay that later rescans keep mistaking
+		// for a healthy one, so only attached wrappers become targets.
+		if (!wrapperEl.isConnected) return false;
 		const tableEl = wrapperEl.querySelector("table");
 		if (!(tableEl instanceof HTMLTableElement)) return false;
 		// The wrapper must own exactly this table, and the table must not sit
@@ -141,7 +147,18 @@ export function useTableTargets(editor: Editor | null): TableTargetSnapshot {
 				);
 				const unchanged =
 					previousKey.length === key.length &&
-					previousKey.every((entry, index) => entry === key[index]);
+					previousKey.every((entry, index) => entry === key[index]) &&
+					// Same document facts can still ride on replaced DOM:
+					// ProseMirror may destroy and recreate a table's NodeView
+					// (same uid, same pos, same shape) while the overlay
+					// portal is still mounted in the torn-down wrapper. The
+					// portal would go invisible and stay that way, so a DOM
+					// swap always counts as changed and remarries the portal
+					// to the live wrapper.
+					previous.targets.every(
+						(previousTarget, index) =>
+							previousTarget.wrapperEl === targets[index]?.wrapperEl,
+					);
 				// The epoch bumps on every committed rescan (one per frame max)
 				// so hovered dots re-place themselves after typing inside the
 				// table; the targets array keeps its identity when the table
@@ -165,8 +182,13 @@ export function useTableTargets(editor: Editor | null): TableTargetSnapshot {
 			cancelFrame = requestRescanFrame(rescan);
 		};
 
-		// Synchronous first pass so dots exist on first paint (and in tests).
+		// Synchronous first pass so dots exist on first paint (and in tests),
+		// plus one frame-deferred pass: the view's own DOM may not be
+		// attached yet when this effect runs (sibling attach order), in
+		// which case the first pass legitimately finds nothing and the
+		// deferred pass heals it once layout has settled.
 		rescan();
+		scheduleRescan();
 
 		const onTransaction = (event?: {
 			transaction?: { docChanged?: boolean };

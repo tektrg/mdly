@@ -40,6 +40,7 @@ import {
 	tagScanStore,
 	tagsForScope,
 } from "./tagScanStore";
+import { useNavViewSwitcher } from "./useNavViewSwitcher";
 
 export {
 	DOCUMENT_LIST_ROW_HEIGHT,
@@ -47,6 +48,8 @@ export {
 	DOCUMENT_TABLE_ROW_HEIGHT,
 	type DocumentRowDensity,
 	documentRowHeight,
+	formatCreatedAt,
+	formatCreatedAtTitle,
 	formatModifiedAt,
 	formatModifiedAtTitle,
 } from "./DocumentListRow";
@@ -117,6 +120,16 @@ export function DocumentRowList({
 	view,
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
+	// Horizontal swipe anywhere over the list flips the nav view (recent /
+	// folder / tag); vertical scroll is untouched.
+	const { swipeRef } = useNavViewSwitcher();
+	const listRef = useCallback(
+		(element: HTMLDivElement | null) => {
+			scrollRef.current = element;
+			swipeRef(element);
+		},
+		[swipeRef],
+	);
 	const rowHeight = documentRowHeight(density);
 	// Live column order + widths (one store shared with the table header).
 	// The narrow list's secondary line is the first data column in this order.
@@ -212,6 +225,13 @@ export function DocumentRowList({
 		const scope = tagScanState.kind === "idle" ? undefined : tagScanState.scope;
 		if (scope !== workspacePath) beginTagScan(workspacePath);
 	}, [spec.groupBy, tagScanState, workspacePath]);
+
+	// A view switch lands at the top of the new view, not at the old view's
+	// scroll offset clamped into a different-length list.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: grouping is the trigger, not a value read here
+	useEffect(() => {
+		if (scrollRef.current) scrollRef.current.scrollTop = 0;
+	}, [spec.groupBy]);
 
 	const retryTagScan = useCallback(() => {
 		resetTagScan();
@@ -327,7 +347,7 @@ export function DocumentRowList({
 			const failed =
 				tagScanState.kind === "failed" && tagScanState.scope === scanScope;
 			return (
-				<div className={scrollClassName}>
+				<div ref={swipeRef} className={scrollClassName}>
 					<div className="p-2">
 						{failed ? (
 							<TagScanStateView status="failed" onRetry={retryTagScan} />
@@ -338,7 +358,11 @@ export function DocumentRowList({
 				</div>
 			);
 		}
-		return <div className={scrollClassName}>{emptyState}</div>;
+		return (
+			<div ref={swipeRef} className={scrollClassName}>
+				{emptyState}
+			</div>
+		);
 	}
 
 	// Roving tabindex: one row is in the tab order, arrows move within the grid.
@@ -355,7 +379,7 @@ export function DocumentRowList({
 	);
 
 	return (
-		<div ref={scrollRef} role="rowgroup" className={scrollClassName}>
+		<div ref={listRef} role="rowgroup" className={scrollClassName}>
 			<div
 				role="presentation"
 				className="relative"

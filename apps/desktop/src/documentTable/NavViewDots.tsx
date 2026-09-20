@@ -1,27 +1,11 @@
-import { useSidebarSwipeNav } from "@mdly/workspace-kit";
-import type { MouseEvent as ReactMouseEvent } from "react";
-import MingcuteFolderLine from "~icons/mingcute/folder-line";
-import MingcuteTagLine from "~icons/mingcute/tag-line";
+import type { MouseEvent as ReactMouseEvent, WheelEventHandler } from "react";
 import { cn } from "../lib/utils";
-import type { NavGroupBy } from "./navGroupTree";
-import type { NavViewOption } from "./navHiddenViews";
-
-const DOT_LABEL: Record<NavViewOption, string> = {
-	folder: "Folder view",
-	tag: "Tag view",
-};
-
-function DotIcon({ view }: { view: NavViewOption }) {
-	return view === "folder" ? (
-		<MingcuteFolderLine aria-hidden="true" className="size-3.5" />
-	) : (
-		<MingcuteTagLine aria-hidden="true" className="size-3.5" />
-	);
-}
+import { NAV_VIEW_LABEL, NavViewIcon } from "./NavViewIcon";
+import type { NavViewId, NavViewOption } from "./navHiddenViews";
 
 /**
  * A12: the Rail-width view switcher. The sidebar pager's dot-tab language —
- * dot when inactive, icon when active or hovered — over the two engine views,
+ * dot when inactive, icon when active or hovered — over the visible views,
  * with the pager's own wheel/swipe paging reused (not reimplemented).
  */
 export function NavViewDots({
@@ -29,29 +13,23 @@ export function NavViewDots({
 	active,
 	onSelect,
 	onToggleHidden,
+	onWheel,
 }: {
-	/** Visible views, in dot order. Never empty: a lone view shows no strip. */
-	views: readonly NavViewOption[];
-	active: NavGroupBy;
-	onSelect: (view: NavViewOption) => void;
+	/** Visible views, in dot order. Only rendered with more than one. */
+	views: readonly NavViewId[];
+	active: NavViewId;
+	onSelect: (view: NavViewId) => void;
 	onToggleHidden: (view: NavViewOption) => void;
+	/** Swipe paging from `useNavViewSwitcher`, shared with the list region. */
+	onWheel: WheelEventHandler<HTMLElement>;
 }) {
-	const activePage = active === null ? -1 : views.indexOf(active);
-	const { onWheel } = useSidebarSwipeNav({
-		activePage,
-		pageCount: views.length,
-		onPageChange: (page) => {
-			const view = views[page];
-			if (view !== undefined) onSelect(view);
-		},
-	});
-
 	const onDotContextMenu = (
 		event: ReactMouseEvent<HTMLElement>,
-		view: NavViewOption,
+		view: NavViewId,
 	) => {
 		event.preventDefault();
-		onToggleHidden(view);
+		// Recent is the fallback view, so it has nothing to hide.
+		if (view !== "recent") onToggleHidden(view);
 	};
 
 	return (
@@ -68,8 +46,12 @@ export function NavViewDots({
 						type="button"
 						data-nav-view-dot={view}
 						aria-pressed={isActive}
-						aria-label={DOT_LABEL[view]}
-						title={`${DOT_LABEL[view]} — right-click to hide`}
+						aria-label={`${NAV_VIEW_LABEL[view]} view`}
+						title={
+							view === "recent"
+								? "Recent view"
+								: `${NAV_VIEW_LABEL[view]} view — right-click to hide`
+						}
 						className={cn(
 							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] outline-hidden transition-all duration-200 ease-out focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
 							isActive
@@ -97,7 +79,7 @@ export function NavViewDots({
 									: "pointer-events-none scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100",
 							)}
 						>
-							<DotIcon view={view} />
+							<NavViewIcon view={view} />
 						</span>
 					</button>
 				);

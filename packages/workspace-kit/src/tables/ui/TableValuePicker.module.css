@@ -12,35 +12,32 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	vertical-align: baseline;
-	inline-size: 1.25rem;
-	block-size: 1.25rem;
-	margin-inline-start: 0.25rem;
+	vertical-align: middle;
+	inline-size: 1.75rem;
+	block-size: 0.9375rem;
+	margin-inline-start: 0.375rem;
 	padding-block: 0;
 	padding-inline: 0;
-	border: 1px solid var(--border, rgb(15 23 42 / 0.14));
+	border: 1px solid rgb(15 23 42 / 0.08);
 	border-radius: 999px;
-	background: var(--popover);
-	color: var(--muted-foreground, rgb(15 23 42 / 0.55));
+	background: hsl(220 12% 92%);
+	color: transparent;
 	cursor: pointer;
-	box-shadow: var(--shadow-chip, 0 2px 8px rgb(15 23 42 / 0.045));
+	box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
 	transition:
-		color var(--default-transition-duration, 180ms) var(--ease-snappy, ease),
+		transform var(--default-transition-duration, 180ms)
+		var(--ease-snappy, ease),
 		border-color var(--default-transition-duration, 180ms)
 		var(--ease-snappy, ease);
 }
 
 .chevron:hover {
-	color: var(--foreground, inherit);
-	border-color: color-mix(in oklab, var(--border) 90%, transparent);
+	transform: scale(1.08);
+	border-color: rgb(15 23 42 / 0.14);
 }
 
 .chevronGlyph {
-	inline-size: 0.5rem;
-	block-size: 0.5rem;
-	border-inline-end: 1.5px solid currentColor;
-	border-block-end: 1.5px solid currentColor;
-	transform: translateY(-1px) rotate(45deg);
+	display: none;
 }
 
 .menu {
@@ -64,13 +61,13 @@
 .menuItem {
 	display: block;
 	inline-size: 100%;
-	padding-block: 0.375rem;
+	margin-block: 2px;
+	padding-block: 0.25rem;
 	padding-inline: 0.625rem;
-	border: 0;
-	border-radius: var(--radius-inner, 0.25rem);
-	background: transparent;
-	color: var(--foreground, inherit);
+	border: 1px solid transparent;
+	border-radius: 999px;
 	font-size: 0.8125rem;
+	font-weight: 500;
 	text-align: start;
 	white-space: nowrap;
 	overflow: hidden;
@@ -79,11 +76,12 @@
 }
 
 .menuItem:hover {
-	background: var(--muted, rgb(15 23 42 / 0.06));
+	filter: brightness(0.96);
 }
 
 .menuItem[data-current="true"] {
-	color: var(--muted-foreground, rgb(15 23 42 / 0.55));
+	outline: 1px solid currentColor;
+	outline-offset: -1px;
 }
 
 @media (prefers-reduced-motion: reduce) {

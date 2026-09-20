@@ -78,7 +78,7 @@ describe("DocumentTable", () => {
 
 	function headerButton(label: string) {
 		return rowElements()[0]?.querySelectorAll<HTMLButtonElement>("button")[
-			["Name", "Folder", "Modified"].indexOf(label)
+			["Name", "Folder", "Modified", "Created"].indexOf(label)
 		] as HTMLButtonElement;
 	}
 
@@ -93,7 +93,7 @@ describe("DocumentTable", () => {
 		expect(container.textContent).not.toContain("cover");
 	});
 
-	it("renders name, folder and modified for each row", () => {
+	it("renders name, folder, modified and created for each row", () => {
 		renderTable({ rows: buildRows() });
 
 		const cells = bodyRowElements()[0]?.querySelectorAll('[role="gridcell"]');
@@ -102,6 +102,8 @@ describe("DocumentTable", () => {
 		expect(cells?.[1]?.textContent).toBe("—");
 		expect(cells?.[2]?.textContent).toBe(formatModifiedAt(1_700_000_300));
 		expect(cells?.[2]?.className).toContain("tabular-nums");
+		expect(cells?.[3]?.textContent).toBe(formatModifiedAt(1_700_000_300));
+		expect(cells?.[3]?.className).toContain("tabular-nums");
 
 		const nested = bodyRowElements()[1]?.querySelectorAll('[role="gridcell"]');
 		expect(nested?.[1]?.textContent).toBe("notes");
@@ -117,6 +119,7 @@ describe("DocumentTable", () => {
 			"none",
 			"none",
 			"descending",
+			"none",
 		]);
 
 		act(() => headerButton("Name").click());

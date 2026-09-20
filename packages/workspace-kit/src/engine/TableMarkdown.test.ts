@@ -301,4 +301,77 @@ describe("table markdown conversion", () => {
 
 		expect(tiptapDocToMarkdown(withoutUid)).toBe(tiptapDocToMarkdown(withUid));
 	});
+
+	it("merges a table row separated from its table by a stray blank line", () => {
+		const input = [
+			"| Item | Status | Notes |",
+			"| --- | --- | --- |",
+			"| A | Done | first |",
+			"",
+			"| B | Done | second |",
+		].join("\n");
+
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.map((node) => node.type)).toEqual(["table"]);
+		expect(doc.content?.[0]?.content).toHaveLength(3);
+		expect(tiptapDocToMarkdown(doc)).toBe(
+			[
+				"| Item | Status | Notes |",
+				"| --- | --- | --- |",
+				"| A | Done | first |",
+				"| B | Done | second |",
+			].join("\n"),
+		);
+	});
+
+	it("merges multiple stray-blank-line-separated rows in one pass", () => {
+		const input = [
+			"| Item | Status |",
+			"| --- | --- |",
+			"| A | Done |",
+			"",
+			"| B | Done |",
+			"",
+			"| C | Done |",
+		].join("\n");
+
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.map((node) => node.type)).toEqual(["table"]);
+		expect(doc.content?.[0]?.content).toHaveLength(4);
+	});
+
+	it("does not merge a genuinely separate table with a matching column count", () => {
+		const input = [
+			"| Item | Status |",
+			"| --- | --- |",
+			"| A | Done |",
+			"",
+			"| Item | Status |",
+			"| --- | --- |",
+			"| B | Done |",
+		].join("\n");
+
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.map((node) => node.type)).toEqual(["table", "table"]);
+	});
+
+	it("does not merge a row with a different column count across a blank line", () => {
+		const input = [
+			"| Item | Status |",
+			"| --- | --- |",
+			"| A | Done |",
+			"",
+			"| B | Done | extra |",
+		].join("\n");
+
+		const doc = markdownToTiptapDoc(input);
+
+		expect(doc.content?.map((node) => node.type)).toEqual([
+			"table",
+			"paragraph",
+		]);
+	});
 });

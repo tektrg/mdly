@@ -12,7 +12,7 @@ import {
 import type { FileEntry } from "../store/state";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 
-export type DocumentTableColumn = "name" | "folder" | "modified";
+export type DocumentTableColumn = "name" | "folder" | "modified" | "created";
 export type DocumentTableSortDirection = "asc" | "desc";
 
 export type DocumentTableSort = {
@@ -21,9 +21,21 @@ export type DocumentTableSort = {
 };
 
 /**
+ * The sort every nav view starts with until the user picks another. One
+ * constant for all views, so "no saved entry" has exactly one meaning.
+ */
+export const DEFAULT_NAV_VIEW_SORT: DocumentTableSort = {
+	column: "modified",
+	direction: "desc",
+};
+
+/**
  * Everything that parameterizes the document table. Phase 3's saved views pass
  * one of these instead of the session's own, which is why filter and sort are a
  * single value rather than two component-local `useState`s.
+ *
+ * `sort` is not session state: it is the current nav view's persisted sort,
+ * composed in by `useDocumentTableRows` (see `navViewSort.ts`).
  */
 export type DocumentTableView = {
 	filter: string;
@@ -56,6 +68,12 @@ export type DocumentTableRow = {
 	/** Seconds since the epoch, straight from `FileEntry.modified_at`. */
 	modifiedAt: number;
 	/**
+	 * Seconds since the epoch, from `FileEntry.created_at` with a fallback to
+	 * `modified_at` — listings predating the created column (and filesystems
+	 * without a birthtime) still sort instead of rendering a blank column.
+	 */
+	createdAt: number;
+	/**
 	 * Match-only form of the file name, extension included — `normalizeSearchText`
 	 * collapses case and separators, which is what lets `my project` find
 	 * `My-Project.md`. Precomputed here, in the listing-memoized projection, so
@@ -74,19 +92,22 @@ export type DocumentTableRow = {
 /** Folder cell for a document sitting directly in the workspace root. */
 export const ROOT_FOLDER_LABEL = "—";
 
+/** The part of the view that lives only for the session (never persisted). */
+export type DocumentTableSessionView = Omit<DocumentTableView, "sort">;
+
+export function createDefaultSessionView(): DocumentTableSessionView {
+	return { filter: "", groupBy: null, mode: "browse" };
+}
+
 export function createDefaultDocumentTableView(): DocumentTableView {
-	return {
-		filter: "",
-		sort: { column: "modified", direction: "desc" },
-		groupBy: null,
-		mode: "browse",
-	};
+	return { ...createDefaultSessionView(), sort: DEFAULT_NAV_VIEW_SORT };
 }
 
 /**
  * Header click semantics: the same column flips direction; a new column starts
- * ascending — except Modified, which starts descending, because "newest first"
- * is the useful default for a date column (and is the table's own default sort).
+ * ascending — except the date columns, which start descending, because
+ * "newest first" is the useful default for a date column (and Modified is the
+ * table's own default sort).
  */
 export function toggleSort(
 	currentSort: DocumentTableSort,
@@ -98,7 +119,10 @@ export function toggleSort(
 			direction: currentSort.direction === "asc" ? "desc" : "asc",
 		};
 	}
-	return { column, direction: column === "modified" ? "desc" : "asc" };
+	return {
+		column,
+		direction: column === "modified" || column === "created" ? "desc" : "asc",
+	};
 }
 
 function isTableEligible(file: FileEntry): boolean {
@@ -139,6 +163,7 @@ function toRow(
 		name: documentName(file.path),
 		folderLabel: folderLabel(file.path, workspacePath),
 		modifiedAt: file.modified_at,
+		createdAt: file.created_at ?? file.modified_at,
 		searchName: normalizeSearchText(basename(file.path)),
 		isActive: false,
 		isPinnedOffFilter: false,
@@ -229,6 +254,8 @@ function compareByColumn(
 			});
 		case "modified":
 			return a.modifiedAt - b.modifiedAt;
+		case "created":
+			return a.createdAt - b.createdAt;
 	}
 }
 

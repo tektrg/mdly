@@ -1,6 +1,7 @@
 export type FileEntry = {
 	path: string;
 	modified_at: number;
+	created_at?: number;
 	is_symlink?: boolean;
 	symlink_target?: string | null;
 	symlink_target_exists?: boolean;

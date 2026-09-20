@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { tiptapDocToMarkdown } from "../../engine/index.js";
 import { EditorView, type EditorViewProps } from "../../ui/EditorView";
+import styles from "./TableInteractionLayer.module.css";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -75,20 +76,101 @@ describe("TableInteractionLayer (slice 1)", () => {
 		return tiptapDocToMarkdown(live.getJSON());
 	}
 
-	it("O1: draws one dot per column and one per body row, never for the header", () => {
+	/** The cell at (row, column) of the rendered table, header row included. */
+	function cellAt(rowIndex: number, cellIndex: number): Element {
+		const row = container.querySelectorAll("tr")[rowIndex];
+		const cell = row?.children[cellIndex];
+		if (!cell)
+			throw new Error(`no cell at row ${rowIndex}, column ${cellIndex}`);
+		return cell;
+	}
+
+	/**
+	 * Move the pointer into a cell. The layer observes `pointermove` on the
+	 * table's wrapper (the only element that can see a real pointer entering
+	 * the table), so the event is dispatched on the cell and bubbles.
+	 */
+	function hoverCell(cell: Element): void {
+		act(() => {
+			// A real pointer enters the table's wrapper before it lands in a cell.
+			cell.closest(".tableWrapper")?.dispatchEvent(new Event("pointerenter"));
+			cell.dispatchEvent(new Event("pointermove", { bubbles: true }));
+		});
+	}
+
+	function colIndexes(): (string | undefined)[] {
+		return colDots().map((dot) => dot.dataset.col);
+	}
+
+	function rowIndexes(): (string | undefined)[] {
+		return rowDots().map((dot) => dot.dataset.row);
+	}
+
+	it("O1: draws one handle per axis, only for the cell under the pointer", () => {
 		mount();
 		// Anchored inside the table's own scroll box (R36), exactly one overlay.
 		const overlays = container.querySelectorAll("[data-table-overlay]");
 		expect(overlays).toHaveLength(1);
 		expect(overlays[0]?.closest(".tableWrapper")).not.toBeNull();
-		expect(colDots()).toHaveLength(3);
-		// Two body rows get dots; the header row never does (R1).
-		expect(rowDots()).toHaveLength(2);
+		// Hovering the table but no cell yet draws nothing.
+		const wrapper = overlays[0]?.closest(".tableWrapper") ?? null;
+		expect(wrapper).not.toBeNull();
+		act(() => {
+			wrapper?.dispatchEvent(new Event("pointerenter"));
+		});
+		expect(colDots()).toHaveLength(0);
+		expect(rowDots()).toHaveLength(0);
+
+		// The last body row, middle column: exactly those two handles, and no
+		// others (the header is body row 0's predecessor, never a slot).
+		hoverCell(cellAt(2, 1));
+		expect(colIndexes()).toEqual(["1"]);
+		expect(rowIndexes()).toEqual(["1"]);
+
+		// Moving to another cell moves and relabels the same two handles.
+		hoverCell(cellAt(1, 2));
+		expect(colIndexes()).toEqual(["2"]);
+		expect(rowIndexes()).toEqual(["0"]);
+
+		// A header cell carries the column handle only — the header can never
+		// be a row-drop target (R3).
+		hoverCell(cellAt(0, 0));
+		expect(colIndexes()).toEqual(["0"]);
+		expect(rowDots()).toHaveLength(0);
+
+		// Moving onto the handle itself (a real mouse does, on the way to a
+		// drag) must not clear the handle it just revealed.
+		const handle = colDots()[0];
+		act(() => {
+			handle?.dispatchEvent(new Event("pointermove", { bubbles: true }));
+		});
+		expect(colIndexes()).toEqual(["0"]);
 	});
 
-	it("R7/QA2: a header-only table gets column dots and no row dots", () => {
+	it("R36: grows the wrapper's own box so both handles sit outside the table", () => {
+		mount();
+		const wrapper = container.querySelector(".tableWrapper") as HTMLElement;
+		if (!wrapper) throw new Error("expected the table wrapper");
+		// `.chrome` buys the band above the table (column grip) and the gutter
+		// to its inline-start (row grip) as the wrapper's own padding, and hands
+		// the padding straight back as negative margin — so the table's flow
+		// position, and every other block's, is untouched. The wrapper's own
+		// block-start margin is per-neighbour, so the layer hands it in.
+		expect(wrapper.classList.contains(styles.chrome)).toBe(true);
+		expect(
+			wrapper.style.getPropertyValue("--table-flow-margin-block-start"),
+		).not.toBe("");
+		// …and it must be recognisable to the editor's own stylesheet, whose
+		// `max-inline-size: 100%` cap on table wrappers would otherwise clamp
+		// that band, the gutter and the full-width rule back to the column
+		// width. `EditorView.css` matches this attribute by name.
+		expect(wrapper.getAttribute("data-table-chrome")).toBe("true");
+	});
+
+	it("R7/QA2: a header-only table gets a column handle and no row handle", () => {
 		mount({ initialMarkdown: `${HEADER_ONLY}\n` });
-		expect(colDots()).toHaveLength(2);
+		hoverCell(cellAt(0, 1));
+		expect(colIndexes()).toEqual(["1"]);
 		expect(rowDots()).toHaveLength(0);
 	});
 
@@ -99,13 +181,14 @@ describe("TableInteractionLayer (slice 1)", () => {
 		expect(rowDots()).toHaveLength(0);
 	});
 
-	it("R45: a read-only surface offers no dots", () => {
+	it("R45: a read-only surface offers no handles", () => {
 		mount({ editable: false });
+		hoverCell(cellAt(1, 0));
 		expect(colDots()).toHaveLength(0);
 		expect(rowDots()).toHaveLength(0);
 	});
 
-	it("R1: dots show on hover and clear when the pointer leaves", () => {
+	it("R1: handles outlive a pointer that leaves, then clear", async () => {
 		mount();
 		const overlay = container.querySelector("[data-table-overlay]");
 		if (!overlay) throw new Error("Expected the table overlay to mount");
@@ -120,10 +203,62 @@ describe("TableInteractionLayer (slice 1)", () => {
 			wrapper.dispatchEvent(new Event("pointerenter"));
 		});
 		expect(overlay.getAttribute("data-hovered")).toBe("true");
+		hoverCell(cellAt(1, 0));
+		expect(colDots()).toHaveLength(1);
+		expect(rowDots()).toHaveLength(1);
 		act(() => {
 			wrapper.dispatchEvent(new Event("pointerleave"));
 		});
+		// Grace period: both handles sit outside the table's own box, so the
+		// pointer crosses the wrapper's edge on its way to click one. The
+		// chrome must still be there when it arrives.
+		expect(overlay.getAttribute("data-hovered")).toBe("true");
+		expect(colDots()).toHaveLength(1);
+		expect(rowDots()).toHaveLength(1);
+		// Returning inside before the timer fires keeps it up for good.
+		act(() => {
+			wrapper.dispatchEvent(new Event("pointerenter"));
+		});
+		await act(async () => {
+			await new Promise((resolve) => window.setTimeout(resolve, 1200));
+		});
+		expect(overlay.getAttribute("data-hovered")).toBe("true");
+		expect(colDots()).toHaveLength(1);
+		// Left for good: the delay elapses and the chrome goes away.
+		act(() => {
+			wrapper.dispatchEvent(new Event("pointerleave"));
+		});
+		await act(async () => {
+			await new Promise((resolve) => window.setTimeout(resolve, 1200));
+		});
 		expect(overlay.getAttribute("data-hovered")).toBe("false");
+		expect(colDots()).toHaveLength(0);
+		expect(rowDots()).toHaveLength(0);
+	});
+
+	it("R1: leaving the editor pane is delayed too", async () => {
+		mount();
+		const wrapper = container.querySelector(".tableWrapper");
+		const viewport = container.querySelector(".editorViewport");
+		if (!wrapper || !viewport)
+			throw new Error("Expected the wrapper and the editor viewport");
+		act(() => {
+			wrapper.dispatchEvent(new Event("pointerenter"));
+		});
+		hoverCell(cellAt(1, 1));
+		expect(colDots()).toHaveLength(1);
+		// Out of the pane entirely -- the pointer keeps its grace period, so the
+		// chrome does not blink out on the way to a control beside the table.
+		act(() => {
+			viewport.dispatchEvent(new Event("pointerleave"));
+		});
+		expect(colDots()).toHaveLength(1);
+		expect(rowDots()).toHaveLength(1);
+		await act(async () => {
+			await new Promise((resolve) => window.setTimeout(resolve, 1200));
+		});
+		expect(colDots()).toHaveLength(0);
+		expect(rowDots()).toHaveLength(0);
 	});
 
 	it("R8/O6: hovering writes nothing", () => {
@@ -140,11 +275,13 @@ describe("TableInteractionLayer (slice 1)", () => {
 		expect(markdownOf(live)).toBe(before);
 	});
 
-	it("O4: click a dot, Delete removes the column, one undo restores it", async () => {
+	it("O4: click a handle, Delete removes the column, one undo restores it", async () => {
 		const { live } = mount();
 		const before = markdownOf(live);
+		// The handle only exists for the column the pointer is in.
+		hoverCell(cellAt(1, 0));
 		const dot = colDots()[0];
-		if (!dot) throw new Error("Expected a column dot");
+		if (!dot) throw new Error("Expected a column handle");
 
 		// Press and release without moving: a click, not a drag.
 		act(() => {

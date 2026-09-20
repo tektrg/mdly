@@ -1,4 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import MingcuteRightLine from "~icons/mingcute/right-line";
+import { cn } from "../lib/utils";
 import { DOCUMENT_TABLE_ROW_HEIGHT } from "./DocumentListRow";
 import { navIndentRem } from "./navDensity";
 
@@ -59,11 +61,45 @@ export function DocumentGroupHeader({
 			style={{
 				blockSize: rowHeight,
 				paddingInlineStart: `${navIndentRem(depth)}rem`,
+				...(index === undefined
+					? null
+					: { transform: `translateY(${index * rowHeight}px)` }),
 			}}
+			className={cn(
+				"flex items-center rounded-[var(--radius-row)] outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+				// Mirror DocumentListRow's virtual positioning: the row list's
+				// inner container is `relative` with a fixed block size and every
+				// row is absolutely placed at `index * rowHeight`. Without this
+				// the headers stay in normal flow while documents overlay them.
+				index !== undefined &&
+					"absolute start-1 end-1 [inset-block-start:0] transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none [[data-resizing]_&]:transition-none",
+			)}
 		>
-			<button type="button" aria-expanded={expanded} onClick={onToggle}>
-				{label}
-				{count}
+			<button
+				type="button"
+				aria-expanded={expanded}
+				onClick={onToggle}
+				title={label}
+				tabIndex={-1}
+				className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
+			>
+				<span
+					aria-hidden="true"
+					className="inline-flex size-3 shrink-0 items-center justify-center text-muted-foreground"
+				>
+					<MingcuteRightLine
+						className={cn(
+							"size-3 transition-transform duration-150 ease-out",
+							expanded && "rotate-90",
+						)}
+					/>
+				</span>
+				<span className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)] font-medium">
+					{label}
+				</span>
+				<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+					{count}
+				</span>
 			</button>
 		</div>
 	);

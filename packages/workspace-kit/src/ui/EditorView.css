@@ -54,7 +54,8 @@
 	--editor-gap: 0.85em;
 	--editor-heading-gap: 0.35em;
 	--editor-section-gap: 1.5em;
-	--editor-list-gap: 0.25em;
+	--editor-list-gap: 0.45em;
+	--editor-list-paragraph-gap: 0.6em;
 
 	inline-size: 100%;
 	max-inline-size: var(--editor-content-max-inline-size);
@@ -122,10 +123,21 @@
    wrapper is the actual scroll boundary so only the table scrolls sideways,
    not the whole document. Plain block overflow reliably clips/scrolls here,
    unlike setting overflow directly on the table (auto table layout can grow
-   the table past its declared width regardless of the table's own overflow). */
+   the table past its declared width regardless of the table's own overflow).
+
+   The 100% cap belongs to a plain table. The desktop-only interaction layer
+   (`data-table-chrome`, tableInteractivity opt-in) deliberately grows this
+   wrapper past the column — it reserves a band above the table and a gutter
+   beside it for its hover handles, and expands to full width on demand — so
+   the cap is lifted for exactly that wrapper. Without the exclusion this rule
+   wins on specificity (three class-level selectors) over the layer's own
+   stylesheet and every one of those widths is clamped back to the column. */
 [data-hubble-editor] .ProseMirror .tableWrapper {
-	max-inline-size: 100%;
 	overflow-x: auto;
+}
+
+[data-hubble-editor] .ProseMirror .tableWrapper:not([data-table-chrome]) {
+	max-inline-size: 100%;
 }
 
 [data-hubble-editor] .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
@@ -176,6 +188,32 @@
 [data-hubble-editor] .ProseMirror li + li,
 [data-hubble-editor] .ProseMirror li > div > :is(ul, ol) {
 	margin-block-start: var(--editor-list-gap);
+}
+
+/* Blocks stacked inside one list item (continuation paragraphs). The top-level
+   `> * + *` rules don't reach here, so without this they render flush. */
+[data-hubble-editor] .ProseMirror li > div > * + * {
+	margin-block-start: var(--editor-list-paragraph-gap);
+}
+
+/* Heavy blocks (table, code, quote) inside a list item are separated
+   from what precedes and follows them by the standard block gap. A heavy block
+   that opens the item gets no top margin, so it stays aligned with the bullet
+   or checkbox instead of dropping below it. */
+[data-hubble-editor]
+	.ProseMirror
+	li
+	> div
+	> :is(.tableWrapper, .react-renderer.node-codeBlock, pre, blockquote):not(
+		:first-child
+	),
+[data-hubble-editor]
+	.ProseMirror
+	li
+	> div
+	> :is(.tableWrapper, .react-renderer.node-codeBlock, pre, blockquote)
+	+ * {
+	margin-block-start: var(--editor-gap);
 }
 
 [data-hubble-editor] .ProseMirror ul > li[data-checked] {
@@ -362,8 +400,8 @@
 [data-hubble-editor] .ProseMirror :is(th, td) {
 	border-block-start: 1px solid var(--border);
 	border-inline-start: 1px solid var(--border);
-	padding-block: 0.45rem;
-	padding-inline: 0.65rem;
+	padding-block: 0.6rem;
+	padding-inline: 0.85rem;
 	vertical-align: top;
 }
 
@@ -456,17 +494,19 @@
 
 [data-hubble-editor] .ProseMirror code {
 	background: var(--muted);
-	padding: 0.1em 0.3em;
-	border-radius: 3px;
+	padding: 0.12em 0.4em;
+	border-radius: 4px;
 	font-size: 0.9em;
 }
 
 [data-hubble-editor] .ProseMirror pre {
 	background: var(--muted);
-	padding-block: 1.5rem;
-	padding-inline: 0.85rem;
+	/* Top padding clears the hover controls pinned to the block's corner. */
+	padding-block: 1.5rem 1.25rem;
+	padding-inline: 1.1rem;
 	border-radius: var(--radius-md, 0.375rem);
 	font-size: 0.9em;
+	line-height: 1.6;
 	overflow-x: auto;
 }
 

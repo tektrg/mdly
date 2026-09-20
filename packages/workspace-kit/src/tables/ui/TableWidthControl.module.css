@@ -3,10 +3,11 @@
  *
  * The control itself is a sticky chip parked at the visible top-right corner
  * of the table's own `.tableWrapper` scroll box (charter R36: anchored inside
- * the scroll box so it tracks by CSS — no scroll or resize listeners). Sticky
- * (not fixed, not viewport-anchored) keeps it reachable while scrolling
- * sideways inside a wide table, and parking it at the top keeps it clear of
- * the table's own horizontal scrollbar at the bottom (charter R21).
+ * the scroll box so it tracks by CSS — no scroll or resize listeners), in the
+ * chrome band that slice 1 reserves above the table, so it floats above the
+ * table's top edge rather than covering its first row. Parking it at the top
+ * also keeps it clear of the table's own horizontal scrollbar at the bottom
+ * (charter R21).
  *
  * Full width is measured against the editor pane's own live width (ruling R-N):
  * `100cqi` resolves against the `.editorViewport` query container installed by
@@ -16,6 +17,12 @@
  * wider wrapper on the prose column; the math is exact (margins + width =
  * the column width), so the document body never gains a scrollbar (R22) and
  * every other block lays out exactly as before.
+ *
+ * The table's *content* still has to end up that wide, and the wrapper is
+ * carrying the interaction layer's inline-start gutter as padding (`.chrome`),
+ * so both the width and the leading margin are widened by exactly that gutter:
+ * the padding is paid for out of the wider box, and the content keeps its
+ * full-width span, still one gutter clear of the pane's own edge.
  *
  * Every colour, radius, shadow and easing resolves through the editor kit's
  * existing token vocabulary with inline fallbacks (charter R44). Spacing uses
@@ -28,16 +35,34 @@
 
 .fullWidth {
 	max-inline-size: none;
-	inline-size: calc(100cqi - 2 * var(--editor-content-padding-inline, 3rem));
-	margin-inline: calc(
+	inline-size: calc(
+		100cqi -
+		2 *
+		var(--editor-content-padding-inline, 3rem) +
+		var(--table-chrome-gutter, 0px)
+	);
+	margin-inline-start: calc(
+		(100% - 100cqi + 2 * var(--editor-content-padding-inline, 3rem)) /
+		2 -
+		var(--table-chrome-gutter, 0px)
+	);
+	margin-inline-end: calc(
 		(100% - 100cqi + 2 * var(--editor-content-padding-inline, 3rem)) /
 		2
 	);
 }
 
 .control {
+	/* Sticky on the inline axis only: the table scrolls sideways inside this
+	   wrapper, so the chip has to stay pinned to the wrapper's visible
+	   inline-end edge. It is deliberately NOT sticky on the block axis — a
+	   sticky block offset is measured from the scrollport's *content* box,
+	   which sits one chrome band below the wrapper's padding box, so the chip
+	   landed 2px *under* the table's top edge and covered its first row. In
+	   normal flow it starts at the wrapper's padding box, i.e. in the band the
+	   slice 1 layer reserves above the table, which is exactly where it
+	   belongs (charter R21). */
 	position: sticky;
-	inset-block-start: 0.5rem;
 	inset-inline-end: 0.5rem;
 	z-index: 5;
 	inline-size: fit-content;
@@ -46,6 +71,10 @@
 	overflow: visible;
 	opacity: 0;
 	visibility: hidden;
+	/* The overlay sets `pointer-events: none` so it never steals clicks from
+	   the table below; the control is a real button and must opt back in (the
+	   Delete menu does the same), or it can never be clicked. */
+	pointer-events: auto;
 	transition: opacity var(--default-transition-duration, 160ms)
 		var(--ease-snappy, ease);
 }
@@ -61,7 +90,10 @@
 }
 
 .button {
-	display: inline-flex;
+	/* Block-level, not inline-flex: an inline-level box is laid out in a line
+	   box, and the line box's strut pushed the chip a few pixels below the top
+	   of the band it is supposed to sit in. */
+	display: flex;
 	align-items: center;
 	gap: 0.375rem;
 	border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);

@@ -69,4 +69,70 @@ describe("desktop state persistence", () => {
 		expect(state.workspace.hasListedOnce).toBe(false);
 		expect(state.workspace.listingError).toBeNull();
 	});
+
+	it("round-trips per-view sorts through serialize and hydrate", () => {
+		vi.stubGlobal("localStorage", { getItem: () => null });
+		const state = getInitialState();
+		expect(state.workspace.navViewSorts).toEqual({});
+		state.workspace.navViewSorts = {
+			"/ws": {
+				tag: { column: "name", direction: "asc" },
+				recent: { column: "folder", direction: "desc" },
+			},
+		};
+
+		const snapshot = JSON.stringify(serialize(state));
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) => (key === STORAGE_KEY ? snapshot : null),
+		});
+
+		expect(getInitialState().workspace.navViewSorts).toEqual({
+			"/ws": {
+				tag: { column: "name", direction: "asc" },
+				recent: { column: "folder", direction: "desc" },
+			},
+		});
+	});
+
+	it("drops garbage from persisted view sorts", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({
+							workspace: {
+								navViewSorts: {
+									"/ok": {
+										folder: { column: "modified", direction: "asc", extra: 1 },
+										tag: { column: "size", direction: "asc" },
+										recent: { column: "name", direction: "sideways" },
+										bogus: { column: "name", direction: "asc" },
+									},
+									"/all-bad": { tag: "name", recent: null },
+									"/not-a-map": "x",
+									"/array": [{ column: "name", direction: "asc" }],
+								},
+							},
+						})
+					: null,
+		});
+
+		expect(getInitialState().workspace.navViewSorts).toEqual({
+			"/ok": { folder: { column: "modified", direction: "asc" } },
+		});
+	});
+
+	it("ignores a __proto__ workspace key in persisted view sorts", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? `{"workspace":{"navViewSorts":{"__proto__":{"tag":{"column":"name","direction":"asc"}},"/ws":{"tag":{"column":"name","direction":"asc"}}}}}`
+					: null,
+		});
+
+		const sorts = getInitialState().workspace.navViewSorts;
+
+		expect(Object.keys(sorts)).toEqual(["/ws"]);
+		expect(Object.getPrototypeOf(sorts)).toBe(Object.prototype);
+		expect(({} as Record<string, unknown>).tag).toBeUndefined();
+	});
 });
