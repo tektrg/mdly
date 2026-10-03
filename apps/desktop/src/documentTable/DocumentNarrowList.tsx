@@ -1,10 +1,18 @@
 import { Button } from "@hubble.md/ui";
-import type { RefObject } from "react";
+import { useResponsiveRowLayout } from "@mdly/workspace-kit";
+import { type RefObject, useCallback, useRef } from "react";
 import MingcuteArrowLeftLine from "~icons/mingcute/arrow-left-line";
+import MingcuteHistoryLine from "~icons/mingcute/history-line";
+import { cn } from "../lib/utils";
 import { DocumentFilterInput } from "./DocumentFilterInput";
-import { DocumentRowList } from "./DocumentRowList";
+import {
+	DOCUMENT_TABLE_GRID_TEMPLATE,
+	DocumentRowList,
+} from "./DocumentRowList";
 import type { DocumentRowListMenu } from "./DocumentRowMenu";
+import { COLUMN_LABELS } from "./DocumentTable";
 import type { DocumentListingState } from "./documentListingState";
+import { useDocumentTableLayout } from "./documentTableLayout";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
@@ -29,6 +37,54 @@ export type DocumentNarrowListProps = {
 	/** Title menu; omitted in tests that only exercise the list. */
 	rowMenu?: DocumentRowListMenu;
 };
+
+/**
+ * List inline-size at which the peek list's rows switch from the stacked
+ * name + secondary layout to one-line grid cells under column labels. Wide
+ * enough that the Name column keeps real room next to the three data columns.
+ * Measured from the list's own width, independent of the R9 tier.
+ */
+export const NARROW_GRID_BREAKPOINT = 640;
+
+/**
+ * Column labels over the grid rows. Marked `data-flip-enter` so the kit's
+ * FLIP fades it in after the cells start gliding, and ghosts it out on the
+ * way back to the stacked list.
+ */
+function NarrowGridHeader() {
+	const { columns, gridStyle } = useDocumentTableLayout();
+	return (
+		<div role="rowgroup" data-flip-enter="" className="shrink-0">
+			<div
+				role="row"
+				aria-rowindex={1}
+				tabIndex={-1}
+				style={gridStyle}
+				className={cn(
+					DOCUMENT_TABLE_GRID_TEMPLATE,
+					"mx-1 h-7 [padding-inline:var(--row-pad-inline)]",
+				)}
+			>
+				{columns.map((column) => (
+					<div
+						key={column}
+						role="columnheader"
+						tabIndex={-1}
+						className="flex min-w-0 items-center gap-1 text-[11px] uppercase text-muted-foreground"
+					>
+						{column === "modified" ? (
+							<MingcuteHistoryLine
+								aria-hidden="true"
+								className="size-3 shrink-0"
+							/>
+						) : null}
+						<span className="min-w-0 truncate">{COLUMN_LABELS[column]}</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
 
 const NARROW_MESSAGE_CLASS =
 	"m-0 text-[length:var(--font-size-sidebar)] text-muted-foreground";
@@ -99,9 +155,26 @@ export function DocumentNarrowList({
 }: DocumentNarrowListProps) {
 	// R9: Rail shows the title only; every wider tier keeps the secondary line.
 	const showSecondary = columnsForTier(navTier).length > 1;
+	// Own ref for the kit's width watcher; the host's `listRef` still gets
+	// the same element for its density measurement.
+	const ownRef = useRef<HTMLDivElement | null>(null);
+	const setListElement = useCallback(
+		(element: HTMLDivElement | null) => {
+			ownRef.current = element;
+			if (listRef) listRef.current = element;
+		},
+		[listRef],
+	);
+	// Re-renders only when the breakpoint is crossed, then FLIPs every cell
+	// (by `data-flip-id`) from its stacked spot to its column, and back. Also
+	// writes the kit's compact-gap CSS var on every resize, no render.
+	const isGrid =
+		useResponsiveRowLayout(ownRef, NARROW_GRID_BREAKPOINT) === "table" &&
+		showSecondary;
 	return (
 		<div
-			ref={listRef}
+			ref={setListElement}
+			data-row-layout={isGrid ? "grid" : "stacked"}
 			data-nav-tier={navTier}
 			className="flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar"
 			style={{ inlineSize: listInlineSize }}
@@ -122,13 +195,15 @@ export function DocumentNarrowList({
 			<div
 				role="grid"
 				aria-label="Documents"
-				aria-rowcount={rows.length}
+				aria-rowcount={isGrid ? rows.length + 1 : rows.length}
 				className="flex min-h-0 flex-1 flex-col px-1 pb-2"
 			>
 				<NavListHeader navTier={navTier} />
+				{isGrid ? <NarrowGridHeader /> : null}
 				<DocumentRowList
 					rows={rows}
 					density="list"
+					gridCells={isGrid}
 					hideSecondary={!showSecondary}
 					view={view}
 					onOpenDocument={onOpenDocument}

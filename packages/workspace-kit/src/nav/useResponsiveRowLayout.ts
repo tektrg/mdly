@@ -1,4 +1,10 @@
-import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+	type RefObject,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 
 /**
  * "list"  -- compact rows: title with its meta inline.
@@ -35,14 +41,24 @@ const COMPACT_GAP_SLOPE = 0.12;
 
 export function compactMetaGap(width: number, breakpoint: number): number {
 	if (!Number.isFinite(breakpoint)) return 0;
-	const extra = (width - (breakpoint - COMPACT_GAP_RAMP_PX)) * COMPACT_GAP_SLOPE;
-	return Math.round(Math.min(Math.max(extra, 0), COMPACT_GAP_RAMP_PX * COMPACT_GAP_SLOPE) * 10) / 10;
+	const extra =
+		(width - (breakpoint - COMPACT_GAP_RAMP_PX)) * COMPACT_GAP_SLOPE;
+	return (
+		Math.round(
+			Math.min(Math.max(extra, 0), COMPACT_GAP_RAMP_PX * COMPACT_GAP_SLOPE) *
+				10,
+		) / 10
+	);
 }
 
-type Snapshot = {
+type Ghost = { node: HTMLElement; rect: DOMRect };
+
+export type FlipSnapshot = {
 	rects: Map<string, DOMRect>;
+	/** `[data-flip-id]` clones, by id, to fade out if the id is gone after. */
+	cells: Map<string, Ghost>;
 	/** Decorations that disappear in the new layout, cloned to fade out. */
-	leaving: { node: HTMLElement; rect: DOMRect }[];
+	leaving: Ghost[];
 };
 
 /**
@@ -67,7 +83,7 @@ export function useResponsiveRowLayout(
 	const [layout, setLayout] = useState<SidebarRowLayout>("list");
 	const layoutRef = useRef(layout);
 	layoutRef.current = layout;
-	const snapshotRef = useRef<Snapshot | null>(null);
+	const snapshotRef = useRef<FlipSnapshot | null>(null);
 
 	useLayoutEffect(() => {
 		const el = containerRef.current;
@@ -95,25 +111,42 @@ export function useResponsiveRowLayout(
 		return () => observer.disconnect();
 	}, [breakpoint, containerRef]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: replays on every layout commit.
 	useLayoutEffect(() => {
 		const before = snapshotRef.current;
 		snapshotRef.current = null;
 		const el = containerRef.current;
-		if (!before || !el || prefersReducedMotion()) return;
+		if (!before || !el) return;
 		playFlip(el, before);
 	}, [layout, containerRef]);
 
 	// Drop a stale snapshot if the component unmounts mid-crossing.
-	useEffect(() => () => void (snapshotRef.current = null), []);
+	useEffect(
+		() => () => {
+			snapshotRef.current = null;
+		},
+		[],
+	);
 
 	return layout;
 }
 
-function snapshotFlipRects(root: HTMLElement): Snapshot {
+/**
+ * First half of a FLIP: records where every `[data-flip-id]` cell sits, plus
+ * fade-out clones of cells and `[data-flip-enter]` decorations. Call it while
+ * the OLD layout is still in the DOM; hand the result to {@link playFlip}
+ * after the new layout commits. Exported so hosts whose layouts are separate
+ * component trees can FLIP across the swap by stable cell ids.
+ */
+export function snapshotFlipRects(root: HTMLElement): FlipSnapshot {
 	const rects = new Map<string, DOMRect>();
+	const cells = new Map<string, Ghost>();
 	for (const node of root.querySelectorAll<HTMLElement>(FLIP_SELECTOR)) {
 		const id = node.dataset.flipId;
-		if (id) rects.set(id, node.getBoundingClientRect());
+		if (!id) continue;
+		const rect = node.getBoundingClientRect();
+		rects.set(id, rect);
+		cells.set(id, { node: node.cloneNode(true) as HTMLElement, rect });
 	}
 	const leaving = Array.from(
 		root.querySelectorAll<HTMLElement>(ENTER_SELECTOR),
@@ -122,7 +155,7 @@ function snapshotFlipRects(root: HTMLElement): Snapshot {
 			rect: node.getBoundingClientRect(),
 		}),
 	);
-	return { rects, leaving };
+	return { rects, cells, leaving };
 }
 
 /**
@@ -143,8 +176,14 @@ export function springProgressSamples(
 	return samples;
 }
 
-function playFlip(root: HTMLElement, before: Snapshot) {
-	if (typeof root.animate !== "function") return;
+/**
+ * Second half of a FLIP: glides each `[data-flip-id]` cell from its snapshot
+ * rect to where it sits now (critically damped spring, all at once), fades in
+ * cells and decorations that are new, and fades out ghosts of the ones that
+ * are gone. No-op under `prefers-reduced-motion: reduce`.
+ */
+export function playFlip(root: HTMLElement, before: FlipSnapshot) {
+	if (typeof root.animate !== "function" || prefersReducedMotion()) return;
 	const spring = springProgressSamples();
 	const glide = { duration: SPRING_DURATION_MS, easing: "linear" };
 	const fadeIn = {
@@ -153,7 +192,9 @@ function playFlip(root: HTMLElement, before: Snapshot) {
 		easing: "ease-out",
 		fill: "backwards" as const,
 	};
+	const present = new Set<string>();
 	for (const node of root.querySelectorAll<HTMLElement>(FLIP_SELECTOR)) {
+		present.add(node.dataset.flipId ?? "");
 		const prev = before.rects.get(node.dataset.flipId ?? "");
 		if (!prev) {
 			node.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn);
@@ -174,10 +215,14 @@ function playFlip(root: HTMLElement, before: Snapshot) {
 	for (const node of entering) {
 		node.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn);
 	}
-	// Decorations gone from the new layout fade out as fixed-position ghosts.
-	if (entering.length > 0) return;
+	// Cells and decorations gone from the new layout fade out (never vanish)
+	// as fixed-position ghosts.
+	const ghosts = Array.from(before.cells)
+		.filter(([id]) => !present.has(id))
+		.map(([, ghost]) => ghost);
+	if (entering.length === 0) ghosts.push(...before.leaving);
 	const doc = root.ownerDocument;
-	for (const { node, rect } of before.leaving) {
+	for (const { node, rect } of ghosts) {
 		Object.assign(node.style, {
 			position: "fixed",
 			left: `${rect.left}px`,
@@ -189,6 +234,7 @@ function playFlip(root: HTMLElement, before: Snapshot) {
 		});
 		node.setAttribute("aria-hidden", "true");
 		node.removeAttribute("data-flip-enter");
+		node.removeAttribute("data-flip-id");
 		doc.body.append(node);
 		const anim = node.animate([{ opacity: 1 }, { opacity: 0 }], {
 			duration: FADE_DURATION_MS,

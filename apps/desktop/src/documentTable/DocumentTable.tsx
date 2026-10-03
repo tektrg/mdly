@@ -28,7 +28,7 @@ import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
-const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
+export const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
 	name: "Name",
 	folder: "Folder",
 	modified: "Modified",

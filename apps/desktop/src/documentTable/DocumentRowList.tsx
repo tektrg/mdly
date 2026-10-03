@@ -72,6 +72,11 @@ type DocumentRowListProps = {
 	/** R9 Rail: hide the list density's secondary line. Defaults to false. */
 	hideSecondary?: boolean;
 	/**
+	 * Wide peek list: keep the list density's row height but render each row
+	 * as one-line table cells (under a column header the caller renders).
+	 */
+	gridCells?: boolean;
+	/**
 	 * R2: the grouping query. Absent means the flat list — every existing
 	 * caller without a view renders exactly as before.
 	 */
@@ -125,6 +130,7 @@ export function DocumentRowList({
 	onOpenDocument,
 	emptyState,
 	hideSecondary = false,
+	gridCells = false,
 	view,
 	menu,
 }: DocumentRowListProps) {
@@ -409,7 +415,9 @@ export function DocumentRowList({
 							specId={navRow.specId}
 							groupId={navRow.groupId}
 							index={index}
-							ariaRowIndex={density === "table" ? index + 2 : index + 1}
+							ariaRowIndex={
+								density === "table" || gridCells ? index + 2 : index + 1
+							}
 							tabIndex={index === tabbableIndex ? 0 : -1}
 							rowHeight={rowHeight}
 							onKeyDown={(event) => {
@@ -435,7 +443,7 @@ export function DocumentRowList({
 								row={navRow.doc}
 								index={index}
 								rowHeight={rowHeight}
-								density={density}
+								density={gridCells ? "table" : density}
 								columns={columns}
 								gridStyle={gridStyle}
 								secondaryColumn={secondaryColumn}

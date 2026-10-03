@@ -1,4 +1,5 @@
 import {
+	COMPACT_GAP_VAR,
 	formatRevisionTime,
 	SIDEBAR_VIRTUAL_ROW_HEIGHT,
 } from "@mdly/workspace-kit";
@@ -116,6 +117,7 @@ function TableCell({
 			<span
 				role="gridcell"
 				tabIndex={-1}
+				data-flip-id={flipId(row, column)}
 				className={cn(secondaryTextClass(isActive), "tabular-nums")}
 				title={formatModifiedAtTitle(timestamp)}
 			>
@@ -128,6 +130,7 @@ function TableCell({
 			<span
 				role="gridcell"
 				tabIndex={-1}
+				data-flip-id={flipId(row, column)}
 				className={secondaryTextClass(isActive)}
 			>
 				{row.folderLabel}
@@ -138,12 +141,30 @@ function TableCell({
 		<span
 			role="gridcell"
 			tabIndex={-1}
+			data-flip-id={flipId(row, "name")}
 			className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
 		>
 			{row.name}
 		</span>
 	);
 }
+
+/**
+ * Stable FLIP id for one cell: the same id in the stacked list and the grid,
+ * so the kit's FLIP glides it from one layout to the other.
+ */
+function flipId(row: DocumentTableRow, column: DocumentTableColumn): string {
+	return `${row.path}::${column}`;
+}
+
+/**
+ * The stacked secondary line's lead-in, from the kit's compact-gap CSS var:
+ * it widens smoothly as the list nears the grid breakpoint, written straight
+ * from a ResizeObserver so dragging re-renders nothing.
+ */
+const COMPACT_GAP_STYLE: CSSProperties = {
+	marginInlineStart: `var(${COMPACT_GAP_VAR}, 0px)`,
+};
 
 function secondaryLabel(
 	row: DocumentTableRow,
@@ -233,16 +254,24 @@ export function DocumentListRow({
 				</span>
 			) : hideSecondary ? (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
-					<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
+					<span
+						data-flip-id={flipId(row, "name")}
+						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+					>
 						{row.name}
 					</span>
 				</span>
 			) : (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
-					<span className="min-w-0 truncate text-[length:var(--font-size-sidebar)]">
+					<span
+						data-flip-id={flipId(row, "name")}
+						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+					>
 						{row.name}
 					</span>
 					<span
+						data-flip-id={flipId(row, secondaryColumn)}
+						style={COMPACT_GAP_STYLE}
 						className={cn(
 							secondaryTextClass(row.isActive),
 							(secondaryColumn === "modified" ||
