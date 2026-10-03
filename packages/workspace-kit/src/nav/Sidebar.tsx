@@ -1394,7 +1394,7 @@ function FileRowMeta({
 					<span
 						aria-hidden="true"
 						data-flip-id={`${file.path}:tags`}
-						className="min-w-0 max-w-[40%] shrink truncate text-[10px] font-normal text-muted-foreground/70"
+						className="min-w-0 max-w-[40%] shrink truncate ms-[var(--sidebar-compact-meta-gap,0px)] text-[10px] font-normal text-muted-foreground/70"
 					>
 						{tags}
 					</span>

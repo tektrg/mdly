@@ -23,6 +23,22 @@ const FADE_IN_DELAY_MS = 33;
 const FLIP_SELECTOR = "[data-flip-id]";
 const ENTER_SELECTOR = "[data-flip-enter]";
 
+/**
+ * In the compact list the gap between a file's title and its inline meta
+ * widens smoothly as the panel grows toward the breakpoint (reference video:
+ * ~+0.12px per px over the last ~160px, roughly 0 -> 19px extra). Written as
+ * a CSS custom property straight from the ResizeObserver -- no re-render.
+ */
+export const COMPACT_GAP_VAR = "--sidebar-compact-meta-gap";
+const COMPACT_GAP_RAMP_PX = 160;
+const COMPACT_GAP_SLOPE = 0.12;
+
+export function compactMetaGap(width: number, breakpoint: number): number {
+	if (!Number.isFinite(breakpoint)) return 0;
+	const extra = (width - (breakpoint - COMPACT_GAP_RAMP_PX)) * COMPACT_GAP_SLOPE;
+	return Math.round(Math.min(Math.max(extra, 0), COMPACT_GAP_RAMP_PX * COMPACT_GAP_SLOPE) * 10) / 10;
+}
+
 type Snapshot = {
 	rects: Map<string, DOMRect>;
 	/** Decorations that disappear in the new layout, cloned to fade out. */
@@ -59,6 +75,10 @@ export function useResponsiveRowLayout(
 		const apply = (width: number, animate: boolean) => {
 			// A zero width means hidden/unmounted pane -- keep the last layout.
 			if (width <= 0) return;
+			el.style.setProperty(
+				COMPACT_GAP_VAR,
+				`${compactMetaGap(width, breakpoint)}px`,
+			);
 			const next: SidebarRowLayout = width >= breakpoint ? "table" : "list";
 			if (next === layoutRef.current) return;
 			snapshotRef.current = animate ? snapshotFlipRects(el) : null;

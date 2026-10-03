@@ -15,3 +15,14 @@ describe("springProgressSamples", () => {
 		expect(s[Math.floor(s.length / 2)]).toBeGreaterThan(0.75);
 	});
 });
+
+import { compactMetaGap } from "./useResponsiveRowLayout";
+describe("compactMetaGap", () => {
+	it("ramps from 0 to ~19px over the 160px before the breakpoint", () => {
+		expect(compactMetaGap(200, 420)).toBe(0);
+		expect(compactMetaGap(260, 420)).toBe(0);
+		expect(compactMetaGap(340, 420)).toBe(9.6);
+		expect(compactMetaGap(500, 420)).toBe(19.2);
+		expect(compactMetaGap(500, Infinity)).toBe(0);
+	});
+});
