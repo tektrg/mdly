@@ -18,7 +18,10 @@ import {
 	documentRowHeight,
 } from "./DocumentListRow";
 import { type DocumentRowListMenu, DocumentRowMenu } from "./DocumentRowMenu";
-import { useDocumentTableLayout } from "./documentTableLayout";
+import {
+	narrowGridStyleFor,
+	useDocumentTableLayout,
+} from "./documentTableLayout";
 import {
 	type DocumentTableRow,
 	type DocumentTableView,
@@ -445,7 +448,7 @@ export function DocumentRowList({
 								rowHeight={rowHeight}
 								density={gridCells ? "table" : density}
 								columns={columns}
-								gridStyle={gridStyle}
+								gridStyle={gridCells ? narrowGridStyleFor(columns) : gridStyle}
 								secondaryColumn={secondaryColumn}
 								tabbableIndex={tabbableIndex}
 								onOpenDocument={onOpenDocument}

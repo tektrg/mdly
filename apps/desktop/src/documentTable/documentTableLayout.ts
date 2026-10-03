@@ -218,6 +218,25 @@ export function gridTemplateFor(
 	};
 }
 
+/**
+ * Grid template for the peek list's one-line grid (`DocumentNarrowList`).
+ * The full table's tracks (fixed 10-11rem data columns, `1fr` name) leave the
+ * name column 0px wide at peek-list widths, so here every column shares the
+ * width and the name keeps a floor. Follows the live column order; ignores
+ * widths dragged in the full table, which were sized for a wider surface.
+ */
+export function narrowGridStyleFor(
+	columns: DocumentTableColumn[],
+): CSSProperties {
+	return {
+		gridTemplateColumns: columns
+			.map((column) =>
+				column === "name" ? "minmax(6rem,1.6fr)" : "minmax(0,1fr)",
+			)
+			.join(" "),
+	};
+}
+
 /** The narrow list's secondary line: first data column in the live order. */
 export function secondaryColumnFor(
 	columns: DocumentTableColumn[],

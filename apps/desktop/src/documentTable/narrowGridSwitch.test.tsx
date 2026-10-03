@@ -7,7 +7,7 @@ import {
 	NARROW_GRID_BREAKPOINT,
 } from "./DocumentNarrowList";
 import type { DocumentListingState } from "./documentListingState";
-import type { NavDensityTier } from "./navDensity";
+import { clampPeekListWidth, type NavDensityTier } from "./navDensity";
 import { buildRows, viewWith } from "./testFixtures";
 
 (
@@ -127,5 +127,16 @@ describe("DocumentNarrowList stacked -> grid switch", () => {
 		expect(list()?.style.getPropertyValue("--sidebar-compact-meta-gap")).toBe(
 			"14.4px",
 		);
+	});
+});
+
+describe("NARROW_GRID_BREAKPOINT reachability", () => {
+	it("can be crossed by dragging on a 1280px window with the sidebar open", () => {
+		const SIDEBAR_WIDTH = 220;
+		const { listWidth } = clampPeekListWidth({
+			availableWidth: 1280 - SIDEBAR_WIDTH,
+			desiredWidth: Number.POSITIVE_INFINITY,
+		});
+		expect(listWidth).toBeGreaterThanOrEqual(NARROW_GRID_BREAKPOINT);
 	});
 });

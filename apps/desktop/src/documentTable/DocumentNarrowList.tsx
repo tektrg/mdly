@@ -12,7 +12,10 @@ import {
 import type { DocumentRowListMenu } from "./DocumentRowMenu";
 import { COLUMN_LABELS } from "./DocumentTable";
 import type { DocumentListingState } from "./documentListingState";
-import { useDocumentTableLayout } from "./documentTableLayout";
+import {
+	narrowGridStyleFor,
+	useDocumentTableLayout,
+} from "./documentTableLayout";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
@@ -40,11 +43,15 @@ export type DocumentNarrowListProps = {
 
 /**
  * List inline-size at which the peek list's rows switch from the stacked
- * name + secondary layout to one-line grid cells under column labels. Wide
- * enough that the Name column keeps real room next to the three data columns.
+ * name + secondary layout to one-line grid cells under column labels.
  * Measured from the list's own width, independent of the R9 tier.
+ *
+ * Must stay REACHABLE: the list can grow only to the split width minus
+ * `PEEK_DOCUMENT_MIN_WIDTH` (600). On a 1280px window with the 220px sidebar
+ * open that is 460px, so the old 640 could never be crossed on typical
+ * windows (1440 topped out at 620) and the switch never played.
  */
-export const NARROW_GRID_BREAKPOINT = 640;
+export const NARROW_GRID_BREAKPOINT = 440;
 
 /**
  * Column labels over the grid rows. Marked `data-flip-enter` so the kit's
@@ -52,14 +59,14 @@ export const NARROW_GRID_BREAKPOINT = 640;
  * way back to the stacked list.
  */
 function NarrowGridHeader() {
-	const { columns, gridStyle } = useDocumentTableLayout();
+	const { columns } = useDocumentTableLayout();
 	return (
 		<div role="rowgroup" data-flip-enter="" className="shrink-0">
 			<div
 				role="row"
 				aria-rowindex={1}
 				tabIndex={-1}
-				style={gridStyle}
+				style={narrowGridStyleFor(columns)}
 				className={cn(
 					DOCUMENT_TABLE_GRID_TEMPLATE,
 					"mx-1 h-7 [padding-inline:var(--row-pad-inline)]",
