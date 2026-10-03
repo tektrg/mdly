@@ -8,12 +8,26 @@ export type SidebarRowLayout = "list" | "table";
 
 export const DEFAULT_TABLE_BREAKPOINT = 420;
 
-const FLIP_DURATION_MS = 220;
-const FLIP_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+/*
+ * Timings measured frame-by-frame (60fps) from the reference recording:
+ * - Cells glide on a critically damped spring (starts from rest, no
+ *   overshoot), settling in ~10 frames (~170ms). All cells start together --
+ *   no stagger between rows or columns.
+ * - Column decorations (folder-row icons) cross-fade in ~100ms; they lag the
+ *   glide by ~2 frames on the way in and fade out (not vanish) on the way out.
+ */
+const SPRING_OMEGA = 39; // rad/s -> 99% settled at ~170ms
+export const SPRING_DURATION_MS = 170;
+const FADE_DURATION_MS = 100;
+const FADE_IN_DELAY_MS = 33;
 const FLIP_SELECTOR = "[data-flip-id]";
 const ENTER_SELECTOR = "[data-flip-enter]";
 
-type Snapshot = Map<string, DOMRect>;
+type Snapshot = {
+	rects: Map<string, DOMRect>;
+	/** Decorations that disappear in the new layout, cloned to fade out. */
+	leaving: { node: HTMLElement; rect: DOMRect }[];
+};
 
 /**
  * Picks the row layout from the CONTAINER's own width (not the window's), so
@@ -25,8 +39,9 @@ type Snapshot = Map<string, DOMRect>;
  * rows once per crossing, never per frame. On a crossing it snapshots every
  * `[data-flip-id]` element, and after the new layout commits it plays a FLIP
  * (First-Last-Invert-Play) glide from old to new position with the Web
- * Animations API. Elements without a previous position, and
- * `[data-flip-enter]` decorations, fade in instead. Skipped entirely under
+ * Animations API on a critically damped spring. Elements without a previous
+ * position, and `[data-flip-enter]` decorations, fade in; decorations that
+ * leave fade out as ghosts. Skipped entirely under
  * `prefers-reduced-motion: reduce`.
  */
 export function useResponsiveRowLayout(
@@ -75,21 +90,53 @@ export function useResponsiveRowLayout(
 }
 
 function snapshotFlipRects(root: HTMLElement): Snapshot {
-	const snapshot: Snapshot = new Map();
+	const rects = new Map<string, DOMRect>();
 	for (const node of root.querySelectorAll<HTMLElement>(FLIP_SELECTOR)) {
 		const id = node.dataset.flipId;
-		if (id) snapshot.set(id, node.getBoundingClientRect());
+		if (id) rects.set(id, node.getBoundingClientRect());
 	}
-	return snapshot;
+	const leaving = Array.from(
+		root.querySelectorAll<HTMLElement>(ENTER_SELECTOR),
+		(node) => ({
+			node: node.cloneNode(true) as HTMLElement,
+			rect: node.getBoundingClientRect(),
+		}),
+	);
+	return { rects, leaving };
+}
+
+/**
+ * Keyframe offsets for a critically damped spring from rest:
+ * progress(t) = 1 - (1 + wt) e^(-wt). Sampled per frame so WAAPI plays it
+ * with linear interpolation between samples.
+ */
+export function springProgressSamples(
+	durationMs: number = SPRING_DURATION_MS,
+	omega: number = SPRING_OMEGA,
+): number[] {
+	const frames = Math.max(2, Math.round(durationMs / (1000 / 60)));
+	const samples: number[] = [];
+	for (let i = 0; i <= frames; i++) {
+		const wt = (omega * (i / frames) * durationMs) / 1000;
+		samples.push(i === frames ? 1 : 1 - (1 + wt) * Math.exp(-wt));
+	}
+	return samples;
 }
 
 function playFlip(root: HTMLElement, before: Snapshot) {
-	const timing = { duration: FLIP_DURATION_MS, easing: FLIP_EASING };
+	if (typeof root.animate !== "function") return;
+	const spring = springProgressSamples();
+	const glide = { duration: SPRING_DURATION_MS, easing: "linear" };
+	const fadeIn = {
+		duration: FADE_DURATION_MS,
+		delay: FADE_IN_DELAY_MS,
+		easing: "ease-out",
+		fill: "backwards" as const,
+	};
 	for (const node of root.querySelectorAll<HTMLElement>(FLIP_SELECTOR)) {
-		if (typeof node.animate !== "function") return;
-		const prev = before.get(node.dataset.flipId ?? "");
+		const prev = before.rects.get(node.dataset.flipId ?? "");
 		if (!prev) {
-			node.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+			node.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn);
 			continue;
 		}
 		const next = node.getBoundingClientRect();
@@ -97,16 +144,39 @@ function playFlip(root: HTMLElement, before: Snapshot) {
 		const dy = prev.top - next.top;
 		if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
 		node.animate(
-			[
-				{ transform: `translate(${dx}px, ${dy}px)` },
-				{ transform: "translate(0, 0)" },
-			],
-			timing,
+			spring.map((p) => ({
+				transform: `translate(${dx * (1 - p)}px, ${dy * (1 - p)}px)`,
+			})),
+			glide,
 		);
 	}
-	for (const node of root.querySelectorAll<HTMLElement>(ENTER_SELECTOR)) {
-		if (typeof node.animate !== "function") return;
-		node.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+	const entering = root.querySelectorAll<HTMLElement>(ENTER_SELECTOR);
+	for (const node of entering) {
+		node.animate([{ opacity: 0 }, { opacity: 1 }], fadeIn);
+	}
+	// Decorations gone from the new layout fade out as fixed-position ghosts.
+	if (entering.length > 0) return;
+	const doc = root.ownerDocument;
+	for (const { node, rect } of before.leaving) {
+		Object.assign(node.style, {
+			position: "fixed",
+			left: `${rect.left}px`,
+			top: `${rect.top}px`,
+			width: `${rect.width}px`,
+			height: `${rect.height}px`,
+			margin: "0",
+			pointerEvents: "none",
+		});
+		node.setAttribute("aria-hidden", "true");
+		node.removeAttribute("data-flip-enter");
+		doc.body.append(node);
+		const anim = node.animate([{ opacity: 1 }, { opacity: 0 }], {
+			duration: FADE_DURATION_MS,
+			easing: "ease-out",
+			fill: "forwards",
+		});
+		anim.onfinish = () => node.remove();
+		anim.oncancel = () => node.remove();
 	}
 }
 
