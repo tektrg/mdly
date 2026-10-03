@@ -342,7 +342,11 @@ describe("Sidebar symlink activation", () => {
 		});
 
 		await clickPagerDot("Recent files");
-		const row = rowButton("plain.md");
+		// Scoped to the Recents pane: the Files tree also renders this file,
+		// now with its own inline meta (modified date).
+		const row = Array.from(
+			container.querySelectorAll('[data-sidebar-page="recent"] button'),
+		).find((candidate) => candidate.textContent?.includes("plain.md"));
 
 		// Same shape as before tags existed on this page: filename + optional
 		// folder line only, no extra tag markup rendered.
@@ -373,7 +377,11 @@ describe("Sidebar symlink activation", () => {
 		});
 
 		await clickPagerDot("Recent files");
-		const row = rowButton("plain2.md");
+		// Scoped to the Recents pane: the Files tree also renders this file,
+		// now with its own inline meta (modified date).
+		const row = Array.from(
+			container.querySelectorAll('[data-sidebar-page="recent"] button'),
+		).find((candidate) => candidate.textContent?.includes("plain2.md"));
 
 		expect(row?.textContent).toBe("plain2.md");
 	});

@@ -71,6 +71,11 @@ import {
 	type SidebarSortMode,
 	useSidebarTree,
 } from "./useSidebarTree";
+import {
+	DEFAULT_TABLE_BREAKPOINT,
+	type SidebarRowLayout,
+	useResponsiveRowLayout,
+} from "./useResponsiveRowLayout";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
 export type {
@@ -257,6 +262,13 @@ type SidebarProps = {
 	searchHint?: ReactNode;
 	/** Shown when a non-empty query matches nothing. */
 	searchEmptyState?: ReactNode;
+	/**
+	 * Files-page width (px, measured on the list itself -- not the window) at
+	 * which file rows switch from compact "list" rows (title + inline meta) to
+	 * a "table" with aligned Tags / Modified columns. Crossing it animates the
+	 * cells into place. `Infinity` keeps the compact list always.
+	 */
+	tableBreakpoint?: number;
 };
 
 export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
@@ -305,11 +317,13 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 		searchPlaceholder,
 		searchHint,
 		searchEmptyState,
+		tableBreakpoint = DEFAULT_TABLE_BREAKPOINT,
 	},
 	ref,
 ) {
 	const portalContainer = usePortalContainer();
 	const navRef = useRef<HTMLDivElement>(null);
+	const rowLayout = useResponsiveRowLayout(navRef, tableBreakpoint);
 	const renameInputRef = useRef<HTMLInputElement | null>(null);
 	const [openActionsPath, setOpenActionsPath] = useState<string | null>(null);
 	const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -744,6 +758,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 				ref={navRef}
 				enabled={Boolean(onMoveItem)}
 				onKeyDown={onKeyDown}
+				layout={rowLayout}
 			>
 				{rows.length === 0 && emptyState}
 				{virtualRows.paddingTop > 0 ? (
@@ -914,20 +929,27 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 										>
 											{chevron}
 											{row.kind === "folder" ? (
-												<FolderSegmentLabel
-													dropTarget={dropTarget}
-													row={row}
-													enabled={Boolean(onMoveItem)}
-												/>
+												<>
+													<FolderSegmentLabel
+														dropTarget={dropTarget}
+														row={row}
+														enabled={Boolean(onMoveItem)}
+													/>
+													{rowLayout === "table" && <FolderColumnHints />}
+												</>
 											) : (
-												<span
-													className={cn(
-														"min-w-0 flex-1 truncate",
-														isPinnedFile && "[direction:rtl] [text-align:left]",
-													)}
-												>
-													{row.label}
-												</span>
+												<>
+													<span
+														className={cn(
+															"min-w-0 truncate",
+															rowLayout === "table" ? "flex-1" : "shrink",
+															isPinnedFile && "[direction:rtl] [text-align:left]",
+														)}
+													>
+														{row.label}
+													</span>
+													<FileRowMeta file={row.file} layout={rowLayout} />
+												</>
 											)}
 										</DroppableRowButton>
 									)}
@@ -1309,8 +1331,9 @@ const DroppableSidebarNav = forwardRef<
 		children: ReactNode;
 		enabled: boolean;
 		onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+		layout: SidebarRowLayout;
 	}
->(function DroppableSidebarNav({ children, enabled, onKeyDown }, ref) {
+>(function DroppableSidebarNav({ children, enabled, onKeyDown, layout }, ref) {
 	const { setNodeRef } = useDroppable({
 		id: "sidebar-drop:root",
 		data: { folderId: null } satisfies DropTargetData,
@@ -1332,11 +1355,128 @@ const DroppableSidebarNav = forwardRef<
 			tabIndex={0}
 			onKeyDown={onKeyDown}
 			data-sidebar-nav
+			data-sidebar-layout={layout}
 		>
 			{children}
 		</div>
 	);
 });
+
+/**
+ * Fixed column widths shared by file cells and the folder-row header hints, so
+ * a folder's faded icons sit exactly above its files' columns.
+ */
+const TAGS_COLUMN_CLASS = "w-24";
+const MODIFIED_COLUMN_CLASS = "w-16";
+
+/**
+ * A file row's meta. "list": tags inline right after the title, date pushed
+ * to the end. "table": the same two cells in fixed-width aligned columns.
+ * Each cell keeps one `data-flip-id` across both layouts so
+ * useResponsiveRowLayout can glide it between positions. aria-hidden keeps
+ * the row's accessible name to just the file name, as before.
+ */
+function FileRowMeta({
+	file,
+	layout,
+}: {
+	file: SidebarFile;
+	layout: SidebarRowLayout;
+}) {
+	const tags = file.tags?.length ? file.tags.join(", ") : null;
+	const modified =
+		file.modifiedAt !== undefined ? formatRowDate(file.modifiedAt) : null;
+	if (layout === "list") {
+		if (!tags && !modified) return null;
+		return (
+			<>
+				{tags && (
+					<span
+						aria-hidden="true"
+						data-flip-id={`${file.path}:tags`}
+						className="min-w-0 max-w-[40%] shrink truncate text-[10px] font-normal text-muted-foreground/70"
+					>
+						{tags}
+					</span>
+				)}
+				<span aria-hidden="true" className="flex-1" />
+				{modified && (
+					<span
+						aria-hidden="true"
+						data-flip-id={`${file.path}:modified`}
+						className="shrink-0 text-[10px] font-normal tabular-nums text-muted-foreground/70"
+					>
+						{modified}
+					</span>
+				)}
+			</>
+		);
+	}
+	return (
+		<>
+			<span
+				aria-hidden="true"
+				data-flip-id={`${file.path}:tags`}
+				className={cn(
+					TAGS_COLUMN_CLASS,
+					"shrink-0 truncate text-[10px] font-normal text-muted-foreground/70",
+				)}
+			>
+				{tags}
+			</span>
+			<span
+				aria-hidden="true"
+				data-flip-id={`${file.path}:modified`}
+				className={cn(
+					MODIFIED_COLUMN_CLASS,
+					"shrink-0 text-end text-[10px] font-normal tabular-nums text-muted-foreground/70",
+				)}
+			>
+				{modified}
+			</span>
+		</>
+	);
+}
+
+/** Faded column icons on a folder row, aligned above its files' columns (table layout). */
+function FolderColumnHints() {
+	return (
+		<>
+			<span
+				aria-hidden="true"
+				data-flip-enter
+				data-sidebar-column-hint="tags"
+				className={cn(
+					TAGS_COLUMN_CLASS,
+					"inline-flex shrink-0 items-center text-muted-foreground/40",
+				)}
+			>
+				<MingcuteTagLine className="size-3" />
+			</span>
+			<span
+				aria-hidden="true"
+				data-flip-enter
+				data-sidebar-column-hint="modified"
+				className={cn(
+					MODIFIED_COLUMN_CLASS,
+					"inline-flex shrink-0 items-center justify-end text-muted-foreground/40",
+				)}
+			>
+				<MingcuteHistoryLine className="size-3" />
+			</span>
+		</>
+	);
+}
+
+function formatRowDate(ms: number): string {
+	const date = new Date(ms);
+	const sameYear = date.getFullYear() === new Date().getFullYear();
+	return date.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+		...(sameYear ? {} : { year: "2-digit" }),
+	});
+}
 
 function DroppableRowButton({
 	children,

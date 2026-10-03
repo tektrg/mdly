@@ -146,6 +146,10 @@ export {
 	type SidebarMoveItemInput,
 	type SidebarSortMode,
 } from "./nav/Sidebar";
+export {
+	DEFAULT_TABLE_BREAKPOINT,
+	type SidebarRowLayout,
+} from "./nav/useResponsiveRowLayout";
 // Also reachable as "@mdly/workspace-kit/search" -- a UI-free entry point for
 // consumers that want only the ranking (see vite.config.ts).
 export {
