@@ -163,6 +163,7 @@ export {
 	playFlip,
 	type SidebarRowLayout,
 	snapshotFlipRects,
+	useFlipOnChange,
 	useResponsiveRowLayout,
 } from "./nav/useResponsiveRowLayout";
 export {

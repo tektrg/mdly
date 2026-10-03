@@ -1,5 +1,5 @@
 import { Button } from "@hubble.md/ui";
-import { useResponsiveRowLayout } from "@mdly/workspace-kit";
+import { useFlipOnChange, useResponsiveRowLayout } from "@mdly/workspace-kit";
 import { type RefObject, useCallback, useRef } from "react";
 import MingcuteArrowLeftLine from "~icons/mingcute/arrow-left-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
@@ -178,6 +178,9 @@ export function DocumentNarrowList({
 	const isGrid =
 		useResponsiveRowLayout(ownRef, NARROW_GRID_BREAKPOINT) === "table" &&
 		showSecondary;
+	// Every R9 tier crossing (rail <-> list <-> card <-> table) re-renders the
+	// rows anyway; FLIP across it in the same motion as the grid switch.
+	useFlipOnChange(ownRef, navTier);
 	return (
 		<div
 			ref={setListElement}

@@ -132,6 +132,34 @@ export function useResponsiveRowLayout(
 }
 
 /**
+ * FLIPs `[data-flip-id]` cells across any host-driven layout change, keyed
+ * by `key` (e.g. a density tier computed by the host). When `key` differs
+ * from the last committed one, the OLD layout is snapshotted during render
+ * (the DOM is untouched until commit), then {@link playFlip} runs after the
+ * new layout commits -- same glide, fades and ghosts as
+ * {@link useResponsiveRowLayout}. Costs nothing on renders that keep `key`.
+ */
+export function useFlipOnChange(
+	containerRef: RefObject<HTMLElement | null>,
+	key: string,
+): void {
+	const committedKey = useRef(key);
+	const snapshotRef = useRef<{ key: string; snap: FlipSnapshot } | null>(null);
+	const el = containerRef.current;
+	if (key !== committedKey.current && el && snapshotRef.current?.key !== key) {
+		snapshotRef.current = { key, snap: snapshotFlipRects(el) };
+	}
+	useLayoutEffect(() => {
+		if (committedKey.current === key) return;
+		committedKey.current = key;
+		const pending = snapshotRef.current;
+		snapshotRef.current = null;
+		const root = containerRef.current;
+		if (pending && pending.key === key && root) playFlip(root, pending.snap);
+	}, [key, containerRef]);
+}
+
+/**
  * First half of a FLIP: records where every `[data-flip-id]` cell sits, plus
  * fade-out clones of cells and `[data-flip-enter]` decorations. Call it while
  * the OLD layout is still in the DOM; hand the result to {@link playFlip}
