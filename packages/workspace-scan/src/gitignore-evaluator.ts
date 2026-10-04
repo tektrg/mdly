@@ -53,6 +53,23 @@ export function createGitignoreEvaluator(
 		return pending;
 	};
 
+	/** Last matching rule across root..parent ignore files decides, as in git. */
+	const isPathIgnored = async (segments: string[], isFolder: boolean) => {
+		let ignored = false;
+		let dir = root;
+		for (let index = 0; index < segments.length; index += 1) {
+			const matcher = await loadMatcher(dir);
+			if (matcher) {
+				const rel = segments.slice(index).join("/");
+				const result = matcher.test(isFolder ? `${rel}/` : rel);
+				if (result.ignored) ignored = true;
+				if (result.unignored) ignored = false;
+			}
+			dir = path.join(dir, segments[index] ?? "");
+		}
+		return ignored;
+	};
+
 	return {
 		async isIgnored(absolutePath) {
 			const relative = path.relative(root, absolutePath);
@@ -63,20 +80,16 @@ export function createGitignoreEvaluator(
 			)
 				return false;
 			const segments = relative.split(path.sep);
-			let ignored = false;
-			let dir = root;
-			for (let index = 0; index < segments.length; index += 1) {
-				const matcher = await loadMatcher(dir);
-				if (matcher) {
-					const rel = segments.slice(index).join("/");
-					const result = matcher.test(rel);
-					const asDir = matcher.test(`${rel}/`);
-					if (result.ignored || asDir.ignored) ignored = true;
-					if (result.unignored || asDir.unignored) ignored = false;
-				}
-				dir = path.join(dir, segments[index] ?? "");
+			// Git cannot re-include a path whose parent folder is excluded, so
+			// each ancestor folder is judged first; an ignored one wins outright.
+			for (let depth = 1; depth < segments.length; depth += 1) {
+				if (await isPathIgnored(segments.slice(0, depth), true)) return true;
 			}
-			return ignored;
+			// The reported path itself may be a file or a folder.
+			return (
+				(await isPathIgnored(segments, false)) ||
+				(await isPathIgnored(segments, true))
+			);
 		},
 		invalidate() {
 			matcherByDir.clear();

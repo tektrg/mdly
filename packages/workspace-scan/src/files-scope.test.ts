@@ -150,4 +150,15 @@ describe("createGitignoreEvaluator", () => {
 		evaluator.invalidate();
 		expect(await evaluator.isIgnored(path.join(root, "a.tmp"))).toBe(false);
 	});
+
+	it("cannot re-include a file whose parent folder is ignored (git semantics)", async () => {
+		const root = await makeWorkspace({
+			".gitignore": "logs/\n",
+			"logs/.gitignore": "!keep.md\n",
+		});
+		const evaluator = createGitignoreEvaluator(root);
+		expect(await evaluator.isIgnored(path.join(root, "logs/keep.md"))).toBe(
+			true,
+		);
+	});
 });
