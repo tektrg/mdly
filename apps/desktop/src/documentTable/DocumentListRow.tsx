@@ -35,6 +35,11 @@ export const DOCUMENT_LIST_ROW_HEIGHT = 44;
  */
 export const DOCUMENT_CARD_ROW_HEIGHT = 62;
 /**
+ * Card-tier density (400–559px): title row (dates on its right) plus one
+ * truncated detail line — two single lines, so it fits tighter than List.
+ */
+export const DOCUMENT_CARD_TIER_ROW_HEIGHT = 46;
+/**
  * Table-tier density (560px+ of list width): same wrapped meta block as the
  * card, but allowed a third line so widening keeps revealing more info.
  */
@@ -64,6 +69,7 @@ export function documentRowHeight(
 	if (density === "table") return DOCUMENT_TABLE_ROW_HEIGHT;
 	if (navTier === "rail") return DOCUMENT_LIST_ROW_HEIGHT;
 	if (navTier === "table") return DOCUMENT_NARROW_TABLE_ROW_HEIGHT;
+	if (navTier === "card") return DOCUMENT_CARD_TIER_ROW_HEIGHT;
 	return DOCUMENT_CARD_ROW_HEIGHT;
 }
 
@@ -98,6 +104,20 @@ export function formatModifiedAt(modifiedAt: number, now = new Date()): string {
 /** The precise timestamp, shown on hover so the compact label stays unambiguous. */
 export function formatModifiedAtTitle(modifiedAt: number): string {
 	return formatRevisionTime(modifiedAt * 1000);
+}
+
+/**
+ * Card-tier date beside the title: always "27 Aug" (day first, regardless of
+ * locale order), plus the year only when it is not the current one.
+ */
+export function formatCardDate(seconds: number, now = new Date()): string {
+	const at = new Date(seconds * 1000);
+	if (Number.isNaN(at.getTime())) return "";
+	const month = at.toLocaleString("en-GB", { month: "short" });
+	const dayMonth = `${at.getDate()} ${month}`;
+	return at.getFullYear() === now.getFullYear()
+		? dayMonth
+		: `${dayMonth} ${at.getFullYear()}`;
 }
 
 /** Created cells share Modified's compact date rendering — one formatter, two columns. */
@@ -248,14 +268,8 @@ function cardMetaItems(
 							: row.name,
 		}))
 		.filter((item) => item.text.length > 0);
-	if (tags) {
-		const tagText = tags
-			.map((tag) => tag.trim())
-			.filter((tag) => tag.length > 0)
-			.map((tag) => `#${tag}`)
-			.join(" ");
-		if (tagText.length > 0) items.push({ key: "tags", text: tagText });
-	}
+	const tagLabel = tagText(tags);
+	if (tagLabel.length > 0) items.push({ key: "tags", text: tagLabel });
 	return items;
 }
 
@@ -263,6 +277,88 @@ function cardMetaClass(isActive: boolean): string {
 	return cn(
 		"min-w-0 break-words text-[11px]",
 		isActive ? "text-selected-foreground" : "text-muted-foreground/70",
+	);
+}
+
+function tagText(tags: readonly string[] | undefined): string {
+	return (tags ?? [])
+		.map((tag) => tag.trim())
+		.filter((tag) => tag.length > 0)
+		.map((tag) => `#${tag}`)
+		.join(" ");
+}
+
+/**
+ * Card tier (400–559px): short details (dates) sit right of the title, faded
+ * and tabular; long details (folder, tags) get one truncated line below. Each
+ * date keeps its column's flip id so it glides between layouts.
+ */
+function CardTierCell({
+	row,
+	metaColumns,
+	tags,
+}: {
+	row: DocumentTableRow;
+	metaColumns: DocumentTableColumn[];
+	tags: readonly string[] | undefined;
+}) {
+	const dateColumns = metaColumns.filter(
+		(column) => column === "modified" || column === "created",
+	);
+	const showFolder = metaColumns.includes("folder") && row.folderLabel !== "";
+	const tagLabel = tagText(tags);
+	const faded = row.isActive
+		? "text-selected-foreground"
+		: "text-muted-foreground/70";
+	return (
+		<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
+			<span className="flex min-w-0 items-baseline gap-2">
+				<span
+					data-flip-id={flipId(row, "name")}
+					className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)]"
+				>
+					{row.name}
+				</span>
+				{dateColumns.map((column) => {
+					const seconds =
+						column === "modified" ? row.modifiedAt : row.createdAt;
+					const label = formatCardDate(seconds);
+					if (!label) return null;
+					return (
+						<span
+							key={column}
+							data-card-date={column}
+							data-flip-id={flipId(row, column)}
+							title={`${column === "modified" ? "Modified" : "Created"} ${formatModifiedAtTitle(seconds)}`}
+							className={cn("shrink-0 text-[11px] tabular-nums", faded)}
+						>
+							{label}
+						</span>
+					);
+				})}
+			</span>
+			{showFolder || tagLabel ? (
+				<span
+					data-card-details=""
+					className={cn("flex min-w-0 gap-2 text-[11px]", faded)}
+				>
+					{showFolder ? (
+						<span
+							data-flip-id={flipId(row, "folder")}
+							className="min-w-0 shrink overflow-hidden"
+						>
+							<MiddleTruncatedPath
+								path={row.folderLabel}
+								className="block truncate"
+							/>
+						</span>
+					) : null}
+					{tagLabel ? (
+						<span className="min-w-0 flex-1 truncate">{tagLabel}</span>
+					) : null}
+				</span>
+			) : null}
+		</span>
 	);
 }
 
@@ -350,6 +446,14 @@ export function DocumentListRow({
 						{row.name}
 					</span>
 				</span>
+			) : isCard && navTier !== "list" ? (
+				<CardTierCell
+					row={row}
+					metaColumns={
+						metaColumns ?? columns.filter((column) => column !== "name")
+					}
+					tags={tags}
+				/>
 			) : isCard ? (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
 					<span
@@ -358,12 +462,7 @@ export function DocumentListRow({
 					>
 						{row.name}
 					</span>
-					<span
-						className={cn(
-							cardMetaClass(row.isActive),
-							navTier === "table" ? "line-clamp-3" : "line-clamp-2",
-						)}
-					>
+					<span className={cn(cardMetaClass(row.isActive), "line-clamp-2")}>
 						{cardMetaItems(
 							row,
 							metaColumns ?? columns.filter((column) => column !== "name"),
@@ -376,8 +475,11 @@ export function DocumentListRow({
 										path={item.text}
 										className="inline-block max-w-full truncate align-bottom"
 									/>
-								) : (
+								) : item.key === "tags" ? (
 									item.text
+								) : (
+									// Same flip id as the card/grid date cell, so it glides.
+									<span data-flip-id={flipId(row, item.key)}>{item.text}</span>
 								)}
 							</Fragment>
 						))}

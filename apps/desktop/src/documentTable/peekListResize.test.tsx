@@ -10,9 +10,11 @@ import { STORAGE_KEY } from "../store/storage";
 import { DocumentNarrowList } from "./DocumentNarrowList";
 import {
 	DOCUMENT_CARD_ROW_HEIGHT,
+	DOCUMENT_CARD_TIER_ROW_HEIGHT,
 	DOCUMENT_LIST_ROW_HEIGHT,
 	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 	documentRowHeight,
+	formatCardDate,
 	formatModifiedAt,
 } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
@@ -373,7 +375,9 @@ describe("DocumentNarrowList density tiers", () => {
 		expect(documentRowHeight("table")).toBe(28);
 		expect(documentRowHeight("list", "rail")).toBe(DOCUMENT_LIST_ROW_HEIGHT);
 		expect(documentRowHeight("list", "list")).toBe(DOCUMENT_CARD_ROW_HEIGHT);
-		expect(documentRowHeight("list", "card")).toBe(DOCUMENT_CARD_ROW_HEIGHT);
+		expect(documentRowHeight("list", "card")).toBe(
+			DOCUMENT_CARD_TIER_ROW_HEIGHT,
+		);
 		expect(documentRowHeight("list", "table")).toBe(
 			DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 		);
@@ -395,32 +399,40 @@ describe("DocumentNarrowList density tiers", () => {
 		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
 	});
 
-	it("Card wraps every data column into a two-line meta block", () => {
+	it("Card puts dates right of the title and folder on its own line", () => {
 		renderTier("card");
 
 		const rows = bodyRows();
 		expect(rows.length).toBeGreaterThan(0);
-		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
-		const meta = rowMeta(rows[0]);
-		expect(meta?.className).toContain("line-clamp-2");
-		// Default order is name/folder/modified/created: the card carries the
-		// folder AND both dates, where List showed the folder alone.
-		expect(meta?.textContent).toContain("—");
-		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_TIER_ROW_HEIGHT}px`);
+		const cell = rows[0].querySelector('[role="gridcell"]');
+		const titleRow = cell?.children[0];
+		const dates = titleRow?.querySelectorAll("[data-card-date]") ?? [];
+		expect(dates.length).toBe(2);
+		for (const date of dates) {
+			expect(date.className).toContain("tabular-nums");
+			expect(date.className).toContain("shrink-0");
+			expect(date.getAttribute("data-flip-id")).toMatch(
+				/::(modified|created)$/,
+			);
+		}
+		expect(titleRow?.textContent).not.toContain("•");
+		const details = cell?.querySelector("[data-card-details]");
+		expect(details?.textContent).toContain("—");
+		expect(details?.textContent).not.toContain("•");
+		expect(
+			details?.querySelector("[data-flip-id]")?.getAttribute("data-flip-id"),
+		).toMatch(/::folder$/);
 	});
 
-	it("Table allows the meta a third line, so widening reveals more info", () => {
+	it("Table tier (stacked) keeps the card layout", () => {
 		renderTier("table");
 
 		const rows = bodyRows();
-		expect(rows.length).toBeGreaterThan(0);
 		expect(rows[0].style.blockSize).toBe(
 			`${DOCUMENT_NARROW_TABLE_ROW_HEIGHT}px`,
 		);
-		const meta = rowMeta(rows[0]);
-		expect(meta?.className).toContain("line-clamp-3");
-		expect(meta?.textContent).toContain("—");
-		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+		expect(rows[0].querySelectorAll("[data-card-date]").length).toBe(2);
 	});
 
 	it("Card shows dates the List tier hides (created distinct from modified)", () => {
@@ -446,8 +458,8 @@ describe("DocumentNarrowList density tiers", () => {
 			);
 		});
 
-		const meta = rowMeta(bodyRows()[0]);
-		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
-		expect(meta?.textContent).toContain(formatModifiedAt(1_600_000_000));
+		const row = bodyRows()[0];
+		expect(row.textContent).toContain(formatCardDate(1_700_000_300));
+		expect(row.textContent).toContain(formatCardDate(1_600_000_000));
 	});
 });

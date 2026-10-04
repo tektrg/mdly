@@ -50,12 +50,14 @@ import { useNavViewSwitcher } from "./useNavViewSwitcher";
 
 export {
 	DOCUMENT_CARD_ROW_HEIGHT,
+	DOCUMENT_CARD_TIER_ROW_HEIGHT,
 	DOCUMENT_LIST_ROW_HEIGHT,
 	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 	DOCUMENT_TABLE_GRID_TEMPLATE,
 	DOCUMENT_TABLE_ROW_HEIGHT,
 	type DocumentRowDensity,
 	documentRowHeight,
+	formatCardDate,
 	formatCreatedAt,
 	formatCreatedAtTitle,
 	formatModifiedAt,
