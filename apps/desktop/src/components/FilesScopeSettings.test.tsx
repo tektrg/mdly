@@ -116,4 +116,38 @@ describe("FilesScopeSettings", () => {
 		});
 		expect(container.textContent).toContain("12 visible · 7 synced");
 	});
+
+	it("serializes fast clicks so a slow first save cannot overwrite the second", async () => {
+		await render();
+		const releases: Array<() => void> = [];
+		setFilesScope.mockImplementation(
+			(_path, scope) =>
+				new Promise((resolve) => releases.push(() => resolve(scope))),
+		);
+		await act(async () => {
+			checkbox(".claude synced").click();
+			await flush();
+		});
+		await act(async () => {
+			checkbox(".claude in app").click();
+			await flush();
+		});
+		// Second save waits for the first to finish.
+		expect(setFilesScope).toHaveBeenCalledTimes(1);
+		await act(async () => {
+			releases[0]();
+			await flush();
+		});
+		expect(setFilesScope).toHaveBeenCalledTimes(2);
+		expect(checkbox(".claude in app").checked).toBe(false);
+		await act(async () => {
+			releases[1]();
+			await flush();
+		});
+		expect(setFilesScope).toHaveBeenLastCalledWith(WORKSPACE_PATH, {
+			respectGitignore: true,
+			rules: [{ pattern: ".claude", inApp: false, synced: false }],
+		});
+		expect(checkbox(".claude in app").checked).toBe(false);
+	});
 });

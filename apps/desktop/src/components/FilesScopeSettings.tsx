@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { desktopApi } from "../desktopApi";
 import type {
 	FilesScope,
@@ -74,6 +74,10 @@ export function FilesScopeSettings({
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const counts = useFilesScopeCounts(workspacePath, state?.scope ?? null);
+	// Saves run one at a time, in click order; only the newest save's reply
+	// (or failure rollback) touches the UI, so fast clicks can't land out of order.
+	const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+	const saveSeq = useRef(0);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -97,19 +101,30 @@ export function FilesScopeSettings({
 		) : null;
 	}
 
-	const persist = async (nextScope: FilesScope) => {
+	const persist = (nextScope: FilesScope) => {
 		const previous = state;
+		const seq = ++saveSeq.current;
 		setState({ ...state, scope: nextScope, isCustomized: true });
 		setError(null);
 		setNotice(null);
-		try {
-			const saved = await desktopApi.setFilesScope(workspacePath, nextScope);
-			setState((current) => (current ? { ...current, scope: saved } : current));
-			void refreshFiles(workspacePath);
-		} catch (saveError) {
-			setState(previous);
-			setError(errorText(saveError));
-		}
+		const run = async () => {
+			try {
+				const saved = await desktopApi.setFilesScope(workspacePath, nextScope);
+				if (seq === saveSeq.current) {
+					setState((current) =>
+						current ? { ...current, scope: saved } : current,
+					);
+				}
+				void refreshFiles(workspacePath);
+			} catch (saveError) {
+				if (seq === saveSeq.current) {
+					setState(previous);
+					setError(errorText(saveError));
+				}
+			}
+		};
+		saveQueue.current = saveQueue.current.then(run, run);
+		return saveQueue.current;
 	};
 
 	const updateRule = (index: number, nextRule: FilesScopeRule | null) => {
