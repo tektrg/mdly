@@ -1,12 +1,11 @@
 import path from "node:path";
 import { discoverWorkspaceFiles } from "../file-discovery.js";
+import { SYNCED_NOTE_EXTENSION_RE as NOTE_EXTENSION_RE } from "../files-scope.js";
 import {
 	isHiddenSidebarFolderName,
 	toWorkspaceRelativePath,
 } from "./shared.js";
 import type { WalkerResult } from "./types.js";
-
-const NOTE_EXTENSION_RE = /\.(md|markdown|mdown)$/i;
 
 /**
  * The cloud-sync "notes" walker (R13): `.md` / `.markdown` / `.mdown` files,

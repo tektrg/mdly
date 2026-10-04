@@ -14,6 +14,11 @@ export {
 	type WorkspaceSymlinkInfo,
 	WorkspaceTraversalLimitError,
 } from "./file-discovery.js";
+export * from "./files-scope.js";
+export {
+	createGitignoreEvaluator,
+	type GitignoreEvaluator,
+} from "./gitignore-evaluator.js";
 export { assetsWalker, MAX_ASSET_SIZE } from "./walkers/assetsWalker.js";
 export { notesWalker } from "./walkers/notesWalker.js";
 export { sidecarWalker } from "./walkers/sidecarWalker.js";

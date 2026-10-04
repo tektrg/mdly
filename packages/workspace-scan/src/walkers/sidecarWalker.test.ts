@@ -91,7 +91,8 @@ describe("sidecarWalker", () => {
 
 		const result = await sidecarWalker(workspaceRoot);
 
-		const modifiedAt = result.details?.[".mdly/comments/doc-1.jsonl"]?.modifiedAt;
+		const modifiedAt =
+			result.details?.[".mdly/comments/doc-1.jsonl"]?.modifiedAt;
 		expect(modifiedAt).toBeDefined();
 		expect(Number.isInteger(modifiedAt)).toBe(true);
 		// A millisecond clock would be ~1e12 today; seconds are ~1e9.
