@@ -160,7 +160,9 @@ export function DocumentNarrowList({
 	listInlineSize = PEEK_LIST_DEFAULT_WIDTH,
 	rowMenu,
 }: DocumentNarrowListProps) {
-	// R9: Rail shows the title only; every wider tier keeps the secondary line.
+	// R9: Rail shows the title only; every tier that shows the 2nd info wraps
+	// it — two lines on List/Card, three on Table — so widening keeps
+	// revealing more info.
 	const showSecondary = columnsForTier(navTier).length > 1;
 	// Own ref for the kit's width watcher; the host's `listRef` still gets
 	// the same element for its density measurement.
@@ -215,6 +217,7 @@ export function DocumentNarrowList({
 					density="list"
 					gridCells={isGrid}
 					hideSecondary={!showSecondary}
+					navTier={navTier}
 					view={view}
 					onOpenDocument={onOpenDocument}
 					menu={rowMenu}

@@ -2,9 +2,15 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workspaceStore } from "../store/state";
 import { type DocumentRowDensity, DocumentRowList } from "./DocumentRowList";
 import type { DocumentTableRow } from "./documentTableView";
-import { buildRows, manyMarkdownFiles, viewWith } from "./testFixtures";
+import {
+	buildRows,
+	manyMarkdownFiles,
+	viewWith,
+	WORKSPACE_FILES,
+} from "./testFixtures";
 
 // The seam `closeDocumentToTable` calls to hand focus back. Mocked so the test
 // can invoke the registered callback directly, without standing up the store.
@@ -415,5 +421,73 @@ describe("DocumentRowList close-focus seam", () => {
 		const focused = document.activeElement as HTMLElement | null;
 		expect(focused?.getAttribute("data-document-row-index")).not.toBeNull();
 		expect(focused?.getAttribute("tabindex")).toBe("0");
+	});
+});
+
+describe("DocumentRowList open-document reveal in grouped views", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	function renderRows(rows: DocumentTableRow[]) {
+		act(() => {
+			root.render(
+				<DocumentRowList
+					rows={rows}
+					density="table"
+					view={viewWith({ groupBy: "folder" })}
+					onOpenDocument={vi.fn()}
+					emptyState={<p>No documents</p>}
+				/>,
+			);
+		});
+	}
+
+	// A document opened from the command palette can live inside a group the
+	// user collapsed: its row is not rendered at all, so there is nothing to
+	// highlight or scroll to until the group reopens around it.
+	it("expands the collapsed group holding the open document and scrolls to it", () => {
+		const previous = workspaceStore.get();
+		workspaceStore.set((state) => ({
+			...state,
+			workspacePath: "/ws",
+			navExpandedGroups: { "/ws": [] },
+		}));
+		try {
+			renderRows(
+				buildRows({
+					files: WORKSPACE_FILES,
+					view: viewWith({ groupBy: "folder" }),
+					activePath: "/ws/notes/deep/gamma.md",
+				}),
+			);
+
+			expect(container.textContent).toContain("gamma");
+			const activeRowEl = container.querySelector<HTMLElement>(
+				'[aria-current="true"]',
+			);
+			expect(activeRowEl?.textContent).toContain("gamma");
+			const scroller =
+				container.querySelector<HTMLElement>('[role="rowgroup"]');
+			expect(scroller?.scrollTop).toBeGreaterThan(0);
+			const expanded = workspaceStore.get().navExpandedGroups["/ws"] ?? [];
+			expect(expanded).toContain("notes");
+			expect(expanded).toContain("notes/deep");
+			// The user's other collapses are untouched — only the open file's
+			// own chain reopens.
+			expect([...expanded].sort()).toEqual(["notes", "notes/deep"]);
+		} finally {
+			workspaceStore.set(() => previous);
+		}
 	});
 });

@@ -27,6 +27,7 @@ import {
 	type DocumentTableView,
 	ROOT_FOLDER_LABEL,
 } from "./documentTableView";
+import type { NavDensityTier } from "./navDensity";
 import { setNavExpandedIds } from "./navExpandedGroups";
 import {
 	buildGroupTree,
@@ -48,7 +49,9 @@ import {
 import { useNavViewSwitcher } from "./useNavViewSwitcher";
 
 export {
+	DOCUMENT_CARD_ROW_HEIGHT,
 	DOCUMENT_LIST_ROW_HEIGHT,
+	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 	DOCUMENT_TABLE_GRID_TEMPLATE,
 	DOCUMENT_TABLE_ROW_HEIGHT,
 	type DocumentRowDensity,
@@ -90,6 +93,11 @@ type DocumentRowListProps = {
 	 * keyboard behaviour.
 	 */
 	menu?: DocumentRowListMenu;
+	/**
+	 * Peek-list density tier. Only read at `list` density: `card`/`table`
+	 * widen the rows into wrapped cards. Defaults to `list`.
+	 */
+	navTier?: NavDensityTier;
 };
 
 /** The engine's document shape over the table's own row: identity preserved. */
@@ -99,6 +107,29 @@ function collectGroupIds(root: NavGroupNode): Set<string> {
 	const ids = new Set<string>();
 	const walk = (node: NavGroupNode) => {
 		for (const child of node.children) {
+			ids.add(child.id);
+			walk(child);
+		}
+	};
+	walk(root);
+	return ids;
+}
+
+/**
+ * Every group on the path to `docPath`, from the top-level group down to its
+ * leaf. Membership is recorded on each node AND every ancestor
+ * (`buildGroupTree`), so collecting the nodes that contain the path yields
+ * exactly its chain — one chain in the folder view, one per tag in the tag
+ * view.
+ */
+function ancestorGroupIdsForPath(
+	root: NavGroupNode,
+	docPath: string,
+): Set<string> {
+	const ids = new Set<string>();
+	const walk = (node: NavGroupNode) => {
+		for (const child of node.children) {
+			if (!child.members.has(docPath)) continue;
 			ids.add(child.id);
 			walk(child);
 		}
@@ -136,6 +167,7 @@ export function DocumentRowList({
 	gridCells = false,
 	view,
 	menu,
+	navTier = "list",
 }: DocumentRowListProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 	// Horizontal swipe anywhere over the list flips the nav view (recent /
@@ -148,10 +180,18 @@ export function DocumentRowList({
 		},
 		[swipeRef],
 	);
-	const rowHeight = documentRowHeight(density);
+	const rowHeight = documentRowHeight(
+		density,
+		density === "list" ? navTier : "list",
+	);
 	// Live column order + widths (one store shared with the table header).
-	// The narrow list's secondary line is the first data column in this order.
+	// The narrow list's secondary line is the first data column in this order;
+	// the card tiers wrap every data column in that same order.
 	const { columns, gridStyle, secondaryColumn } = useDocumentTableLayout();
+	const metaColumns = useMemo(
+		() => columns.filter((column) => column !== "name"),
+		[columns],
+	);
 
 	const workspacePath = useStoreValue(workspacePathStore);
 	const pinnedNotes = useStoreValue(
@@ -270,6 +310,10 @@ export function DocumentRowList({
 	const activeRow = activeIndex === -1 ? null : navRows[activeIndex];
 	const activePath =
 		activeRow && activeRow.kind === "document" ? activeRow.doc.path : null;
+	// The open document's path, whether or not its row is currently rendered:
+	// `activePath` above is null while a collapsed group hides the row, which
+	// is exactly when the reveal below has work to do.
+	const openPath = rows.find((row) => row.isActive)?.path ?? null;
 	// The index is read through a ref so the effect below can depend on *which
 	// document is open* and nothing else. The sidebar keys the same effect on the
 	// index (`Sidebar.tsx`), which it can afford because its rows never reorder
@@ -281,11 +325,43 @@ export function DocumentRowList({
 	// Opening a document from anywhere but this list — the command palette, a
 	// wiki link, Finder — leaves its row wherever the sort put it, which on a
 	// large workspace is far below the fold. Without this the list reads as
-	// having no selection at all.
+	// having no selection at all. The hidden/shown key (rather than the index)
+	// is what refires the scroll after a collapsed group expands below or a
+	// tag scan completes: a live re-sort under the same open document stays
+	// shown -> shown and never yanks the viewport.
+	const activeVisibility = activeIndex === -1 ? "hidden" : "shown";
 	useEffect(() => {
-		if (activePath === null) return;
+		if (activePath === null || activeVisibility === "hidden") return;
 		scrollToIndex(activeIndexRef.current);
-	}, [activePath, scrollToIndex]);
+	}, [activePath, activeVisibility, scrollToIndex]);
+
+	// The open document can live inside a group the user collapsed (or the
+	// collapsed Untagged bucket): then its row is not in `navRows` at all, so
+	// there is nothing to highlight or scroll to. Expanding only its own
+	// ancestor chain, once per opened path, leaves every other manual
+	// collapse exactly as the user left it.
+	const revealedDocPathRef = useRef<string | null>(null);
+	const revealedDocScopeRef = useRef(workspacePath);
+	if (revealedDocScopeRef.current !== workspacePath) {
+		revealedDocScopeRef.current = workspacePath;
+		revealedDocPathRef.current = null;
+	}
+	useEffect(() => {
+		if (openPath === null) return;
+		if (revealedDocPathRef.current === openPath) return;
+		revealedDocPathRef.current = openPath;
+		if (activeIndex !== -1 || !workspacePath) return;
+		const ancestors = ancestorGroupIdsForPath(tree, openPath);
+		if (ancestors.size === 0) return;
+		const next = new Set(expandedIds);
+		let changed = false;
+		for (const id of ancestors) {
+			if (next.has(id)) continue;
+			next.add(id);
+			changed = true;
+		}
+		if (changed) setNavExpandedIds(workspacePath, [...next]);
+	}, [openPath, activeIndex, tree, expandedIds, workspacePath]);
 
 	// Closing a document leaves focus on `<body>`, so Tab would restart from the
 	// top of the window instead of continuing in the list the user is now looking
@@ -454,6 +530,9 @@ export function DocumentRowList({
 								onOpenDocument={onOpenDocument}
 								onRowKeyDown={onRowKeyDown}
 								hideSecondary={hideSecondary}
+								navTier={navTier}
+								metaColumns={metaColumns}
+								tags={navRow.doc.tags}
 								onContextMenu={
 									menu
 										? (event) => {

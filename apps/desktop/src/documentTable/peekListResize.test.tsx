@@ -4,9 +4,17 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NAV_RAIL_MIN_WIDTH, PEEK_DOCUMENT_MIN_WIDTH } from "../lib/navLayout";
 import { getInitialState, serialize } from "../store/persistence";
+import type { FileEntry } from "../store/state";
 import { appStore, workspaceStore } from "../store/state";
 import { STORAGE_KEY } from "../store/storage";
 import { DocumentNarrowList } from "./DocumentNarrowList";
+import {
+	DOCUMENT_CARD_ROW_HEIGHT,
+	DOCUMENT_LIST_ROW_HEIGHT,
+	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
+	documentRowHeight,
+	formatModifiedAt,
+} from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
 import { clampPeekListWidth, columnsForTier, densityTier } from "./navDensity";
 import { listWidthFromPointer, PeekListDivider } from "./PeekListDivider";
@@ -297,6 +305,33 @@ describe("DocumentNarrowList density tiers", () => {
 		).length;
 	}
 
+	function bodyRows(): HTMLElement[] {
+		return Array.from(
+			container.querySelectorAll<HTMLElement>("[data-document-row-index]"),
+		);
+	}
+
+	function renderTier(navTier: "rail" | "list" | "card" | "table") {
+		act(() => {
+			root.render(
+				<DocumentNarrowList
+					rows={buildRows()}
+					view={viewWith()}
+					listing={LISTED}
+					onOpenDocument={vi.fn()}
+					onFilterChange={vi.fn()}
+					onShowAllDocuments={vi.fn()}
+					onRetryListing={vi.fn()}
+					navTier={navTier}
+				/>,
+			);
+		});
+	}
+
+	function rowMeta(row: HTMLElement): Element | null {
+		return row.querySelector('[role="gridcell"]')?.children[1] ?? null;
+	}
+
 	it("Rail shows titles only; List keeps the secondary line", () => {
 		act(() => {
 			root.render(
@@ -332,5 +367,87 @@ describe("DocumentNarrowList density tiers", () => {
 			);
 		});
 		expect(secondaryCount()).toBeGreaterThan(0);
+	});
+
+	it("steps the fixed row height up with the tier, so the virtualizer stays uniform", () => {
+		expect(documentRowHeight("table")).toBe(28);
+		expect(documentRowHeight("list", "rail")).toBe(DOCUMENT_LIST_ROW_HEIGHT);
+		expect(documentRowHeight("list", "list")).toBe(DOCUMENT_CARD_ROW_HEIGHT);
+		expect(documentRowHeight("list", "card")).toBe(DOCUMENT_CARD_ROW_HEIGHT);
+		expect(documentRowHeight("list", "table")).toBe(
+			DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
+		);
+		expect(DOCUMENT_CARD_ROW_HEIGHT).toBeGreaterThan(DOCUMENT_LIST_ROW_HEIGHT);
+		expect(DOCUMENT_NARROW_TABLE_ROW_HEIGHT).toBeGreaterThan(
+			DOCUMENT_CARD_ROW_HEIGHT,
+		);
+	});
+
+	it("List wraps the 2nd info too — wrapping starts wherever it appears", () => {
+		renderTier("list");
+
+		const rows = bodyRows();
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
+		const meta = rowMeta(rows[0]);
+		expect(meta?.className).toContain("line-clamp-2");
+		expect(meta?.textContent).toContain("—");
+		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+	});
+
+	it("Card wraps every data column into a two-line meta block", () => {
+		renderTier("card");
+
+		const rows = bodyRows();
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
+		const meta = rowMeta(rows[0]);
+		expect(meta?.className).toContain("line-clamp-2");
+		// Default order is name/folder/modified/created: the card carries the
+		// folder AND both dates, where List showed the folder alone.
+		expect(meta?.textContent).toContain("—");
+		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+	});
+
+	it("Table allows the meta a third line, so widening reveals more info", () => {
+		renderTier("table");
+
+		const rows = bodyRows();
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows[0].style.blockSize).toBe(
+			`${DOCUMENT_NARROW_TABLE_ROW_HEIGHT}px`,
+		);
+		const meta = rowMeta(rows[0]);
+		expect(meta?.className).toContain("line-clamp-3");
+		expect(meta?.textContent).toContain("—");
+		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+	});
+
+	it("Card shows dates the List tier hides (created distinct from modified)", () => {
+		const files: FileEntry[] = [
+			{
+				path: "/ws/alpha.md",
+				modified_at: 1_700_000_300,
+				created_at: 1_600_000_000,
+			},
+		];
+		act(() => {
+			root.render(
+				<DocumentNarrowList
+					rows={buildRows({ files })}
+					view={viewWith()}
+					listing={LISTED}
+					onOpenDocument={vi.fn()}
+					onFilterChange={vi.fn()}
+					onShowAllDocuments={vi.fn()}
+					onRetryListing={vi.fn()}
+					navTier="card"
+				/>,
+			);
+		});
+
+		const meta = rowMeta(bodyRows()[0]);
+		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+		expect(meta?.textContent).toContain(formatModifiedAt(1_600_000_000));
 	});
 });

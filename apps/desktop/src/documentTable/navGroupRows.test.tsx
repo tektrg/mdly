@@ -158,7 +158,7 @@ describe("nav group rows (R2)", () => {
 					/>,
 				);
 			});
-			const expected = density === "table" ? "28px" : "44px";
+			const expected = density === "table" ? "28px" : "62px";
 			const header = container.querySelector<HTMLElement>("[data-group-id]");
 			expect(header?.style.blockSize).toBe(expected);
 			const doc = container.querySelector<HTMLElement>(

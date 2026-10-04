@@ -80,7 +80,13 @@ describe("DocumentNarrowList", () => {
 		const view = viewWith({ sort: { column: "name", direction: "asc" } });
 		renderList({ rows: buildRows({ view }), view });
 
-		expect(secondaryLines()).toEqual(["—", "notes", "notes/deep"]);
+		// The meta block wraps every data column, so each row's second line
+		// *contains* its folder rather than equaling it.
+		expect(secondaryLines()).toEqual([
+			expect.stringContaining("—"),
+			expect.stringContaining("notes"),
+			expect.stringContaining("notes/deep"),
+		]);
 	});
 
 	it("shows the first ordered data column under each name", () => {
@@ -91,7 +97,7 @@ describe("DocumentNarrowList", () => {
 		resetDocumentTableLayoutForTests();
 		renderList({ rows: buildRows() });
 
-		expect(secondaryLines()[0]).toBe(formatModifiedAt(1_700_000_300));
+		expect(secondaryLines()[0]).toContain(formatModifiedAt(1_700_000_300));
 	});
 
 	it("returns to the full-width table from the All documents row", () => {

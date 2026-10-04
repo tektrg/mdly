@@ -9,10 +9,12 @@ import type {
 	MouseEvent as ReactMouseEvent,
 } from "react";
 import { cn } from "../lib/utils";
+import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
 } from "./documentTableView";
+import type { NavDensityTier } from "./navDensity";
 
 /**
  * Full-table density: the same 28px rhythm the sidebar uses, so the two lists
@@ -20,11 +22,22 @@ import type {
  */
 export const DOCUMENT_TABLE_ROW_HEIGHT = SIDEBAR_VIRTUAL_ROW_HEIGHT;
 /**
- * Narrow-list density. Taller than the table row because the narrow list stacks
- * a secondary metadata line under the name — at `w-64` there is no room to put
- * it on the same line without truncating the document name to nothing.
+ * Rail-tier density (title only, no secondary line). Keeps the old narrow-list
+ * rhythm for the narrowest tier.
  */
 export const DOCUMENT_LIST_ROW_HEIGHT = 44;
+/**
+ * Card-tier density: the secondary line becomes a wrapped meta block — every
+ * data column plus tags, clamped to two lines — so it needs headroom for the
+ * title plus two wrapped lines. The List tier (260–399px) uses this height
+ * too: whenever the 2nd info appears, it wraps.
+ */
+export const DOCUMENT_CARD_ROW_HEIGHT = 62;
+/**
+ * Table-tier density (560px+ of list width): same wrapped meta block as the
+ * card, but allowed a third line so widening keeps revealing more info.
+ */
+export const DOCUMENT_NARROW_TABLE_ROW_HEIGHT = 78;
 
 /**
  * Shared by the header row and the body rows so the two grids cannot drift.
@@ -36,10 +49,21 @@ export const DOCUMENT_TABLE_GRID_TEMPLATE =
 
 export type DocumentRowDensity = "table" | "list";
 
-export function documentRowHeight(density: DocumentRowDensity): number {
-	return density === "table"
-		? DOCUMENT_TABLE_ROW_HEIGHT
-		: DOCUMENT_LIST_ROW_HEIGHT;
+/**
+ * Uniform row height for the virtualizer. The full-width table is always one
+ * line; the narrow list grows with the density tier so the wrapped card meta
+ * never overflows its row — the virtualizer needs one number per tier, so the
+ * meta block is line-clamped to match (2 lines on list/card, 3 on table).
+ * Rail keeps the compact title-only height.
+ */
+export function documentRowHeight(
+	density: DocumentRowDensity,
+	navTier: NavDensityTier = "list",
+): number {
+	if (density === "table") return DOCUMENT_TABLE_ROW_HEIGHT;
+	if (navTier === "rail") return DOCUMENT_LIST_ROW_HEIGHT;
+	if (navTier === "table") return DOCUMENT_NARROW_TABLE_ROW_HEIGHT;
+	return DOCUMENT_CARD_ROW_HEIGHT;
 }
 
 const TIME_OF_DAY = new Intl.DateTimeFormat(undefined, {
@@ -98,6 +122,16 @@ type DocumentListRowProps = {
 	 * so the full-width table is untouched by construction.
 	 */
 	hideSecondary?: boolean;
+	/**
+	 * Peek-list density tier. Only read at `list` density: every tier that
+	 * shows the 2nd info wraps it into a meta block — two lines on list and
+	 * card, three on table. Defaults to `list`.
+	 */
+	navTier?: NavDensityTier;
+	/** Data columns in the live order (Name excluded); drives the card meta. */
+	metaColumns?: DocumentTableColumn[];
+	/** Front-matter tags when the tag scan has them; appended to the card meta. */
+	tags?: readonly string[];
 	/** Right-click opens the host-wired row menu. Absent means no menu. */
 	onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 };
@@ -133,7 +167,10 @@ function TableCell({
 				data-flip-id={flipId(row, column)}
 				className={secondaryTextClass(isActive)}
 			>
-				{row.folderLabel}
+				<MiddleTruncatedPath
+					path={row.folderLabel}
+					className="block truncate"
+				/>
 			</span>
 		);
 	}
@@ -182,7 +219,46 @@ function secondaryLabel(
 function secondaryTextClass(isActive: boolean): string {
 	return cn(
 		"min-w-0 truncate text-[11px]",
-		isActive ? "text-selected-foreground" : "text-muted-foreground",
+		isActive ? "text-selected-foreground" : "text-muted-foreground/70",
+	);
+}
+
+/**
+ * Card-tier meta: every data column in the live order, plus tags when the tag
+ * scan has them — joined into one wrapping block, not one column. Empty
+ * fragments drop out so a missing timestamp never renders a stray separator.
+ */
+function cardMetaText(
+	row: DocumentTableRow,
+	metaColumns: DocumentTableColumn[],
+	tags: readonly string[] | undefined,
+): string {
+	const items = metaColumns
+		.map((column) =>
+			column === "modified"
+				? formatModifiedAt(row.modifiedAt)
+				: column === "created"
+					? formatModifiedAt(row.createdAt)
+					: column === "folder"
+						? row.folderLabel
+						: row.name,
+		)
+		.filter((item) => item.length > 0);
+	if (tags) {
+		const tagText = tags
+			.map((tag) => tag.trim())
+			.filter((tag) => tag.length > 0)
+			.map((tag) => `#${tag}`)
+			.join(" ");
+		if (tagText.length > 0) items.push(tagText);
+	}
+	return items.join(" • ");
+}
+
+function cardMetaClass(isActive: boolean): string {
+	return cn(
+		"min-w-0 break-words text-[11px]",
+		isActive ? "text-selected-foreground" : "text-muted-foreground/70",
 	);
 }
 
@@ -198,8 +274,17 @@ export function DocumentListRow({
 	onOpenDocument,
 	onRowKeyDown,
 	hideSecondary = false,
+	navTier = "list",
+	metaColumns,
+	tags,
 	onContextMenu,
 }: DocumentListRowProps) {
+	// Every list-density row that shows the 2nd info is a stacked card — title
+	// plus one meta block wrapping every data column (and tags), clamped to
+	// the lines the tier's fixed row height fits. Rail hides the secondary, so
+	// it stays title-only; the full-width table never takes this branch, so
+	// its grid is untouched by construction.
+	const isCard = density === "list" && !hideSecondary;
 	return (
 		<button
 			key={row.path}
@@ -259,6 +344,27 @@ export function DocumentListRow({
 						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
 					>
 						{row.name}
+					</span>
+				</span>
+			) : isCard ? (
+				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
+					<span
+						data-flip-id={flipId(row, "name")}
+						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
+					>
+						{row.name}
+					</span>
+					<span
+						className={cn(
+							cardMetaClass(row.isActive),
+							navTier === "table" ? "line-clamp-3" : "line-clamp-2",
+						)}
+					>
+						{cardMetaText(
+							row,
+							metaColumns ?? columns.filter((column) => column !== "name"),
+							tags,
+						)}
 					</span>
 				</span>
 			) : (
