@@ -52,8 +52,10 @@ describe("files scope rules", () => {
 		// Sidebar unchanged: nothing extra hidden from the app.
 		expect(appExcludedEntries(scope)).toEqual([]);
 		expect(syncExcludedEntries(scope)).toEqual(
-			expect.arrayContaining([".git", ".claude", "fe/docs", "*.assets"]),
+			expect.arrayContaining([".git", ".claude", "fe/docs"]),
 		);
+		// Asset folders must stay reachable for the assets walker.
+		expect(syncExcludedEntries(scope)).not.toContain("*.assets");
 	});
 
 	it("a workspace's own scope wins; no config seeds from the global defaults", () => {

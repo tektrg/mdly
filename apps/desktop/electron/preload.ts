@@ -51,6 +51,17 @@ const desktopApi = {
 		}),
 	disableCloudSync: (workspacePath) =>
 		ipcRenderer.invoke("desktop:cloud-sync-disable", { workspacePath }),
+	getFilesScope: (workspacePath, legacyShowIgnoredFiles) =>
+		ipcRenderer.invoke("desktop:files-scope-get", {
+			workspacePath,
+			legacyShowIgnoredFiles,
+		}),
+	setFilesScope: (workspacePath, scope) =>
+		ipcRenderer.invoke("desktop:files-scope-set", { workspacePath, scope }),
+	saveFilesScopeDefaults: (scope) =>
+		ipcRenderer.invoke("desktop:files-scope-save-defaults", { scope }),
+	countFilesInScope: (workspacePath, scope) =>
+		ipcRenderer.invoke("desktop:files-scope-count", { workspacePath, scope }),
 	setCloudSyncExcludedFolders: (workspacePath, folders) =>
 		ipcRenderer.invoke("desktop:cloud-sync-set-excluded-folders", {
 			workspacePath,

@@ -1,3 +1,24 @@
+// Type-only: the rules live in `@mdly/workspace-scan`'s files-scope module.
+import type { FilesScope } from "@mdly/workspace-kit/file-discovery";
+
+export type {
+	FilesScope,
+	FilesScopeRule,
+} from "@mdly/workspace-kit/file-discovery";
+
+export type WorkspaceFilesScopeState = {
+	scope: FilesScope;
+	/** False until this workspace's Files settings are saved (it runs on migrated/global defaults). */
+	isCustomized: boolean;
+	/** Locked rows: always hidden and never synced. */
+	builtInPatterns: string[];
+};
+
+export type FilesScopeCounts = {
+	visible: number | null;
+	synced: number | null;
+};
+
 export type FileEntry = {
 	path: string;
 	modified_at: number;
@@ -443,6 +464,17 @@ export type DesktopApi = {
 		workspacePath: string,
 		folders: string[],
 	): Promise<CloudSyncWorkspaceState>;
+	/** Settings → Files: this workspace's effective rules (legacy flag seeds a workspace with none). */
+	getFilesScope(
+		workspacePath: string,
+		legacyShowIgnoredFiles: boolean,
+	): Promise<WorkspaceFilesScopeState>;
+	setFilesScope(workspacePath: string, scope: FilesScope): Promise<FilesScope>;
+	saveFilesScopeDefaults(scope: FilesScope): Promise<FilesScope>;
+	countFilesInScope(
+		workspacePath: string,
+		scope: FilesScope,
+	): Promise<FilesScopeCounts>;
 	/** First-sync review preview — prepares (password, remote record, dormant config) then returns the SAME plan the real sync will execute. */
 	getCloudSyncPreview(
 		workspacePath: string,

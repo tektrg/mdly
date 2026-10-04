@@ -18,19 +18,19 @@ import {
 import {
 	setContrastPreference,
 	setEditorFontPreference,
-	setShowIgnoredWorkspaceFiles,
 	setSourceRetentionPreference,
 	setThemePreference,
 } from "../store/actions";
 import type { SourceRetentionPreference } from "../store/persistence";
-import { CloudSyncReviewDialog } from "./CloudSyncReviewDialog";
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
-	showIgnoredWorkspaceFilesStore,
 	sourceRetentionPreferenceStore,
 	themePreferenceStore,
+	workspaceStore,
 } from "../store/state";
+import { CloudSyncReviewDialog } from "./CloudSyncReviewDialog";
+import { FilesScopeSettings } from "./FilesScopeSettings";
 
 export function SettingsDialog({
 	open,
@@ -265,33 +265,15 @@ export function AppearanceSettings() {
 }
 
 export function WorkspaceSettings() {
-	const showIgnoredWorkspaceFiles = useStoreValue(
-		showIgnoredWorkspaceFilesStore,
-	);
+	const workspacePath = useStoreValue(workspaceStore).workspacePath;
+	if (!workspacePath) return null;
 
 	return (
 		<SettingsSection
-			title="Workspace"
-			description="Controls which workspace files appear in the sidebar."
+			title="Files"
+			description="Which files this workspace shows in the app, and which Cloud Sync uploads."
 		>
-			<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
-				<span className="flex min-w-0 flex-col gap-1">
-					<span className="text-[11px] font-medium text-foreground">
-						Show ignored files
-					</span>
-					<span className="text-[11px] leading-4 text-muted-foreground">
-						Includes Markdown and HTML files ignored by .gitignore or .ignore.
-					</span>
-				</span>
-				<input
-					checked={showIgnoredWorkspaceFiles}
-					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
-					onChange={(event) =>
-						setShowIgnoredWorkspaceFiles(event.currentTarget.checked)
-					}
-					type="checkbox"
-				/>
-			</label>
+			<FilesScopeSettings workspacePath={workspacePath} />
 		</SettingsSection>
 	);
 }
@@ -354,23 +336,6 @@ export function ImportSettings() {
 // an unconfigured workspace's Worker lives during local development.
 const DEFAULT_CLOUD_SYNC_DEPLOYMENT_URL = "http://127.0.0.1:8787";
 
-// Mirrors `DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES` in
-// `apps/desktop/electron/cloudSyncWiring.ts` — the renderer cannot import the
-// main-process module (it pulls in chokidar and the Node filesystem), so the
-// "Reset to defaults" button keeps its own copy, the same way
-// `DEFAULT_CLOUD_SYNC_DEPLOYMENT_URL` above mirrors the CLI's default. What is
-// actually in force always comes from `state.excludedFolders` over IPC; this
-// list is only what Reset types into the box.
-const DEFAULT_CLOUD_SYNC_EXCLUDED_FOLDERS = [
-	".git",
-	"node_modules",
-	"dist",
-	".dev-electron",
-	".hubble",
-	".mdly",
-	".claude",
-];
-
 const CLOUD_SYNC_STATUS_LABELS: Record<CloudSyncStatus, string> = {
 	off: "Off",
 	connecting: "Connecting…",
@@ -411,19 +376,6 @@ export function CloudSyncSettings({
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [progress, setProgress] = useState<SyncProgress | null>(null);
 	const [reviewOpen, setReviewOpen] = useState(false);
-	const [excludedFoldersDraft, setExcludedFoldersDraft] = useState("");
-	const [savedExcludedFolders, setSavedExcludedFolders] = useState<string[]>(
-		[],
-	);
-
-	// The draft textarea and the "everything is watched" warning both follow
-	// whatever the main process reports as EFFECTIVE, so neither can drift from
-	// the list the watcher is really pruning.
-	function adoptExcludedFolders(folders: string[]) {
-		setSavedExcludedFolders(folders);
-		setExcludedFoldersDraft(folders.join("\n"));
-	}
-
 	useEffect(() => {
 		if (!workspacePath) {
 			setState(null);
@@ -434,8 +386,6 @@ export function CloudSyncSettings({
 			if (cancelled) return;
 			setState(initial);
 			if (initial.deploymentUrl) setDeploymentUrl(initial.deploymentUrl);
-			setSavedExcludedFolders(initial.excludedFolders);
-			setExcludedFoldersDraft(initial.excludedFolders.join("\n"));
 			setProgress(initial.progress ?? null);
 		});
 		let unsubscribe: (() => void) | undefined;
@@ -480,7 +430,6 @@ export function CloudSyncSettings({
 				excludedFolders: presetExcludedFolders,
 			});
 			setState(next);
-			adoptExcludedFolders(next.excludedFolders);
 			setProgress(next.progress ?? null);
 			setPassword("");
 		} catch (error) {
@@ -513,23 +462,6 @@ export function CloudSyncSettings({
 		}
 	};
 
-	const handleSaveExcludedFolders = async () => {
-		setBusy(true);
-		setActionError(null);
-		try {
-			const next = await desktopApi.setCloudSyncExcludedFolders(
-				workspacePath,
-				excludedFoldersDraft.split("\n"),
-			);
-			setState(next);
-			adoptExcludedFolders(next.excludedFolders);
-		} catch (error) {
-			setActionError(error instanceof Error ? error.message : String(error));
-		} finally {
-			setBusy(false);
-		}
-	};
-
 	const needsPassword =
 		!state.backgroundSync || state.status === "needs-reauth";
 
@@ -544,7 +476,6 @@ export function CloudSyncSettings({
 				folderPath,
 			);
 			setState(next);
-			adoptExcludedFolders(next.excludedFolders);
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -561,7 +492,6 @@ export function CloudSyncSettings({
 				folderPath,
 			);
 			setState(next);
-			adoptExcludedFolders(next.excludedFolders);
 		} catch (error) {
 			setActionError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -643,68 +573,17 @@ export function CloudSyncSettings({
 						)}
 					</div>
 				)}
-				<div className="flex flex-col gap-2">
-					<label className="flex flex-col gap-1">
-						<span className="text-[11px] font-medium text-foreground">
-							Folders never synced
-						</span>
-						<span className="text-[11px] leading-4 text-muted-foreground">
-							A bare name matches at any depth; a path like fe/docs is
-							anchored to the workspace root (a leading slash pins it
-							there too: /dist matches only the top-level dist).
-							Anything under a listed folder stays on this Mac and is
-							never watched or uploaded. Agent worktrees (.claude) and
-							dependency folders belong here — watching them can freeze
-							the app. One entry per line.
-						</span>
-						<textarea
-							className="min-h-24 rounded-sm border border-input bg-card px-2 py-1.5 text-[11px] leading-4 text-foreground outline-hidden disabled:opacity-50"
-							disabled={busy}
-							onChange={(event) =>
-								setExcludedFoldersDraft(event.currentTarget.value)
-							}
-							spellCheck={false}
-							value={excludedFoldersDraft}
-						/>
-					</label>
-					<div className="flex flex-wrap items-center gap-2">
-						<button
-							className="h-8 shrink-0 rounded-sm border border-input bg-card px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
-							disabled={busy}
-							onClick={() => void handleSaveExcludedFolders()}
-							type="button"
-						>
-							Save folder list
-						</button>
-						<button
-							className="h-8 shrink-0 rounded-sm border border-input bg-card px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
-							disabled={busy}
-							onClick={() =>
-								setExcludedFoldersDraft(
-									DEFAULT_CLOUD_SYNC_EXCLUDED_FOLDERS.join("\n"),
-								)
-							}
-							type="button"
-						>
-							Reset to defaults
-						</button>
-					</div>
-					{savedExcludedFolders.length === 0 && (
-						<span className="text-[11px] leading-4 text-foreground">
-							Nothing is excluded — every folder in this workspace, including
-							agent worktrees and dependency folders, will be watched and
-							uploaded.
-						</span>
-					)}
-				</div>
+				<span className="text-[11px] leading-4 text-muted-foreground">
+					Which folders sync is set per row under Files (the Synced column).
+				</span>
 				{pendingFolders.length > 0 && (
 					<div className="flex flex-col gap-2">
 						<span className="text-[11px] font-medium text-foreground">
 							Folders waiting for approval ({pendingFolders.length})
 						</span>
 						<span className="text-[11px] leading-4 text-muted-foreground">
-							These grew past 1,000 files or folders and are held out of
-							sync until you confirm. Everything else keeps syncing.
+							These grew past 1,000 files or folders and are held out of sync
+							until you confirm. Everything else keeps syncing.
 						</span>
 						<ul className="flex flex-col gap-1">
 							{pendingFolders.map((pending) => (
@@ -713,8 +592,8 @@ export function CloudSyncSettings({
 									className="flex items-center gap-2 rounded-sm border border-border [padding-block:0.375rem] [padding-inline:0.5rem]"
 								>
 									<span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
-										{pending.path} —{" "}
-										{pending.fileCountAtLeast.toLocaleString()}+ files
+										{pending.path} — {pending.fileCountAtLeast.toLocaleString()}
+										+ files
 										{pending.dirCountAtLeast != null &&
 										pending.dirCountAtLeast > 0
 											? ` · ${pending.dirCountAtLeast.toLocaleString()}+ folders`

@@ -19,6 +19,7 @@ import {
 } from "@hubble.md/sync/node";
 import { CloudflareResponseError } from "@mdly/cloudflare-client";
 import { contentHash } from "@mdly/doc-history";
+import { BUILT_IN_SYNC_EXCLUDED_PATTERNS } from "@mdly/workspace-kit/file-discovery";
 import type { FSWatcher } from "chokidar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -49,6 +50,12 @@ import {
 	getHistoryStoreForWorkspace,
 	recordExternalWriteHistory,
 } from "./docHistoryWiring";
+
+/** Effective sync exclusions always lead with the locked Files-scope built-ins. */
+const withBuiltIns = (...patterns: string[]) => [
+	...BUILT_IN_SYNC_EXCLUDED_PATTERNS,
+	...patterns,
+];
 
 let workspaceRoot: string;
 
@@ -435,12 +442,14 @@ describe("changing the never-synced folder list restarts the live watcher (R25)"
 		// Old watcher torn down, exactly one replacement, built with the new list.
 		expect(createdWatchers[0]?.close).toHaveBeenCalled();
 		expect(createdWatchers).toHaveLength(2);
-		expect(createdWatchers[1]?.excludedFolders).toEqual([".claude", "vendor"]);
+		expect(createdWatchers[1]?.excludedFolders).toEqual(
+			withBuiltIns(".claude", "vendor"),
+		);
 		expect(createdWatchers[1]?.close).not.toHaveBeenCalled();
 		// Still exactly one live workspace handle -- no leaked duplicate (R25).
 		expect(activeCloudSyncWorkspaceCount()).toBe(1);
 		expect(isCloudSyncRunning(workspaceRoot)).toBe(true);
-		expect(state.excludedFolders).toEqual([".claude", "vendor"]);
+		expect(state.excludedFolders).toEqual(withBuiltIns(".claude", "vendor"));
 	});
 
 	it("leaves a workspace that is not running without starting one behind the user's back", async () => {

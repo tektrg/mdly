@@ -9,8 +9,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { FSWatcher } from "chokidar";
 import { contentHash } from "@mdly/doc-history";
+import { BUILT_IN_SYNC_EXCLUDED_PATTERNS } from "@mdly/workspace-kit/file-discovery";
+import type { FSWatcher } from "chokidar";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createFakeBackend,
@@ -42,6 +43,12 @@ import {
 	createSelfWriteEchoTracker,
 	getHistoryStoreForWorkspace,
 } from "./docHistoryWiring";
+
+/** Effective sync exclusions always lead with the locked Files-scope built-ins. */
+const withBuiltIns = (...patterns: string[]) => [
+	...BUILT_IN_SYNC_EXCLUDED_PATTERNS,
+	...patterns,
+];
 
 let workspaceRoot: string;
 let extraTmpDirs: string[];
@@ -106,9 +113,7 @@ describe("isPrunedCloudSyncPath (R19)", () => {
 
 	it("an anchored entry prunes only that workspace-relative path, not the same name elsewhere", () => {
 		const custom = ["fe/docs"];
-		expect(isPrunedCloudSyncPath("/ws/fe/docs/a.md", "/ws", custom)).toBe(
-			true,
-		);
+		expect(isPrunedCloudSyncPath("/ws/fe/docs/a.md", "/ws", custom)).toBe(true);
 		expect(
 			isPrunedCloudSyncPath("/ws/fe/docs/nested/b.md", "/ws", custom),
 		).toBe(true);
@@ -124,9 +129,7 @@ describe("isPrunedCloudSyncPath (R19)", () => {
 	});
 
 	it("a leading slash anchors to the root (gitignore meaning)", () => {
-		expect(isPrunedCloudSyncPath("/ws/dist/a.md", "/ws", ["/dist"])).toBe(
-			true,
-		);
+		expect(isPrunedCloudSyncPath("/ws/dist/a.md", "/ws", ["/dist"])).toBe(true);
 		expect(isPrunedCloudSyncPath("/ws/a/dist/b.md", "/ws", ["/dist"])).toBe(
 			false,
 		);
@@ -220,11 +223,11 @@ describe("setCloudSyncExcludedFolders", () => {
 			depsFor(),
 		);
 
-		expect(state.excludedFolders).toEqual([".claude", "vendor"]);
+		expect(state.excludedFolders).toEqual(withBuiltIns(".claude", "vendor"));
 		const raw = await readRawConfig(workspaceRoot);
 		expect(raw.cloudSync.excludedFolders).toEqual([".claude", "vendor"]);
 		const reread = await readCloudSyncWorkspaceState(workspaceRoot);
-		expect(reread.excludedFolders).toEqual([".claude", "vendor"]);
+		expect(reread.excludedFolders).toEqual(withBuiltIns(".claude", "vendor"));
 	});
 
 	it("persists a workspace-anchored path entry (selection UIs produce paths)", async () => {
@@ -240,12 +243,11 @@ describe("setCloudSyncExcludedFolders", () => {
 			depsFor(),
 		);
 
-		expect(state.excludedFolders).toEqual([".claude", "notes/drafts"]);
+		expect(state.excludedFolders).toEqual(
+			withBuiltIns(".claude", "notes/drafts"),
+		);
 		const raw = await readRawConfig(workspaceRoot);
-		expect(raw.cloudSync.excludedFolders).toEqual([
-			".claude",
-			"notes/drafts",
-		]);
+		expect(raw.cloudSync.excludedFolders).toEqual([".claude", "notes/drafts"]);
 	});
 
 	it("rejects a workspace-escaping entry and writes NOTHING to the config", async () => {
@@ -599,9 +601,7 @@ describe("250ms debounce (R19)", () => {
 		// for pulls/conflicts so a stale preview can never clobber fresh
 		// remote edits). Five writes collapsing to 2 fetches still proves a
 		// single run — without coalescing it would be five runs / ten fetches.
-		expect(calls.pushFile.filter((p) => p.startsWith("burst-")).length).toBe(
-			5,
-		);
+		expect(calls.pushFile.filter((p) => p.startsWith("burst-")).length).toBe(5);
 		// Quiet settles nothing more: no events, no timers, no runs.
 		await new Promise((resolve) => setTimeout(resolve, 800));
 		expect(calls.getFiles - callsBeforeBurst).toBe(2);

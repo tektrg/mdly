@@ -6,6 +6,7 @@ import path from "node:path";
 import hubbleRuntime from "@hubble.md/runtime/global.js?raw";
 import htmlAppTheme from "@hubble.md/runtime/html-app-theme.css?raw";
 import { createMacKeychainCredentialStore } from "@mdly/cloudflare-client/keychain";
+import { parseFilesScope } from "@mdly/workspace-kit/file-discovery";
 import tailwindRuntime from "@tailwindcss/browser?raw";
 import alpineRuntime from "alpinejs/dist/cdn.min.js?raw";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -52,6 +53,7 @@ import {
 	prepareCloudSyncPreview,
 	readCloudSyncWorkspaceState,
 	readRawWorkspaceConfigFile,
+	restartCloudSyncWatcher,
 	resumeCloudSyncForGrantedRoots,
 	retryPendingCloudSyncDeletions,
 	setCloudSyncExcludedFolders,
@@ -85,6 +87,14 @@ import {
 } from "./docImport";
 import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
+import {
+	appListingOptions,
+	countFilesInScope,
+	loadFilesScopeDefaults,
+	readWorkspaceFilesScope,
+	saveFilesScopeDefaults,
+	writeWorkspaceFilesScope,
+} from "./filesScopeWiring";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { installMainProcessErrorHandlers } from "./mainProcessErrors";
 import {
@@ -1454,13 +1464,18 @@ function registerIpc() {
 			const stat = await fs.stat(root);
 			if (!stat.isDirectory()) throw new Error(`Not a directory: ${dirPath}`);
 			const listing: DirectoryListing = { files: [], folders: [] };
-			await collectDocumentFiles(root, listing, {
-				includeIgnoredWorkspaceFiles:
-					typeof options === "object" &&
-					options !== null &&
-					"includeIgnoredWorkspaceFiles" in options &&
-					options.includeIgnoredWorkspaceFiles === true,
-			});
+			// The renderer's legacy "Show ignored files" flag only seeds
+			// workspaces that have no Files settings yet (its migration).
+			const legacyShowIgnoredFiles =
+				typeof options === "object" &&
+				options !== null &&
+				"includeIgnoredWorkspaceFiles" in options &&
+				options.includeIgnoredWorkspaceFiles === true;
+			const { scope } = await readWorkspaceFilesScope(
+				root,
+				legacyShowIgnoredFiles,
+			);
+			await collectDocumentFiles(root, listing, appListingOptions(scope));
 			return listing;
 		},
 	);
@@ -1531,10 +1546,11 @@ function registerIpc() {
 			// `cloudSync` value is already on disk before writing.
 			const raw = await readRawWorkspaceConfigFile(workspacePath);
 			const normalized = normalizeWorkspaceConfig(config);
-			const merged =
-				raw.cloudSync !== undefined
-					? { ...normalized, cloudSync: raw.cloudSync }
-					: normalized;
+			const merged = {
+				...normalized,
+				...(raw.cloudSync !== undefined ? { cloudSync: raw.cloudSync } : {}),
+				...(raw.scope !== undefined ? { scope: raw.scope } : {}),
+			};
 			await fs.writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`);
 			grantFile(configPath);
 		},
@@ -1544,6 +1560,47 @@ function registerIpc() {
 		"desktop:cloud-sync-get-state",
 		async (_event, { workspacePath }) =>
 			readCloudSyncWorkspaceState(resolvePath(workspacePath)),
+	);
+
+	ipcMain.handle(
+		"desktop:files-scope-get",
+		async (_event, { workspacePath, legacyShowIgnoredFiles }) =>
+			readWorkspaceFilesScope(
+				assertGrantedRoot(workspacePath),
+				legacyShowIgnoredFiles === true,
+			),
+	);
+
+	ipcMain.handle(
+		"desktop:files-scope-set",
+		async (_event, { workspacePath, scope }) => {
+			const root = assertGrantedRoot(workspacePath);
+			const saved = await writeWorkspaceFilesScope(root, scope);
+			// Same restart path as every other exclusion change, so the live
+			// watcher prunes exactly what the config now says.
+			await restartCloudSyncWatcher(root, cloudSyncDeps());
+			return saved;
+		},
+	);
+
+	ipcMain.handle(
+		"desktop:files-scope-save-defaults",
+		async (_event, { scope }) => saveFilesScopeDefaults(scope),
+	);
+
+	ipcMain.handle(
+		"desktop:files-scope-count",
+		async (_event, { workspacePath, scope }) => {
+			const root = assertGrantedRoot(workspacePath);
+			const parsed = parseFilesScope(scope);
+			if (!parsed) throw new Error("Invalid Files settings.");
+			const { pendingFolders } = await readCloudSyncWorkspaceState(root);
+			return countFilesInScope(
+				root,
+				parsed,
+				pendingFolders.map((folder) => folder.path),
+			);
+		},
 	);
 
 	ipcMain.handle(
@@ -2360,6 +2417,8 @@ if (!singleInstanceLock) {
 		// anydoc/ntn-acct callers await the same cached promise for correctness.
 		void ensureLoginShellPathMerged();
 		await clearDevHttpCache();
+		// Before any listing: workspaces without Files settings seed from these.
+		await loadFilesScopeDefaults(app.getPath("userData"));
 		await loadGrants();
 		if (launchWorkspacePath) grantRoot(launchWorkspacePath);
 		await saveGrants();

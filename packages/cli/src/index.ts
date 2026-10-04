@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { resolve } from "node:path";
+import { relative, resolve, sep } from "node:path";
 import { parseArgs as parseNodeArgs } from "node:util";
 import {
 	type CloudSyncConfig,
@@ -16,6 +16,11 @@ import {
 	createCloudflareSubscriber,
 } from "@mdly/cloudflare-client";
 import { createNodeWebSocketFactory } from "@mdly/cloudflare-client/node-ws";
+import {
+	isExcludedByEntries,
+	resolveWorkspaceFilesScope,
+	syncExcludedEntries,
+} from "@mdly/workspace-scan";
 import chokidar from "chokidar";
 import { runDryRunCommand } from "./dryRun.js";
 
@@ -220,9 +225,21 @@ async function syncOnce(
 	reason: string,
 ) {
 	const backend = createBackend(cloudSync.deploymentUrl);
-	const result = await runSync(backend, fs, workspacePath);
+	const excludedFolders = await workspaceSyncExclusions(workspacePath);
+	const result = await runSync(
+		backend,
+		createNodeFileSystem({ excludedFolders }),
+		workspacePath,
+	);
 	logResult(reason, result);
 	return result;
+}
+
+/** The same Files-scope "Synced" rules the desktop app applies (Settings → Files). */
+async function workspaceSyncExclusions(workspacePath: string) {
+	return syncExcludedEntries(
+		resolveWorkspaceFilesScope(await readConfigOrDefault(fs, workspacePath)),
+	);
 }
 
 async function syncContinuously(
@@ -253,12 +270,16 @@ async function syncContinuously(
 
 	let fsEventCount = 0;
 	let fsTimer: ReturnType<typeof setTimeout> | null = null;
+	const excludedEntries = await workspaceSyncExclusions(workspacePath);
 	const watcher = chokidar.watch(workspacePath, {
 		ignoreInitial: true,
-		ignored: (path) =>
-			path.includes("/.hubble/") ||
-			path.endsWith("/.hubble") ||
-			path.includes("\\.hubble\\"),
+		// Pruning excluded folders here also keeps chokidar from opening a
+		// watch handle per file inside them. `.mdly` sidecars stay watched.
+		ignored: (path) => {
+			const rel = relative(workspacePath, path).split(sep).join("/");
+			if (rel === ".mdly" || rel.startsWith(".mdly/")) return false;
+			return rel !== "" && isExcludedByEntries(rel, excludedEntries);
+		},
 	});
 
 	const handleFsEvent = (event: string, path: string) => {

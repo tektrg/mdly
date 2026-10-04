@@ -156,10 +156,18 @@ export function appExcludedEntries(scope: FilesScope): string[] {
 	return scope.rules.filter((rule) => !rule.inApp).map((rule) => rule.pattern);
 }
 
+/**
+ * Built-ins as sync exclusions. `*.assets` is left out on purpose: the notes
+ * walker already skips asset folders, while the ASSETS walker must still
+ * descend into them (they hold the images notes embed).
+ */
+export const BUILT_IN_SYNC_EXCLUDED_PATTERNS: readonly string[] =
+	BUILT_IN_HIDDEN_PATTERNS.filter((pattern) => pattern !== "*.assets");
+
 /** Exclusion entries for Cloud Sync's walk and watchers: built-ins plus every non-synced rule. */
 export function syncExcludedEntries(scope: FilesScope): string[] {
 	return [
-		...BUILT_IN_HIDDEN_PATTERNS,
+		...BUILT_IN_SYNC_EXCLUDED_PATTERNS,
 		...scope.rules.filter((rule) => !rule.synced).map((rule) => rule.pattern),
 	];
 }
