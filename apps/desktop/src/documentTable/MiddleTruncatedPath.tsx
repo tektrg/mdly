@@ -53,6 +53,9 @@ export function MiddleTruncatedPath({
 		if (typeof ResizeObserver === "undefined") return;
 		const observer = new ResizeObserver(fit);
 		observer.observe(el);
+		// An inline-block label sizes to its text, so watch the container too:
+		// widening it must let a shortened label grow back.
+		if (el.parentElement) observer.observe(el.parentElement);
 		return () => observer.disconnect();
 	}, [path]);
 

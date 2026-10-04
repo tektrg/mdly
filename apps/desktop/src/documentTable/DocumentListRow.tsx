@@ -8,12 +8,13 @@ import type {
 	KeyboardEvent as ReactKeyboardEvent,
 	MouseEvent as ReactMouseEvent,
 } from "react";
+import { Fragment } from "react";
 import { cn } from "../lib/utils";
-import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
 } from "./documentTableView";
+import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import type { NavDensityTier } from "./navDensity";
 
 /**
@@ -225,34 +226,37 @@ function secondaryTextClass(isActive: boolean): string {
 
 /**
  * Card-tier meta: every data column in the live order, plus tags when the tag
- * scan has them — joined into one wrapping block, not one column. Empty
+ * scan has them — rendered as one wrapping block, not one column. Empty
  * fragments drop out so a missing timestamp never renders a stray separator.
+ * The folder item is keyed so the row can middle-truncate it.
  */
-function cardMetaText(
+function cardMetaItems(
 	row: DocumentTableRow,
 	metaColumns: DocumentTableColumn[],
 	tags: readonly string[] | undefined,
-): string {
+): { key: DocumentTableColumn | "tags"; text: string }[] {
 	const items = metaColumns
-		.map((column) =>
-			column === "modified"
-				? formatModifiedAt(row.modifiedAt)
-				: column === "created"
-					? formatModifiedAt(row.createdAt)
-					: column === "folder"
-						? row.folderLabel
-						: row.name,
-		)
-		.filter((item) => item.length > 0);
+		.map((column): { key: DocumentTableColumn | "tags"; text: string } => ({
+			key: column,
+			text:
+				column === "modified"
+					? formatModifiedAt(row.modifiedAt)
+					: column === "created"
+						? formatModifiedAt(row.createdAt)
+						: column === "folder"
+							? row.folderLabel
+							: row.name,
+		}))
+		.filter((item) => item.text.length > 0);
 	if (tags) {
 		const tagText = tags
 			.map((tag) => tag.trim())
 			.filter((tag) => tag.length > 0)
 			.map((tag) => `#${tag}`)
 			.join(" ");
-		if (tagText.length > 0) items.push(tagText);
+		if (tagText.length > 0) items.push({ key: "tags", text: tagText });
 	}
-	return items.join(" • ");
+	return items;
 }
 
 function cardMetaClass(isActive: boolean): string {
@@ -360,11 +364,23 @@ export function DocumentListRow({
 							navTier === "table" ? "line-clamp-3" : "line-clamp-2",
 						)}
 					>
-						{cardMetaText(
+						{cardMetaItems(
 							row,
 							metaColumns ?? columns.filter((column) => column !== "name"),
 							tags,
-						)}
+						).map((item, i) => (
+							<Fragment key={item.key}>
+								{i > 0 && " • "}
+								{item.key === "folder" ? (
+									<MiddleTruncatedPath
+										path={item.text}
+										className="inline-block max-w-full truncate align-bottom"
+									/>
+								) : (
+									item.text
+								)}
+							</Fragment>
+						))}
 					</span>
 				</span>
 			) : (
@@ -385,7 +401,14 @@ export function DocumentListRow({
 								"tabular-nums",
 						)}
 					>
-						{secondaryLabel(row, secondaryColumn)}
+						{secondaryColumn === "folder" ? (
+							<MiddleTruncatedPath
+								path={row.folderLabel}
+								className="block truncate"
+							/>
+						) : (
+							secondaryLabel(row, secondaryColumn)
+						)}
 					</span>
 				</span>
 			)}

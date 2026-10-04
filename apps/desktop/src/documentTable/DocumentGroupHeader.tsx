@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import MingcuteRightLine from "~icons/mingcute/right-line";
 import { cn } from "../lib/utils";
 import { DOCUMENT_TABLE_ROW_HEIGHT } from "./DocumentListRow";
+import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import { navIndentRem } from "./navDensity";
 
 export type DocumentGroupHeaderProps = {
@@ -94,9 +95,10 @@ export function DocumentGroupHeader({
 						)}
 					/>
 				</span>
-				<span className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)] font-medium">
-					{label}
-				</span>
+				<MiddleTruncatedPath
+					path={label}
+					className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)] font-medium"
+				/>
 				<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
 					{count}
 				</span>
