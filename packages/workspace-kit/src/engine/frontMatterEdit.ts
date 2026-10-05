@@ -73,6 +73,11 @@ function blockItems(lines: readonly Line[]): BlockItem[] | null {
 	const items: BlockItem[] = [];
 	for (let index = 0; index < lines.length; index += 1) {
 		const text = lines[index]?.text ?? "";
+		// Obsidian writes lists at column 0 under their key: `tags:\n- a`.
+		if (/^-(?:[ \t]|$)/.test(text) && items.length > 0) {
+			(items[items.length - 1] as BlockItem).end = index + 1;
+			continue;
+		}
 		if (!isTopLevelEntry(text)) {
 			const previous = items[items.length - 1];
 			// An indented line extends the item above it; blank lines and comments
@@ -140,8 +145,12 @@ function quoteStyleOf(rawValue: string): QuoteStyle {
 }
 
 /** Reads back as exactly this string under the core schema. */
+/** YAML 1.1 booleans/nulls: other tools (Obsidian, PyYAML) read these as non-strings. */
+const YAML_11_SPECIAL = /^(?:y|yes|n|no|on|off|true|false|null|~)$/i;
+
 function isSafePlain(value: string): boolean {
 	if (value.length === 0 || value !== value.trim()) return false;
+	if (YAML_11_SPECIAL.test(value)) return false;
 	if (/[\r\n]/.test(value)) return false;
 	const doc = parseDocument(`k: ${value}`, { schema: "core" });
 	if (doc.errors.length > 0 || !isMap(doc.contents)) return false;
@@ -407,6 +416,11 @@ export function setFrontMatterValue(
 	}
 	if (split === "none") {
 		if (value === null) return { ok: true, text, changed: false };
+		// `---` after blank lines: some tools read it as front matter. Never
+		// put a second block in front of it.
+		if (/^\uFEFF?(?:[ \t]*\r?\n)+---[ \t]*(?:\r?\n|$)/.test(text)) {
+			return refuse("Front matter does not start on the first line.");
+		}
 		if (!isSimplePropertyKey(key.trim())) {
 			return refuse(`"${key}" cannot be written as a property name.`);
 		}

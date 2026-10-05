@@ -65,6 +65,7 @@ import {
 	replyToCommentThreadForPath,
 	resolveCommentThreadForPath,
 } from "./comments";
+import { compareAndSwapWriteFile } from "./compareAndSwapWrite";
 import { recordCrashTraceEvent, startCrashTrace } from "./crashTrace";
 import {
 	createSelfWriteEchoTracker,
@@ -1708,6 +1709,40 @@ function registerIpc() {
 					echoTracker: historyEchoTracker,
 				});
 			}
+		},
+	);
+
+	// Compare-and-swap write for view edits (board/calendar drops): the check
+	// and the write happen here, next to the file, not across IPC round trips.
+	ipcMain.handle(
+		"desktop:write-file-text-if-unchanged",
+		async (_event, { path: filePath, expected, content, historyCause }) => {
+			const resolved = assertGranted(filePath);
+			// The version being replaced may be an external edit history never
+			// saw (only the open note is watched): keep it restorable. Dedupes
+			// against the head revision and skips our own echoes; never throws.
+			await recordExternalWriteHistory({
+				absoluteFilePath: resolved,
+				grantedRoots,
+				echoTracker: historyEchoTracker,
+			});
+			const text = String(content);
+			const result = await compareAndSwapWriteFile(
+				resolved,
+				String(expected),
+				text,
+			);
+			if (result.ok && isInAppHistoryCause(historyCause)) {
+				await recordInAppWriteHistory({
+					absoluteFilePath: resolved,
+					content: text,
+					grantedRoots,
+					actorId: await getActorId(),
+					historyCause,
+					echoTracker: historyEchoTracker,
+				});
+			}
+			return result;
 		},
 	);
 

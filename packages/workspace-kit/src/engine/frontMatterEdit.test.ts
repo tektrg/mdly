@@ -331,3 +331,29 @@ describe("setFrontMatterValue: random round trips", () => {
 		expect(edits).toBeGreaterThan(300);
 	});
 });
+
+describe("setFrontMatterValue: QA pass 1", () => {
+	it("quotes YAML 1.1 boolean words in any case", () => {
+		for (const word of ["yes", "No", "ON", "off", "y", "N", "null", "~"]) {
+			expect(edit("---\nstatus: todo\n---\n", "status", word)).toBe(
+				`---\nstatus: ${JSON.stringify(word)}\n---\n`,
+			);
+		}
+	});
+
+	it("refuses front matter that starts after blank lines instead of prepending", () => {
+		expect(refusal("\n\n---\nstatus: todo\n---\nbody", "status", "x")).toMatch(
+			/first line/,
+		);
+		expect(refusal("\r\n---\r\n---\r\n", "status", "x")).toMatch(/first line/);
+	});
+
+	it("rewrites an Obsidian-style column-0 list under its key", () => {
+		expect(edit("---\ntags:\n- a\n- b\nz: 1\n---\n", "tags", ["c", "d"])).toBe(
+			"---\ntags:\n- c\n- d\nz: 1\n---\n",
+		);
+		expect(edit("---\ntags:\n- a\nstatus: x\n---\n", "status", "later")).toBe(
+			"---\ntags:\n- a\nstatus: later\n---\n",
+		);
+	});
+});
