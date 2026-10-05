@@ -25,6 +25,7 @@ import { z } from "zod/v4";
 import type {
 	DesktopUpdateState,
 	DirectoryListing,
+	FrontMatterPropertyScanOptions,
 	WorkspaceConfig,
 } from "../src/desktopApi/types";
 import {
@@ -1488,8 +1489,16 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:scan-front-matter-properties",
-		async (_event, { paths }: { paths: string[] }) =>
-			await scanFrontMatterProperties(grantedScanPaths(paths)),
+		async (
+			_event,
+			{
+				paths,
+				options,
+			}: { paths: string[]; options?: FrontMatterPropertyScanOptions },
+		) =>
+			await scanFrontMatterProperties(grantedScanPaths(paths), {
+				includeStats: options?.includeStats === true,
+			}),
 	);
 
 	ipcMain.handle(

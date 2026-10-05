@@ -24,7 +24,11 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
-import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
+import {
+	READ_ONLY_MOVE_TARGETS,
+	useNoteDropTarget,
+	writeDroppedProperty,
+} from "./viewDrag";
 
 type BoardActions = {
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
@@ -118,6 +122,7 @@ function useBoardActions(
 			moveTargets: (row) => {
 				const current = latest.current.model;
 				if (!current) return [];
+				if (current.field.readOnly) return [...READ_ONLY_MOVE_TARGETS];
 				return moveTargetsFor(row, current).map((column) => ({
 					key: column.key,
 					label: column.label,

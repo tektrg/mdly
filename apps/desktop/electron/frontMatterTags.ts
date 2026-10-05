@@ -77,15 +77,24 @@ export async function scanFileHeads(
 	headBytes: number,
 	visit: (path: string, head: string) => void,
 ): Promise<void> {
+	await scanFiles(paths, (path) => readFileHead(path, headBytes), visit);
+}
+
+/** The bounded-concurrency pool behind `scanFileHeads`, for any per-file read (null = skip the file). */
+export async function scanFiles<T>(
+	paths: readonly string[],
+	read: (path: string) => Promise<T | null>,
+	visit: (path: string, value: T) => void,
+): Promise<void> {
 	let cursor = 0;
 
 	async function worker() {
 		while (cursor < paths.length) {
 			const path = paths[cursor++];
 			if (!path) continue;
-			const head = await readFileHead(path, headBytes);
-			if (head === null) continue;
-			visit(path, head);
+			const value = await read(path);
+			if (value === null) continue;
+			visit(path, value);
 		}
 	}
 

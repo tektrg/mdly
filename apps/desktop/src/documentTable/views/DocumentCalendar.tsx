@@ -30,7 +30,11 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
-import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
+import {
+	READ_ONLY_MOVE_TARGETS,
+	useNoteDropTarget,
+	writeDroppedProperty,
+} from "./viewDrag";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -131,7 +135,10 @@ function useCalendarActions(
 			const current = latest.current.field;
 			if (!current) return;
 			// Dropped on its own day: nothing to write.
-			if ((row.properties?.[current.id] ?? null) === date) return;
+			const currentDate = row.properties?.[current.id];
+			const currentDay =
+				typeof currentDate === "string" ? currentDate.slice(0, 10) : null;
+			if (currentDay === date) return;
 			void writeDroppedProperty(row, current, date);
 		};
 		return {
@@ -139,6 +146,7 @@ function useCalendarActions(
 				const current = latest.current.field;
 				const date = current ? row.properties?.[current.id] : null;
 				if (typeof date !== "string") return [];
+				if (current?.readOnly) return [...READ_ONLY_MOVE_TARGETS];
 				return calendarMoveTargets(date).map((target) => ({
 					key: target.date ?? REMOVE_DATE_KEY,
 					label: target.label,

@@ -72,6 +72,19 @@ describe("scanFrontMatterProperties", () => {
 	});
 	afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+	it("with includeStats, adds size and body word count (front matter excluded)", async () => {
+		const result = await scanFrontMatterProperties(
+			[path.join(dir, "a.md"), path.join(dir, "plain.md"), path.join(dir, "missing.md")],
+			{ includeStats: true },
+		);
+		expect(result.statsByPath).toEqual({
+			[path.join(dir, "a.md")]: { sizeBytes: 25, wordCount: 1 },
+			[path.join(dir, "plain.md")]: { sizeBytes: 15, wordCount: 3 },
+		});
+		const headOnly = await scanFrontMatterProperties([path.join(dir, "a.md")]);
+		expect(headOnly.statsByPath).toBeUndefined();
+	});
+
 	it("maps files to properties, lists the malformed, skips missing files", async () => {
 		const result = await scanFrontMatterProperties([
 			path.join(dir, "a.md"),

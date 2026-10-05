@@ -20,7 +20,7 @@ import { startNoteDrag } from "./viewDrag";
 const MAX_CARD_PROPERTIES = 3;
 
 /** One keyboard-reachable alternative to a drag. */
-export type NoteMoveTarget = { key: string; label: string };
+export type NoteMoveTarget = { key: string; label: string; disabled?: boolean };
 
 const EMPTY_COLUMNS: readonly PropertyFieldId[] = [];
 const EMPTY_LABELS: ReadonlyMap<PropertyFieldId, string> = new Map();
@@ -52,7 +52,7 @@ export const NoteCard = memo(function NoteCard({
 	const shown = propertyColumns
 		.map((fieldId) => ({
 			fieldId,
-			text: formatPropertyValue(row.properties?.[fieldId]),
+			text: formatPropertyValue(row.properties?.[fieldId], fieldId),
 		}))
 		.filter((entry) => entry.text.length > 0)
 		.slice(0, MAX_CARD_PROPERTIES);
@@ -112,6 +112,7 @@ function MoveToItems({
 			{moveTargets(row).map((target) => (
 				<PropertyMenuItem
 					key={target.key}
+					disabled={target.disabled}
 					onClick={() => onMove(row, target.key)}
 				>
 					{target.label}

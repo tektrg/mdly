@@ -6,7 +6,12 @@
  * existing header rows, expand state and virtualized flattening render it with
  * no second list implementation.
  */
-import { evaluate, type GroupNode, type RowValue } from "@tektrg/table-core";
+import {
+	type DateBucket,
+	evaluate,
+	type GroupNode,
+	type RowValue,
+} from "@tektrg/table-core";
 import type { DocumentTableRow } from "../documentTableView";
 import type { NavGroupNode } from "../navGroupTree";
 import {
@@ -26,10 +31,34 @@ export function propertyGroupId(
 		: `${fieldId}::${String(key)}`;
 }
 
+/** table-core's date-range bucket keys as group headers (weeks start Monday). */
+export const DATE_BUCKET_LABELS: Record<DateBucket, string> = {
+	today: "Today",
+	yesterday: "Yesterday",
+	this_week: "This week",
+	last_week: "Last week",
+	this_month: "This month",
+	earlier_this_year: "Earlier this year",
+	older: "Older",
+	future: "Future",
+};
+
+function groupLabel(
+	key: RowValue,
+	fieldId: PropertyFieldId,
+	field: PropertyField | undefined,
+): string {
+	if (field?.type === "date") {
+		return DATE_BUCKET_LABELS[key as DateBucket] ?? String(key);
+	}
+	return formatPropertyValue(key, fieldId);
+}
+
 function emptyGroupLabel(
 	field: PropertyField | undefined,
 	fieldId: PropertyFieldId,
 ) {
+	if (field?.type === "date") return "No date";
 	return `No ${field?.label ?? fallbackPropertyLabel(fieldId)}`;
 }
 
@@ -42,7 +71,7 @@ function toNavNode(
 	const isEmpty = group.key === null || group.key === undefined;
 	const label = isEmpty
 		? emptyGroupLabel(field, fieldId)
-		: formatPropertyValue(group.key);
+		: groupLabel(group.key, fieldId, field);
 	return {
 		id: propertyGroupId(fieldId, group.key),
 		segment: label,
@@ -62,12 +91,15 @@ function toNavNode(
 /**
  * Rows (already filtered and sorted) grouped on one property, as a nav tree
  * root. Groups follow the value order (caseless for text), the empty group
- * last; rows inside a group keep the caller's order.
+ * last; rows inside a group keep the caller's order. Date fields group into
+ * relative ranges (Today, Yesterday, This week, ... Older, Future, No date),
+ * by local day, relative to `now`.
  */
 export function buildPropertyGroupTree(
 	rows: readonly DocumentTableRow[],
 	fieldId: PropertyFieldId,
 	fields: readonly PropertyField[],
+	now: Date = new Date(),
 ): NavGroupNode {
 	const field = fields.find((candidate) => candidate.id === fieldId);
 	const root: NavGroupNode = {
@@ -111,6 +143,7 @@ export function buildPropertyGroupTree(
 					...(isText || field.type === "multiSelect"
 						? { collation: "caseless" as const }
 						: {}),
+					...(field.type === "date" ? { dateBuckets: true } : {}),
 				},
 			],
 			tieBreak: "sourceOrder",
@@ -120,6 +153,7 @@ export function buildPropertyGroupTree(
 			[fieldId]: row.properties?.[fieldId] ?? null,
 		})),
 		[field],
+		{ dateBuckets: { now } },
 	);
 	if (!result.ok) {
 		throw new Error(`property grouping rejected: ${result.errors[0]?.message}`);

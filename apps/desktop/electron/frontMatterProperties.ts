@@ -1,10 +1,13 @@
 import { parseMarkdownFrontMatter } from "@mdly/workspace-kit/engine";
 import type {
 	FrontMatterPropertyScan,
+	FrontMatterPropertyScanOptions,
+	ScannedFileStats,
 	ScannedFrontMatterProperty,
 } from "../src/desktopApi/types";
 import { toScannedProperties } from "../src/documentTable/properties/scannedProperties";
-import { scanFileHeads } from "./frontMatterTags";
+import { readFileHead, scanFiles } from "./frontMatterTags";
+import { countWords, readFileHeadAndStats } from "./fileWordCount";
 
 /**
  * The property scan reads more than the tag scan: it keeps every key, so a
@@ -48,22 +51,64 @@ export function extractHeadProperties(
 		: { kind: "properties", properties };
 }
 
+/** The front-matter block (fences included) at the top of `head`; "" when there is none or it never closes. */
+export function frontMatterBlock(head: string): string {
+	const opening = head.match(OPENING_FENCE);
+	if (!opening) return "";
+	const closing = CLOSING_FENCE.exec(head.slice(opening[0].length - 1));
+	if (!closing) return "";
+	return head.slice(0, opening[0].length - 1 + closing.index + closing[0].length);
+}
+
+type ScannedFile = { head: string; stats?: ScannedFileStats };
+
+async function readScannedFile(
+	path: string,
+	includeStats: boolean,
+): Promise<ScannedFile | null> {
+	if (!includeStats) {
+		const head = await readFileHead(path, PROPERTY_HEAD_BYTES);
+		return head === null ? null : { head };
+	}
+	const read = await readFileHeadAndStats(path, PROPERTY_HEAD_BYTES);
+	if (!read) return null;
+	const frontMatterWords = countWords(frontMatterBlock(read.head));
+	return {
+		head: read.head,
+		stats: {
+			sizeBytes: read.sizeBytes,
+			wordCount: Math.max(0, read.wordCount - frontMatterWords),
+		},
+	};
+}
+
 /**
- * Supported front-matter properties for each path, from bounded head reads.
+ * Supported front-matter properties for each path, from bounded head reads
+ * (whole-file streaming reads with `includeStats`, for Size / Word count).
  * Read-only by construction: nothing here opens a file for writing.
  */
 export async function scanFrontMatterProperties(
 	paths: readonly string[],
+	options: FrontMatterPropertyScanOptions = {},
 ): Promise<FrontMatterPropertyScan> {
+	const includeStats = options.includeStats === true;
 	const propertiesByPath: FrontMatterPropertyScan["propertiesByPath"] = {};
+	const statsByPath: Record<string, ScannedFileStats> = {};
 	const invalidPaths: string[] = [];
-	await scanFileHeads(paths, PROPERTY_HEAD_BYTES, (path, head) => {
-		const result = extractHeadProperties(head);
-		if (result.kind === "properties") {
-			propertiesByPath[path] = result.properties;
-		} else if (result.kind === "invalid") {
-			invalidPaths.push(path);
-		}
-	});
-	return { propertiesByPath, invalidPaths };
+	await scanFiles(
+		paths,
+		(path) => readScannedFile(path, includeStats),
+		(path, file) => {
+			if (file.stats) statsByPath[path] = file.stats;
+			const result = extractHeadProperties(file.head);
+			if (result.kind === "properties") {
+				propertiesByPath[path] = result.properties;
+			} else if (result.kind === "invalid") {
+				invalidPaths.push(path);
+			}
+		},
+	);
+	return includeStats
+		? { propertiesByPath, invalidPaths, statsByPath }
+		: { propertiesByPath, invalidPaths };
 }

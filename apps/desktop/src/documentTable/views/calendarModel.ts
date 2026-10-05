@@ -111,7 +111,8 @@ export function buildCalendarModel(
 			undatedCount += 1;
 			continue;
 		}
-		const bucket = byDate.get(value);
+		// A built-in date-time ("…T14:03:00") sits on its local day.
+		const bucket = byDate.get(value.slice(0, 10));
 		if (bucket) bucket.push(row);
 		else outsideCount += 1;
 	}
