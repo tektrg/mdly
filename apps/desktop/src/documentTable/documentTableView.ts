@@ -2,6 +2,7 @@
 // its loose match is the same fold the command palette's `normalizeSearchText`
 // uses, so the two search boxes never disagree about which documents match.
 import { looseFoldText } from "@tektrg/table-core";
+import type { ScannedFileStats } from "../desktopApi/types";
 import {
 	basename,
 	dirname,
@@ -9,14 +10,13 @@ import {
 	hasMarkdownExtension,
 	relativeWorkspacePath,
 } from "../lib/filePath";
-import type { ScannedFileStats } from "../desktopApi/types";
 import type { FileEntry } from "../store/state";
-import { withBuiltinValues } from "./properties/builtinFields";
 import {
 	filterAndSortDocumentRows,
 	ROOT_FOLDER_LABEL,
 	resetDocumentSortMemo,
 } from "./documentTableEngine";
+import { withBuiltinValues } from "./properties/builtinFields";
 
 export { ROOT_FOLDER_LABEL };
 
@@ -378,7 +378,11 @@ export function withPropertyValues(
 		const frontMatter = valuesByPath.get(row.path);
 		const stats = statsByPath[row.path];
 		const cached = mergedRowCache.get(row);
-		if (cached && cached.frontMatter === frontMatter && cached.stats === stats) {
+		if (
+			cached &&
+			cached.frontMatter === frontMatter &&
+			cached.stats === stats
+		) {
 			return cached.merged;
 		}
 		const properties = withBuiltinValues(row, stats, frontMatter);

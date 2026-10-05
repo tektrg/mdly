@@ -14,6 +14,7 @@ import type {
 	PropertyField,
 	PropertyFieldId,
 } from "../properties/propertyFields";
+import { calendarDayOf, moveValueToDay } from "./calendarDates";
 import {
 	buildCalendarModel,
 	type CalendarDay,
@@ -30,7 +31,6 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
-import { calendarDayOf, moveValueToDay } from "./calendarDates";
 import {
 	READ_ONLY_MOVE_TARGETS,
 	useNoteDropTarget,

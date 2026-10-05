@@ -86,8 +86,13 @@ describe("scanFrontMatterProperties", () => {
 			[path.join(dir, "plain.md")]: { sizeBytes: 15, wordCount: 3 },
 		});
 		const bigFrontMatter = path.join(dir, "big-fm.md");
-		writeFileSync(bigFrontMatter, `---\nnotes: ${"word ".repeat(3000)}\n---\nonly three words`);
-		const big = await scanFrontMatterProperties([bigFrontMatter], { includeStats: true });
+		writeFileSync(
+			bigFrontMatter,
+			`---\nnotes: ${"word ".repeat(3000)}\n---\nonly three words`,
+		);
+		const big = await scanFrontMatterProperties([bigFrontMatter], {
+			includeStats: true,
+		});
 		expect(big.statsByPath?.[bigFrontMatter]?.wordCount).toBe(3);
 		const headOnly = await scanFrontMatterProperties([path.join(dir, "a.md")]);
 		expect(headOnly.statsByPath).toBeUndefined();

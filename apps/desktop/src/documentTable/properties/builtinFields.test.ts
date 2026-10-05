@@ -57,7 +57,10 @@ function workspace() {
 		"/ws/notes/b.md": { sizeBytes: 300, wordCount: 40 },
 	};
 	const model = derivePropertyModel(propertiesByPath, { rows, statsByPath });
-	return { rows, model, merged: withPropertyValues(rows, model.valuesByPath, model.statsByPath),
+	return {
+		rows,
+		model,
+		merged: withPropertyValues(rows, model.valuesByPath, model.statsByPath),
 	};
 }
 

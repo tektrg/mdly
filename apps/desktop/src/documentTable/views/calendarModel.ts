@@ -3,13 +3,14 @@
  * each note on the day its date field names. Dates are the scan's
  * `YYYY-MM-DD` strings, compared as text — no time zones involved.
  */
-import { calendarDayOf } from "./calendarDates";
+
 import type { DocumentTableRow } from "../documentTableView";
 import {
 	type PropertyField,
 	type PropertyFieldId,
 	propertyFieldId,
 } from "../properties/propertyFields";
+import { calendarDayOf } from "./calendarDates";
 
 /** Notes listed per day cell before "+N more". */
 export const CALENDAR_DAY_CARD_LIMIT = 3;

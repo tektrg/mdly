@@ -255,7 +255,11 @@ function rowValuesOf(
 	properties: ScannedProperties,
 	typeById: ReadonlyMap<PropertyFieldId, FieldType>,
 ): PropertyRowValues {
-	const entries: [PropertyFieldId, FieldType | undefined, ScannedFrontMatterProperty][] = [];
+	const entries: [
+		PropertyFieldId,
+		FieldType | undefined,
+		ScannedFrontMatterProperty,
+	][] = [];
 	let typeSignature = "";
 	for (const [key, property] of Object.entries(properties)) {
 		const id = propertyFieldId(key);

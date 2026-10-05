@@ -77,7 +77,10 @@ async function frontMatterBlockOf(
 	const inHead = frontMatterBlock(read.head);
 	if (inHead || !OPENING_FENCE.test(read.head)) return inHead;
 	if (read.sizeBytes <= Buffer.byteLength(read.head, "utf8")) return "";
-	const prefix = await readFileHead(path, Math.min(read.sizeBytes, MAX_FRONT_MATTER_BYTES));
+	const prefix = await readFileHead(
+		path,
+		Math.min(read.sizeBytes, MAX_FRONT_MATTER_BYTES),
+	);
 	return prefix ? frontMatterBlock(prefix) : "";
 }
 

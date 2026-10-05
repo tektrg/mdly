@@ -73,11 +73,15 @@ describe("property columns at 50k documents", () => {
 			...propertiesByPath,
 			[changedPath]: { status: { type: "text" as const, value: "Done" } },
 		};
-		const nextStats = { ...statsByPath, [changedPath]: { sizeBytes: 1, wordCount: 1 } };
+		const nextStats = {
+			...statsByPath,
+			[changedPath]: { sizeBytes: 1, wordCount: 1 },
+		};
 		const nextBatch = timed("next scan batch: re-derive + re-merge", () =>
 			withPropertyValues(
 				rows,
-				derivePropertyModel(nextProperties, { rows, statsByPath: nextStats }).valuesByPath,
+				derivePropertyModel(nextProperties, { rows, statsByPath: nextStats })
+					.valuesByPath,
 				nextStats,
 			),
 		);
