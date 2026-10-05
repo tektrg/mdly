@@ -8,14 +8,18 @@
  * imported from `@mdly/workspace-kit/search` without pulling the UI barrel in.
  */
 
+import { looseFoldText } from "@tektrg/table-core";
+
 /**
- * Case- and separator-insensitive form of a string, for matching only -- never
+ * Case-, accent- and separator-insensitive form of a string, for matching only -- never
  * for display. Collapsing spaces, underscores, hyphens, dots and slashes away
  * is what lets `myproject` find `My Project.md` and `notesagent` find
  * `notes/Agent Search.md`.
  */
 export function normalizeSearchText(value: string): string {
-	return value.toLocaleLowerCase().replace(/[\s_\-./\\]+/g, "");
+	// The portfolio table engine's loose fold, so the palette and the document
+	// list share one fold rule ("cafe" finds "Café", "strasse" finds "Straße").
+	return looseFoldText(value);
 }
 
 /**

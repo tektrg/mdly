@@ -73,9 +73,11 @@ Want to build mdly directly? First, install the prerequisites:
 - [pnpm](https://pnpm.io/installation)
 - macOS desktop builds: Xcode Command Line Tools via `xcode-select --install`
 
-Then from the repo root:
+Then from the repo root (`@tektrg/table-core` is a private GitHub Packages dependency, so
+`pnpm install` needs `NODE_AUTH_TOKEN` set to a GitHub token with `read:packages` for it):
 
 ```sh
+export NODE_AUTH_TOKEN=$(gh auth token)
 pnpm install
 pnpm bundle:desktop
 ```
