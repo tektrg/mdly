@@ -1,7 +1,7 @@
-// The same matcher the command palette runs (`lib/fileSearch.ts`), through the
-// UI-free entry point. Two search boxes in one app must never disagree about
-// which documents a query finds.
-import { normalizeSearchText } from "@mdly/workspace-kit/search";
+// Filter and sort run on the portfolio table engine (`documentTableEngine.ts`);
+// its loose match is the command palette's `normalizeSearchText` rule plus
+// accent folding, so the two search boxes still agree on separators and case.
+import { looseFoldText } from "@tektrg/table-core";
 import {
 	basename,
 	dirname,
@@ -10,6 +10,10 @@ import {
 	relativeWorkspacePath,
 } from "../lib/filePath";
 import type { FileEntry } from "../store/state";
+import {
+	filterAndSortDocumentRows,
+	resetDocumentSortMemo,
+} from "./documentTableEngine";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 
 export type DocumentTableColumn = "name" | "folder" | "modified" | "created";
@@ -74,8 +78,8 @@ export type DocumentTableRow = {
 	 */
 	createdAt: number;
 	/**
-	 * Match-only form of the file name, extension included — `normalizeSearchText`
-	 * collapses case and separators, which is what lets `my project` find
+	 * Match-only form of the file name, extension included — `looseFoldText`
+	 * collapses case, accents and separators, which is what lets `my project` find
 	 * `My-Project.md`. Precomputed here, in the listing-memoized projection, so
 	 * the filter keystroke path never re-normalizes the workspace.
 	 */
@@ -164,7 +168,7 @@ function toRow(
 		folderLabel: folderLabel(file.path, workspacePath),
 		modifiedAt: file.modified_at,
 		createdAt: file.created_at ?? file.modified_at,
-		searchName: normalizeSearchText(basename(file.path)),
+		searchName: looseFoldText(basename(file.path)),
 		isActive: false,
 		isPinnedOffFilter: false,
 	};
@@ -209,55 +213,16 @@ export function buildDocumentRows(
 /** Test seam: drops the projection memo so fixtures cannot leak between cases. */
 export function resetDocumentRowsMemo() {
 	rowProjectionMemo = null;
+	resetDocumentSortMemo();
 }
 
-/**
- * `normalizedFilter` is the query already through `normalizeSearchText`, so this
- * runs once per row per keystroke and never re-normalizes.
- *
- * File name only, never the folder path: filtering on the path would make a
- * folder name silently widen the result set the user thinks they are narrowing.
- * The name it matches keeps its extension, unlike the displayed `name` — the
- * extension is part of what Finder and the command palette show, so typing
- * `readme.md` is a narrowing intent, not a typo. Substring, not the palette's
- * full `scoreText`: this box filters a list the user has already sorted, so the
- * palette's loosest subsequence tier (`mtg` finds `meeting`) would only add
- * rows the user did not ask for, with no relevance ranking to justify them.
- */
-function matchesFilter(
-	row: DocumentTableRow,
-	normalizedFilter: string,
-): boolean {
-	if (normalizedFilter.length === 0) return true;
-	return row.searchName.includes(normalizedFilter);
-}
-
-function comparePaths(a: DocumentTableRow, b: DocumentTableRow): number {
-	// Every comparator ends here. Equal sort keys are common (a git checkout or an
-	// unzip gives a whole tree the same mtime) and directory listing order is not
-	// guaranteed, so without this the list would re-shuffle on every watcher event
-	// — and the R4 reorder animation would make that jitter loudly visible.
-	return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
-}
-
-function compareByColumn(
-	a: DocumentTableRow,
-	b: DocumentTableRow,
-	column: DocumentTableColumn,
-): number {
-	switch (column) {
-		case "name":
-			return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-		case "folder":
-			return a.folderLabel.localeCompare(b.folderLabel, undefined, {
-				sensitivity: "base",
-			});
-		case "modified":
-			return a.modifiedAt - b.modifiedAt;
-		case "created":
-			return a.createdAt - b.createdAt;
-	}
-}
+// Filter semantics (owned by the engine adapter): file name only, never the
+// folder path — filtering on the path would make a folder name silently widen
+// the result set the user thinks they are narrowing. The name keeps its
+// extension, so `readme.md` narrows. Substring, not the palette's subsequence
+// tier (`mtg` finds `meeting`), because this box filters a list the user has
+// already sorted. Equal sort keys fall back to path order, so the list never
+// re-shuffles on watcher events (the R4 reorder animation would show it).
 
 /**
  * The one row that reads as open, as its `path`.
@@ -294,22 +259,13 @@ export function applyDocumentTableView(
 	view: DocumentTableView,
 	activePath: string | null = null,
 ): DocumentTableRow[] {
-	const direction = view.sort.direction === "desc" ? -1 : 1;
-	const normalizedFilter = normalizeSearchText(view.filter);
 	// Resolved once against the unfiltered rows, so the filtered list and the R6
 	// pin below can never disagree about which row is the open document.
 	const activeRowPath =
 		activePath === null ? null : resolveActiveRowPath(rows, activePath);
-	const visible = rows
-		.filter((row) => matchesFilter(row, normalizedFilter))
-		.sort(
-			(a, b) =>
-				compareByColumn(a, b, view.sort.column) * direction ||
-				comparePaths(a, b),
-		)
-		.map((row) =>
-			row.path === activeRowPath ? { ...row, isActive: true } : row,
-		);
+	const visible = filterAndSortDocumentRows(rows, view).map((row) =>
+		row.path === activeRowPath ? { ...row, isActive: true } : row,
+	);
 
 	if (activeRowPath === null || visible.some((row) => row.isActive))
 		return visible;

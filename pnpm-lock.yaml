@@ -53,6 +53,9 @@ importers:
       '@tailwindcss/browser':
         specifier: ^4.3.1
         version: 4.3.1
+      '@tektrg/table-core':
+        specifier: 1.1.1
+        version: 1.1.1(esbuild@0.28.1)
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)
@@ -2796,6 +2799,11 @@ packages:
     resolution: {integrity: sha512-jVA+/UpKL1vRLg6Hkao5jldawNmRo7mQYrZtNHMIVpLfLhDml5nMRUo/8MwoX2vNXvnaXNNMedrMfMugAVX1nA==}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7
+
+  '@tektrg/table-core@1.1.1':
+    resolution: {integrity: sha512-4INGth9f+a+mGZqbFqc74W8HX0A56OvgVQ4qAfsEN8BsT+qrIPF9jEWR0tTMQGx9zLEIEX5aT14DmB3bc0oLzQ==, tarball: https://npm.pkg.github.com/download/@tektrg/table-core/1.1.1/334b1e318efa17deb63801bb19f2aeb07719e0ff}
+    peerDependencies:
+      esbuild: '>=0.21'
 
   '@tiptap/core@3.20.0':
     resolution: {integrity: sha512-aC9aROgia/SpJqhsXFiX9TsligL8d+oeoI8W3u00WI45s0VfsqjgeKQLDLF7Tu7hC+7F02teC84SAHuup003VQ==}
@@ -8654,6 +8662,10 @@ snapshots:
       '@tailwindcss/oxide': 4.1.18
       tailwindcss: 4.1.18
       vite: 7.3.5(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.9.0)
+
+  '@tektrg/table-core@1.1.1(esbuild@0.28.1)':
+    dependencies:
+      esbuild: 0.28.1
 
   '@tiptap/core@3.20.0(@tiptap/pm@3.20.0)':
     dependencies:
