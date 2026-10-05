@@ -7,6 +7,8 @@ import {
 
 export type DocumentDiscoveryOptions = {
 	includeIgnoredWorkspaceFiles?: boolean;
+	/** Files-scope rules with "In app" unchecked. */
+	excludedEntries?: readonly string[];
 };
 
 export async function collectDocumentFiles(
@@ -19,6 +21,7 @@ export async function collectDocumentFiles(
 		isSupportedFile: hasDocumentExtension,
 		isVisibleFolderName: (folderName) => !isHiddenSidebarFolderName(folderName),
 		includeIgnoredWorkspaceFiles: options.includeIgnoredWorkspaceFiles,
+		alwaysIgnoredDirectoryNames: options.excludedEntries,
 	});
 	out.files.push(...discovery.files);
 	out.folders.push(...discovery.folders);

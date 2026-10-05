@@ -56,7 +56,15 @@ export async function sidecarWalker(
 	const details: Record<string, { size: number; modifiedAt: number }> = {};
 	const stats = { visitedEntryCount: 0, visitedDirectoryCount: 0 };
 
-	await walk(sidecarRoot, root, files, errors, details, stats, options?.include);
+	await walk(
+		sidecarRoot,
+		root,
+		files,
+		errors,
+		details,
+		stats,
+		options?.include,
+	);
 	files.sort();
 	return { files, errors, stats, details };
 }

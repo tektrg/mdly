@@ -15,8 +15,9 @@
  * through `recordDeleteHistory` — the identical bookkeeping a user-initiated
  * delete already goes through (R22).
  */
+
+import { type Stats, watch as watchFs } from "node:fs";
 import fs from "node:fs/promises";
-import { watch as watchFs, type Stats } from "node:fs";
 import path from "node:path";
 import type { SyncBackend } from "@hubble.md/sync";
 import {
@@ -60,6 +61,12 @@ import {
 	resolvePathIndex,
 } from "@mdly/doc-history";
 import { createNodeFileSystem as createDocHistoryNodeFileSystem } from "@mdly/doc-history/node";
+import {
+	BUILT_IN_SYNC_EXCLUDED_PATTERNS,
+	createGitignoreEvaluator,
+	DEFAULT_SYNC_ONLY_EXCLUDED_PATTERNS,
+	withSyncExclusions,
+} from "@mdly/workspace-kit/file-discovery";
 import { hasDocumentExtension } from "../src/lib/filePath";
 import {
 	getHistoryStoreForWorkspace,
@@ -67,6 +74,11 @@ import {
 	recordDeleteHistory,
 	type SelfWriteEchoTracker,
 } from "./docHistoryWiring";
+import {
+	effectiveSyncExcludedEntries,
+	readRawWorkspaceConfigFile,
+	updateCustomizedFilesScope,
+} from "./filesScopeWiring";
 
 export { SHARED_CLOUD_SYNC_ACCOUNT };
 export type { KeychainCredentialStore };
@@ -226,21 +238,8 @@ const SYNC_MAX_DIRECTORIES = 20_000;
  * where anyone keeps authored notes. No migration built for this.
  */
 export const DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES: readonly string[] = [
-	".git",
-	"node_modules",
-	"dist",
-	".dev-electron",
-	".hubble",
-	".mdly",
-	".claude",
-	"Pods",
-	"build",
-	"DerivedData",
-	".expo",
-	"vendor",
-	".venv",
-	"target",
-	".next",
+	...BUILT_IN_SYNC_EXCLUDED_PATTERNS,
+	...DEFAULT_SYNC_ONLY_EXCLUDED_PATTERNS,
 ];
 
 const PRUNED_DIR_NAMES = new Set(DEFAULT_CLOUD_SYNC_EXCLUDED_DIR_NAMES);
@@ -387,6 +386,9 @@ export function createRecursiveFsWatcher(
 	excludedFolders: readonly string[],
 ): CloudSyncWatcher {
 	const excluded = new Set(excludedFolders);
+	// Gitignore is evaluated on the paths fs.watch REPORTS — never by adding
+	// watchers (a per-path watcher population is what hung quit at 41k).
+	const gitignore = createGitignoreEvaluator(workspaceRoot);
 	const listeners = new Map<string, Set<(arg?: unknown) => void>>();
 	const emit = (event: string, arg?: unknown) => {
 		for (const listener of listeners.get(event) ?? []) listener(arg);
@@ -408,17 +410,15 @@ export function createRecursiveFsWatcher(
 				return;
 			}
 			const absPath = path.join(workspaceRoot, filename.toString());
-			if (isIgnoredCloudSyncWatchPath(absPath, workspaceRoot, excluded))
-				return;
-			fs.stat(absPath)
+			if (isIgnoredCloudSyncWatchPath(absPath, workspaceRoot, excluded)) return;
+			if (gitignore.isIgnoreFile(absPath)) gitignore.invalidate();
+			const isSidecar = isWatchedSidecarPath(absPath, workspaceRoot);
+			(isSidecar ? Promise.resolve(false) : gitignore.isIgnored(absPath))
+				.then((gitignored) => (gitignored ? null : fs.stat(absPath)))
 				.then((stats) => {
+					if (!stats) return;
 					if (
-						isIgnoredCloudSyncWatchPath(
-							absPath,
-							workspaceRoot,
-							excluded,
-							stats,
-						)
+						isIgnoredCloudSyncWatchPath(absPath, workspaceRoot, excluded, stats)
 					)
 						return;
 					if (stats.isDirectory()) {
@@ -1159,7 +1159,7 @@ export async function vetUnvettedDirs(
 		handle.unvettedLastCount.clear();
 		return;
 	}
-	const excluded = effectiveExcludedFolders(cloudSync);
+	const excluded = effectiveSyncExcludedEntries(config);
 	const pendingPaths = new Set(
 		(cloudSync.pendingFolders ?? []).map((p) => p.path),
 	);
@@ -1261,6 +1261,14 @@ export async function vetUnvettedDirs(
 	if (stillWaiting) scheduleVetCheck(workspaceRoot, deps, handle);
 }
 
+/** Re-applies changed exclusions (Settings → Files) to a running watcher; no-op when sync is off. */
+export async function restartCloudSyncWatcher(
+	workspaceRoot: string,
+	deps: CloudSyncWiringDeps,
+): Promise<void> {
+	await restartWatcherPreservingVetting(workspaceRoot, deps);
+}
+
 /**
  * Tears a live watcher down and restarts it through the launch path,
  * carrying provisional holds across. Never a second parallel start.
@@ -1299,7 +1307,7 @@ export async function startCloudSyncWatcherIfEnabled(
 	);
 	const cloudSync = config.cloudSync as CloudSyncConfig | undefined;
 	if (!cloudSync || !cloudSync.backgroundSync) {
-		const excludedFolders = effectiveExcludedFolders(cloudSync);
+		const excludedFolders = effectiveSyncExcludedEntries(config);
 		return {
 			backgroundSync: false,
 			status: "off",
@@ -1322,7 +1330,7 @@ export async function startCloudSyncWatcherIfEnabled(
 		workspaceRoot,
 	);
 	const freshSync = fresh.cloudSync as CloudSyncConfig | undefined;
-	const excludedFolders = effectiveExcludedFolders(freshSync);
+	const excludedFolders = effectiveSyncExcludedEntries(fresh);
 	const pendingFolders = freshSync?.pendingFolders ?? [];
 
 	const token = await deps.keychain.getPassword(SHARED_CLOUD_SYNC_ACCOUNT);
@@ -1697,6 +1705,12 @@ export async function enableCloudSyncForWorkspace(
 		(await backend.createWorkspace(options.workspaceName));
 
 	const fsAdapter = createNodeFileSystem();
+	const reviewExclusions = options.excludedFolders;
+	const wroteScope = reviewExclusions
+		? await updateCustomizedFilesScope(options.workspaceRoot, (scope) =>
+				withSyncExclusions(scope, normalizeExcludedEntries(reviewExclusions)),
+			)
+		: false;
 	const existing = await readConfigOrDefault(fsAdapter, options.workspaceRoot);
 	await writeCloudSyncConfig(fsAdapter, options.workspaceRoot, {
 		provider: "cloudflare",
@@ -1707,11 +1721,13 @@ export async function enableCloudSyncForWorkspace(
 		// The review dialog's unchecked folders win; otherwise carry over
 		// rather than rebuild (re-enabling must not silently drop the list).
 		// Left undefined when unset, so the key stays absent and defaults apply.
-		excludedFolders: options.excludedFolders
-			? [...options.excludedFolders]
-			: existing.cloudSync?.excludedFolders
-				? [...existing.cloudSync.excludedFolders]
-				: undefined,
+		excludedFolders: wroteScope
+			? undefined
+			: options.excludedFolders
+				? [...options.excludedFolders]
+				: existing.cloudSync?.excludedFolders
+					? [...existing.cloudSync.excludedFolders]
+					: undefined,
 		pendingFolders: existing.cloudSync?.pendingFolders
 			? [...existing.cloudSync.pendingFolders]
 			: undefined,
@@ -1841,10 +1857,14 @@ export async function setCloudSyncExcludedFolders(
 			"Turn Cloud Sync on for this workspace once before choosing which folders it never syncs.",
 		);
 	}
-	await writeCloudSyncConfig(fsAdapter, workspaceRoot, {
-		...cloudSync,
-		excludedFolders: normalized,
-	});
+	const wroteScope = await updateCustomizedFilesScope(workspaceRoot, (scope) =>
+		withSyncExclusions(scope, normalized),
+	);
+	if (!wroteScope)
+		await writeCloudSyncConfig(fsAdapter, workspaceRoot, {
+			...cloudSync,
+			excludedFolders: normalized,
+		});
 
 	await restartWatcherPreservingVetting(workspaceRoot, deps);
 	return readCloudSyncWorkspaceState(workspaceRoot);
@@ -1911,7 +1931,7 @@ export async function readCloudSyncWorkspaceState(
 		detail:
 			running?.detail ??
 			(cloudSync?.pendingRemoteDelete ? CLOUD_COPY_NOT_DELETED_DETAIL : null),
-		excludedFolders: [...effectiveExcludedFolders(cloudSync)],
+		excludedFolders: effectiveSyncExcludedEntries(config),
 		pendingFolders: [...(cloudSync?.pendingFolders ?? [])],
 		progress: running?.progress ?? null,
 	};
@@ -1975,7 +1995,7 @@ export async function prepareCloudSyncPreview(
 	});
 	const prepared = await readConfigOrDefault(fsAdapter, options.workspaceRoot);
 	const preparedSync = prepared.cloudSync as CloudSyncConfig | undefined;
-	const excluded = effectiveExcludedFolders(preparedSync);
+	const excluded = effectiveSyncExcludedEntries(prepared);
 	const pendingPaths = (preparedSync?.pendingFolders ?? []).map((p) => p.path);
 
 	const previewFs = createCloudAwareFileSystem(
@@ -2052,7 +2072,7 @@ export async function detectAndHoldPendingFolders(
 	const config = await readConfigOrDefault(fsAdapter, workspaceRoot);
 	const cloudSync = config.cloudSync as CloudSyncConfig | undefined;
 	if (!cloudSync) return [];
-	const excluded = effectiveExcludedFolders(cloudSync);
+	const excluded = effectiveSyncExcludedEntries(config);
 	const existingPending = new Map(
 		(cloudSync.pendingFolders ?? []).map((p) => [p.path, p]),
 	);
@@ -2158,11 +2178,17 @@ export async function excludePendingFolder(
 	const cloudSync = config.cloudSync as CloudSyncConfig | undefined;
 	if (!cloudSync)
 		throw new Error("Turn Cloud Sync on for this workspace first.");
+	const wroteScope = await updateCustomizedFilesScope(workspaceRoot, (scope) =>
+		withSyncExclusions(scope, [
+			...scope.rules.filter((rule) => !rule.synced).map((r) => r.pattern),
+			folderPath,
+		]),
+	);
 	const excluded = [...effectiveExcludedFolders(cloudSync)];
 	if (!excluded.includes(folderPath)) excluded.push(folderPath);
 	await writeCloudSyncConfig(fsAdapter, workspaceRoot, {
 		...cloudSync,
-		excludedFolders: excluded,
+		excludedFolders: wroteScope ? undefined : excluded,
 		pendingFolders: (cloudSync.pendingFolders ?? []).filter(
 			(p) => p.path !== folderPath,
 		),
@@ -2198,20 +2224,5 @@ export async function resumeCloudSyncForGrantedRoots(
 	);
 }
 
-/** Exported for `main.ts`'s `desktop:write-workspace-config` fix (see main.ts) — reads the raw `.hubble/config.json` object without validating/stripping any key, so callers can preserve whatever they don't understand. */
-export async function readRawWorkspaceConfigFile(
-	workspaceRoot: string,
-): Promise<Record<string, unknown>> {
-	try {
-		const raw = await fs.readFile(
-			path.join(workspaceRoot, ".hubble", "config.json"),
-			"utf8",
-		);
-		const parsed = JSON.parse(raw);
-		return typeof parsed === "object" && parsed !== null
-			? (parsed as Record<string, unknown>)
-			: {};
-	} catch {
-		return {};
-	}
-}
+/** Re-exported for `main.ts`'s `desktop:write-workspace-config` fix — moved to `filesScopeWiring.ts`. */
+export { readRawWorkspaceConfigFile };

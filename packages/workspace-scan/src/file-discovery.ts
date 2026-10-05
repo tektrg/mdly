@@ -3,6 +3,12 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import ignore from "ignore";
 
+export * from "./files-scope.js";
+export {
+	createGitignoreEvaluator,
+	type GitignoreEvaluator,
+} from "./gitignore-evaluator.js";
+
 export type WorkspaceSymlinkInfo = {
 	is_symlink?: true;
 	symlink_target?: string | null;
@@ -185,13 +191,27 @@ export function isExcludedByEntries(
 		const anchored = text.startsWith("/");
 		const pattern = text.replace(/^\/+|\/+$/g, "");
 		if (pattern === "") continue;
-		if (anchored || pattern.includes("/")) {
+		if (/[*?[]/.test(pattern)) {
+			if (rel !== "" && globMatcher(text).ignores(rel)) return true;
+		} else if (anchored || pattern.includes("/")) {
 			if (rel === pattern || rel.startsWith(`${pattern}/`)) return true;
 		} else if (segments.includes(pattern)) {
 			return true;
 		}
 	}
 	return false;
+}
+
+const globMatcherCache = new Map<string, ReturnType<typeof ignore>>();
+
+/** Gitignore matching for glob entries (`*.log`, `/drafts/*.md`); `ignore` also matches files under a matched folder. */
+function globMatcher(entry: string): ReturnType<typeof ignore> {
+	let matcher = globMatcherCache.get(entry);
+	if (!matcher) {
+		matcher = ignore().add(entry);
+		globMatcherCache.set(entry, matcher);
+	}
+	return matcher;
 }
 
 function toIgnorePath(input: string): string {
@@ -546,19 +566,15 @@ async function walkDirectory(
 	for (const entry of entries) {
 		throwIfTraversalStopped(options, context);
 		const entryPath = path.join(dir, entry.name);
-		const ignored = options.includeIgnoredWorkspaceFiles
-			? isAlwaysIgnoredWorkspacePath(
-					entryPath,
-					context.workspaceRootPath,
-					context.alwaysIgnoredDirectoryNames,
-				)
-			: isIgnoredByRules(
-					entryPath,
-					rules,
-					context.workspaceRootPath,
-					context.alwaysIgnoredDirectoryNames,
-					context.excludedEntries,
-				);
+		// With ignore files disabled `rules` is empty, so only the always-
+		// ignored names and caller exclusions (Files-scope rules) apply.
+		const ignored = isIgnoredByRules(
+			entryPath,
+			rules,
+			context.workspaceRootPath,
+			context.alwaysIgnoredDirectoryNames,
+			context.excludedEntries,
+		);
 		if (ignored) {
 			if (entry.isDirectory()) context.stats.ignoredDirectoryCount += 1;
 			else context.stats.ignoredFileCount += 1;
@@ -737,19 +753,13 @@ export async function discoverWorkspaceFiles(
 		folders,
 		stats: { ...context.stats, durationMs: Date.now() - context.startedAtMs },
 		isIgnoredPath: (candidatePath) =>
-			options.includeIgnoredWorkspaceFiles
-				? isAlwaysIgnoredWorkspacePath(
-						candidatePath,
-						workspaceRoot,
-						alwaysIgnoredDirectoryNames,
-					)
-				: isIgnoredByRules(
-						candidatePath,
-						context.allIgnoreRules,
-						workspaceRoot,
-						alwaysIgnoredDirectoryNames,
-						context.excludedEntries,
-					),
+			isIgnoredByRules(
+				candidatePath,
+				context.allIgnoreRules,
+				workspaceRoot,
+				alwaysIgnoredDirectoryNames,
+				context.excludedEntries,
+			),
 		errors: context.errors,
 	};
 }
