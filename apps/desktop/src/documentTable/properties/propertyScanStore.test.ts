@@ -134,6 +134,42 @@ describe("runPropertyScan", () => {
 		expect(propertyScanStore.get().propertiesByPath).toEqual({});
 	});
 
+	it("a superseding run of the same workspace keeps batches already read", async () => {
+		const files = Array.from(
+			{ length: PROPERTY_SCAN_BATCH_SIZE * 2 },
+			(_, index) => ({ path: `/ws/${index}.md`, modifiedAt: 1 }),
+		);
+		const requested: number[] = [];
+		let runSecond: () => Promise<void> = async () => {};
+		const scan = vi.fn(async (paths: string[]) => {
+			requested.push(paths.length);
+			if (requested.length === 1) {
+				// A save lands mid-scan and starts a newer run before batch 2.
+				runSecond = () => runPropertyScan("/ws", files, plain);
+			}
+			return {
+				propertiesByPath: Object.fromEntries(
+					paths.map((path) => [path, { status: status("x") }]),
+				),
+				invalidPaths: [],
+			};
+		});
+		const plain = vi.fn(scan);
+		const first = runPropertyScan("/ws", files, async (paths) => {
+			const result = await scan(paths);
+			if (requested.length === 1) await runSecond();
+			return result;
+		});
+		await first;
+		// Batch 1 was read once; only batch 2 was read again by the newer run.
+		expect(requested.reduce((sum, count) => sum + count, 0)).toBeLessThan(
+			files.length * 2,
+		);
+		expect(Object.keys(propertyScanStore.get().propertiesByPath)).toHaveLength(
+			files.length,
+		);
+	});
+
 	it("reports a failed scan instead of an empty workspace", async () => {
 		const scan = vi.fn(async () => {
 			throw new Error("EACCES");

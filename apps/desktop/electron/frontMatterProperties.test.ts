@@ -48,6 +48,15 @@ describe("extractHeadProperties", () => {
 		expect(extractHeadProperties(head)).toEqual({ kind: "invalid" });
 	});
 
+	it("reads a file saved with a BOM and CRLF line endings", () => {
+		expect(
+			extractHeadProperties("\uFEFF---\r\nstatus: x\r\n---\r\nbody"),
+		).toEqual({
+			kind: "properties",
+			properties: { status: { type: "text", value: "x" } },
+		});
+	});
+
 	it("returns none for a file without front matter", () => {
 		expect(extractHeadProperties("# Just a note\n")).toEqual({ kind: "none" });
 	});

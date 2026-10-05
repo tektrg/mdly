@@ -125,9 +125,13 @@ export function inferPropertyFields(
 ): PropertyField[] {
 	const tallies = new Map<PropertyFieldId, FieldTally>();
 	for (const properties of Object.values(propertiesByPath)) {
+		// `Status` and `status` in one file are one field, counted once.
+		const seenInDocument = new Set<PropertyFieldId>();
 		for (const [key, property] of Object.entries(properties)) {
 			if (key.trim().length === 0 || isEmptyScanned(property)) continue;
 			const id = propertyFieldId(key);
+			if (seenInDocument.has(id)) continue;
+			seenInDocument.add(id);
 			let tally = tallies.get(id);
 			if (!tally) {
 				tally = {

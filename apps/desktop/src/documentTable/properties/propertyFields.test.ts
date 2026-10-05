@@ -88,6 +88,13 @@ describe("inferPropertyFields", () => {
 		});
 	});
 
+	it("counts a document once when it repeats a key in another case", () => {
+		const byPath: PropertiesByPath = {
+			"/a.md": { Status: text("x"), status: text("y") },
+		};
+		expect(inferPropertyFields(byPath)[0]?.documentCount).toBe(1);
+	});
+
 	it("orders fields by document count", () => {
 		const byPath: PropertiesByPath = {
 			"/a.md": { rare: text("1"), common: text("a") },

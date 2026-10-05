@@ -296,11 +296,14 @@ function DocumentTableEmptyState({
 	listing,
 	filter,
 	hasPropertyFilters,
+	propertiesPending = false,
 	onRetryListing,
 }: {
 	listing: DocumentListingState;
 	filter: string;
 	hasPropertyFilters: boolean;
+	/** Chips are set but the property scan has not finished: not "no match" yet. */
+	propertiesPending?: boolean;
 	onRetryListing: () => void;
 }) {
 	if (listing.kind === "scanning") {
@@ -331,6 +334,14 @@ function DocumentTableEmptyState({
 					Try again
 				</Button>
 			</div>
+		);
+	}
+
+	if (hasPropertyFilters && propertiesPending) {
+		return (
+			<p aria-busy="true" className="m-0 p-3 text-sm text-muted-foreground">
+				Reading front matter…
+			</p>
 		);
 	}
 
@@ -439,6 +450,10 @@ export function DocumentTable({
 							listing={listing}
 							filter={view.filter}
 							hasPropertyFilters={view.propertyFilters.length > 0}
+							propertiesPending={
+								propertyScan.status === "scanning" ||
+								propertyScan.status === "idle"
+							}
 							onRetryListing={onRetryListing}
 						/>
 					}

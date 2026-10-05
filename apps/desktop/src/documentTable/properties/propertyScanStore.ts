@@ -130,6 +130,8 @@ export function prunePropertyState(
 const PUBLISH_INTERVAL_MS = 1500;
 
 let scanGeneration = 0;
+/** Merged batches not yet in the store; survives a superseding run of the same scope. */
+let unpublishedWork: PropertyScanState | null = null;
 
 /**
  * Brings the store up to date with `files` for `scope`: prunes vanished paths,
@@ -145,9 +147,13 @@ export async function runPropertyScan(
 	const isCurrent = () =>
 		generation === scanGeneration && propertyScanStore.get().scope === scope;
 
+	// A superseded run's merged-but-unpublished batches are kept, so a burst
+	// of saves during a cold scan never re-reads what was already read.
+	const carried = unpublishedWork?.scope === scope ? unpublishedWork : null;
+	unpublishedWork = null;
 	propertyScanStore.set((state) =>
 		state.scope === scope
-			? prunePropertyState(state, files)
+			? prunePropertyState(carried ?? state, files)
 			: { ...EMPTY_STATE, scope },
 	);
 	const fileByPath = new Map(files.map((file) => [file.path, file]));
@@ -184,6 +190,7 @@ export async function runPropertyScan(
 			const result = await scan(batch.map((file) => file.path));
 			if (!isCurrent()) return;
 			working = mergePropertyBatch(working, batch, result);
+			unpublishedWork = working;
 			const isLast = start + PROPERTY_SCAN_BATCH_SIZE >= pending.length;
 			if (isLast) break;
 			if (Date.now() - lastPublishAt >= PUBLISH_INTERVAL_MS) {
@@ -197,6 +204,7 @@ export async function runPropertyScan(
 		}
 		if (!isCurrent()) return;
 		const finished = working;
+		unpublishedWork = null;
 		propertyScanStore.set(() => ({ ...finished, status: "ready" }));
 	} catch (error) {
 		if (!isCurrent()) return;
@@ -211,5 +219,6 @@ export async function runPropertyScan(
 /** Test seam and workspace close: forget everything. */
 export function resetPropertyScan() {
 	scanGeneration += 1;
+	unpublishedWork = null;
 	propertyScanStore.set(EMPTY_STATE);
 }

@@ -11,7 +11,7 @@ import { scanFileHeads } from "./frontMatterTags";
  */
 export const PROPERTY_HEAD_BYTES = 8192;
 
-const OPENING_FENCE = /^(?:�)?---[ \t]*\r?\n/;
+const OPENING_FENCE = /^(?:\uFEFF)?---[ \t]*\r?\n/;
 const CLOSING_FENCE = /\r?\n---[ \t]*(?:\r?\n|$)/;
 
 export type HeadPropertiesResult =
