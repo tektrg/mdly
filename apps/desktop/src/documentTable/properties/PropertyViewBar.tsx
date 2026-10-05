@@ -169,7 +169,6 @@ export function SavedViewTabs({
 	);
 }
 
-
 /**
  * The view's filter chips, its grouping, and the scan status — always visible
  * (decision E: a filter is never silent), each chip deletable in one click.

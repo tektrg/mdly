@@ -108,7 +108,11 @@ function inferType(tally: FieldTally): FieldType {
 	if (types.length === 1 && types[0] === "text") {
 		const distinct = tally.valueCounts.size;
 		const repeats = distinct < tally.documentCount;
-		if (distinct <= SELECT_MAX_OPTIONS && repeats && longestOption(tally) <= SELECT_MAX_OPTION_LENGTH) {
+		if (
+			distinct <= SELECT_MAX_OPTIONS &&
+			repeats &&
+			longestOption(tally) <= SELECT_MAX_OPTION_LENGTH
+		) {
 			return "select";
 		}
 	}
@@ -164,13 +168,19 @@ export function tallyDocument(
 		seenInDocument.add(id);
 		let tally = tallies.get(id);
 		if (!tally) {
-			tally = { labelCounts: new Map(), typeCounts: new Map(), valueCounts: new Map(), documentCount: 0 };
+			tally = {
+				labelCounts: new Map(),
+				typeCounts: new Map(),
+				valueCounts: new Map(),
+				documentCount: 0,
+			};
 			tallies.set(id, tally);
 		}
 		tally.documentCount += sign;
 		bump(tally.labelCounts, key, sign);
 		bump(tally.typeCounts, property.type, sign);
-		for (const option of scannedOptionValues(property)) bump(tally.valueCounts, option, sign);
+		for (const option of scannedOptionValues(property))
+			bump(tally.valueCounts, option, sign);
 		if (tally.documentCount <= 0) tallies.delete(id);
 	}
 }
@@ -180,7 +190,12 @@ export function fieldsFromTallies(tallies: PropertyTallies): PropertyField[] {
 	const fields: PropertyField[] = [];
 	for (const [id, tally] of tallies) {
 		const type = inferType(tally);
-		const field: PropertyField = { id, label: mostCommon(tally.labelCounts), type, documentCount: tally.documentCount };
+		const field: PropertyField = {
+			id,
+			label: mostCommon(tally.labelCounts),
+			type,
+			documentCount: tally.documentCount,
+		};
 		if (type === "select" || type === "multiSelect") {
 			field.options = [...tally.valueCounts.entries()]
 				.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
@@ -190,7 +205,9 @@ export function fieldsFromTallies(tallies: PropertyTallies): PropertyField[] {
 		fields.push(field);
 	}
 	return fields.sort(
-		(a, b) => b.documentCount - a.documentCount || a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+		(a, b) =>
+			b.documentCount - a.documentCount ||
+			a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
 	);
 }
 
@@ -199,9 +216,12 @@ export function fieldsFromTallies(tallies: PropertyTallies): PropertyField[] {
  * values. Ordered by how many documents carry it, then by label, so the
  * commonest properties lead the "add a column" menu.
  */
-export function inferPropertyFields(propertiesByPath: PropertiesByPath): PropertyField[] {
+export function inferPropertyFields(
+	propertiesByPath: PropertiesByPath,
+): PropertyField[] {
 	const tallies: PropertyTallies = new Map();
-	for (const properties of Object.values(propertiesByPath)) tallyDocument(tallies, properties, 1);
+	for (const properties of Object.values(propertiesByPath))
+		tallyDocument(tallies, properties, 1);
 	return fieldsFromTallies(tallies);
 }
 
@@ -338,7 +358,8 @@ const typeKeyOf = (fields: readonly PropertyField[]) =>
 
 function fullFrontMatterState(source: PropertiesByPath): FrontMatterState {
 	const tallies: PropertyTallies = new Map();
-	for (const properties of Object.values(source)) tallyDocument(tallies, properties, 1);
+	for (const properties of Object.values(source))
+		tallyDocument(tallies, properties, 1);
 	const fields = fieldsFromTallies(tallies);
 	return {
 		source,
@@ -371,9 +392,11 @@ function nextFrontMatterState(source: PropertiesByPath): FrontMatterState {
 	}
 	// Same size and nothing new: nothing was removed, skip the second pass.
 	if (total - added !== previous.pathCount) {
-		for (const path in previous.source) if (!(path in source)) changed.push(path);
+		for (const path in previous.source)
+			if (!(path in source)) changed.push(path);
 	}
-	if (changed.length / Math.max(total, 1) > FULL_REBUILD_SHARE) return fullFrontMatterState(source);
+	if (changed.length / Math.max(total, 1) > FULL_REBUILD_SHARE)
+		return fullFrontMatterState(source);
 	const { tallies } = previous;
 	for (const path of changed) {
 		const before = previous.source[path];
@@ -385,7 +408,14 @@ function nextFrontMatterState(source: PropertiesByPath): FrontMatterState {
 	const fieldsKey = JSON.stringify(inferred);
 	const fields = fieldsKey === previous.fieldsKey ? previous.fields : inferred;
 	if (typeKeyOf(fields) !== typeKeyOf(previous.fields)) {
-		return { source, tallies, fields, fieldsKey, values: buildPropertyRowValues(source, fields), pathCount: total };
+		return {
+			source,
+			tallies,
+			fields,
+			fieldsKey,
+			values: buildPropertyRowValues(source, fields),
+			pathCount: total,
+		};
 	}
 	const typeById = new Map(fields.map((field) => [field.id, field.type]));
 	const values = new Map(previous.values);
@@ -431,7 +461,8 @@ export function derivePropertyModel(
 		return modelMemo.model;
 	}
 	frontMatterState = nextFrontMatterState(propertiesByPath);
-	const { fields: frontMatterFields, values: frontMatterValues } = frontMatterState;
+	const { fields: frontMatterFields, values: frontMatterValues } =
+		frontMatterState;
 	const { rows, statsByPath } = builtinSource;
 	const fields = [
 		...frontMatterFields,

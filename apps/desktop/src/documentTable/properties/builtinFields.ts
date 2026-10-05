@@ -75,7 +75,10 @@ export function builtinFieldLabel(fieldId: BuiltinFieldId): string {
 /** Folder options listed per field, most documents first (same cap as front matter). */
 const MAX_FOLDER_OPTIONS = 50;
 
-const folderOptionsByListing = new WeakMap<readonly DocumentTableRow[], string[]>();
+const folderOptionsByListing = new WeakMap<
+	readonly DocumentTableRow[],
+	string[]
+>();
 
 /** Recounted only when the listing changes (rows are memoized on it). */
 function folderOptions(rows: readonly DocumentTableRow[]): string[] {
@@ -260,6 +263,8 @@ export function addColumnMenuFields(
 ): PropertyField[] {
 	if (viewType !== "table") return [...fields];
 	return fields.filter(
-		(field) => !TABLE_FIXED_COLUMN_BUILTINS.has(field.id) || visibleColumns.includes(field.id),
+		(field) =>
+			!TABLE_FIXED_COLUMN_BUILTINS.has(field.id) ||
+			visibleColumns.includes(field.id),
 	);
 }

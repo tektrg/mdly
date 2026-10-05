@@ -286,7 +286,9 @@ export function resetPropertyScan() {
 /** The status line under the view bar while a scan runs (or failed). */
 export function scanStatusText(scan: PropertyScanState): string | null {
 	if (scan.status === "scanning") {
-		const verb = scan.includeStats ? "Counting words…" : "Reading front matter…";
+		const verb = scan.includeStats
+			? "Counting words…"
+			: "Reading front matter…";
 		return `${verb} ${scan.scannedCount.toLocaleString()} / ${scan.pendingCount.toLocaleString()}`;
 	}
 	if (scan.status === "failed") {

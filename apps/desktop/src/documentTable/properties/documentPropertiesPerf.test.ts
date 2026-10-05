@@ -73,7 +73,9 @@ describe("property columns at 50k documents", () => {
 		const runNextBatch = (batch: number) => {
 			const nextProperties = {
 				...propertiesByPath,
-				[changedPath]: { status: { type: "text" as const, value: `Done ${batch}` } },
+				[changedPath]: {
+					status: { type: "text" as const, value: `Done ${batch}` },
+				},
 			};
 			const nextStats = {
 				...statsByPath,
