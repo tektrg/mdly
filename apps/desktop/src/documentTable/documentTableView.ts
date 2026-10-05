@@ -19,7 +19,11 @@ import {
 export { ROOT_FOLDER_LABEL };
 
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
-import type { PropertyFilter } from "./properties/documentViews";
+import {
+	DEFAULT_DOCUMENT_VIEW_LAYOUT,
+	type DocumentViewLayout,
+	type PropertyFilter,
+} from "./properties/documentViews";
 import type {
 	PropertyField,
 	PropertyFieldId,
@@ -123,6 +127,8 @@ export type DocumentTableRow = {
 export type DocumentTableSessionView = Omit<DocumentTableView, "sort"> & {
 	/** The saved view being shown; null = the unsaved "All documents" view. */
 	activeSavedViewId: string | null;
+	/** The unsaved view's layout (table/board/calendar); a saved view carries its own. */
+	layout: DocumentViewLayout;
 };
 
 export function createDefaultSessionView(): DocumentTableSessionView {
@@ -133,11 +139,16 @@ export function createDefaultSessionView(): DocumentTableSessionView {
 		propertyFilters: [],
 		propertyGroupBy: null,
 		activeSavedViewId: null,
+		layout: DEFAULT_DOCUMENT_VIEW_LAYOUT,
 	};
 }
 
 export function createDefaultDocumentTableView(): DocumentTableView {
-	const { activeSavedViewId: _unused, ...session } = createDefaultSessionView();
+	const {
+		activeSavedViewId: _unused,
+		layout: _layout,
+		...session
+	} = createDefaultSessionView();
 	return { ...session, sort: DEFAULT_NAV_VIEW_SORT };
 }
 

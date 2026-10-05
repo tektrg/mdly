@@ -40,6 +40,9 @@ import {
 } from "./properties/propertyFields";
 import { usePropertyScanState } from "./properties/usePropertyModel";
 import { useCurrentDocumentView } from "./useDocumentTableRows";
+import { DocumentBoard } from "./views/DocumentBoard";
+import { DocumentCalendar } from "./views/DocumentCalendar";
+import { ViewTypeSwitcher } from "./views/ViewTypeSwitcher";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 export const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
@@ -378,9 +381,13 @@ export function DocumentTable({
 	rowMenu,
 }: DocumentTableProps) {
 	const { isCustomized, propertyColumns } = useDocumentTableLayout();
-	const { savedView, savedViews, propertyFields } = useCurrentDocumentView();
+	const { savedView, savedViews, propertyFields, layout } =
+		useCurrentDocumentView();
 	const propertyScan = usePropertyScanState();
+	const isReadingProperties =
+		propertyScan.status === "scanning" || propertyScan.status === "idle";
 	const canSaveView =
+		layout.viewType !== "table" ||
 		view.propertyFilters.length > 0 ||
 		view.propertyGroupBy !== null ||
 		propertyColumns.length > 0;
@@ -401,6 +408,7 @@ export function DocumentTable({
 					canSave={canSaveView}
 				/>
 				<div className="flex items-center gap-2">
+					<ViewTypeSwitcher value={layout.viewType} />
 					<AddPropertyColumnMenu
 						fields={propertyFields}
 						visibleColumns={propertyColumns}
@@ -427,39 +435,58 @@ export function DocumentTable({
 				fields={propertyFields}
 				scan={propertyScan}
 			/>
-			<div
-				role="grid"
-				aria-label="Documents"
-				aria-rowcount={rows.length + 1}
-				className="flex min-h-0 flex-1 flex-col px-2 pb-2"
-			>
-				<DocumentTableHeader
-					view={view}
-					onToggleSort={onToggleSort}
-					propertyFields={propertyFields}
-				/>
-				<NavListHeader />
-				<DocumentRowList
+			{layout.viewType === "board" ? (
+				<DocumentBoard
 					rows={rows}
-					density="table"
-					view={view}
+					fields={propertyFields}
+					boardField={layout.boardField}
+					propertyColumns={propertyColumns}
+					isReadingProperties={isReadingProperties}
 					onOpenDocument={onOpenDocument}
-					menu={rowMenu}
-					emptyState={
-						<DocumentTableEmptyState
-							listing={listing}
-							filter={view.filter}
-							hasPropertyFilters={view.propertyFilters.length > 0}
-							propertiesPending={
-								propertyScan.status === "scanning" ||
-								propertyScan.status === "idle"
-							}
-							onRetryListing={onRetryListing}
-						/>
-					}
 				/>
-				<NavFooterStrip />
-			</div>
+			) : layout.viewType === "calendar" ? (
+				<DocumentCalendar
+					rows={rows}
+					fields={propertyFields}
+					calendarField={layout.calendarField}
+					isReadingProperties={isReadingProperties}
+					onOpenDocument={onOpenDocument}
+				/>
+			) : (
+				<div
+					role="grid"
+					aria-label="Documents"
+					aria-rowcount={rows.length + 1}
+					className="flex min-h-0 flex-1 flex-col px-2 pb-2"
+				>
+					<DocumentTableHeader
+						view={view}
+						onToggleSort={onToggleSort}
+						propertyFields={propertyFields}
+					/>
+					<NavListHeader />
+					<DocumentRowList
+						rows={rows}
+						density="table"
+						view={view}
+						onOpenDocument={onOpenDocument}
+						menu={rowMenu}
+						emptyState={
+							<DocumentTableEmptyState
+								listing={listing}
+								filter={view.filter}
+								hasPropertyFilters={view.propertyFilters.length > 0}
+								propertiesPending={
+									propertyScan.status === "scanning" ||
+									propertyScan.status === "idle"
+								}
+								onRetryListing={onRetryListing}
+							/>
+						}
+					/>
+					<NavFooterStrip />
+				</div>
+			)}
 		</section>
 	);
 }

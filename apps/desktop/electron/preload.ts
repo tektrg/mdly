@@ -116,6 +116,13 @@ const desktopApi = {
 			content,
 			historyCause: options?.historyCause,
 		}),
+	writeFileTextIfUnchanged: (path, expected, content, options) =>
+		ipcRenderer.invoke("desktop:write-file-text-if-unchanged", {
+			path,
+			expected,
+			content,
+			historyCause: options?.historyCause,
+		}),
 	renameFile: (fromPath, toPath) =>
 		ipcRenderer.invoke("desktop:rename-file", { fromPath, toPath }),
 	getRevisionHistory: (path) =>

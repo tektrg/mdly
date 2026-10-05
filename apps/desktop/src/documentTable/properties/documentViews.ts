@@ -26,7 +26,31 @@ export type PropertyFilter =
 	| { fieldId: PropertyFieldId; kind: "has" }
 	| { fieldId: PropertyFieldId; kind: "is"; value: ScalarValue };
 
-export type SavedDocumentView = {
+/** How a view lays its documents out. Views saved before step 5 are tables. */
+export type DocumentViewType = "table" | "board" | "calendar";
+
+export const DOCUMENT_VIEW_TYPES: readonly DocumentViewType[] = [
+	"table",
+	"board",
+	"calendar",
+];
+
+/** The layout half of a view: its type and the field each layout reads. */
+export type DocumentViewLayout = {
+	viewType: DocumentViewType;
+	/** Board columns come from this select field; null = the default (status). */
+	boardField: PropertyFieldId | null;
+	/** Calendar days come from this date field; null = the default (due). */
+	calendarField: PropertyFieldId | null;
+};
+
+export const DEFAULT_DOCUMENT_VIEW_LAYOUT: DocumentViewLayout = {
+	viewType: "table",
+	boardField: null,
+	calendarField: null,
+};
+
+export type SavedDocumentView = DocumentViewLayout & {
 	id: string;
 	name: string;
 	sort: DocumentTableSort;
@@ -174,6 +198,20 @@ export function sanitizeDocumentTableSort(
 	return { column, direction };
 }
 
+export function isDocumentViewType(value: unknown): value is DocumentViewType {
+	return DOCUMENT_VIEW_TYPES.includes(value as DocumentViewType);
+}
+
+function sanitizeLayout(value: Record<string, unknown>): DocumentViewLayout {
+	return {
+		viewType: isDocumentViewType(value.viewType) ? value.viewType : "table",
+		boardField: isPropertyFieldId(value.boardField) ? value.boardField : null,
+		calendarField: isPropertyFieldId(value.calendarField)
+			? value.calendarField
+			: null,
+	};
+}
+
 function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 	if (!isRecord(value)) return null;
 	if (typeof value.id !== "string" || value.id.length === 0) return null;
@@ -190,6 +228,7 @@ function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 				.filter((filter): filter is PropertyFilter => filter !== null)
 		: [];
 	return {
+		...sanitizeLayout(value),
 		id: value.id,
 		name,
 		sort,

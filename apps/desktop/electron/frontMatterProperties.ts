@@ -3,6 +3,7 @@ import type {
 	FrontMatterPropertyScan,
 	ScannedFrontMatterProperty,
 } from "../src/desktopApi/types";
+import { toScannedProperties } from "../src/documentTable/properties/scannedProperties";
 import { scanFileHeads } from "./frontMatterTags";
 
 /**
@@ -41,16 +42,7 @@ export function extractHeadProperties(
 	const parsed = parseMarkdownFrontMatter(head);
 	if (parsed.type === "none") return { kind: "none" };
 	if (parsed.type === "invalid") return { kind: "invalid" };
-	const properties: Record<string, ScannedFrontMatterProperty> = {};
-	for (const property of parsed.properties) {
-		if (property.type === "unsupported") continue;
-		// First occurrence wins, like the properties panel's display order.
-		if (property.key in properties) continue;
-		properties[property.key] = {
-			type: property.type,
-			value: property.value,
-		} as ScannedFrontMatterProperty;
-	}
+	const properties = toScannedProperties(parsed.properties);
 	return Object.keys(properties).length === 0
 		? { kind: "none" }
 		: { kind: "properties", properties };

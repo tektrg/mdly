@@ -11,6 +11,8 @@ import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 import { groupByToViewId } from "./navHiddenViews";
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
 import {
+	type DocumentViewLayout,
+	type DocumentViewType,
 	EMPTY_WORKSPACE_DOCUMENT_VIEWS,
 	MAX_SAVED_VIEW_NAME_LENGTH,
 	type PropertyFilter,
@@ -88,8 +90,30 @@ export function getActiveSavedView(): SavedDocumentView | null {
 }
 
 type ViewEdit = Partial<
-	Pick<SavedDocumentView, "sort" | "filters" | "groupBy" | "propertyColumns">
+	Pick<
+		SavedDocumentView,
+		| "sort"
+		| "filters"
+		| "groupBy"
+		| "propertyColumns"
+		| keyof DocumentViewLayout
+	>
 >;
+
+const LAYOUT_KEYS: readonly (keyof DocumentViewLayout)[] = [
+	"viewType",
+	"boardField",
+	"calendarField",
+];
+
+function layoutEditOf(edit: ViewEdit): Partial<DocumentViewLayout> | null {
+	const layoutEdit: Partial<DocumentViewLayout> = {};
+	for (const key of LAYOUT_KEYS) {
+		if (edit[key] !== undefined)
+			Object.assign(layoutEdit, { [key]: edit[key] });
+	}
+	return Object.keys(layoutEdit).length > 0 ? layoutEdit : null;
+}
 
 function editCurrentView(edit: ViewEdit) {
 	const workspacePath = currentWorkspacePath();
@@ -102,6 +126,13 @@ function editCurrentView(edit: ViewEdit) {
 			),
 		}));
 		return;
+	}
+	const layoutEdit = layoutEditOf(edit);
+	if (layoutEdit) {
+		documentTableViewStore.set((view) => ({
+			...view,
+			layout: { ...view.layout, ...layoutEdit },
+		}));
 	}
 	if (edit.filters !== undefined || edit.groupBy !== undefined) {
 		documentTableViewStore.set((view) => ({
@@ -151,6 +182,29 @@ export function getCurrentPropertyColumns(): PropertyFieldId[] {
 		getActiveSavedView()?.propertyColumns ??
 		getWorkspaceDocumentViews(currentWorkspacePath()).propertyColumns
 	);
+}
+
+export function getCurrentViewLayout(): DocumentViewLayout {
+	const saved = getActiveSavedView();
+	if (!saved) return documentTableViewStore.get().layout;
+	return {
+		viewType: saved.viewType,
+		boardField: saved.boardField,
+		calendarField: saved.calendarField,
+	};
+}
+
+/** Table / Board / Calendar switcher: edits the current view (saved views persist it). */
+export function setDocumentViewType(viewType: DocumentViewType) {
+	editCurrentView({ viewType });
+}
+
+export function setBoardField(boardField: PropertyFieldId | null) {
+	editCurrentView({ boardField });
+}
+
+export function setCalendarField(calendarField: PropertyFieldId | null) {
+	editCurrentView({ calendarField });
 }
 
 /** Header-click sort: edits the current view's sort only. */
@@ -211,6 +265,7 @@ export function saveCurrentViewAs(name: string): string | null {
 		filters: [...getCurrentPropertyFilters()],
 		groupBy: saved ? saved.groupBy : session.propertyGroupBy,
 		propertyColumns: [...getCurrentPropertyColumns()],
+		...getCurrentViewLayout(),
 	};
 	writeWorkspaceDocumentViews(workspacePath, (views) => ({
 		...views,

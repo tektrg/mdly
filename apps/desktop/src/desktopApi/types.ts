@@ -498,6 +498,18 @@ export type DesktopApi = {
 		content: string,
 		options?: WriteFileTextOptions,
 	): Promise<void>;
+	/**
+	 * Writes only if the file still holds exactly `expected` (strict UTF-8),
+	 * atomically (temp file + rename). Never recreates a deleted file.
+	 */
+	writeFileTextIfUnchanged(
+		path: string,
+		expected: string,
+		content: string,
+		options?: WriteFileTextOptions,
+	): Promise<
+		{ ok: true } | { ok: false; reason: "missing" | "changed" | "not-utf8" }
+	>;
 	renameFile(fromPath: string, toPath: string): Promise<void>;
 	renameSymlinkTarget(linkPath: string, nextName: string): Promise<void>;
 	/** Read-only: never appends to the note's history log (R19). Returned oldest-first, in the log's own reconstructed `prev`-chain edit order — never re-sorted by `at` (R9); the UI reverses for its newest-first display (R8). */
