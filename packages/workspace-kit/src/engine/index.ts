@@ -12,6 +12,11 @@ export {
 	serializeFrontMatter,
 	setMarkdownFrontMatter,
 } from "./frontMatter.js";
+export {
+	type FrontMatterEditResult,
+	type FrontMatterEditValue,
+	setFrontMatterValue,
+} from "./frontMatterEdit.js";
 export { HeadingExtension } from "./Heading.js";
 export {
 	createLinkMark,
