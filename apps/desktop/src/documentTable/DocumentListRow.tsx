@@ -170,7 +170,7 @@ function PropertyCell({
 	fieldId: PropertyFieldId;
 	row: DocumentTableRow;
 }) {
-	const text = formatPropertyValue(row.properties?.[fieldId]);
+	const text = formatPropertyValue(row.properties?.[fieldId], fieldId);
 	return (
 		<span
 			role="gridcell"

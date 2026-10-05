@@ -44,6 +44,19 @@ export type FrontMatterPropertyScan = {
 	propertiesByPath: Record<string, Record<string, ScannedFrontMatterProperty>>;
 	/** Files whose front matter could not be parsed (malformed YAML, too long). */
 	invalidPaths: string[];
+	/** Only when asked with `includeStats`: every readable path's size and body word count. */
+	statsByPath?: Record<string, ScannedFileStats>;
+};
+
+export type ScannedFileStats = {
+	sizeBytes: number;
+	/** Words in the body (front matter excluded). */
+	wordCount: number;
+};
+
+export type FrontMatterPropertyScanOptions = {
+	/** Read whole files for Size / Word count. Off by default: heads only. */
+	includeStats?: boolean;
 };
 
 export type PersistPastedImageInput = {
@@ -434,7 +447,10 @@ export type DesktopApi = {
 	 * Every supported front-matter property of each path, from an ~8 KB head
 	 * read. Read-only; the document table's property columns are built from it.
 	 */
-	scanFrontMatterProperties(paths: string[]): Promise<FrontMatterPropertyScan>;
+	scanFrontMatterProperties(
+		paths: string[],
+		options?: FrontMatterPropertyScanOptions,
+	): Promise<FrontMatterPropertyScan>;
 	readWorkspaceConfig(workspacePath: string): Promise<WorkspaceConfig>;
 	writeWorkspaceConfig(
 		workspacePath: string,

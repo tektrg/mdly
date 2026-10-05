@@ -10,9 +10,10 @@ import type {
 import { DocumentBoard } from "./DocumentBoard";
 import { DocumentCalendar } from "./DocumentCalendar";
 
-const writeDocumentProperty = vi.fn(
-	async (..._args: unknown[]) => ({ ok: true, changed: true }),
-);
+const writeDocumentProperty = vi.fn(async (..._args: unknown[]) => ({
+	ok: true,
+	changed: true,
+}));
 vi.mock("../properties/propertyWrite", () => ({
 	writeDocumentProperty: (...args: unknown[]) => writeDocumentProperty(...args),
 }));
@@ -21,7 +22,10 @@ vi.mock("../properties/propertyWrite", () => ({
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-function row(name: string, properties: PropertyRowValues = {}): DocumentTableRow {
+function row(
+	name: string,
+	properties: PropertyRowValues = {},
+): DocumentTableRow {
 	const path = `/ws/${name}.md`;
 	return {
 		path,
@@ -44,7 +48,12 @@ const STATUS: PropertyField = {
 	options: ["Todo", "Done"],
 	documentCount: 2,
 };
-const DUE: PropertyField = { id: "prop:due", label: "due", type: "date", documentCount: 4 };
+const DUE: PropertyField = {
+	id: "prop:due",
+	label: "due",
+	type: "date",
+	documentCount: 4,
+};
 
 let container: HTMLDivElement;
 let root: Root;
@@ -73,7 +82,10 @@ async function openMenu(label: string) {
 }
 
 describe("board interactions", () => {
-	const rows = [row("a", { "prop:status": "Todo" }), row("b", { "prop:status": "Done" })];
+	const rows = [
+		row("a", { "prop:status": "Todo" }),
+		row("b", { "prop:status": "Done" }),
+	];
 
 	function renderBoard(fields: PropertyField[] = [STATUS], reading = false) {
 		act(() => {
@@ -90,14 +102,48 @@ describe("board interactions", () => {
 		});
 	}
 
+	it("a read-only (built-in) board field: cards don't drag and Move to says why", async () => {
+		const folder: PropertyField = {
+			...STATUS,
+			id: "file:folder",
+			label: "Folder",
+			readOnly: true,
+		};
+		act(() => {
+			root.render(
+				<DocumentBoard
+					rows={[row("a", { "file:folder": "notes" })]}
+					fields={[folder]}
+					boardField="file:folder"
+					propertyColumns={[]}
+					onOpenDocument={() => {}}
+				/>,
+			);
+		});
+		const card = container.querySelector("[data-note-card]") as HTMLElement;
+		expect(card.getAttribute("draggable")).toBe("false");
+		const items = await openMenu("Move a");
+		expect(items.map((item) => item.textContent)).toEqual([
+			"Can't move — this comes from the file",
+		]);
+		expect(writeDocumentProperty).not.toHaveBeenCalled();
+	});
+
 	it("moves a card from the keyboard menu, not offering its own column", async () => {
 		renderBoard();
 		const items = await openMenu("Move a");
-		expect(items.map((item) => item.textContent)).toEqual(["Done", "No status"]);
+		expect(items.map((item) => item.textContent)).toEqual([
+			"Done",
+			"No status",
+		]);
 		await act(async () => {
 			items[0]?.click();
 		});
-		expect(writeDocumentProperty).toHaveBeenCalledWith(rows[0], "status", "Done");
+		expect(writeDocumentProperty).toHaveBeenCalledWith(
+			rows[0],
+			"status",
+			"Done",
+		);
 	});
 
 	it("says it is reading properties while the scan is pending", () => {
@@ -147,7 +193,9 @@ describe("board interactions", () => {
 			column.dispatchEvent(drop);
 		});
 		expect(writeDocumentProperty).not.toHaveBeenCalled();
-		const done = container.querySelector('[data-board-column="Done"]') as HTMLElement;
+		const done = container.querySelector(
+			'[data-board-column="Done"]',
+		) as HTMLElement;
 		const drop2 = new Event("drop", { bubbles: true, cancelable: true });
 		Object.assign(drop2, {
 			dataTransfer: { getData: () => "/ws/a.md", types: [] },
@@ -155,7 +203,11 @@ describe("board interactions", () => {
 		act(() => {
 			done.dispatchEvent(drop2);
 		});
-		expect(writeDocumentProperty).toHaveBeenCalledWith(rows[0], "status", "Done");
+		expect(writeDocumentProperty).toHaveBeenCalledWith(
+			rows[0],
+			"status",
+			"Done",
+		);
 	});
 });
 
@@ -179,7 +231,13 @@ describe("calendar interactions", () => {
 		});
 		vi.useRealTimers();
 		const items = await openMenu("All 5 notes on 2026-10-05");
-		expect(items.map((item) => item.textContent)).toEqual(["a", "b", "c", "d", "e"]);
+		expect(items.map((item) => item.textContent)).toEqual([
+			"a",
+			"b",
+			"c",
+			"d",
+			"e",
+		]);
 		await act(async () => {
 			items[4]?.click();
 		});

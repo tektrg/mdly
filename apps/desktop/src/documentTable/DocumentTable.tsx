@@ -28,6 +28,7 @@ import type {
 } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
+import { addColumnMenuFields } from "./properties/builtinFields";
 import {
 	AddPropertyColumnMenu,
 	PropertyColumnMenu,
@@ -410,7 +411,11 @@ export function DocumentTable({
 				<div className="flex items-center gap-2">
 					<ViewTypeSwitcher value={layout.viewType} />
 					<AddPropertyColumnMenu
-						fields={propertyFields}
+						fields={addColumnMenuFields(
+							propertyFields,
+							layout.viewType,
+							propertyColumns,
+						)}
 						visibleColumns={propertyColumns}
 						isScanning={propertyScan.status === "scanning"}
 					/>

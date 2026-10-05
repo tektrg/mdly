@@ -19,7 +19,7 @@ import {
 } from "./documentViews";
 import { PropertyMenu, PropertyMenuItem } from "./PropertyMenu";
 import type { PropertyField } from "./propertyFields";
-import type { PropertyScanState } from "./propertyScanStore";
+import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
 const CHIP_CLASS =
 	"inline-flex h-6 max-w-64 items-center gap-1 rounded-full border border-border bg-muted/40 ps-2.5 pe-1 text-[11px] text-foreground";
@@ -167,20 +167,6 @@ export function SavedViewTabs({
 			) : null}
 		</nav>
 	);
-}
-
-function scanStatusText(scan: PropertyScanState): string | null {
-	if (scan.status === "scanning") {
-		return `Reading front matter… ${scan.scannedCount.toLocaleString()} / ${scan.pendingCount.toLocaleString()}`;
-	}
-	if (scan.status === "failed") {
-		return `Front matter could not be read: ${scan.failureMessage ?? "unknown error"}`;
-	}
-	if (scan.invalidPaths.length > 0) {
-		const count = scan.invalidPaths.length;
-		return `${count.toLocaleString()} ${count === 1 ? "file has" : "files have"} unreadable front matter`;
-	}
-	return null;
 }
 
 /**

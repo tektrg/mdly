@@ -104,19 +104,28 @@ export function useDocumentTableRows(activePath: string | null): {
 	const files = useStoreValue(workspaceStore, (workspace) => workspace.files);
 	const workspacePath = useStoreValue(workspacePathStore);
 	const { view, propertyFields } = useCurrentDocumentView();
-	const { valuesByPath } = usePropertyModel();
+	const { valuesByPath, statsByPath } = usePropertyModel();
 	const rows = useMemo(
 		() =>
 			applyDocumentTableView(
 				withPropertyValues(
 					buildDocumentRows(files, workspacePath ?? null),
 					valuesByPath,
+					statsByPath,
 				),
 				view,
 				activePath,
 				propertyFields,
 			),
-		[activePath, files, view, workspacePath, valuesByPath, propertyFields],
+		[
+			activePath,
+			files,
+			view,
+			workspacePath,
+			valuesByPath,
+			statsByPath,
+			propertyFields,
+		],
 	);
 	return { rows, view };
 }

@@ -3,12 +3,14 @@
  * each note on the day its date field names. Dates are the scan's
  * `YYYY-MM-DD` strings, compared as text — no time zones involved.
  */
+
 import type { DocumentTableRow } from "../documentTableView";
 import {
 	type PropertyField,
 	type PropertyFieldId,
 	propertyFieldId,
 } from "../properties/propertyFields";
+import { calendarDayOf } from "./calendarDates";
 
 /** Notes listed per day cell before "+N more". */
 export const CALENDAR_DAY_CARD_LIMIT = 3;
@@ -111,7 +113,8 @@ export function buildCalendarModel(
 			undatedCount += 1;
 			continue;
 		}
-		const bucket = byDate.get(value);
+		const day = calendarDayOf(value);
+		const bucket = day ? byDate.get(day) : undefined;
 		if (bucket) bucket.push(row);
 		else outsideCount += 1;
 	}

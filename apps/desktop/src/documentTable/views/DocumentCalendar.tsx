@@ -14,6 +14,7 @@ import type {
 	PropertyField,
 	PropertyFieldId,
 } from "../properties/propertyFields";
+import { calendarDayOf, moveValueToDay } from "./calendarDates";
 import {
 	buildCalendarModel,
 	type CalendarDay,
@@ -30,12 +31,18 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
-import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
+import {
+	READ_ONLY_MOVE_TARGETS,
+	useNoteDropTarget,
+	writeDroppedProperty,
+} from "./viewDrag";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type CalendarActions = {
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
+	/** False on a read-only (built-in) field. */
+	canDrag: boolean;
 	onMove: (row: DocumentTableRow, date: string) => void;
 	onDropPath: (path: string, date: string) => void;
 };
@@ -101,6 +108,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
 					key={row.path}
 					row={row}
 					compact
+					canDrag={actions.canDrag}
 					moveTargets={actions.moveTargets}
 					onMove={actions.onMove}
 					onOpenDocument={onOpenDocument}
@@ -126,20 +134,33 @@ function useCalendarActions(
 ): CalendarActions {
 	const latest = useRef({ field, rows });
 	latest.current = { field, rows };
+	const canDrag = !field?.readOnly;
 	return useMemo<CalendarActions>(() => {
 		const moveTo = (row: DocumentTableRow, date: string | null) => {
 			const current = latest.current.field;
 			if (!current) return;
 			// Dropped on its own day: nothing to write.
-			if ((row.properties?.[current.id] ?? null) === date) return;
-			void writeDroppedProperty(row, current, date);
+			const currentDate = row.properties?.[current.id];
+			const currentDay =
+				typeof currentDate === "string" ? calendarDayOf(currentDate) : null;
+			if (currentDay === date) return;
+			// Keep the time of a date-time value; only its day changes.
+			const nextValue =
+				date !== null && typeof currentDate === "string" && currentDay
+					? moveValueToDay(currentDate, date)
+					: date;
+			void writeDroppedProperty(row, current, nextValue);
 		};
 		return {
+			canDrag,
 			moveTargets: (row) => {
 				const current = latest.current.field;
 				const date = current ? row.properties?.[current.id] : null;
 				if (typeof date !== "string") return [];
-				return calendarMoveTargets(date).map((target) => ({
+				if (current?.readOnly) return [...READ_ONLY_MOVE_TARGETS];
+				const day = calendarDayOf(date);
+				if (!day) return [];
+				return calendarMoveTargets(day).map((target) => ({
 					key: target.date ?? REMOVE_DATE_KEY,
 					label: target.label,
 				}));
@@ -152,7 +173,7 @@ function useCalendarActions(
 				if (row) moveTo(row, date);
 			},
 		};
-	}, []);
+	}, [canDrag]);
 }
 
 /** Calendar layout: a month grid of notes by a date property. */

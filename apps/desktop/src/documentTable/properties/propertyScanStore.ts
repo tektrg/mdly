@@ -1,6 +1,8 @@
 import { store } from "@simplestack/store";
 import type {
 	FrontMatterPropertyScan,
+	FrontMatterPropertyScanOptions,
+	ScannedFileStats,
 	ScannedFrontMatterProperty,
 } from "../../desktopApi/types";
 import type { PropertiesByPath } from "./propertyFields";
@@ -27,6 +29,15 @@ export type PropertyScanState = {
 	mtimeByPath: Readonly<Record<string, number>>;
 	/** Files whose front matter could not be parsed — surfaced, never hidden. */
 	invalidPaths: readonly string[];
+	/**
+	 * Size + body word count per path, read only once a view used a built-in
+	 * that needs them (`includeStats`). Same mtime cache as the properties.
+	 */
+	statsByPath: Readonly<Record<string, ScannedFileStats>>;
+	/** Sticky per workspace: once stats were wanted, changed files keep being counted. */
+	includeStats: boolean;
+	/** Files whose stats could not be read, by the mtime tried: not retried until it moves. */
+	statsUnreadableMtimeByPath: Readonly<Record<string, number>>;
 	/** Progress of the running scan, for the status line. */
 	scannedCount: number;
 	pendingCount: number;
@@ -39,6 +50,9 @@ const EMPTY_STATE: PropertyScanState = {
 	propertiesByPath: {},
 	mtimeByPath: {},
 	invalidPaths: [],
+	statsByPath: {},
+	includeStats: false,
+	statsUnreadableMtimeByPath: {},
 	scannedCount: 0,
 	pendingCount: 0,
 };
@@ -55,9 +69,14 @@ export type PropertyScanFile = { path: string; modifiedAt: number };
 
 export type ScanFrontMatterProperties = (
 	paths: string[],
+	options?: FrontMatterPropertyScanOptions,
 ) => Promise<FrontMatterPropertyScan>;
 
-/** Paths that are new or whose mtime moved since the last read of this workspace. */
+/**
+ * Paths that are new or whose mtime moved since the last read of this
+ * workspace; with stats on, also those not counted yet (the first time a view
+ * asks for Word count / Size, every file is read once).
+ */
 export function propertyPathsToScan(
 	state: PropertyScanState,
 	scope: string | null,
@@ -65,7 +84,13 @@ export function propertyPathsToScan(
 ): string[] {
 	if (state.scope !== scope) return files.map((file) => file.path);
 	return files
-		.filter((file) => state.mtimeByPath[file.path] !== file.modifiedAt)
+		.filter(
+			(file) =>
+				state.mtimeByPath[file.path] !== file.modifiedAt ||
+				(state.includeStats &&
+					!(file.path in state.statsByPath) &&
+					state.statsUnreadableMtimeByPath[file.path] !== file.modifiedAt),
+		)
 		.map((file) => file.path);
 }
 
@@ -84,11 +109,28 @@ export function mergePropertyBatch(
 		Readonly<Record<string, ScannedFrontMatterProperty>>
 	> = { ...state.propertiesByPath };
 	const mtimeByPath: Record<string, number> = { ...state.mtimeByPath };
+	const resultStats = result.statsByPath;
+	const statsByPath: Record<string, ScannedFileStats> = resultStats
+		? { ...state.statsByPath }
+		: (state.statsByPath as Record<string, ScannedFileStats>);
+	const statsUnreadable: Record<string, number> = resultStats
+		? { ...state.statsUnreadableMtimeByPath }
+		: (state.statsUnreadableMtimeByPath as Record<string, number>);
 	const invalid = new Set(state.invalidPaths);
 	for (const file of requested) {
 		const properties = result.propertiesByPath[file.path];
 		if (properties) propertiesByPath[file.path] = properties;
 		else delete propertiesByPath[file.path];
+		if (resultStats) {
+			const stats = resultStats[file.path];
+			if (stats) {
+				statsByPath[file.path] = stats;
+				delete statsUnreadable[file.path];
+			} else {
+				delete statsByPath[file.path];
+				statsUnreadable[file.path] = file.modifiedAt;
+			}
+		}
 		invalid.delete(file.path);
 		mtimeByPath[file.path] = file.modifiedAt;
 	}
@@ -97,6 +139,8 @@ export function mergePropertyBatch(
 		...state,
 		propertiesByPath,
 		mtimeByPath,
+		statsByPath,
+		statsUnreadableMtimeByPath: statsUnreadable,
 		invalidPaths: [...invalid],
 		scannedCount: state.scannedCount + requested.length,
 	};
@@ -114,14 +158,20 @@ export function prunePropertyState(
 	if (stalePaths.length === 0 && !staleInvalid) return state;
 	const propertiesByPath = { ...state.propertiesByPath };
 	const mtimeByPath = { ...state.mtimeByPath };
+	const statsByPath = { ...state.statsByPath };
+	const statsUnreadableMtimeByPath = { ...state.statsUnreadableMtimeByPath };
 	for (const path of stalePaths) {
 		delete propertiesByPath[path];
 		delete mtimeByPath[path];
+		delete statsByPath[path];
+		delete statsUnreadableMtimeByPath[path];
 	}
 	return {
 		...state,
 		propertiesByPath,
 		mtimeByPath,
+		statsByPath,
+		statsUnreadableMtimeByPath,
 		invalidPaths: state.invalidPaths.filter((path) => live.has(path)),
 	};
 }
@@ -142,6 +192,7 @@ export async function runPropertyScan(
 	scope: string | null,
 	files: readonly PropertyScanFile[],
 	scan: ScanFrontMatterProperties,
+	options: { includeStats?: boolean } = {},
 ): Promise<void> {
 	const generation = ++scanGeneration;
 	const isCurrent = () =>
@@ -151,11 +202,17 @@ export async function runPropertyScan(
 	// of saves during a cold scan never re-reads what was already read.
 	const carried = unpublishedWork?.scope === scope ? unpublishedWork : null;
 	unpublishedWork = null;
-	propertyScanStore.set((state) =>
-		state.scope === scope
-			? prunePropertyState(carried ?? state, files)
-			: { ...EMPTY_STATE, scope },
-	);
+	const wantsStats = options.includeStats === true;
+	propertyScanStore.set((state) => {
+		const scoped =
+			state.scope === scope
+				? prunePropertyState(carried ?? state, files)
+				: { ...EMPTY_STATE, scope };
+		return wantsStats && !scoped.includeStats
+			? { ...scoped, includeStats: true }
+			: scoped;
+	});
+	const includeStats = propertyScanStore.get().includeStats;
 	const fileByPath = new Map(files.map((file) => [file.path, file]));
 	const pending = propertyPathsToScan(propertyScanStore.get(), scope, files)
 		.map((path) => fileByPath.get(path))
@@ -187,7 +244,10 @@ export async function runPropertyScan(
 			start += PROPERTY_SCAN_BATCH_SIZE
 		) {
 			const batch = pending.slice(start, start + PROPERTY_SCAN_BATCH_SIZE);
-			const result = await scan(batch.map((file) => file.path));
+			const batchPaths = batch.map((file) => file.path);
+			const result = includeStats
+				? await scan(batchPaths, { includeStats: true })
+				: await scan(batchPaths);
 			if (!isCurrent()) return;
 			working = mergePropertyBatch(working, batch, result);
 			unpublishedWork = working;
@@ -221,4 +281,22 @@ export function resetPropertyScan() {
 	scanGeneration += 1;
 	unpublishedWork = null;
 	propertyScanStore.set(EMPTY_STATE);
+}
+
+/** The status line under the view bar while a scan runs (or failed). */
+export function scanStatusText(scan: PropertyScanState): string | null {
+	if (scan.status === "scanning") {
+		const verb = scan.includeStats
+			? "Counting words…"
+			: "Reading front matter…";
+		return `${verb} ${scan.scannedCount.toLocaleString()} / ${scan.pendingCount.toLocaleString()}`;
+	}
+	if (scan.status === "failed") {
+		return `Front matter could not be read: ${scan.failureMessage ?? "unknown error"}`;
+	}
+	if (scan.invalidPaths.length > 0) {
+		const count = scan.invalidPaths.length;
+		return `${count.toLocaleString()} ${count === 1 ? "file has" : "files have"} unreadable front matter`;
+	}
+	return null;
 }

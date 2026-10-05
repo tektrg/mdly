@@ -25,7 +25,7 @@ import {
 	PEEK_LIST_DEFAULT_WIDTH,
 	setPeekListDesiredWidth,
 } from "../documentTable/peekListWidth";
-import { usePropertyScanSync } from "../documentTable/properties/usePropertyModel";
+import { usePropertyScanSync } from "../documentTable/properties/usePropertyScanSync";
 import { useDocumentTableRows } from "../documentTable/useDocumentTableRows";
 import { useNavContainerWidth } from "../documentTable/useNavContainerWidth";
 import { PEEK_DOCUMENT_MIN_WIDTH } from "../lib/navLayout";

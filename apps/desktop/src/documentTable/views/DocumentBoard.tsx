@@ -24,10 +24,16 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
-import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
+import {
+	READ_ONLY_MOVE_TARGETS,
+	useNoteDropTarget,
+	writeDroppedProperty,
+} from "./viewDrag";
 
 type BoardActions = {
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
+	/** False on a read-only (built-in) field. */
+	canDrag: boolean;
 	onMove: (row: DocumentTableRow, columnKey: string) => void;
 	onDropPath: (path: string, column: BoardColumn) => void;
 	onShowMore: (column: BoardColumn) => void;
@@ -75,6 +81,7 @@ const BoardColumnView = memo(function BoardColumnView({
 						row={row}
 						propertyColumns={propertyColumns}
 						labelById={labelById}
+						canDrag={actions.canDrag}
 						moveTargets={actions.moveTargets}
 						onMove={actions.onMove}
 						onOpenDocument={onOpenDocument}
@@ -104,6 +111,7 @@ function useBoardActions(
 ): BoardActions {
 	const latest = useRef({ model, rows });
 	latest.current = { model, rows };
+	const canDrag = !model?.field.readOnly;
 	return useMemo<BoardActions>(() => {
 		const moveTo = (row: DocumentTableRow, column: BoardColumn) => {
 			const current = latest.current.model;
@@ -115,9 +123,11 @@ function useBoardActions(
 		const columnByKey = (key: string) =>
 			latest.current.model?.columns.find((column) => column.key === key);
 		return {
+			canDrag,
 			moveTargets: (row) => {
 				const current = latest.current.model;
 				if (!current) return [];
+				if (current.field.readOnly) return [...READ_ONLY_MOVE_TARGETS];
 				return moveTargetsFor(row, current).map((column) => ({
 					key: column.key,
 					label: column.label,
@@ -139,7 +149,7 @@ function useBoardActions(
 					[column.key]: column.rows.length + BOARD_COLUMN_CARD_LIMIT,
 				})),
 		};
-	}, [setLimits]);
+	}, [setLimits, canDrag]);
 }
 
 /**

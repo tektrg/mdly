@@ -5,6 +5,7 @@ import {
 	propertyScanStore,
 	resetPropertyScan,
 	runPropertyScan,
+	scanStatusText,
 } from "./propertyScanStore";
 
 const status = (value: string) => ({ type: "text" as const, value });
@@ -30,7 +31,88 @@ function fakeScanner(
 
 afterEach(() => resetPropertyScan());
 
+describe("runPropertyScan stats bookkeeping", () => {
+	it("does not retry an unreadable file until its mtime moves; a workspace switch releases stats", async () => {
+		const scan = vi.fn(
+			async (_paths: string[], options?: { includeStats?: boolean }) => ({
+				propertiesByPath: {},
+				invalidPaths: [],
+				...(options?.includeStats ? { statsByPath: {} } : {}),
+			}),
+		);
+		const files = [{ path: "/ws/locked.md", modifiedAt: 1 }];
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		expect(scan).toHaveBeenCalledTimes(1);
+		await runPropertyScan(
+			"/ws",
+			[{ path: "/ws/locked.md", modifiedAt: 2 }],
+			scan,
+			{ includeStats: true },
+		);
+		expect(scan).toHaveBeenCalledTimes(2);
+		await runPropertyScan("/other", [], scan);
+		const state = propertyScanStore.get();
+		expect([
+			state.includeStats,
+			state.statsByPath,
+			state.statsUnreadableMtimeByPath,
+		]).toEqual([false, {}, {}]);
+	});
+
+	it("says when it is counting words", async () => {
+		const base = {
+			...propertyScanStore.get(),
+			status: "scanning" as const,
+			scannedCount: 5000,
+			pendingCount: 50000,
+		};
+		expect(scanStatusText({ ...base, includeStats: true })).toBe(
+			"Counting words… 5,000 / 50,000",
+		);
+		expect(scanStatusText({ ...base, includeStats: false })).toBe(
+			"Reading front matter… 5,000 / 50,000",
+		);
+	});
+});
+
 describe("runPropertyScan", () => {
+	it("reads whole files for stats only once a view asks, then only changed files", async () => {
+		const scan = vi.fn(
+			async (paths: string[], options?: { includeStats?: boolean }) => ({
+				propertiesByPath: {},
+				invalidPaths: [],
+				...(options?.includeStats
+					? {
+							statsByPath: Object.fromEntries(
+								paths.map((path) => [path, { sizeBytes: 10, wordCount: 2 }]),
+							),
+						}
+					: {}),
+			}),
+		);
+		const files = [
+			{ path: "/ws/a.md", modifiedAt: 1 },
+			{ path: "/ws/b.md", modifiedAt: 1 },
+		];
+		await runPropertyScan("/ws", files, scan);
+		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md", "/ws/b.md"]);
+		// The view adds Word count: every file is read whole, once.
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md", "/ws/b.md"], {
+			includeStats: true,
+		});
+		expect(Object.keys(propertyScanStore.get().statsByPath)).toHaveLength(2);
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		expect(scan).toHaveBeenCalledTimes(2);
+		// Sticky: a changed file is still counted after the column is hidden; a removed one is forgotten.
+		await runPropertyScan("/ws", [{ path: "/ws/a.md", modifiedAt: 2 }], scan);
+		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md"], { includeStats: true });
+		expect(Object.keys(propertyScanStore.get().statsByPath)).toEqual([
+			"/ws/a.md",
+		]);
+	});
+
 	it("reads everything once, then only files whose mtime moved", async () => {
 		const scan = fakeScanner(() => ({ status: status("Todo") }));
 		const files = [

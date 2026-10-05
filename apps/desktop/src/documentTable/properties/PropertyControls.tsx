@@ -72,8 +72,9 @@ export function PropertyColumnMenu({
 		>
 			{field ? (
 				<PropertyMenuLabel>
-					{TYPE_LABELS[field.type]} · {field.documentCount.toLocaleString()}{" "}
-					documents
+					{TYPE_LABELS[field.type]}
+					{field.readOnly ? " · from the file" : ""} ·{" "}
+					{field.documentCount.toLocaleString()} documents
 				</PropertyMenuLabel>
 			) : (
 				<PropertyMenuLabel>No document has this property</PropertyMenuLabel>
@@ -99,7 +100,11 @@ export function PropertyColumnMenu({
 			<PropertyMenuItem
 				onClick={() => setPropertyGroupBy(isGrouped ? null : fieldId)}
 			>
-				{isGrouped ? "Ungroup" : `Group by ${label}`}
+				{isGrouped
+					? "Ungroup"
+					: field?.type === "date"
+						? `Group by ${label} (Today, This week…)`
+						: `Group by ${label}`}
 			</PropertyMenuItem>
 			<PropertyMenuSeparator />
 			<PropertyMenuItem
@@ -162,7 +167,7 @@ export function AddPropertyColumnMenu({
 					>
 						{field.label}
 						<span className="ms-1.5 text-muted-foreground/70">
-							{TYPE_LABELS[field.type]}
+							{field.readOnly ? "File" : TYPE_LABELS[field.type]}
 						</span>
 					</PropertyMenuItem>
 				))

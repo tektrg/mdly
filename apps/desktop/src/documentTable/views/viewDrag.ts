@@ -2,6 +2,7 @@ import type { FrontMatterEditValue } from "@mdly/workspace-kit/engine";
 import { type DragEvent, useState } from "react";
 import { toast } from "sonner";
 import type { DocumentTableRow } from "../documentTableView";
+import { READ_ONLY_MOVE_MESSAGE } from "../properties/builtinFields";
 import type { PropertyField } from "../properties/propertyFields";
 import { writeDocumentProperty } from "../properties/propertyWrite";
 
@@ -24,13 +25,18 @@ export function draggedNotePath(event: DragEvent): string | null {
 /**
  * A card dropped on a column/day: rewrite that one front-matter key. The key
  * is the field's label (its commonest spelling); the edit matches any casing
- * already in the file. A refusal is shown, never swallowed.
+ * already in the file. A refusal is shown, never swallowed. A built-in
+ * (read-only) field writes nothing and says why.
  */
 export async function writeDroppedProperty(
 	row: DocumentTableRow,
 	field: PropertyField,
 	value: FrontMatterEditValue | null,
 ): Promise<boolean> {
+	if (field.readOnly) {
+		toast.error(READ_ONLY_MOVE_MESSAGE);
+		return false;
+	}
 	const result = await writeDocumentProperty(row, field.label, value);
 	if (!result.ok) {
 		toast.error(`“${row.name}” was not changed`, {
@@ -70,3 +76,8 @@ export function useNoteDropTarget(onDropPath: (path: string) => void) {
 		},
 	};
 }
+
+/** The "Move to" menu of a card on a read-only field: one disabled line saying why. */
+export const READ_ONLY_MOVE_TARGETS = [
+	{ key: "read-only", label: READ_ONLY_MOVE_MESSAGE, disabled: true },
+] as const;

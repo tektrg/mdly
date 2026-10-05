@@ -53,13 +53,49 @@ describe("property columns at 50k documents", () => {
 			propertiesByPath[file.path] = properties;
 		});
 
-		const model = timed("infer schema + typed values (per scan batch)", () =>
-			derivePropertyModel(propertiesByPath),
-		).value;
 		const rows = buildDocumentRows(files, "/ws");
-		const merged = timed("merge values into rows (per scan batch)", () =>
-			withPropertyValues(rows, model.valuesByPath),
+		const statsByPath = Object.fromEntries(
+			files.map((file, index) => [
+				file.path,
+				{ sizeBytes: 900 + index, wordCount: index % 3000 },
+			]),
+		);
+		const model = timed(
+			"infer schema + typed values + built-ins (per scan batch)",
+			() => derivePropertyModel(propertiesByPath, { rows, statsByPath }),
 		).value;
+		const merged = timed("merge values into rows (per scan batch)", () =>
+			withPropertyValues(rows, model.valuesByPath, model.statsByPath),
+		).value;
+		// The next scan batch: one file changed, the rest keep their objects.
+		// Best of 3 fresh batches: the bound is about the work, not a busy machine.
+		const changedPath = files[7]?.path as string;
+		const runNextBatch = (batch: number) => {
+			const nextProperties = {
+				...propertiesByPath,
+				[changedPath]: {
+					status: { type: "text" as const, value: `Done ${batch}` },
+				},
+			};
+			const nextStats = {
+				...statsByPath,
+				[changedPath]: { sizeBytes: 1, wordCount: 1 },
+			};
+			return timed("next scan batch: re-derive + re-merge", () =>
+				withPropertyValues(
+					rows,
+					derivePropertyModel(nextProperties, { rows, statsByPath: nextStats })
+						.valuesByPath,
+					nextStats,
+				),
+			);
+		};
+		const nextBatch = [0, 1, 2]
+			.map(runNextBatch)
+			.reduce((best, run) => (run.ms < best.ms ? run : best));
+		expect(nextBatch.value[7]?.properties?.["file:words"]).toBe(1);
+		expect(nextBatch.value[8]).toBe(merged[8]); // unchanged rows are reused
+		expect(nextBatch.ms).toBeLessThan(120); // ~55 ms on the Pro (2026-10-05)
 
 		const base = {
 			...createDefaultDocumentTableView(),
@@ -92,6 +128,20 @@ describe("property columns at 50k documents", () => {
 		const groupedTags = timed("group by tags (multi-membership)", () =>
 			buildPropertyGroupTree(sorted, "prop:tags", model.fields),
 		);
+		const byModified = timed("group by Modified date range", () =>
+			buildPropertyGroupTree(sorted, "file:modified", model.fields),
+		);
+		const byWords = timed("sort by Word count", () =>
+			applyDocumentTableView(
+				merged,
+				{ ...base, sort: { column: "file:words", direction: "desc" } },
+				null,
+				model.fields,
+			),
+		);
+		expect(byModified.value.children.length).toBeGreaterThan(0);
+		expect(byModified.ms).toBeLessThan(1500); // loose: CI and loaded machines vary
+		expect(byWords.value).toHaveLength(FILE_COUNT);
 		expect(grouped.value.children).toHaveLength(4);
 		expect(groupedTags.value.children.length).toBeGreaterThan(20);
 		expect(keystroke.ms).toBeLessThan(50);
