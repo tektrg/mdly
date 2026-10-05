@@ -40,6 +40,17 @@ describe("whole-file stats", () => {
 		expect(stats?.head.length).toBe(8192);
 	});
 
+	it("yields to the event loop between chunks", async () => {
+		const file = path.join(dir, "yield.md");
+		writeFileSync(file, "word ".repeat(400_000)); // 2 MB = 31 chunks
+		let ticks = 0;
+		const ticker = setInterval(() => ticks++, 0);
+		const stats = await readFileHeadAndStats(file, 8192);
+		clearInterval(ticker);
+		expect(stats?.wordCount).toBe(400_000);
+		expect(ticks).toBeGreaterThan(0);
+	});
+
 	// Writes 50k files (~80 MB) to tmp: opt-in. `MDLY_PERF=1 pnpm vitest run electron/fileWordCount.test.ts`
 	// 2026-10-05 Pro: heads-only 9.2 s, with word count 7.9 s (1.6 KB/file, warm cache).
 	it.skipIf(!process.env.MDLY_PERF)(

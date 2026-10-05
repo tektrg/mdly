@@ -5,6 +5,7 @@ import {
 	propertyScanStore,
 	resetPropertyScan,
 	runPropertyScan,
+	scanStatusText,
 } from "./propertyScanStore";
 
 const status = (value: string) => ({ type: "text" as const, value });
@@ -29,6 +30,31 @@ function fakeScanner(
 }
 
 afterEach(() => resetPropertyScan());
+
+describe("runPropertyScan stats bookkeeping", () => {
+	it("does not retry an unreadable file until its mtime moves; a workspace switch releases stats", async () => {
+		const scan = vi.fn(async (_paths: string[], options?: { includeStats?: boolean }) => ({
+			propertiesByPath: {},
+			invalidPaths: [],
+			...(options?.includeStats ? { statsByPath: {} } : {}),
+		}));
+		const files = [{ path: "/ws/locked.md", modifiedAt: 1 }];
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		await runPropertyScan("/ws", files, scan, { includeStats: true });
+		expect(scan).toHaveBeenCalledTimes(1);
+		await runPropertyScan("/ws", [{ path: "/ws/locked.md", modifiedAt: 2 }], scan, { includeStats: true });
+		expect(scan).toHaveBeenCalledTimes(2);
+		await runPropertyScan("/other", [], scan);
+		const state = propertyScanStore.get();
+		expect([state.includeStats, state.statsByPath, state.statsUnreadableMtimeByPath]).toEqual([false, {}, {}]);
+	});
+
+	it("says when it is counting words", async () => {
+		const base = { ...propertyScanStore.get(), status: "scanning" as const, scannedCount: 5000, pendingCount: 50000 };
+		expect(scanStatusText({ ...base, includeStats: true })).toBe("Counting words… 5,000 / 50,000");
+		expect(scanStatusText({ ...base, includeStats: false })).toBe("Reading front matter… 5,000 / 50,000");
+	});
+});
 
 describe("runPropertyScan", () => {
 	it("reads whole files for stats only once a view asks, then only changed files", async () => {

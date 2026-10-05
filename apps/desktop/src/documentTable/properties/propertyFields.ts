@@ -86,9 +86,11 @@ type FieldTally = {
 	labelCounts: Map<string, number>;
 	typeCounts: Map<ScannedFrontMatterProperty["type"], number>;
 	valueCounts: Map<string, number>;
-	longestText: number;
 	documentCount: number;
 };
+
+/** Field tallies keyed by id. Counts go up and down, so a scan batch updates them in place. */
+export type PropertyTallies = Map<PropertyFieldId, FieldTally>;
 
 function inferType(tally: FieldTally): FieldType {
 	const types = [...tally.typeCounts.keys()];
@@ -106,16 +108,20 @@ function inferType(tally: FieldTally): FieldType {
 	if (types.length === 1 && types[0] === "text") {
 		const distinct = tally.valueCounts.size;
 		const repeats = distinct < tally.documentCount;
-		if (
-			distinct <= SELECT_MAX_OPTIONS &&
-			repeats &&
-			tally.longestText <= SELECT_MAX_OPTION_LENGTH
-		) {
+		if (distinct <= SELECT_MAX_OPTIONS && repeats && longestOption(tally) <= SELECT_MAX_OPTION_LENGTH) {
 			return "select";
 		}
 	}
 	// Mixed scalars (a number here, text there) read as text: never guess.
 	return "text";
+}
+
+function longestOption(tally: FieldTally): number {
+	let longest = 0;
+	for (const option of tally.valueCounts.keys()) {
+		if (option.length > longest) longest = option.length;
+	}
+	return longest;
 }
 
 function scannedOptionValues(property: ScannedFrontMatterProperty): string[] {
@@ -137,58 +143,44 @@ function mostCommon(counts: Map<string, number>): string {
 	return best;
 }
 
-/**
- * One field per distinct (case-insensitive) front-matter key, typed from the
- * values. Ordered by how many documents carry it, then by label, so the
- * commonest properties lead the "add a column" menu.
- */
-export function inferPropertyFields(
-	propertiesByPath: PropertiesByPath,
-): PropertyField[] {
-	const tallies = new Map<PropertyFieldId, FieldTally>();
-	for (const properties of Object.values(propertiesByPath)) {
-		// `Status` and `status` in one file are one field, counted once.
-		const seenInDocument = new Set<PropertyFieldId>();
-		for (const [key, property] of Object.entries(properties)) {
-			if (key.trim().length === 0 || isEmptyScanned(property)) continue;
-			const id = propertyFieldId(key);
-			if (seenInDocument.has(id)) continue;
-			seenInDocument.add(id);
-			let tally = tallies.get(id);
-			if (!tally) {
-				tally = {
-					labelCounts: new Map(),
-					typeCounts: new Map(),
-					valueCounts: new Map(),
-					longestText: 0,
-					documentCount: 0,
-				};
-				tallies.set(id, tally);
-			}
-			tally.documentCount += 1;
-			tally.labelCounts.set(key, (tally.labelCounts.get(key) ?? 0) + 1);
-			tally.typeCounts.set(
-				property.type,
-				(tally.typeCounts.get(property.type) ?? 0) + 1,
-			);
-			for (const option of scannedOptionValues(property)) {
-				tally.valueCounts.set(option, (tally.valueCounts.get(option) ?? 0) + 1);
-				if (option.length > tally.longestText) {
-					tally.longestText = option.length;
-				}
-			}
-		}
-	}
+function bump<K>(counts: Map<K, number>, key: K, by: number) {
+	const next = (counts.get(key) ?? 0) + by;
+	if (next > 0) counts.set(key, next);
+	else counts.delete(key);
+}
 
+/** Adds (`sign` 1) or removes (`sign` -1) one document's properties from the tallies. */
+export function tallyDocument(
+	tallies: PropertyTallies,
+	properties: Readonly<Record<string, ScannedFrontMatterProperty>>,
+	sign: 1 | -1,
+) {
+	// `Status` and `status` in one file are one field, counted once.
+	const seenInDocument = new Set<PropertyFieldId>();
+	for (const [key, property] of Object.entries(properties)) {
+		if (key.trim().length === 0 || isEmptyScanned(property)) continue;
+		const id = propertyFieldId(key);
+		if (seenInDocument.has(id)) continue;
+		seenInDocument.add(id);
+		let tally = tallies.get(id);
+		if (!tally) {
+			tally = { labelCounts: new Map(), typeCounts: new Map(), valueCounts: new Map(), documentCount: 0 };
+			tallies.set(id, tally);
+		}
+		tally.documentCount += sign;
+		bump(tally.labelCounts, key, sign);
+		bump(tally.typeCounts, property.type, sign);
+		for (const option of scannedOptionValues(property)) bump(tally.valueCounts, option, sign);
+		if (tally.documentCount <= 0) tallies.delete(id);
+	}
+}
+
+/** Fields from tallies, commonest first, then by label. */
+export function fieldsFromTallies(tallies: PropertyTallies): PropertyField[] {
 	const fields: PropertyField[] = [];
 	for (const [id, tally] of tallies) {
 		const type = inferType(tally);
-		const field: PropertyField = {
-			id,
-			label: mostCommon(tally.labelCounts),
-			type,
-			documentCount: tally.documentCount,
-		};
+		const field: PropertyField = { id, label: mostCommon(tally.labelCounts), type, documentCount: tally.documentCount };
 		if (type === "select" || type === "multiSelect") {
 			field.options = [...tally.valueCounts.entries()]
 				.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
@@ -198,10 +190,19 @@ export function inferPropertyFields(
 		fields.push(field);
 	}
 	return fields.sort(
-		(a, b) =>
-			b.documentCount - a.documentCount ||
-			a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
+		(a, b) => b.documentCount - a.documentCount || a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
 	);
+}
+
+/**
+ * One field per distinct (case-insensitive) front-matter key, typed from the
+ * values. Ordered by how many documents carry it, then by label, so the
+ * commonest properties lead the "add a column" menu.
+ */
+export function inferPropertyFields(propertiesByPath: PropertiesByPath): PropertyField[] {
+	const tallies: PropertyTallies = new Map();
+	for (const properties of Object.values(propertiesByPath)) tallyDocument(tallies, properties, 1);
+	return fieldsFromTallies(tallies);
 }
 
 /** One scanned value as the cell value its field type expects; null = empty. */
@@ -317,6 +318,96 @@ export type BuiltinFieldSource = {
 
 const EMPTY_BUILTIN_SOURCE: BuiltinFieldSource = { rows: [], statsByPath: {} };
 
+/** Front-matter inference kept between scan batches, so a batch costs its changed files. */
+type FrontMatterState = {
+	source: PropertiesByPath;
+	tallies: PropertyTallies;
+	fields: PropertyField[];
+	fieldsKey: string;
+	values: Map<string, PropertyRowValues>;
+	pathCount: number;
+};
+
+let frontMatterState: FrontMatterState | null = null;
+
+/** Above this share of changed files, a full rebuild is cheaper than diffing. */
+const FULL_REBUILD_SHARE = 0.3;
+
+const typeKeyOf = (fields: readonly PropertyField[]) =>
+	fields.map((field) => `${field.id}:${field.type}`).join("|");
+
+function fullFrontMatterState(source: PropertiesByPath): FrontMatterState {
+	const tallies: PropertyTallies = new Map();
+	for (const properties of Object.values(source)) tallyDocument(tallies, properties, 1);
+	const fields = fieldsFromTallies(tallies);
+	return {
+		source,
+		tallies,
+		fields,
+		fieldsKey: JSON.stringify(fields),
+		values: buildPropertyRowValues(source, fields),
+		pathCount: Object.keys(source).length,
+	};
+}
+
+/**
+ * Updates the previous batch's tallies and values for the paths whose scanned
+ * object changed (the scan keeps unchanged files' objects). Same result as a
+ * full rebuild; equal fields keep their array identity.
+ */
+function nextFrontMatterState(source: PropertiesByPath): FrontMatterState {
+	const previous = frontMatterState;
+	if (!previous) return fullFrontMatterState(source);
+	if (previous.source === source) return previous;
+	const changed: string[] = [];
+	let total = 0;
+	let added = 0;
+	for (const path in source) {
+		total++;
+		const before = previous.source[path];
+		if (before === source[path]) continue;
+		changed.push(path);
+		if (!before) added++;
+	}
+	// Same size and nothing new: nothing was removed, skip the second pass.
+	if (total - added !== previous.pathCount) {
+		for (const path in previous.source) if (!(path in source)) changed.push(path);
+	}
+	if (changed.length / Math.max(total, 1) > FULL_REBUILD_SHARE) return fullFrontMatterState(source);
+	const { tallies } = previous;
+	for (const path of changed) {
+		const before = previous.source[path];
+		const after = source[path];
+		if (before) tallyDocument(tallies, before, -1);
+		if (after) tallyDocument(tallies, after, 1);
+	}
+	const inferred = fieldsFromTallies(tallies);
+	const fieldsKey = JSON.stringify(inferred);
+	const fields = fieldsKey === previous.fieldsKey ? previous.fields : inferred;
+	if (typeKeyOf(fields) !== typeKeyOf(previous.fields)) {
+		return { source, tallies, fields, fieldsKey, values: buildPropertyRowValues(source, fields), pathCount: total };
+	}
+	const typeById = new Map(fields.map((field) => [field.id, field.type]));
+	const values = new Map(previous.values);
+	for (const path of changed) {
+		const properties = source[path];
+		if (properties) values.set(path, rowValuesOf(properties, typeById));
+		else values.delete(path);
+	}
+	return { source, tallies, fields, fieldsKey, values, pathCount: total };
+}
+
+const keyCounts = new WeakMap<object, number>();
+function countKeys(record: object): number {
+	let count = keyCounts.get(record);
+	if (count === undefined) {
+		count = 0;
+		for (const _key in record) count++;
+		keyCounts.set(record, count);
+	}
+	return count;
+}
+
 let modelMemo: {
 	source: PropertiesByPath;
 	builtinSource: BuiltinFieldSource;
@@ -325,8 +416,8 @@ let modelMemo: {
 
 /**
  * Inferred fields + typed values, memoized on the scan map's and the
- * listing's identity: one inference per scan batch, never per render or
- * keystroke. Front-matter fields first, then the built-ins.
+ * listing's identity, and updated incrementally between scan batches.
+ * Front-matter fields first, then the built-ins.
  */
 export function derivePropertyModel(
 	propertiesByPath: PropertiesByPath,
@@ -339,16 +430,13 @@ export function derivePropertyModel(
 	) {
 		return modelMemo.model;
 	}
-	const frontMatterFields = inferPropertyFields(propertiesByPath);
-	const frontMatterValues = buildPropertyRowValues(
-		propertiesByPath,
-		frontMatterFields,
-	);
+	frontMatterState = nextFrontMatterState(propertiesByPath);
+	const { fields: frontMatterFields, values: frontMatterValues } = frontMatterState;
 	const { rows, statsByPath } = builtinSource;
 	const fields = [
 		...frontMatterFields,
 		...(rows.length > 0
-			? builtinFields(rows, frontMatterFields, Object.keys(statsByPath).length)
+			? builtinFields(rows, frontMatterFields, countKeys(statsByPath))
 			: []),
 	];
 	const model =
@@ -357,4 +445,10 @@ export function derivePropertyModel(
 			: { fields, valuesByPath: frontMatterValues, statsByPath };
 	modelMemo = { source: propertiesByPath, builtinSource, model };
 	return model;
+}
+
+/** Test seam: forget the incremental state. */
+export function resetPropertyModelMemo() {
+	frontMatterState = null;
+	modelMemo = null;
 }

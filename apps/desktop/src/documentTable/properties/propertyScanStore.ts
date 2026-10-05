@@ -36,6 +36,8 @@ export type PropertyScanState = {
 	statsByPath: Readonly<Record<string, ScannedFileStats>>;
 	/** Sticky per workspace: once stats were wanted, changed files keep being counted. */
 	includeStats: boolean;
+	/** Files whose stats could not be read, by the mtime tried: not retried until it moves. */
+	statsUnreadableMtimeByPath: Readonly<Record<string, number>>;
 	/** Progress of the running scan, for the status line. */
 	scannedCount: number;
 	pendingCount: number;
@@ -50,6 +52,7 @@ const EMPTY_STATE: PropertyScanState = {
 	invalidPaths: [],
 	statsByPath: {},
 	includeStats: false,
+	statsUnreadableMtimeByPath: {},
 	scannedCount: 0,
 	pendingCount: 0,
 };
@@ -84,7 +87,9 @@ export function propertyPathsToScan(
 		.filter(
 			(file) =>
 				state.mtimeByPath[file.path] !== file.modifiedAt ||
-				(state.includeStats && !(file.path in state.statsByPath)),
+				(state.includeStats &&
+					!(file.path in state.statsByPath) &&
+					state.statsUnreadableMtimeByPath[file.path] !== file.modifiedAt),
 		)
 		.map((file) => file.path);
 }
@@ -108,6 +113,9 @@ export function mergePropertyBatch(
 	const statsByPath: Record<string, ScannedFileStats> = resultStats
 		? { ...state.statsByPath }
 		: (state.statsByPath as Record<string, ScannedFileStats>);
+	const statsUnreadable: Record<string, number> = resultStats
+		? { ...state.statsUnreadableMtimeByPath }
+		: (state.statsUnreadableMtimeByPath as Record<string, number>);
 	const invalid = new Set(state.invalidPaths);
 	for (const file of requested) {
 		const properties = result.propertiesByPath[file.path];
@@ -115,8 +123,13 @@ export function mergePropertyBatch(
 		else delete propertiesByPath[file.path];
 		if (resultStats) {
 			const stats = resultStats[file.path];
-			if (stats) statsByPath[file.path] = stats;
-			else delete statsByPath[file.path];
+			if (stats) {
+				statsByPath[file.path] = stats;
+				delete statsUnreadable[file.path];
+			} else {
+				delete statsByPath[file.path];
+				statsUnreadable[file.path] = file.modifiedAt;
+			}
 		}
 		invalid.delete(file.path);
 		mtimeByPath[file.path] = file.modifiedAt;
@@ -127,6 +140,7 @@ export function mergePropertyBatch(
 		propertiesByPath,
 		mtimeByPath,
 		statsByPath,
+		statsUnreadableMtimeByPath: statsUnreadable,
 		invalidPaths: [...invalid],
 		scannedCount: state.scannedCount + requested.length,
 	};
@@ -145,16 +159,19 @@ export function prunePropertyState(
 	const propertiesByPath = { ...state.propertiesByPath };
 	const mtimeByPath = { ...state.mtimeByPath };
 	const statsByPath = { ...state.statsByPath };
+	const statsUnreadableMtimeByPath = { ...state.statsUnreadableMtimeByPath };
 	for (const path of stalePaths) {
 		delete propertiesByPath[path];
 		delete mtimeByPath[path];
 		delete statsByPath[path];
+		delete statsUnreadableMtimeByPath[path];
 	}
 	return {
 		...state,
 		propertiesByPath,
 		mtimeByPath,
 		statsByPath,
+		statsUnreadableMtimeByPath,
 		invalidPaths: state.invalidPaths.filter((path) => live.has(path)),
 	};
 }
@@ -264,4 +281,20 @@ export function resetPropertyScan() {
 	scanGeneration += 1;
 	unpublishedWork = null;
 	propertyScanStore.set(EMPTY_STATE);
+}
+
+/** The status line under the view bar while a scan runs (or failed). */
+export function scanStatusText(scan: PropertyScanState): string | null {
+	if (scan.status === "scanning") {
+		const verb = scan.includeStats ? "Counting words…" : "Reading front matter…";
+		return `${verb} ${scan.scannedCount.toLocaleString()} / ${scan.pendingCount.toLocaleString()}`;
+	}
+	if (scan.status === "failed") {
+		return `Front matter could not be read: ${scan.failureMessage ?? "unknown error"}`;
+	}
+	if (scan.invalidPaths.length > 0) {
+		const count = scan.invalidPaths.length;
+		return `${count.toLocaleString()} ${count === 1 ? "file has" : "files have"} unreadable front matter`;
+	}
+	return null;
 }

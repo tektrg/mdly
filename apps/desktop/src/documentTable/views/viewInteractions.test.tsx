@@ -90,6 +90,26 @@ describe("board interactions", () => {
 		});
 	}
 
+	it("a read-only (built-in) board field: cards don't drag and Move to says why", async () => {
+		const folder: PropertyField = { ...STATUS, id: "file:folder", label: "Folder", readOnly: true };
+		act(() => {
+			root.render(
+				<DocumentBoard
+					rows={[row("a", { "file:folder": "notes" })]}
+					fields={[folder]}
+					boardField="file:folder"
+					propertyColumns={[]}
+					onOpenDocument={() => {}}
+				/>,
+			);
+		});
+		const card = container.querySelector("[data-note-card]") as HTMLElement;
+		expect(card.getAttribute("draggable")).toBe("false");
+		const items = await openMenu("Move a");
+		expect(items.map((item) => item.textContent)).toEqual(["Can't move — this comes from the file"]);
+		expect(writeDocumentProperty).not.toHaveBeenCalled();
+	});
+
 	it("moves a card from the keyboard menu, not offering its own column", async () => {
 		renderBoard();
 		const items = await openMenu("Move a");

@@ -271,3 +271,31 @@ describe("saved views persistence", () => {
 		});
 	});
 });
+
+describe("incremental property model", () => {
+	it("a batch that changes a few files gives the same model as a full rebuild", async () => {
+		const { inferPropertyFields, buildPropertyRowValues, resetPropertyModelMemo } = await import("./propertyFields");
+		resetPropertyModelMemo();
+		const text = (value: string) => ({ type: "text" as const, value });
+		const first: Record<string, Record<string, ReturnType<typeof text>>> = {};
+		for (let index = 0; index < 40; index++) first[`/ws/${index}.md`] = { status: text(index % 2 ? "Todo" : "Done") };
+		derivePropertyModel(first);
+		const second = { ...first, "/ws/1.md": { status: text("Doing"), owner: text("Ann") } };
+		delete (second as Record<string, unknown>)["/ws/2.md"];
+		const model = derivePropertyModel(second);
+		const fields = inferPropertyFields(second);
+		expect(model.fields).toEqual(fields);
+		expect([...model.valuesByPath.entries()].sort()).toEqual([...buildPropertyRowValues(second, fields).entries()].sort());
+	});
+});
+
+describe("add-column menu", () => {
+	it("table mode hides built-ins that duplicate fixed columns; board keeps them", async () => {
+		const { addColumnMenuFields } = await import("./builtinFields");
+		const { model } = workspace();
+		const ids = (fields: { id: string }[]) => fields.map((field) => field.id);
+		expect(ids(addColumnMenuFields(model.fields, "table", []))).toEqual(["prop:created", "file:words", "file:size"]);
+		expect(ids(addColumnMenuFields(model.fields, "table", ["file:folder"]))).toContain("file:folder");
+		expect(ids(addColumnMenuFields(model.fields, "board", []))).toHaveLength(6);
+	});
+});

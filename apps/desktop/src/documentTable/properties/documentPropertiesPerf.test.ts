@@ -68,26 +68,32 @@ describe("property columns at 50k documents", () => {
 			withPropertyValues(rows, model.valuesByPath, model.statsByPath),
 		).value;
 		// The next scan batch: one file changed, the rest keep their objects.
+		// Best of 3 fresh batches: the bound is about the work, not a busy machine.
 		const changedPath = files[7]?.path as string;
-		const nextProperties = {
-			...propertiesByPath,
-			[changedPath]: { status: { type: "text" as const, value: "Done" } },
+		const runNextBatch = (batch: number) => {
+			const nextProperties = {
+				...propertiesByPath,
+				[changedPath]: { status: { type: "text" as const, value: `Done ${batch}` } },
+			};
+			const nextStats = {
+				...statsByPath,
+				[changedPath]: { sizeBytes: 1, wordCount: 1 },
+			};
+			return timed("next scan batch: re-derive + re-merge", () =>
+				withPropertyValues(
+					rows,
+					derivePropertyModel(nextProperties, { rows, statsByPath: nextStats })
+						.valuesByPath,
+					nextStats,
+				),
+			);
 		};
-		const nextStats = {
-			...statsByPath,
-			[changedPath]: { sizeBytes: 1, wordCount: 1 },
-		};
-		const nextBatch = timed("next scan batch: re-derive + re-merge", () =>
-			withPropertyValues(
-				rows,
-				derivePropertyModel(nextProperties, { rows, statsByPath: nextStats })
-					.valuesByPath,
-				nextStats,
-			),
-		);
+		const nextBatch = [0, 1, 2]
+			.map(runNextBatch)
+			.reduce((best, run) => (run.ms < best.ms ? run : best));
 		expect(nextBatch.value[7]?.properties?.["file:words"]).toBe(1);
 		expect(nextBatch.value[8]).toBe(merged[8]); // unchanged rows are reused
-		expect(nextBatch.ms).toBeLessThan(250); // ~120 ms on an idle Pro; loose for load
+		expect(nextBatch.ms).toBeLessThan(120); // ~55 ms on the Pro (2026-10-05)
 
 		const base = {
 			...createDefaultDocumentTableView(),

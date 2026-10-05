@@ -97,7 +97,12 @@ export type FileHeadAndStats = {
 	wordCount: number;
 };
 
-/** One streaming pass: the head for the property parser plus size and word count. Null = unreadable. */
+/**
+ * One streaming pass: the head for the property parser plus size and word
+ * count. Null = unreadable. Runs in the main process but never blocks it: each
+ * 64 KB chunk is an awaited read, so the event loop (IPC, windows) runs
+ * between chunks; counting one chunk takes well under a millisecond.
+ */
 export async function readFileHeadAndStats(
 	path: string,
 	headBytes: number,

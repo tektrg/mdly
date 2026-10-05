@@ -41,6 +41,8 @@ const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type CalendarActions = {
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
+	/** False on a read-only (built-in) field. */
+	canDrag: boolean;
 	onMove: (row: DocumentTableRow, date: string) => void;
 	onDropPath: (path: string, date: string) => void;
 };
@@ -106,6 +108,7 @@ const CalendarDayCell = memo(function CalendarDayCell({
 					key={row.path}
 					row={row}
 					compact
+					canDrag={actions.canDrag}
 					moveTargets={actions.moveTargets}
 					onMove={actions.onMove}
 					onOpenDocument={onOpenDocument}
@@ -131,6 +134,7 @@ function useCalendarActions(
 ): CalendarActions {
 	const latest = useRef({ field, rows });
 	latest.current = { field, rows };
+	const canDrag = !field?.readOnly;
 	return useMemo<CalendarActions>(() => {
 		const moveTo = (row: DocumentTableRow, date: string | null) => {
 			const current = latest.current.field;
@@ -148,6 +152,7 @@ function useCalendarActions(
 			void writeDroppedProperty(row, current, nextValue);
 		};
 		return {
+			canDrag,
 			moveTargets: (row) => {
 				const current = latest.current.field;
 				const date = current ? row.properties?.[current.id] : null;
@@ -168,7 +173,7 @@ function useCalendarActions(
 				if (row) moveTo(row, date);
 			},
 		};
-	}, []);
+	}, [canDrag]);
 }
 
 /** Calendar layout: a month grid of notes by a date property. */

@@ -34,6 +34,7 @@ export const NoteCard = memo(function NoteCard({
 	propertyColumns = EMPTY_COLUMNS,
 	labelById = EMPTY_LABELS,
 	compact = false,
+	canDrag = true,
 	moveTargets,
 	onMove,
 	onOpenDocument,
@@ -44,6 +45,8 @@ export const NoteCard = memo(function NoteCard({
 	/** Field labels, built once per board (not per card). */
 	labelById?: ReadonlyMap<PropertyFieldId, string>;
 	compact?: boolean;
+	/** False on a read-only (built-in) field: the card cannot be dragged. */
+	canDrag?: boolean;
 	/** Computed when the menu opens, so idle cards cost nothing. */
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
 	onMove: (row: DocumentTableRow, targetKey: string) => void;
@@ -60,12 +63,13 @@ export const NoteCard = memo(function NoteCard({
 		<div
 			role="group"
 			aria-label={row.name}
-			draggable
+			draggable={canDrag}
 			data-note-card={row.path}
-			onDragStart={(event) => startNoteDrag(event, row)}
+			onDragStart={canDrag ? (event) => startNoteDrag(event, row) : undefined}
 			className={cn(
-				"group flex w-full min-w-0 cursor-grab items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background transition-colors hover:bg-accent",
+				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background transition-colors hover:bg-accent",
 				compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1.5 text-sm",
+				canDrag && "cursor-grab",
 				row.isActive && "border-ring",
 			)}
 		>

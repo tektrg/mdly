@@ -75,7 +75,18 @@ export function builtinFieldLabel(fieldId: BuiltinFieldId): string {
 /** Folder options listed per field, most documents first (same cap as front matter). */
 const MAX_FOLDER_OPTIONS = 50;
 
+const folderOptionsByListing = new WeakMap<readonly DocumentTableRow[], string[]>();
+
+/** Recounted only when the listing changes (rows are memoized on it). */
 function folderOptions(rows: readonly DocumentTableRow[]): string[] {
+	const cached = folderOptionsByListing.get(rows);
+	if (cached) return cached;
+	const options = countFolderOptions(rows);
+	folderOptionsByListing.set(rows, options);
+	return options;
+}
+
+function countFolderOptions(rows: readonly DocumentTableRow[]): string[] {
 	const counts = new Map<string, number>();
 	for (const row of rows) {
 		counts.set(row.folderLabel, (counts.get(row.folderLabel) ?? 0) + 1);
@@ -227,5 +238,28 @@ export function viewUsesFileStats(usage: FieldUsage): boolean {
 		isFileStatsFieldId(usage.sortColumn) ||
 		usage.filterFieldIds.some(isFileStatsFieldId) ||
 		isFileStatsFieldId(usage.groupBy)
+	);
+}
+
+/** Built-ins the table already shows as its fixed Modified / Created / Folder columns. */
+const TABLE_FIXED_COLUMN_BUILTINS: ReadonlySet<string> = new Set([
+	BUILTIN_FIELD_IDS.modified,
+	BUILTIN_FIELD_IDS.created,
+	BUILTIN_FIELD_IDS.folder,
+]);
+
+/**
+ * Fields offered by "+ Property". In table mode the built-ins duplicating a
+ * fixed column are left out (unless already shown, so they can be hidden);
+ * board and calendar cards have no fixed columns, so they keep them.
+ */
+export function addColumnMenuFields(
+	fields: readonly PropertyField[],
+	viewType: string,
+	visibleColumns: readonly PropertyFieldId[],
+): PropertyField[] {
+	if (viewType !== "table") return [...fields];
+	return fields.filter(
+		(field) => !TABLE_FIXED_COLUMN_BUILTINS.has(field.id) || visibleColumns.includes(field.id),
 	);
 }
