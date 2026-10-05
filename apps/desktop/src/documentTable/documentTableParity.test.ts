@@ -7,7 +7,6 @@
  * separately below: names starting with punctuation such as "_" or "@" now sort
  * after digits, and the filter also ignores accents.
  */
-import { normalizeSearchText } from "@mdly/workspace-kit/search";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { FileEntry } from "../store/state";
 import { evaluateDocumentRowsForTest } from "./documentTableEngine";
@@ -22,6 +21,11 @@ import {
 } from "./documentTableView";
 
 // ---- frozen legacy logic (do not edit) ------------------------------------
+/** The pre-engine `normalizeSearchText` (no accent folding). */
+function normalizeSearchText(value: string): string {
+	return value.toLocaleLowerCase().replace(/[\s_\-./\\]+/g, "");
+}
+
 function legacyCompare(
 	a: DocumentTableRow,
 	b: DocumentTableRow,

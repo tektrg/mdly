@@ -15,6 +15,15 @@ describe("normalizeSearchText", () => {
 	});
 });
 
+describe("normalizeSearchText accent folding", () => {
+	it("ignores accents, ß and ligatures, like the document list filter", () => {
+		expect(normalizeSearchText("Café Notes.md")).toBe("cafenotesmd");
+		expect(normalizeSearchText("Straße")).toBe(normalizeSearchText("strasse"));
+		expect(normalizeSearchText("Đơn hàng")).toBe("donhang");
+		expect(normalizeSearchText("ﬁle")).toBe("file");
+	});
+});
+
 describe("scoreText", () => {
 	it("ranks by how directly the needle matches, capped by the field's ceiling", () => {
 		expect(scoreText("meeting", "meeting", 100)).toBe(100); // exact

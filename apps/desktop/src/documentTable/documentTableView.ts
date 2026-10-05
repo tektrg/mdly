@@ -1,6 +1,6 @@
 // Filter and sort run on the portfolio table engine (`documentTableEngine.ts`);
-// its loose match is the command palette's `normalizeSearchText` rule plus
-// accent folding, so the two search boxes still agree on separators and case.
+// its loose match is the same fold the command palette's `normalizeSearchText`
+// uses, so the two search boxes never disagree about which documents match.
 import { looseFoldText } from "@tektrg/table-core";
 import {
 	basename,

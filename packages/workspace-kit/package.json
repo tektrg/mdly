@@ -1,6 +1,6 @@
 {
 	"name": "@mdly/workspace-kit",
-  "version": "0.8.3",
+	"version": "0.8.3",
 	"description": "Shared Markdown editor engine, editor surface, and file-navigation UI for mdly-based products",
 	"license": "MIT",
 	"type": "module",
@@ -40,6 +40,7 @@
 		"@dnd-kit/core": "^6.3.1",
 		"@floating-ui/dom": "^1.7.5",
 		"@mdly/workspace-scan": "workspace:*",
+		"@tektrg/table-core": "1.1.1",
 		"@tiptap/core": "^3.4.3",
 		"@tiptap/extension-code-block-lowlight": "3.20.0",
 		"@tiptap/extension-list": "^3.4.2",
