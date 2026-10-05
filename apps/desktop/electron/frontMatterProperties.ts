@@ -63,6 +63,24 @@ export function frontMatterBlock(head: string): string {
 	);
 }
 
+/** Front matter longer than this is not looked for (it then counts as body words). */
+const MAX_FRONT_MATTER_BYTES = 1024 * 1024;
+
+/**
+ * The file's front-matter block. A block opening in the head but closing past
+ * it (> 8 KB of front matter) is found with one longer prefix read.
+ */
+async function frontMatterBlockOf(
+	path: string,
+	read: { head: string; sizeBytes: number },
+): Promise<string> {
+	const inHead = frontMatterBlock(read.head);
+	if (inHead || !OPENING_FENCE.test(read.head)) return inHead;
+	if (read.sizeBytes <= Buffer.byteLength(read.head, "utf8")) return "";
+	const prefix = await readFileHead(path, Math.min(read.sizeBytes, MAX_FRONT_MATTER_BYTES));
+	return prefix ? frontMatterBlock(prefix) : "";
+}
+
 type ScannedFile = { head: string; stats?: ScannedFileStats };
 
 async function readScannedFile(
@@ -75,7 +93,7 @@ async function readScannedFile(
 	}
 	const read = await readFileHeadAndStats(path, PROPERTY_HEAD_BYTES);
 	if (!read) return null;
-	const frontMatterWords = countWords(frontMatterBlock(read.head));
+	const frontMatterWords = countWords(await frontMatterBlockOf(path, read));
 	return {
 		head: read.head,
 		stats: {

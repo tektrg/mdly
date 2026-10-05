@@ -14,7 +14,6 @@ import type {
 } from "../../desktopApi/types";
 import type { DocumentTableRow } from "../documentTableView";
 import {
-	addBuiltinRowValues,
 	type BuiltinFieldId,
 	builtinFieldLabel,
 	builtinFields,
@@ -235,17 +234,45 @@ export function buildPropertyRowValues(
 	const typeById = new Map(fields.map((field) => [field.id, field.type]));
 	const valuesByPath = new Map<string, PropertyRowValues>();
 	for (const [path, properties] of Object.entries(propertiesByPath)) {
-		const values: Partial<Record<PropertyFieldId, RowValue>> = {};
-		for (const [key, property] of Object.entries(properties)) {
-			const id = propertyFieldId(key);
-			const type = typeById.get(id);
-			if (!type || id in values) continue;
-			const value = toPropertyRowValue(property, type);
-			if (value !== null) values[id] = value;
-		}
-		valuesByPath.set(path, values);
+		valuesByPath.set(path, rowValuesOf(properties, typeById));
 	}
 	return valuesByPath;
+}
+
+type ScannedProperties = Readonly<Record<string, ScannedFrontMatterProperty>>;
+
+/**
+ * Typed values per scanned-properties object. The scan keeps an unchanged
+ * file's object across batches, so while its fields keep their types the
+ * same values object comes back: the row merge downstream can then skip it.
+ */
+const rowValuesCache = new WeakMap<
+	ScannedProperties,
+	{ typeSignature: string; values: PropertyRowValues }
+>();
+
+function rowValuesOf(
+	properties: ScannedProperties,
+	typeById: ReadonlyMap<PropertyFieldId, FieldType>,
+): PropertyRowValues {
+	const entries: [PropertyFieldId, FieldType | undefined, ScannedFrontMatterProperty][] = [];
+	let typeSignature = "";
+	for (const [key, property] of Object.entries(properties)) {
+		const id = propertyFieldId(key);
+		const type = typeById.get(id);
+		typeSignature += `${type ?? "-"},`;
+		entries.push([id, type, property]);
+	}
+	const cached = rowValuesCache.get(properties);
+	if (cached?.typeSignature === typeSignature) return cached.values;
+	const values: Partial<Record<PropertyFieldId, RowValue>> = {};
+	for (const [id, type, property] of entries) {
+		if (!type || id in values) continue;
+		const value = toPropertyRowValue(property, type);
+		if (value !== null) values[id] = value;
+	}
+	rowValuesCache.set(properties, { typeSignature, values });
+	return values;
 }
 
 /**
@@ -266,12 +293,16 @@ export function formatPropertyValue(
 
 export type PropertyModel = {
 	fields: PropertyField[];
+	/** Front-matter values only; built-ins are added per row by `withPropertyValues`. */
 	valuesByPath: ReadonlyMap<string, PropertyRowValues>;
+	/** Size / Word count per path, once read. */
+	statsByPath: Readonly<Record<string, ScannedFileStats>>;
 };
 
 export const EMPTY_PROPERTY_MODEL: PropertyModel = {
 	fields: [],
 	valuesByPath: new Map(),
+	statsByPath: {},
 };
 
 /** The listing rows and whole-file stats the built-in fields read. */
@@ -291,8 +322,7 @@ let modelMemo: {
 /**
  * Inferred fields + typed values, memoized on the scan map's and the
  * listing's identity: one inference per scan batch, never per render or
- * keystroke. Front-matter fields first, then the built-ins; every listed
- * row carries its built-in values.
+ * keystroke. Front-matter fields first, then the built-ins.
  */
 export function derivePropertyModel(
 	propertiesByPath: PropertiesByPath,
@@ -317,17 +347,10 @@ export function derivePropertyModel(
 			? builtinFields(rows, frontMatterFields, Object.keys(statsByPath).length)
 			: []),
 	];
-	const valuesByPath =
-		rows.length > 0 ? new Map<string, PropertyRowValues>() : frontMatterValues;
-	for (const row of rows) {
-		const values: Partial<Record<PropertyFieldId, RowValue>> = {
-			...frontMatterValues.get(row.path),
-		};
-		addBuiltinRowValues(values, row, statsByPath[row.path]);
-		valuesByPath.set(row.path, values);
-	}
 	const model =
-		fields.length === 0 ? EMPTY_PROPERTY_MODEL : { fields, valuesByPath };
+		fields.length === 0
+			? EMPTY_PROPERTY_MODEL
+			: { fields, valuesByPath: frontMatterValues, statsByPath };
 	modelMemo = { source: propertiesByPath, builtinSource, model };
 	return model;
 }

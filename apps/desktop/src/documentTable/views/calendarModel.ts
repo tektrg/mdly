@@ -3,6 +3,7 @@
  * each note on the day its date field names. Dates are the scan's
  * `YYYY-MM-DD` strings, compared as text — no time zones involved.
  */
+import { calendarDayOf } from "./calendarDates";
 import type { DocumentTableRow } from "../documentTableView";
 import {
 	type PropertyField,
@@ -111,8 +112,8 @@ export function buildCalendarModel(
 			undatedCount += 1;
 			continue;
 		}
-		// A built-in date-time ("…T14:03:00") sits on its local day.
-		const bucket = byDate.get(value.slice(0, 10));
+		const day = calendarDayOf(value);
+		const bucket = day ? byDate.get(day) : undefined;
 		if (bucket) bucket.push(row);
 		else outsideCount += 1;
 	}

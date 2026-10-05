@@ -14,7 +14,11 @@
 import type { RowValue } from "@tektrg/table-core";
 import type { ScannedFileStats } from "../../desktopApi/types";
 import type { DocumentTableRow } from "../documentTableView";
-import type { PropertyField, PropertyFieldId } from "./propertyFields";
+import type {
+	PropertyField,
+	PropertyFieldId,
+	PropertyRowValues,
+} from "./propertyFields";
 
 export const BUILTIN_FIELD_PREFIX = "file:";
 
@@ -128,31 +132,45 @@ export function localDateTime(epochSeconds: number): string {
 	return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
 }
 
-// Rows are memoized on the listing, so date formatting runs once per listing,
-// not once per scan batch.
-const listingDatesByRow = new WeakMap<DocumentTableRow, [string, string]>();
+// Rows are memoized on the listing, so the listing-derived values are built
+// once per row instance, not once per scan batch.
+const listingValuesByRow = new WeakMap<DocumentTableRow, PropertyRowValues>();
+
+function listingValues(row: DocumentTableRow): PropertyRowValues {
+	let values = listingValuesByRow.get(row);
+	if (!values) {
+		values = {
+			[BUILTIN_FIELD_IDS.modified]: localDateTime(row.modifiedAt),
+			[BUILTIN_FIELD_IDS.created]: localDateTime(row.createdAt),
+			[BUILTIN_FIELD_IDS.folder]: row.folderLabel,
+		};
+		listingValuesByRow.set(row, values);
+	}
+	return values;
+}
 
 /**
- * Writes one row's built-in cell values into `values` (in place: this runs for
- * every row on every scan batch). Size / Word count only once read.
+ * One row's cell values: built-ins (Size / Word count only once read) plus its
+ * front-matter values. `prop:` and `file:` ids never collide. A row with
+ * neither front matter nor stats shares its listing values object.
  */
-export function addBuiltinRowValues(
-	values: Partial<Record<PropertyFieldId, RowValue>>,
+export function withBuiltinValues(
 	row: DocumentTableRow,
 	stats: ScannedFileStats | undefined,
-): void {
-	let dates = listingDatesByRow.get(row);
-	if (!dates) {
-		dates = [localDateTime(row.modifiedAt), localDateTime(row.createdAt)];
-		listingDatesByRow.set(row, dates);
-	}
-	values[BUILTIN_FIELD_IDS.modified] = dates[0];
-	values[BUILTIN_FIELD_IDS.created] = dates[1];
-	values[BUILTIN_FIELD_IDS.folder] = row.folderLabel;
-	if (stats) {
-		values[BUILTIN_FIELD_IDS.wordCount] = stats.wordCount;
-		values[BUILTIN_FIELD_IDS.size] = stats.sizeBytes;
-	}
+	frontMatter: PropertyRowValues | undefined,
+): PropertyRowValues {
+	const base = listingValues(row);
+	if (!stats && !frontMatter) return base;
+	return {
+		...base,
+		...(stats
+			? {
+					[BUILTIN_FIELD_IDS.wordCount]: stats.wordCount,
+					[BUILTIN_FIELD_IDS.size]: stats.sizeBytes,
+				}
+			: {}),
+		...frontMatter,
+	};
 }
 
 const SIZE_UNITS = ["KB", "MB", "GB"];

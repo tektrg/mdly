@@ -57,7 +57,8 @@ function workspace() {
 		"/ws/notes/b.md": { sizeBytes: 300, wordCount: 40 },
 	};
 	const model = derivePropertyModel(propertiesByPath, { rows, statsByPath });
-	return { rows, model, merged: withPropertyValues(rows, model.valuesByPath) };
+	return { rows, model, merged: withPropertyValues(rows, model.valuesByPath, model.statsByPath),
+	};
 }
 
 beforeEach(() => {
@@ -89,8 +90,8 @@ describe("built-in fields", () => {
 	});
 
 	it("keeps a front-matter `created` separate from the file's", () => {
-		const { model } = workspace();
-		const values = model.valuesByPath.get("/ws/a.md");
+		const { merged } = workspace();
+		const values = merged.find((row) => row.path === "/ws/a.md")?.properties;
 		expect(values?.["prop:created"]).toBe("2020-01-01");
 		expect(values?.["file:created"]).toBe("2026-01-02T08:00:00");
 		expect(values?.["file:modified"]).toBe("2026-10-05T10:00:00");
@@ -98,7 +99,9 @@ describe("built-in fields", () => {
 		expect(values?.["file:size"]).toBe(12_400);
 		// Not counted yet: no value, not zero.
 		expect(
-			model.valuesByPath.get("/ws/notes/c.md")?.["file:words"],
+			merged.find((row) => row.path === "/ws/notes/c.md")?.properties?.[
+				"file:words"
+			],
 		).toBeUndefined();
 	});
 

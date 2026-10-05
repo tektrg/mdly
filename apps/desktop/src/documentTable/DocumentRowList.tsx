@@ -42,6 +42,7 @@ import {
 	resolveNavViewSpec,
 } from "./navGroupTree";
 import { buildPropertyGroupTree } from "./properties/propertyGroupTree";
+import { useLocalDayKey } from "./properties/useLocalDayKey";
 import { usePropertyModel } from "./properties/usePropertyModel";
 import { TagScanStateView } from "./TagScanState";
 import {
@@ -272,12 +273,20 @@ export function DocumentRowList({
 	// box stays responsive while grouped (React renders the stale groups first).
 	const deferredNavDocs = useDeferredValue(navDocs);
 	const groupedDocs = propertyGroupBy ? deferredNavDocs : navDocs;
+	// Date-range groups are relative to today: rebuilt when the day rolls over.
+	const dayKey = useLocalDayKey();
 	const propertyTree = useMemo(
 		() =>
 			propertyGroupBy
-				? buildPropertyGroupTree(groupedDocs, propertyGroupBy, propertyFields)
+				? buildPropertyGroupTree(
+						groupedDocs,
+						propertyGroupBy,
+						propertyFields,
+						// Buckets depend only on the day; noon of it is that day.
+						new Date(`${dayKey}T12:00:00`),
+					)
 				: null,
-		[groupedDocs, propertyGroupBy, propertyFields],
+		[groupedDocs, propertyGroupBy, propertyFields, dayKey],
 	);
 	// Session-only collapse state: property groups start expanded (a board's
 	// columns are all visible), and the user's collapses last until relaunch.

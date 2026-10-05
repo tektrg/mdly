@@ -30,6 +30,7 @@ import {
 	ReadingPropertiesNotice,
 	ViewFieldPicker,
 } from "./NoteCard";
+import { calendarDayOf, moveValueToDay } from "./calendarDates";
 import {
 	READ_ONLY_MOVE_TARGETS,
 	useNoteDropTarget,
@@ -137,9 +138,14 @@ function useCalendarActions(
 			// Dropped on its own day: nothing to write.
 			const currentDate = row.properties?.[current.id];
 			const currentDay =
-				typeof currentDate === "string" ? currentDate.slice(0, 10) : null;
+				typeof currentDate === "string" ? calendarDayOf(currentDate) : null;
 			if (currentDay === date) return;
-			void writeDroppedProperty(row, current, date);
+			// Keep the time of a date-time value; only its day changes.
+			const nextValue =
+				date !== null && typeof currentDate === "string" && currentDay
+					? moveValueToDay(currentDate, date)
+					: date;
+			void writeDroppedProperty(row, current, nextValue);
 		};
 		return {
 			moveTargets: (row) => {
@@ -147,7 +153,9 @@ function useCalendarActions(
 				const date = current ? row.properties?.[current.id] : null;
 				if (typeof date !== "string") return [];
 				if (current?.readOnly) return [...READ_ONLY_MOVE_TARGETS];
-				return calendarMoveTargets(date).map((target) => ({
+				const day = calendarDayOf(date);
+				if (!day) return [];
+				return calendarMoveTargets(day).map((target) => ({
 					key: target.date ?? REMOVE_DATE_KEY,
 					label: target.label,
 				}));

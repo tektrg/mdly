@@ -9,7 +9,9 @@ import {
 	hasMarkdownExtension,
 	relativeWorkspacePath,
 } from "../lib/filePath";
+import type { ScannedFileStats } from "../desktopApi/types";
 import type { FileEntry } from "../store/state";
+import { withBuiltinValues } from "./properties/builtinFields";
 import {
 	filterAndSortDocumentRows,
 	ROOT_FOLDER_LABEL,
@@ -341,28 +343,49 @@ export function applyDocumentTableView(
 let propertyMergeMemo: {
 	rows: DocumentTableRow[];
 	valuesByPath: ReadonlyMap<string, PropertyRowValues>;
+	statsByPath: Readonly<Record<string, ScannedFileStats>>;
 	merged: DocumentTableRow[];
 } | null = null;
 
+/** Last merge per row instance: a batch that changed neither input of a row reuses it. */
+const mergedRowCache = new WeakMap<
+	DocumentTableRow,
+	{
+		frontMatter: PropertyRowValues | undefined;
+		stats: ScannedFileStats | undefined;
+		merged: DocumentTableRow;
+	}
+>();
+
 /**
- * Attaches scanned property values to projected rows. Memoized on both inputs,
- * so typing never re-merges; a scan batch or a listing change does, once.
+ * Attaches built-in values (from the row + read stats) and scanned
+ * front-matter values to projected rows. Memoized on all inputs, so typing
+ * never re-merges; a scan batch re-merges only the rows whose values changed.
  */
 export function withPropertyValues(
 	rows: DocumentTableRow[],
 	valuesByPath: ReadonlyMap<string, PropertyRowValues>,
+	statsByPath: Readonly<Record<string, ScannedFileStats>> = {},
 ): DocumentTableRow[] {
-	if (valuesByPath.size === 0) return rows;
 	if (
 		propertyMergeMemo?.rows === rows &&
-		propertyMergeMemo.valuesByPath === valuesByPath
+		propertyMergeMemo.valuesByPath === valuesByPath &&
+		propertyMergeMemo.statsByPath === statsByPath
 	) {
 		return propertyMergeMemo.merged;
 	}
 	const merged = rows.map((row) => {
-		const properties = valuesByPath.get(row.path);
-		return properties ? { ...row, properties } : row;
+		const frontMatter = valuesByPath.get(row.path);
+		const stats = statsByPath[row.path];
+		const cached = mergedRowCache.get(row);
+		if (cached && cached.frontMatter === frontMatter && cached.stats === stats) {
+			return cached.merged;
+		}
+		const properties = withBuiltinValues(row, stats, frontMatter);
+		const mergedRow = { ...row, properties };
+		mergedRowCache.set(row, { frontMatter, stats, merged: mergedRow });
+		return mergedRow;
 	});
-	propertyMergeMemo = { rows, valuesByPath, merged };
+	propertyMergeMemo = { rows, valuesByPath, statsByPath, merged };
 	return merged;
 }

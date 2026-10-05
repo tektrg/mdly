@@ -65,8 +65,25 @@ describe("property columns at 50k documents", () => {
 			() => derivePropertyModel(propertiesByPath, { rows, statsByPath }),
 		).value;
 		const merged = timed("merge values into rows (per scan batch)", () =>
-			withPropertyValues(rows, model.valuesByPath),
+			withPropertyValues(rows, model.valuesByPath, model.statsByPath),
 		).value;
+		// The next scan batch: one file changed, the rest keep their objects.
+		const changedPath = files[7]?.path as string;
+		const nextProperties = {
+			...propertiesByPath,
+			[changedPath]: { status: { type: "text" as const, value: "Done" } },
+		};
+		const nextStats = { ...statsByPath, [changedPath]: { sizeBytes: 1, wordCount: 1 } };
+		const nextBatch = timed("next scan batch: re-derive + re-merge", () =>
+			withPropertyValues(
+				rows,
+				derivePropertyModel(nextProperties, { rows, statsByPath: nextStats }).valuesByPath,
+				nextStats,
+			),
+		);
+		expect(nextBatch.value[7]?.properties?.["file:words"]).toBe(1);
+		expect(nextBatch.value[8]).toBe(merged[8]); // unchanged rows are reused
+		expect(nextBatch.ms).toBeLessThan(250); // ~120 ms on an idle Pro; loose for load
 
 		const base = {
 			...createDefaultDocumentTableView(),
