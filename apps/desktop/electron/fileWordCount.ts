@@ -26,7 +26,12 @@ export type WordCounter = {
 };
 
 export function createWordCounter(): WordCounter {
-	return { count: 0, inRun: false, runHasContent: false, punctuationBytesLeft: 0 };
+	return {
+		count: 0,
+		inRun: false,
+		runHasContent: false,
+		punctuationBytesLeft: 0,
+	};
 }
 
 /** UTF-8 lead 0xE2 + 0x80/0x81 = U+2000-U+207F (General Punctuation). */

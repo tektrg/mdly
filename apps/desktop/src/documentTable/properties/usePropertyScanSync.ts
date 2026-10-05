@@ -48,7 +48,8 @@ export function usePropertyScanSync() {
 			void runPropertyScan(
 				workspacePath,
 				scanFilesOf(files),
-				(paths, options) => desktopApi.scanFrontMatterProperties(paths, options),
+				(paths, options) =>
+					desktopApi.scanFrontMatterProperties(paths, options),
 				{ includeStats: needsFileStats },
 			);
 		}, SCAN_DEBOUNCE_MS);

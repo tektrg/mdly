@@ -74,7 +74,11 @@ describe("scanFrontMatterProperties", () => {
 
 	it("with includeStats, adds size and body word count (front matter excluded)", async () => {
 		const result = await scanFrontMatterProperties(
-			[path.join(dir, "a.md"), path.join(dir, "plain.md"), path.join(dir, "missing.md")],
+			[
+				path.join(dir, "a.md"),
+				path.join(dir, "plain.md"),
+				path.join(dir, "missing.md"),
+			],
 			{ includeStats: true },
 		);
 		expect(result.statsByPath).toEqual({

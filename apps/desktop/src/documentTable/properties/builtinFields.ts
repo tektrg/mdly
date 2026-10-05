@@ -166,7 +166,10 @@ export function formatFileSize(bytes: number): string {
 		value /= 1024;
 		unit += 1;
 	}
-	const rounded = value < 10 ? value.toFixed(1).replace(/\.0$/, "") : String(Math.round(value));
+	const rounded =
+		value < 10
+			? value.toFixed(1).replace(/\.0$/, "")
+			: String(Math.round(value));
 	return `${rounded} ${SIZE_UNITS[unit]}`;
 }
 

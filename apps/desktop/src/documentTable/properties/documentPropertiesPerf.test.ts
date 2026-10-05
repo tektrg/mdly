@@ -55,10 +55,14 @@ describe("property columns at 50k documents", () => {
 
 		const rows = buildDocumentRows(files, "/ws");
 		const statsByPath = Object.fromEntries(
-			files.map((file, index) => [file.path, { sizeBytes: 900 + index, wordCount: index % 3000 }]),
+			files.map((file, index) => [
+				file.path,
+				{ sizeBytes: 900 + index, wordCount: index % 3000 },
+			]),
 		);
-		const model = timed("infer schema + typed values + built-ins (per scan batch)", () =>
-			derivePropertyModel(propertiesByPath, { rows, statsByPath }),
+		const model = timed(
+			"infer schema + typed values + built-ins (per scan batch)",
+			() => derivePropertyModel(propertiesByPath, { rows, statsByPath }),
 		).value;
 		const merged = timed("merge values into rows (per scan batch)", () =>
 			withPropertyValues(rows, model.valuesByPath),
@@ -99,7 +103,12 @@ describe("property columns at 50k documents", () => {
 			buildPropertyGroupTree(sorted, "file:modified", model.fields),
 		);
 		const byWords = timed("sort by Word count", () =>
-			applyDocumentTableView(merged, { ...base, sort: { column: "file:words", direction: "desc" } }, null, model.fields),
+			applyDocumentTableView(
+				merged,
+				{ ...base, sort: { column: "file:words", direction: "desc" } },
+				null,
+				model.fields,
+			),
 		);
 		expect(byModified.value.children.length).toBeGreaterThan(0);
 		expect(byModified.ms).toBeLessThan(1500); // loose: CI and loaded machines vary

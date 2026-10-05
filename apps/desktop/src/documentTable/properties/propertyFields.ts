@@ -14,10 +14,10 @@ import type {
 } from "../../desktopApi/types";
 import type { DocumentTableRow } from "../documentTableView";
 import {
+	addBuiltinRowValues,
 	type BuiltinFieldId,
 	builtinFieldLabel,
 	builtinFields,
-	addBuiltinRowValues,
 	formatBuiltinValue,
 	isBuiltinFieldId,
 } from "./builtinFields";
@@ -317,7 +317,8 @@ export function derivePropertyModel(
 			? builtinFields(rows, frontMatterFields, Object.keys(statsByPath).length)
 			: []),
 	];
-	const valuesByPath = rows.length > 0 ? new Map<string, PropertyRowValues>() : frontMatterValues;
+	const valuesByPath =
+		rows.length > 0 ? new Map<string, PropertyRowValues>() : frontMatterValues;
 	for (const row of rows) {
 		const values: Partial<Record<PropertyFieldId, RowValue>> = {
 			...frontMatterValues.get(row.path),

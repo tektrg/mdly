@@ -6,8 +6,8 @@ import type {
 	ScannedFrontMatterProperty,
 } from "../src/desktopApi/types";
 import { toScannedProperties } from "../src/documentTable/properties/scannedProperties";
-import { readFileHead, scanFiles } from "./frontMatterTags";
 import { countWords, readFileHeadAndStats } from "./fileWordCount";
+import { readFileHead, scanFiles } from "./frontMatterTags";
 
 /**
  * The property scan reads more than the tag scan: it keeps every key, so a
@@ -57,7 +57,10 @@ export function frontMatterBlock(head: string): string {
 	if (!opening) return "";
 	const closing = CLOSING_FENCE.exec(head.slice(opening[0].length - 1));
 	if (!closing) return "";
-	return head.slice(0, opening[0].length - 1 + closing.index + closing[0].length);
+	return head.slice(
+		0,
+		opening[0].length - 1 + closing.index + closing[0].length,
+	);
 }
 
 type ScannedFile = { head: string; stats?: ScannedFileStats };

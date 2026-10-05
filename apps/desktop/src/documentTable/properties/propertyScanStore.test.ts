@@ -37,7 +37,11 @@ describe("runPropertyScan", () => {
 				propertiesByPath: {},
 				invalidPaths: [],
 				...(options?.includeStats
-					? { statsByPath: Object.fromEntries(paths.map((path) => [path, { sizeBytes: 10, wordCount: 2 }])) }
+					? {
+							statsByPath: Object.fromEntries(
+								paths.map((path) => [path, { sizeBytes: 10, wordCount: 2 }]),
+							),
+						}
 					: {}),
 			}),
 		);
@@ -49,14 +53,18 @@ describe("runPropertyScan", () => {
 		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md", "/ws/b.md"]);
 		// The view adds Word count: every file is read whole, once.
 		await runPropertyScan("/ws", files, scan, { includeStats: true });
-		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md", "/ws/b.md"], { includeStats: true });
+		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md", "/ws/b.md"], {
+			includeStats: true,
+		});
 		expect(Object.keys(propertyScanStore.get().statsByPath)).toHaveLength(2);
 		await runPropertyScan("/ws", files, scan, { includeStats: true });
 		expect(scan).toHaveBeenCalledTimes(2);
 		// Sticky: a changed file is still counted after the column is hidden; a removed one is forgotten.
 		await runPropertyScan("/ws", [{ path: "/ws/a.md", modifiedAt: 2 }], scan);
 		expect(scan).toHaveBeenLastCalledWith(["/ws/a.md"], { includeStats: true });
-		expect(Object.keys(propertyScanStore.get().statsByPath)).toEqual(["/ws/a.md"]);
+		expect(Object.keys(propertyScanStore.get().statsByPath)).toEqual([
+			"/ws/a.md",
+		]);
 	});
 
 	it("reads everything once, then only files whose mtime moved", async () => {
