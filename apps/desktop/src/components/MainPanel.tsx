@@ -25,6 +25,7 @@ import {
 	PEEK_LIST_DEFAULT_WIDTH,
 	setPeekListDesiredWidth,
 } from "../documentTable/peekListWidth";
+import { usePropertyScanSync } from "../documentTable/properties/usePropertyModel";
 import { useDocumentTableRows } from "../documentTable/useDocumentTableRows";
 import { useNavContainerWidth } from "../documentTable/useNavContainerWidth";
 import { PEEK_DOCUMENT_MIN_WIDTH } from "../lib/navLayout";
@@ -134,6 +135,8 @@ export function MainPanel({
 	const { rows, view } = useDocumentTableRows(
 		requestedPath === null ? null : requestedPath,
 	);
+	// Background front-matter read for the property columns (phase 2).
+	usePropertyScanSync();
 	// Title-column menu: the sidebar file row's actions (minus Rename, which
 	// needs inline UI the table doesn't have yet), wired to the same store
 	// actions and the same failure toasts as the sidebar.

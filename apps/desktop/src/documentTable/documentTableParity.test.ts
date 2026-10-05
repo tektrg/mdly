@@ -59,8 +59,8 @@ function legacyFilterAndSort(
 		)
 		.sort(
 			(a, b) =>
-				legacyCompare(a, b, view.sort.column) * direction ||
-				(a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+				legacyCompare(a, b, view.sort.column as DocumentTableColumn) *
+					direction || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
 		)
 		.map((row) => row.path);
 }

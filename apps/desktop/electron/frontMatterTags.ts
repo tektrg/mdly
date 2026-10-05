@@ -20,11 +20,14 @@ const TAGS_KEY = "tags";
  * can't be read -- a workspace scan must never fail as a whole because one file
  * was deleted or is unreadable mid-scan.
  */
-async function readHead(path: string): Promise<string | null> {
+export async function readFileHead(
+	path: string,
+	headBytes: number = FRONT_MATTER_HEAD_BYTES,
+): Promise<string | null> {
 	let handle: fs.FileHandle | undefined;
 	try {
 		handle = await fs.open(path, "r");
-		const buffer = Buffer.allocUnsafe(FRONT_MATTER_HEAD_BYTES);
+		const buffer = Buffer.allocUnsafe(headBytes);
 		const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
 		return buffer.subarray(0, bytesRead).toString("utf8");
 	} catch {
@@ -56,21 +59,37 @@ export async function scanFrontMatterTags(
 	paths: readonly string[],
 ): Promise<Record<string, string[]>> {
 	const tagsByPath: Record<string, string[]> = {};
+	await scanFileHeads(paths, FRONT_MATTER_HEAD_BYTES, (path, head) => {
+		const tags = extractFrontMatterTags(head);
+		if (tags.length > 0) tagsByPath[path] = tags;
+	});
+	return tagsByPath;
+}
+
+/**
+ * Bounded-concurrency head reads over `paths`, calling `visit` for each file
+ * that could be read. Shared by the tag scan and the property scan so both keep
+ * the same file-handle bound and the same "one unreadable file never fails the
+ * scan" rule.
+ */
+export async function scanFileHeads(
+	paths: readonly string[],
+	headBytes: number,
+	visit: (path: string, head: string) => void,
+): Promise<void> {
 	let cursor = 0;
 
 	async function worker() {
 		while (cursor < paths.length) {
 			const path = paths[cursor++];
 			if (!path) continue;
-			const head = await readHead(path);
+			const head = await readFileHead(path, headBytes);
 			if (head === null) continue;
-			const tags = extractFrontMatterTags(head);
-			if (tags.length > 0) tagsByPath[path] = tags;
+			visit(path, head);
 		}
 	}
 
 	await Promise.all(
 		Array.from({ length: Math.min(SCAN_CONCURRENCY, paths.length) }, worker),
 	);
-	return tagsByPath;
 }

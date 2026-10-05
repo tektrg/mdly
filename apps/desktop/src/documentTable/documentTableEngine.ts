@@ -9,8 +9,11 @@
 import {
 	evaluate,
 	type FieldDefinition,
+	type FilterCondition,
 	type FilterGroup,
+	type FilterNode,
 	looseFoldText,
+	type SortKey,
 	type SourceRow,
 	SPEC_VERSION,
 	type ViewSpec,
@@ -18,8 +21,14 @@ import {
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
+	DocumentTableSort,
 	DocumentTableView,
 } from "./documentTableView";
+import { propertyFiltersToFilterGroup } from "./properties/documentViews";
+import {
+	isPropertyFieldId,
+	type PropertyField,
+} from "./properties/propertyFields";
 
 /**
  * Folder cell for a document sitting directly in the workspace root. Lives
@@ -74,6 +83,8 @@ function toSourceRows(rows: DocumentTableRow[]): DocumentSourceRows {
 				: row.folderLabel,
 		modified: row.modifiedAt,
 		created: row.createdAt,
+		// `prop:` ids never collide with the built-in field ids above.
+		...row.properties,
 	}));
 	const built = {
 		sourceRows,
@@ -90,54 +101,100 @@ const SORT_FIELD_BY_COLUMN: Record<DocumentTableColumn, string> = {
 	created: "created",
 };
 
-function filterForQuery(query: string): FilterGroup | undefined {
+/** The view's sort as an engine key; a property no longer in the workspace (or multi-value) falls back to the default. */
+function resolveSortKey(
+	sort: DocumentTableSort,
+	propertyFields: readonly PropertyField[],
+): SortKey {
+	if (isPropertyFieldId(sort.column)) {
+		const field = propertyFields.find(
+			(candidate) => candidate.id === sort.column,
+		);
+		if (field && field.type !== "multiSelect") {
+			const isText = field.type === "text" || field.type === "select";
+			return {
+				fieldId: field.id,
+				direction: sort.direction,
+				...(isText ? { collation: "caseless" as const } : {}),
+			};
+		}
+		return { fieldId: "modified", direction: "desc" };
+	}
+	const column = sort.column as DocumentTableColumn;
+	const isText = column === "name" || column === "folder";
+	return {
+		fieldId: SORT_FIELD_BY_COLUMN[column],
+		direction: sort.direction,
+		...(isText ? { collation: "caseless" as const } : {}),
+	};
+}
+
+function nameFilterCondition(query: string): FilterCondition | undefined {
 	// A query that folds to nothing (" ", "-") means "no filter", as before.
 	if (looseFoldText(query).length === 0) return undefined;
 	return {
-		kind: "group",
-		combinator: "and",
-		children: [
-			{
-				kind: "condition",
-				fieldId: FILE_NAME_FIELD,
-				operator: "contains",
-				value: query,
-				match: "loose",
-			},
-		],
+		kind: "condition",
+		fieldId: FILE_NAME_FIELD,
+		operator: "contains",
+		value: query,
+		match: "loose",
 	};
 }
+
+function engineFields(
+	propertyFields: readonly PropertyField[],
+): FieldDefinition[] {
+	return propertyFields.length === 0
+		? DOCUMENT_FIELDS
+		: [...DOCUMENT_FIELDS, ...propertyFields];
+}
+
+/** A chip on a property no document carries matches nothing (not everything). */
+function referencesMissingField(
+	view: EngineView,
+	propertyFields: readonly PropertyField[],
+): boolean {
+	return (view.propertyFilters ?? []).some(
+		(filter) => !propertyFields.some((field) => field.id === filter.fieldId),
+	);
+}
+
+type EngineView = Pick<DocumentTableView, "filter" | "sort"> &
+	Partial<Pick<DocumentTableView, "propertyFilters">>;
 
 /** The document table's view as an engine `ViewSpec` (persisted sort format unchanged). */
 export function toDocumentViewSpec(
-	view: Pick<DocumentTableView, "filter" | "sort">,
+	view: EngineView,
+	propertyFields: readonly PropertyField[] = [],
 ): ViewSpec {
-	const isText = view.sort.column === "name" || view.sort.column === "folder";
+	const nameCondition = nameFilterCondition(view.filter);
+	const propertyGroup = propertyFiltersToFilterGroup(
+		view.propertyFilters ?? [],
+		propertyFields,
+	);
+	const children: FilterNode[] = [
+		...(nameCondition ? [nameCondition] : []),
+		...(propertyGroup?.children ?? []),
+	];
+	const filter: FilterGroup | undefined =
+		children.length > 0
+			? { kind: "group", combinator: "and", children }
+			: undefined;
 	return {
 		specVersion: SPEC_VERSION,
 		viewType: "table",
-		filter: filterForQuery(view.filter),
-		sort: [
-			{
-				fieldId: SORT_FIELD_BY_COLUMN[view.sort.column],
-				direction: view.sort.direction,
-				...(isText ? { collation: "caseless" as const } : {}),
-			},
-		],
+		filter,
+		sort: [resolveSortKey(view.sort, propertyFields)],
 	};
 }
 
-/** One engine `evaluate` over the rows, mapped back to the row objects. */
-function evaluateDocumentRows(
+function runEvaluate(
+	spec: ViewSpec,
 	rows: DocumentTableRow[],
-	view: Pick<DocumentTableView, "filter" | "sort">,
+	propertyFields: readonly PropertyField[],
 ): DocumentTableRow[] {
 	const { sourceRows, rowByPath } = toSourceRows(rows);
-	const result = evaluate(
-		toDocumentViewSpec(view),
-		sourceRows,
-		DOCUMENT_FIELDS,
-	);
+	const result = evaluate(spec, sourceRows, engineFields(propertyFields));
 	if (!result.ok) {
 		// The spec is built here from typed inputs, so this is a programming error.
 		throw new Error(
@@ -146,6 +203,20 @@ function evaluateDocumentRows(
 	}
 	return result.rows.map(
 		(sourceRow) => rowByPath.get(sourceRow.id as string) as DocumentTableRow,
+	);
+}
+
+/** One engine `evaluate` over the rows, mapped back to the row objects. */
+function evaluateDocumentRows(
+	rows: DocumentTableRow[],
+	view: EngineView,
+	propertyFields: readonly PropertyField[] = [],
+): DocumentTableRow[] {
+	if (referencesMissingField(view, propertyFields)) return [];
+	return runEvaluate(
+		toDocumentViewSpec(view, propertyFields),
+		rows,
+		propertyFields,
 	);
 }
 
@@ -164,37 +235,89 @@ let sortedRowsMemo: SortedRowsMemo | null = null;
 function sortDocumentRows(
 	rows: DocumentTableRow[],
 	sort: DocumentTableView["sort"],
+	propertyFields: readonly PropertyField[],
 ): DocumentTableRow[] {
-	const sortKey = `${sort.column}:${sort.direction}`;
+	const key = resolveSortKey(sort, propertyFields);
+	const sortKey = `${key.fieldId}:${key.direction}:${key.collation ?? ""}`;
 	if (sortedRowsMemo?.rows === rows && sortedRowsMemo.sortKey === sortKey) {
 		return sortedRowsMemo.sorted;
 	}
-	const sorted = evaluateDocumentRows(rows, { filter: "", sort });
+	const sorted = runEvaluate(
+		{ specVersion: SPEC_VERSION, viewType: "table", sort: [key] },
+		rows,
+		propertyFields,
+	);
 	sortedRowsMemo = { rows, sortKey, sorted };
 	return sorted;
 }
 
+type PropertyFilteredMemo = {
+	sorted: DocumentTableRow[];
+	filtersKey: string;
+	filtered: DocumentTableRow[];
+};
+
+let propertyFilteredMemo: PropertyFilteredMemo | null = null;
+
+/**
+ * The property chips applied to the sorted rows, keeping their order
+ * (`tieBreak: "sourceOrder"`, no sort keys). Memoized like the sort, so typing
+ * in the name box never re-evaluates the chips over 50k rows.
+ */
+function applyPropertyFilters(
+	sorted: DocumentTableRow[],
+	view: EngineView,
+	propertyFields: readonly PropertyField[],
+): DocumentTableRow[] {
+	const filters = view.propertyFilters ?? [];
+	if (filters.length === 0) return sorted;
+	if (referencesMissingField(view, propertyFields)) return [];
+	const filtersKey = JSON.stringify(filters);
+	if (
+		propertyFilteredMemo?.sorted === sorted &&
+		propertyFilteredMemo.filtersKey === filtersKey
+	) {
+		return propertyFilteredMemo.filtered;
+	}
+	const filtered = runEvaluate(
+		{
+			specVersion: SPEC_VERSION,
+			viewType: "table",
+			filter: propertyFiltersToFilterGroup(filters, propertyFields),
+			tieBreak: "sourceOrder",
+		},
+		sorted,
+		propertyFields,
+	);
+	propertyFilteredMemo = { sorted, filtersKey, filtered };
+	return filtered;
+}
+
 /**
  * Filter + sort with the engine's semantics. The sort is `evaluate` (memoized
- * above); the filter is the engine's loose `contains` applied to the
- * precomputed `searchName` (= `looseFoldText(file name)`), which equals
- * `evaluate` with the same filter — pinned by the parity tests — but skips
- * re-folding every file name on each keystroke (~45 ms at 50k files).
- * Filtering keeps order, so filtering the sorted list is the full result.
+ * above), then the property chips (memoized), then the name box: the engine's
+ * loose `contains` applied to the precomputed `searchName` (=
+ * `looseFoldText(file name)`), which equals `evaluate` with the same filter —
+ * pinned by the parity tests — but skips re-folding every file name on each
+ * keystroke (~45 ms at 50k files). Filtering keeps order, so filtering the
+ * sorted list is the full result.
  */
 export function filterAndSortDocumentRows(
 	rows: DocumentTableRow[],
-	view: Pick<DocumentTableView, "filter" | "sort">,
+	view: EngineView,
+	propertyFields: readonly PropertyField[] = [],
 ): DocumentTableRow[] {
-	const sorted = sortDocumentRows(rows, view.sort);
+	const sorted = sortDocumentRows(rows, view.sort, propertyFields);
+	const chipFiltered = applyPropertyFilters(sorted, view, propertyFields);
 	const needle = looseFoldText(view.filter);
-	if (needle.length === 0) return sorted;
-	return sorted.filter((row) => row.searchName.includes(needle));
+	if (needle.length === 0) return chipFiltered;
+	return chipFiltered.filter((row) => row.searchName.includes(needle));
 }
 
 /** Test seam: drops the sort memo so fixtures cannot leak between cases. */
 export function resetDocumentSortMemo() {
 	sortedRowsMemo = null;
+	propertyFilteredMemo = null;
 }
 
 /** The unoptimized reference (one `evaluate` with filter + sort), for parity tests. */

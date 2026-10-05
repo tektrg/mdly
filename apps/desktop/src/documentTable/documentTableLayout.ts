@@ -1,6 +1,17 @@
 import type { CSSProperties } from "react";
 import { useSyncExternalStore } from "react";
 import type { DocumentTableColumn } from "./documentTableView";
+import {
+	isPropertyFieldId,
+	type PropertyFieldId,
+} from "./properties/propertyFields";
+import { useCurrentDocumentView } from "./useDocumentTableRows";
+
+/** Any column a width can be stored for: built-in or front-matter property. */
+export type DocumentTableLayoutColumn = DocumentTableColumn | PropertyFieldId;
+
+/** Default track of a property column (full table only). */
+const PROPERTY_TRACK = "minmax(0,9rem)";
 
 /**
  * Column order + widths for the All-documents table, shared by the
@@ -93,17 +104,20 @@ function loadOrder(): DocumentTableColumn[] {
 	}
 }
 
-function loadWidths(): Partial<Record<DocumentTableColumn, number>> {
+function loadWidths(): Partial<Record<DocumentTableLayoutColumn, number>> {
 	try {
 		const raw = localStorage.getItem(WIDTH_STORAGE_KEY);
 		if (!raw) return {};
 		const parsed: unknown = JSON.parse(raw);
 		if (typeof parsed !== "object" || parsed === null) return {};
-		const widths: Partial<Record<DocumentTableColumn, number>> = {};
+		const widths: Partial<Record<DocumentTableLayoutColumn, number>> = {};
 		for (const [key, value] of Object.entries(
 			parsed as Record<string, unknown>,
 		)) {
-			if (isTableColumn(key) && typeof value === "number") {
+			if (
+				(isTableColumn(key) || isPropertyFieldId(key)) &&
+				typeof value === "number"
+			) {
 				widths[key] = clampColumnWidth(value);
 			}
 		}
@@ -124,7 +138,7 @@ function persist(order: DocumentTableColumn[], widths: object) {
 
 type LayoutSnapshot = {
 	order: DocumentTableColumn[];
-	widths: Partial<Record<DocumentTableColumn, number>>;
+	widths: Partial<Record<DocumentTableLayoutColumn, number>>;
 };
 
 let snapshot: LayoutSnapshot = {
@@ -163,7 +177,7 @@ export function moveDocumentTableColumn(from: number, to: number) {
 }
 
 export function setDocumentTableColumnWidth(
-	column: DocumentTableColumn,
+	column: DocumentTableLayoutColumn,
 	widthPx: number,
 ) {
 	const nextWidth = clampColumnWidth(widthPx);
@@ -175,7 +189,9 @@ export function setDocumentTableColumnWidth(
 	emit();
 }
 
-export function resetDocumentTableColumnWidth(column: DocumentTableColumn) {
+export function resetDocumentTableColumnWidth(
+	column: DocumentTableLayoutColumn,
+) {
 	if (snapshot.widths[column] === undefined) return;
 	const next = { ...snapshot.widths };
 	delete next[column];
@@ -202,19 +218,21 @@ export function resetDocumentTableLayoutForTests() {
  */
 export function gridTemplateFor(
 	columns: DocumentTableColumn[],
-	widths: Partial<Record<DocumentTableColumn, number>>,
+	widths: Partial<Record<DocumentTableLayoutColumn, number>>,
+	propertyColumns: readonly PropertyFieldId[] = [],
 ): CSSProperties | undefined {
 	const customWidths = columns.some((column) => widths[column] !== undefined);
 	const reordered = columns.join("|") !== DEFAULT_COLUMN_ORDER.join("|");
-	if (!customWidths && !reordered) return undefined;
+	if (!customWidths && !reordered && propertyColumns.length === 0) {
+		return undefined;
+	}
+	const track = (column: DocumentTableLayoutColumn, fallback: string) =>
+		widths[column] !== undefined ? `${widths[column]}px` : fallback;
 	return {
-		gridTemplateColumns: columns
-			.map((column) =>
-				widths[column] !== undefined
-					? `${widths[column]}px`
-					: DEFAULT_TRACK[column],
-			)
-			.join(" "),
+		gridTemplateColumns: [
+			...columns.map((column) => track(column, DEFAULT_TRACK[column])),
+			...propertyColumns.map((column) => track(column, PROPERTY_TRACK)),
+		].join(" "),
 	};
 }
 
@@ -246,7 +264,9 @@ export function secondaryColumnFor(
 
 export type DocumentTableLayout = {
 	columns: DocumentTableColumn[];
-	widths: Partial<Record<DocumentTableColumn, number>>;
+	/** Visible property columns of the current view; full table only. */
+	propertyColumns: PropertyFieldId[];
+	widths: Partial<Record<DocumentTableLayoutColumn, number>>;
 	gridStyle: CSSProperties | undefined;
 	secondaryColumn: DocumentTableColumn;
 	isCustomized: boolean;
@@ -255,10 +275,12 @@ export type DocumentTableLayout = {
 export function useDocumentTableLayout(): DocumentTableLayout {
 	useSyncExternalStore(subscribe, getVersion, getVersion);
 	const { order, widths } = getSnapshot();
+	const { propertyColumns } = useCurrentDocumentView();
 	return {
 		columns: order,
+		propertyColumns,
 		widths,
-		gridStyle: gridTemplateFor(order, widths),
+		gridStyle: gridTemplateFor(order, widths, propertyColumns),
 		secondaryColumn: secondaryColumnFor(order),
 		isCustomized:
 			Object.keys(widths).length > 0 ||

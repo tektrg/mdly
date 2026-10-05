@@ -30,6 +30,9 @@ describe("documentTableStore", () => {
 			filter: "",
 			groupBy: null,
 			mode: "browse",
+			propertyFilters: [],
+			propertyGroupBy: null,
+			activeSavedViewId: null,
 		});
 	});
 
@@ -51,6 +54,9 @@ describe("documentTableStore", () => {
 			filter: "spec",
 			groupBy: null,
 			mode: "browse",
+			propertyFilters: [],
+			propertyGroupBy: null,
+			activeSavedViewId: null,
 		});
 		expect(workspaceStore.get().navViewSorts["/ws"]).toEqual({
 			recent: { column: "name", direction: "asc" },
@@ -84,6 +90,9 @@ describe("documentTableStore", () => {
 			filter: "",
 			groupBy: null,
 			mode: "browse",
+			propertyFilters: [],
+			propertyGroupBy: null,
+			activeSavedViewId: null,
 		});
 		// Sort is persisted per workspace, not session state: it stays put.
 		expect(workspaceStore.get().navViewSorts["/ws"]?.recent).toEqual({
@@ -141,5 +150,98 @@ describe("documentTableStore", () => {
 		for (const call of setItem.mock.calls) {
 			expect(String(call[1])).not.toContain("secret-query");
 		}
+	});
+
+	it("keeps unsaved chips for the session and snapshots them into a saved view", async () => {
+		const {
+			addPropertyFilter,
+			documentTableViewStore,
+			saveCurrentViewAs,
+			selectSavedView,
+			setPropertyGroupBy,
+			togglePropertyColumn,
+			workspaceStore,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		workspacePathStore.set("/ws");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		addPropertyFilter({ fieldId: "prop:due", kind: "has" });
+		addPropertyFilter({ fieldId: "prop:due", kind: "has" });
+		setPropertyGroupBy("prop:status");
+		togglePropertyColumn("prop:status");
+		expect(documentTableViewStore.get().propertyFilters).toEqual([
+			{ fieldId: "prop:due", kind: "has" },
+		]);
+		expect(workspaceStore.get().documentViews["/ws"]?.propertyColumns).toEqual([
+			"prop:status",
+		]);
+
+		const id = saveCurrentViewAs("  Due work  ");
+		const saved = workspaceStore.get().documentViews["/ws"]?.saved[0];
+		expect(saved).toMatchObject({
+			id,
+			name: "Due work",
+			filters: [{ fieldId: "prop:due", kind: "has" }],
+			groupBy: "prop:status",
+			propertyColumns: ["prop:status"],
+		});
+		expect(documentTableViewStore.get().activeSavedViewId).toBe(id);
+
+		// Edits while the saved view is shown are written into it, not the session.
+		addPropertyFilter({ fieldId: "prop:status", kind: "is", value: "Done" });
+		expect(
+			workspaceStore.get().documentViews["/ws"]?.saved[0]?.filters,
+		).toHaveLength(2);
+		expect(documentTableViewStore.get().propertyFilters).toHaveLength(1);
+
+		selectSavedView(null);
+		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
+	});
+
+	it("routes a header sort into the active saved view and drops a deleted view", async () => {
+		const {
+			deleteSavedView,
+			documentTableViewStore,
+			saveCurrentViewAs,
+			toggleDocumentTableSort,
+			workspaceStore,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		workspacePathStore.set("/ws");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		const id = saveCurrentViewAs("Mine") as string;
+		toggleDocumentTableSort("prop:priority");
+		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]?.sort).toEqual({
+			column: "prop:priority",
+			direction: "asc",
+		});
+		expect(workspaceStore.get().navViewSorts["/ws"]).toBeUndefined();
+
+		deleteSavedView(id);
+		expect(workspaceStore.get().documentViews["/ws"]?.saved).toEqual([]);
+		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
+	});
+
+	it("leaves the saved view and the property grouping when a folder/tag view is picked", async () => {
+		const {
+			documentTableViewStore,
+			saveCurrentViewAs,
+			setDocumentTableGroupBy,
+			setPropertyGroupBy,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		workspacePathStore.set("/ws");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		setPropertyGroupBy("prop:status");
+		saveCurrentViewAs("Board");
+		setDocumentTableGroupBy("folder");
+		expect(documentTableViewStore.get()).toMatchObject({
+			groupBy: "folder",
+			propertyGroupBy: null,
+			activeSavedViewId: null,
+		});
 	});
 });
