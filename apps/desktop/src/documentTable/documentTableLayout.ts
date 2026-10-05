@@ -12,6 +12,8 @@ export type DocumentTableLayoutColumn = DocumentTableColumn | PropertyFieldId;
 
 /** Default track of a property column (full table only). */
 const PROPERTY_TRACK = "minmax(0,9rem)";
+/** Name's track once property columns exist: a floor so they can't squeeze it to 0. */
+const NAME_TRACK_WITH_PROPERTIES = "minmax(12rem,1fr)";
 
 /**
  * Column order + widths for the All-documents table, shared by the
@@ -230,7 +232,14 @@ export function gridTemplateFor(
 		widths[column] !== undefined ? `${widths[column]}px` : fallback;
 	return {
 		gridTemplateColumns: [
-			...columns.map((column) => track(column, DEFAULT_TRACK[column])),
+			...columns.map((column) =>
+				track(
+					column,
+					column === "name" && propertyColumns.length > 0
+						? NAME_TRACK_WITH_PROPERTIES
+						: DEFAULT_TRACK[column],
+				),
+			),
 			...propertyColumns.map((column) => track(column, PROPERTY_TRACK)),
 		].join(" "),
 	};

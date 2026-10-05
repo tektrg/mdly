@@ -4,6 +4,7 @@ import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type ReactNode,
 	useCallback,
+	useDeferredValue,
 	useEffect,
 	useMemo,
 	useRef,
@@ -267,12 +268,16 @@ export function DocumentRowList({
 		navView.mode === "search" && navView.filter.trim().length > 0;
 	const propertyGroupBy =
 		!isSearching && view?.propertyGroupBy ? view.propertyGroupBy : null;
+	// Regrouping 50k rows costs ~30-50 ms; defer it so typing in the filter
+	// box stays responsive while grouped (React renders the stale groups first).
+	const deferredNavDocs = useDeferredValue(navDocs);
+	const groupedDocs = propertyGroupBy ? deferredNavDocs : navDocs;
 	const propertyTree = useMemo(
 		() =>
 			propertyGroupBy
-				? buildPropertyGroupTree(navDocs, propertyGroupBy, propertyFields)
+				? buildPropertyGroupTree(groupedDocs, propertyGroupBy, propertyFields)
 				: null,
-		[navDocs, propertyGroupBy, propertyFields],
+		[groupedDocs, propertyGroupBy, propertyFields],
 	);
 	// Session-only collapse state: property groups start expanded (a board's
 	// columns are all visible), and the user's collapses last until relaunch.
@@ -287,7 +292,7 @@ export function DocumentRowList({
 					.filter((id) => !collapsedPropertyGroups.has(id)),
 			);
 			if (expandedIds.has(PINNED_GROUP_ID)) expanded.add(PINNED_GROUP_ID);
-			return flattenGroupRows(propertyTree, expanded, navDocs, spec);
+			return flattenGroupRows(propertyTree, expanded, groupedDocs, spec);
 		}
 		return buildNavRows({
 			docs: navDocs,
@@ -298,6 +303,7 @@ export function DocumentRowList({
 	}, [
 		propertyTree,
 		collapsedPropertyGroups,
+		groupedDocs,
 		navDocs,
 		spec,
 		navView,

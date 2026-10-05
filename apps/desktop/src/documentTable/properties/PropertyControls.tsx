@@ -150,7 +150,7 @@ export function AddPropertyColumnMenu({
 				<PropertyMenuLabel>
 					{isScanning
 						? "Reading front matter…"
-						: "No front-matter properties in this workspace"}
+						: "No properties yet. Add a line like `status: todo` between `---` lines at the top of a note."}
 				</PropertyMenuLabel>
 			) : (
 				fields.map((field) => (
