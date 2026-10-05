@@ -15,12 +15,18 @@ import {
 	SPEC_VERSION,
 	type ViewSpec,
 } from "@tektrg/table-core";
-import {
-	type DocumentTableColumn,
-	type DocumentTableRow,
-	type DocumentTableView,
-	ROOT_FOLDER_LABEL,
+import type {
+	DocumentTableColumn,
+	DocumentTableRow,
+	DocumentTableView,
 } from "./documentTableView";
+
+/**
+ * Folder cell for a document sitting directly in the workspace root. Lives
+ * here (re-exported by `documentTableView.ts`) so this module imports only
+ * types from the view and there is no runtime import cycle.
+ */
+export const ROOT_FOLDER_LABEL = "—";
 
 /** The file name WITH its extension — what the filter box matches (see `searchName`). */
 const FILE_NAME_FIELD = "fileName";
@@ -121,6 +127,28 @@ export function toDocumentViewSpec(
 	};
 }
 
+/** One engine `evaluate` over the rows, mapped back to the row objects. */
+function evaluateDocumentRows(
+	rows: DocumentTableRow[],
+	view: Pick<DocumentTableView, "filter" | "sort">,
+): DocumentTableRow[] {
+	const { sourceRows, rowByPath } = toSourceRows(rows);
+	const result = evaluate(
+		toDocumentViewSpec(view),
+		sourceRows,
+		DOCUMENT_FIELDS,
+	);
+	if (!result.ok) {
+		// The spec is built here from typed inputs, so this is a programming error.
+		throw new Error(
+			`document table spec rejected: ${result.errors[0]?.message}`,
+		);
+	}
+	return result.rows.map(
+		(sourceRow) => rowByPath.get(sourceRow.id as string) as DocumentTableRow,
+	);
+}
+
 type SortedRowsMemo = {
 	rows: DocumentTableRow[];
 	sortKey: string;
@@ -141,21 +169,7 @@ function sortDocumentRows(
 	if (sortedRowsMemo?.rows === rows && sortedRowsMemo.sortKey === sortKey) {
 		return sortedRowsMemo.sorted;
 	}
-	const { sourceRows, rowByPath } = toSourceRows(rows);
-	const result = evaluate(
-		toDocumentViewSpec({ filter: "", sort }),
-		sourceRows,
-		DOCUMENT_FIELDS,
-	);
-	if (!result.ok) {
-		// The spec is built here from typed inputs, so this is a programming error.
-		throw new Error(
-			`document table spec rejected: ${result.errors[0]?.message}`,
-		);
-	}
-	const sorted = result.rows.map(
-		(sourceRow) => rowByPath.get(sourceRow.id as string) as DocumentTableRow,
-	);
+	const sorted = evaluateDocumentRows(rows, { filter: "", sort });
 	sortedRowsMemo = { rows, sortKey, sorted };
 	return sorted;
 }
@@ -183,19 +197,5 @@ export function resetDocumentSortMemo() {
 	sortedRowsMemo = null;
 }
 
-/** The unoptimized reference: one `evaluate` call with filter + sort. Tests only. */
-export function evaluateDocumentRowsForTest(
-	rows: DocumentTableRow[],
-	view: Pick<DocumentTableView, "filter" | "sort">,
-): DocumentTableRow[] {
-	const { sourceRows, rowByPath } = toSourceRows(rows);
-	const result = evaluate(
-		toDocumentViewSpec(view),
-		sourceRows,
-		DOCUMENT_FIELDS,
-	);
-	if (!result.ok) throw new Error(result.errors[0]?.message);
-	return result.rows.map(
-		(sourceRow) => rowByPath.get(sourceRow.id as string) as DocumentTableRow,
-	);
-}
+/** The unoptimized reference (one `evaluate` with filter + sort), for parity tests. */
+export const evaluateDocumentRowsForTest = evaluateDocumentRows;

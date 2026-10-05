@@ -12,8 +12,12 @@ import {
 import type { FileEntry } from "../store/state";
 import {
 	filterAndSortDocumentRows,
+	ROOT_FOLDER_LABEL,
 	resetDocumentSortMemo,
 } from "./documentTableEngine";
+
+export { ROOT_FOLDER_LABEL };
+
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 
 export type DocumentTableColumn = "name" | "folder" | "modified" | "created";
@@ -93,9 +97,6 @@ export type DocumentTableRow = {
 	isPinnedOffFilter: boolean;
 };
 
-/** Folder cell for a document sitting directly in the workspace root. */
-export const ROOT_FOLDER_LABEL = "—";
-
 /** The part of the view that lives only for the session (never persisted). */
 export type DocumentTableSessionView = Omit<DocumentTableView, "sort">;
 
@@ -168,7 +169,7 @@ function toRow(
 		folderLabel: folderLabel(file.path, workspacePath),
 		modifiedAt: file.modified_at,
 		createdAt: file.created_at ?? file.modified_at,
-		searchName: looseFoldText(basename(file.path)),
+		searchName: foldFileName(basename(file.path)),
 		isActive: false,
 		isPinnedOffFilter: false,
 	};
@@ -181,6 +182,18 @@ type RowProjectionMemo = {
 };
 
 let rowProjectionMemo: RowProjectionMemo | null = null;
+
+// File name -> loose-folded form, carried from one listing to the next. The
+// watcher replaces the listing on every save; without this each save would
+// re-fold every name in the workspace (~60 ms at 50k files).
+let foldedNameCache = new Map<string, string>();
+let nextFoldedNameCache = new Map<string, string>();
+
+function foldFileName(fileName: string): string {
+	const folded = foldedNameCache.get(fileName) ?? looseFoldText(fileName);
+	nextFoldedNameCache.set(fileName, folded);
+	return folded;
+}
 
 /**
  * Projects the workspace listing into table rows. O(files), and memoized on the
@@ -206,6 +219,9 @@ export function buildDocumentRows(
 	const rows = files
 		.filter(isTableEligible)
 		.map((file) => toRow(file, workspacePath));
+	// Keep only names still in the listing, so the cache never outgrows it.
+	foldedNameCache = nextFoldedNameCache;
+	nextFoldedNameCache = new Map();
 	rowProjectionMemo = { files, workspacePath, rows };
 	return rows;
 }
@@ -213,6 +229,7 @@ export function buildDocumentRows(
 /** Test seam: drops the projection memo so fixtures cannot leak between cases. */
 export function resetDocumentRowsMemo() {
 	rowProjectionMemo = null;
+	foldedNameCache = new Map();
 	resetDocumentSortMemo();
 }
 
