@@ -7,8 +7,8 @@ import {
 	resetDocumentRowsMemo,
 	withPropertyValues,
 } from "../documentTableView";
-import { buildPropertyGroupTree } from "./propertyGroupTree";
 import { derivePropertyModel } from "./propertyFields";
+import { buildPropertyGroupTree } from "./propertyGroupTree";
 
 const FILE_COUNT = 50_000;
 const STATUSES = ["Todo", "Doing", "Done", "Blocked"];

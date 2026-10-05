@@ -10,8 +10,8 @@ import {
 	withPropertyValues,
 } from "../documentTableView";
 import type { PropertyFilter } from "./documentViews";
-import { buildPropertyGroupTree } from "./propertyGroupTree";
 import { derivePropertyModel } from "./propertyFields";
+import { buildPropertyGroupTree } from "./propertyGroupTree";
 
 type Props = Record<string, ScannedFrontMatterProperty>;
 
@@ -67,28 +67,55 @@ describe("property columns in the document table engine", () => {
 	it("sorts by a number property, documents without it last in both directions", () => {
 		const { rows, fields } = setup();
 		expect(
-			names(rows, view({ sort: { column: "prop:priority", direction: "asc" } }), fields),
+			names(
+				rows,
+				view({ sort: { column: "prop:priority", direction: "asc" } }),
+				fields,
+			),
 		).toEqual(["b", "a", "c", "d"]);
 		expect(
-			names(rows, view({ sort: { column: "prop:priority", direction: "desc" } }), fields),
+			names(
+				rows,
+				view({ sort: { column: "prop:priority", direction: "desc" } }),
+				fields,
+			),
 		).toEqual(["a", "b", "c", "d"]);
 	});
 
 	it("falls back to the default sort for a property no document has", () => {
 		const { rows, fields } = setup();
 		expect(
-			names(rows, view({ sort: { column: "prop:gone", direction: "asc" } }), fields),
+			names(
+				rows,
+				view({ sort: { column: "prop:gone", direction: "asc" } }),
+				fields,
+			),
 		).toEqual(["d", "c", "b", "a"]);
 	});
 
 	it("filters with has / is / tag chips, AND-ed, and keeps the sort", () => {
 		const { rows, fields } = setup();
 		const has: PropertyFilter = { fieldId: "prop:priority", kind: "has" };
-		const todo: PropertyFilter = { fieldId: "prop:status", kind: "is", value: "Todo" };
-		const home: PropertyFilter = { fieldId: "prop:tags", kind: "is", value: "home" };
-		expect(names(rows, view({ propertyFilters: [has] }), fields)).toEqual(["b", "a"]);
-		expect(names(rows, view({ propertyFilters: [has, todo] }), fields)).toEqual(["a"]);
-		expect(names(rows, view({ propertyFilters: [home] }), fields)).toEqual(["b"]);
+		const todo: PropertyFilter = {
+			fieldId: "prop:status",
+			kind: "is",
+			value: "Todo",
+		};
+		const home: PropertyFilter = {
+			fieldId: "prop:tags",
+			kind: "is",
+			value: "home",
+		};
+		expect(names(rows, view({ propertyFilters: [has] }), fields)).toEqual([
+			"b",
+			"a",
+		]);
+		expect(names(rows, view({ propertyFilters: [has, todo] }), fields)).toEqual(
+			["a"],
+		);
+		expect(names(rows, view({ propertyFilters: [home] }), fields)).toEqual([
+			"b",
+		]);
 	});
 
 	it("a chip on a property nobody carries matches nothing, never everything (decision E)", () => {
@@ -107,7 +134,10 @@ describe("property columns in the document table engine", () => {
 		expect(
 			names(
 				rows,
-				view({ filter: "c", propertyFilters: [{ fieldId: "prop:status", kind: "has" }] }),
+				view({
+					filter: "c",
+					propertyFilters: [{ fieldId: "prop:status", kind: "has" }],
+				}),
 				fields,
 			),
 		).toEqual(["c"]);
@@ -124,7 +154,8 @@ describe("property columns in the document table engine", () => {
 			const props: Record<string, Props> = {};
 			for (let index = 0; index < 30; index += 1) {
 				const entry: Props = {};
-				if (random() < 0.7) entry.status = t(statuses[Math.floor(random() * 4)]);
+				if (random() < 0.7)
+					entry.status = t(statuses[Math.floor(random() * 4)]);
 				if (random() < 0.5) entry.priority = n(Math.floor(random() * 4));
 				props[`/ws/n${index}.md`] = entry;
 			}
@@ -133,9 +164,15 @@ describe("property columns in the document table engine", () => {
 				for (const direction of ["asc", "desc"] as const) {
 					const filters: PropertyFilter[] =
 						round % 2 === 0 ? [{ fieldId: "prop:priority", kind: "has" }] : [];
-					const v = view({ sort: { column, direction }, propertyFilters: filters, filter: round % 3 === 0 ? "n1" : "" });
+					const v = view({
+						sort: { column, direction },
+						propertyFilters: filters,
+						filter: round % 3 === 0 ? "n1" : "",
+					});
 					expect(
-						applyDocumentTableView(rows, v, null, fields).map((row) => row.path),
+						applyDocumentTableView(rows, v, null, fields).map(
+							(row) => row.path,
+						),
 					).toEqual(
 						evaluateDocumentRowsForTest(rows, v, fields).map((row) => row.path),
 					);
@@ -150,7 +187,11 @@ describe("group by property (table-core groupBy)", () => {
 		const { rows, fields } = setup();
 		const tree = buildPropertyGroupTree(rows, "prop:status", fields);
 		expect(
-			tree.children.map((group) => [group.label, group.ownPaths.length, group.isFallback]),
+			tree.children.map((group) => [
+				group.label,
+				group.ownPaths.length,
+				group.isFallback,
+			]),
 		).toEqual([
 			["Done", 1, false],
 			["Todo", 2, false],
@@ -178,9 +219,11 @@ describe("group by property (table-core groupBy)", () => {
 			null,
 			fields,
 		);
-		const todo = buildPropertyGroupTree(sorted, "prop:status", fields).children.find(
-			(group) => group.label === "Todo",
-		);
+		const todo = buildPropertyGroupTree(
+			sorted,
+			"prop:status",
+			fields,
+		).children.find((group) => group.label === "Todo");
 		expect(todo?.ownPaths).toEqual(["/ws/c.md", "/ws/a.md"]);
 	});
 });

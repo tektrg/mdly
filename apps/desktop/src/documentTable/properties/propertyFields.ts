@@ -234,7 +234,10 @@ export type PropertyModel = {
 	valuesByPath: ReadonlyMap<string, PropertyRowValues>;
 };
 
-export const EMPTY_PROPERTY_MODEL: PropertyModel = { fields: [], valuesByPath: new Map() };
+export const EMPTY_PROPERTY_MODEL: PropertyModel = {
+	fields: [],
+	valuesByPath: new Map(),
+};
 
 let modelMemo: { source: PropertiesByPath; model: PropertyModel } | null = null;
 

@@ -10,7 +10,9 @@ import {
 const status = (value: string) => ({ type: "text" as const, value });
 
 function fakeScanner(
-	propertiesFor: (path: string) => FrontMatterPropertyScan["propertiesByPath"][string] | null,
+	propertiesFor: (
+		path: string,
+	) => FrontMatterPropertyScan["propertiesByPath"][string] | null,
 	invalid: readonly string[] = [],
 ) {
 	return vi.fn(async (paths: string[]): Promise<FrontMatterPropertyScan> => {
@@ -38,7 +40,9 @@ describe("runPropertyScan", () => {
 		await runPropertyScan("/ws", files, scan);
 		expect(scan).toHaveBeenCalledTimes(1);
 		expect(propertyScanStore.get().status).toBe("ready");
-		expect(Object.keys(propertyScanStore.get().propertiesByPath)).toHaveLength(2);
+		expect(Object.keys(propertyScanStore.get().propertiesByPath)).toHaveLength(
+			2,
+		);
 
 		// A refocus with the same listing reads zero heads.
 		await runPropertyScan("/ws", files, scan);
@@ -54,7 +58,9 @@ describe("runPropertyScan", () => {
 
 	it("drops values removed from a file and paths removed from the workspace (renames)", async () => {
 		let hasStatus = true;
-		const scan = fakeScanner(() => (hasStatus ? { status: status("x") } : null));
+		const scan = fakeScanner(() =>
+			hasStatus ? { status: status("x") } : null,
+		);
 		await runPropertyScan(
 			"/ws",
 			[
