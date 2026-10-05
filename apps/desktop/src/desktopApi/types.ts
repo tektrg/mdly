@@ -27,6 +27,25 @@ export type HtmlAppFileEntry = {
 	size: number;
 };
 
+/**
+ * One front-matter value as the property scan reports it: the editor's own
+ * per-value type (`parseMarkdownFrontMatter`), never a guess from the wire.
+ * Unsupported values (nested maps, mixed lists) are left out.
+ */
+export type ScannedFrontMatterProperty =
+	| { type: "text"; value: string }
+	| { type: "number"; value: number }
+	| { type: "checkbox"; value: boolean }
+	| { type: "date"; value: string }
+	| { type: "tags"; value: string[] };
+
+export type FrontMatterPropertyScan = {
+	/** Keyed by path, then by front-matter key as written. Files with none are omitted. */
+	propertiesByPath: Record<string, Record<string, ScannedFrontMatterProperty>>;
+	/** Files whose front matter could not be parsed (malformed YAML, too long). */
+	invalidPaths: string[];
+};
+
 export type PersistPastedImageInput = {
 	filePath: string;
 	bytes: number[];
@@ -411,6 +430,11 @@ export type DesktopApi = {
 	 * files, so this is a separate, on-demand step (see ADR-0008).
 	 */
 	scanFrontMatterTags(paths: string[]): Promise<Record<string, string[]>>;
+	/**
+	 * Every supported front-matter property of each path, from an ~8 KB head
+	 * read. Read-only; the document table's property columns are built from it.
+	 */
+	scanFrontMatterProperties(paths: string[]): Promise<FrontMatterPropertyScan>;
 	readWorkspaceConfig(workspacePath: string): Promise<WorkspaceConfig>;
 	writeWorkspaceConfig(
 		workspacePath: string,

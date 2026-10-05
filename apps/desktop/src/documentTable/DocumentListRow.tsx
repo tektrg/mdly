@@ -16,6 +16,10 @@ import type {
 } from "./documentTableView";
 import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import type { NavDensityTier } from "./navDensity";
+import {
+	formatPropertyValue,
+	type PropertyFieldId,
+} from "./properties/propertyFields";
 
 /**
  * Full-table density: the same 28px rhythm the sidebar uses, so the two lists
@@ -155,7 +159,30 @@ type DocumentListRowProps = {
 	tags?: readonly string[];
 	/** Right-click opens the host-wired row menu. Absent means no menu. */
 	onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
+	/** Front-matter property cells after the built-in ones; full table only. */
+	propertyColumns?: readonly PropertyFieldId[];
 };
+
+function PropertyCell({
+	fieldId,
+	row,
+}: {
+	fieldId: PropertyFieldId;
+	row: DocumentTableRow;
+}) {
+	const text = formatPropertyValue(row.properties?.[fieldId]);
+	return (
+		<span
+			role="gridcell"
+			tabIndex={-1}
+			data-property-cell={fieldId}
+			className={cn(secondaryTextClass(row.isActive), "tabular-nums")}
+			title={text || undefined}
+		>
+			{text}
+		</span>
+	);
+}
 
 function TableCell({
 	column,
@@ -378,6 +405,7 @@ export function DocumentListRow({
 	metaColumns,
 	tags,
 	onContextMenu,
+	propertyColumns = [],
 }: DocumentListRowProps) {
 	// Every list-density row that shows the 2nd info is a stacked card — title
 	// plus one meta block wrapping every data column (and tags), clamped to
@@ -435,6 +463,9 @@ export function DocumentListRow({
 							row={row}
 							isActive={row.isActive}
 						/>
+					))}
+					{propertyColumns.map((fieldId) => (
+						<PropertyCell key={fieldId} fieldId={fieldId} row={row} />
 					))}
 				</span>
 			) : hideSecondary ? (

@@ -19,12 +19,21 @@ import {
 export { ROOT_FOLDER_LABEL };
 
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
+import type { PropertyFilter } from "./properties/documentViews";
+import type {
+	PropertyField,
+	PropertyFieldId,
+	PropertyRowValues,
+} from "./properties/propertyFields";
 
 export type DocumentTableColumn = "name" | "folder" | "modified" | "created";
 export type DocumentTableSortDirection = "asc" | "desc";
 
+/** A built-in column or a front-matter property column. */
+export type DocumentTableSortColumn = DocumentTableColumn | PropertyFieldId;
+
 export type DocumentTableSort = {
-	column: DocumentTableColumn;
+	column: DocumentTableSortColumn;
 	direction: DocumentTableSortDirection;
 };
 
@@ -59,6 +68,13 @@ export type DocumentTableView = {
 	 * both modes; only `resolveNavViewSpec` reads the two together (A7).
 	 */
 	mode: NavViewMode;
+	/** Property filter chips, AND-ed (decision E: always visible, deletable). */
+	propertyFilters: PropertyFilter[];
+	/**
+	 * Group by a property instead of folder/tag. Takes precedence over
+	 * `groupBy` while set; a live search still drops all grouping (A7).
+	 */
+	propertyGroupBy: PropertyFieldId | null;
 };
 
 export type DocumentTableRow = {
@@ -95,17 +111,34 @@ export type DocumentTableRow = {
 	 * (R6).
 	 */
 	isPinnedOffFilter: boolean;
+	/** Typed front-matter values, once the property scan has read this file. */
+	properties?: PropertyRowValues;
 };
 
-/** The part of the view that lives only for the session (never persisted). */
-export type DocumentTableSessionView = Omit<DocumentTableView, "sort">;
+/**
+ * The part of the view that lives only for the session (never persisted).
+ * `propertyFilters`/`propertyGroupBy` here are the unsaved "All documents"
+ * view's; a saved view carries its own (see `documentViewsStore.ts`).
+ */
+export type DocumentTableSessionView = Omit<DocumentTableView, "sort"> & {
+	/** The saved view being shown; null = the unsaved "All documents" view. */
+	activeSavedViewId: string | null;
+};
 
 export function createDefaultSessionView(): DocumentTableSessionView {
-	return { filter: "", groupBy: null, mode: "browse" };
+	return {
+		filter: "",
+		groupBy: null,
+		mode: "browse",
+		propertyFilters: [],
+		propertyGroupBy: null,
+		activeSavedViewId: null,
+	};
 }
 
 export function createDefaultDocumentTableView(): DocumentTableView {
-	return { ...createDefaultSessionView(), sort: DEFAULT_NAV_VIEW_SORT };
+	const { activeSavedViewId: _unused, ...session } = createDefaultSessionView();
+	return { ...session, sort: DEFAULT_NAV_VIEW_SORT };
 }
 
 /**
@@ -116,7 +149,7 @@ export function createDefaultDocumentTableView(): DocumentTableView {
  */
 export function toggleSort(
 	currentSort: DocumentTableSort,
-	column: DocumentTableColumn,
+	column: DocumentTableSortColumn,
 ): DocumentTableSort {
 	if (currentSort.column === column) {
 		return {
@@ -230,6 +263,7 @@ export function buildDocumentRows(
 export function resetDocumentRowsMemo() {
 	rowProjectionMemo = null;
 	foldedNameCache = new Map();
+	propertyMergeMemo = null;
 	resetDocumentSortMemo();
 }
 
@@ -275,13 +309,14 @@ export function applyDocumentTableView(
 	rows: DocumentTableRow[],
 	view: DocumentTableView,
 	activePath: string | null = null,
+	propertyFields: readonly PropertyField[] = [],
 ): DocumentTableRow[] {
 	// Resolved once against the unfiltered rows, so the filtered list and the R6
 	// pin below can never disagree about which row is the open document.
 	const activeRowPath =
 		activePath === null ? null : resolveActiveRowPath(rows, activePath);
-	const visible = filterAndSortDocumentRows(rows, view).map((row) =>
-		row.path === activeRowPath ? { ...row, isActive: true } : row,
+	const visible = filterAndSortDocumentRows(rows, view, propertyFields).map(
+		(row) => (row.path === activeRowPath ? { ...row, isActive: true } : row),
 	);
 
 	if (activeRowPath === null || visible.some((row) => row.isActive))
@@ -290,4 +325,33 @@ export function applyDocumentTableView(
 	const pinned = rows.find((row) => row.path === activeRowPath);
 	if (!pinned) return visible;
 	return [{ ...pinned, isActive: true, isPinnedOffFilter: true }, ...visible];
+}
+
+let propertyMergeMemo: {
+	rows: DocumentTableRow[];
+	valuesByPath: ReadonlyMap<string, PropertyRowValues>;
+	merged: DocumentTableRow[];
+} | null = null;
+
+/**
+ * Attaches scanned property values to projected rows. Memoized on both inputs,
+ * so typing never re-merges; a scan batch or a listing change does, once.
+ */
+export function withPropertyValues(
+	rows: DocumentTableRow[],
+	valuesByPath: ReadonlyMap<string, PropertyRowValues>,
+): DocumentTableRow[] {
+	if (valuesByPath.size === 0) return rows;
+	if (
+		propertyMergeMemo?.rows === rows &&
+		propertyMergeMemo.valuesByPath === valuesByPath
+	) {
+		return propertyMergeMemo.merged;
+	}
+	const merged = rows.map((row) => {
+		const properties = valuesByPath.get(row.path);
+		return properties ? { ...row, properties } : row;
+	});
+	propertyMergeMemo = { rows, valuesByPath, merged };
+	return merged;
 }

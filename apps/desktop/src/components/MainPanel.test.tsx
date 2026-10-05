@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { documentTableViewStore } from "../documentTable/documentTableStore";
-import { createDefaultDocumentTableView } from "../documentTable/documentTableView";
+import { createDefaultSessionView } from "../documentTable/documentTableView";
 import { WORKSPACE_FILES } from "../documentTable/testFixtures";
 import { viewerStore, workspaceStore } from "../store/state";
 import { MainPanel } from "./MainPanel";
@@ -50,7 +50,7 @@ describe("MainPanel", () => {
 		root = createRoot(container);
 		loadPath.mockClear();
 		closeDocumentToTable.mockClear();
-		documentTableViewStore.set(createDefaultDocumentTableView());
+		documentTableViewStore.set(createDefaultSessionView());
 		workspaceStore.set((workspace) => ({
 			...workspace,
 			workspacePath: "/ws",

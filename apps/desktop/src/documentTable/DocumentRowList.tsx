@@ -4,6 +4,7 @@ import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type ReactNode,
 	useCallback,
+	useDeferredValue,
 	useEffect,
 	useMemo,
 	useRef,
@@ -33,11 +34,15 @@ import {
 	buildGroupTree,
 	buildNavRows,
 	defaultExpandedIds,
+	flattenGroupRows,
 	type NavDocument,
 	type NavGroupNode,
 	type NavView,
+	PINNED_GROUP_ID,
 	resolveNavViewSpec,
 } from "./navGroupTree";
+import { buildPropertyGroupTree } from "./properties/propertyGroupTree";
+import { usePropertyModel } from "./properties/usePropertyModel";
 import { TagScanStateView } from "./TagScanState";
 import {
 	beginTagScan,
@@ -189,7 +194,8 @@ export function DocumentRowList({
 	// Live column order + widths (one store shared with the table header).
 	// The narrow list's secondary line is the first data column in this order;
 	// the card tiers wrap every data column in that same order.
-	const { columns, gridStyle, secondaryColumn } = useDocumentTableLayout();
+	const { columns, gridStyle, secondaryColumn, propertyColumns } =
+		useDocumentTableLayout();
 	const metaColumns = useMemo(
 		() => columns.filter((column) => column !== "name"),
 		[columns],
@@ -255,26 +261,74 @@ export function DocumentRowList({
 		// storedExpandedIds already encodes the workspace through its selector,
 		// so the workspace itself is not a separate dependency.
 	}, [tree, storedExpandedIds]);
-	const navRows = useMemo(
+	// Group-by-property replaces folder/tag grouping while set; a live search
+	// still drops all grouping (A7), exactly like the nav views.
+	const { fields: propertyFields } = usePropertyModel();
+	const isSearching =
+		navView.mode === "search" && navView.filter.trim().length > 0;
+	const propertyGroupBy =
+		!isSearching && view?.propertyGroupBy ? view.propertyGroupBy : null;
+	// Regrouping 50k rows costs ~30-50 ms; defer it so typing in the filter
+	// box stays responsive while grouped (React renders the stale groups first).
+	const deferredNavDocs = useDeferredValue(navDocs);
+	const groupedDocs = propertyGroupBy ? deferredNavDocs : navDocs;
+	const propertyTree = useMemo(
 		() =>
-			buildNavRows({
-				docs: navDocs,
-				view: navView,
-				expandedIds,
-				tagsReady,
-			}).rows,
-		[navDocs, navView, expandedIds, tagsReady],
+			propertyGroupBy
+				? buildPropertyGroupTree(groupedDocs, propertyGroupBy, propertyFields)
+				: null,
+		[groupedDocs, propertyGroupBy, propertyFields],
 	);
+	// Session-only collapse state: property groups start expanded (a board's
+	// columns are all visible), and the user's collapses last until relaunch.
+	const [collapsedPropertyGroups, setCollapsedPropertyGroups] = useState<
+		ReadonlySet<string>
+	>(() => new Set());
+	const navRows = useMemo(() => {
+		if (propertyTree) {
+			const expanded = new Set(
+				propertyTree.children
+					.map((child) => child.id)
+					.filter((id) => !collapsedPropertyGroups.has(id)),
+			);
+			if (expandedIds.has(PINNED_GROUP_ID)) expanded.add(PINNED_GROUP_ID);
+			return flattenGroupRows(propertyTree, expanded, groupedDocs, spec);
+		}
+		return buildNavRows({
+			docs: navDocs,
+			view: navView,
+			expandedIds,
+			tagsReady,
+		}).rows;
+	}, [
+		propertyTree,
+		collapsedPropertyGroups,
+		groupedDocs,
+		navDocs,
+		spec,
+		navView,
+		expandedIds,
+		tagsReady,
+	]);
 
 	const toggleGroup = useCallback(
 		(groupId: string) => {
+			if (propertyTree && groupId !== PINNED_GROUP_ID) {
+				setCollapsedPropertyGroups((collapsed) => {
+					const next = new Set(collapsed);
+					if (next.has(groupId)) next.delete(groupId);
+					else next.add(groupId);
+					return next;
+				});
+				return;
+			}
 			if (!workspacePath) return;
 			const next = new Set(expandedIds);
 			if (next.has(groupId)) next.delete(groupId);
 			else next.add(groupId);
 			setNavExpandedIds(workspacePath, [...next]);
 		},
-		[workspacePath, expandedIds],
+		[workspacePath, expandedIds, propertyTree],
 	);
 
 	// A9: entering the tag view starts a scan for this workspace. Fires from
@@ -535,6 +589,11 @@ export function DocumentRowList({
 								navTier={navTier}
 								metaColumns={metaColumns}
 								tags={navRow.doc.tags}
+								propertyColumns={
+									density === "table" && !gridCells
+										? propertyColumns
+										: undefined
+								}
 								onContextMenu={
 									menu
 										? (event) => {

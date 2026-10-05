@@ -35,6 +35,8 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:html-app-list-files", { workspacePath, glob }),
 	scanFrontMatterTags: (paths) =>
 		ipcRenderer.invoke("desktop:scan-front-matter-tags", { paths }),
+	scanFrontMatterProperties: (paths) =>
+		ipcRenderer.invoke("desktop:scan-front-matter-properties", { paths }),
 	readWorkspaceConfig: (workspacePath) =>
 		ipcRenderer.invoke("desktop:read-workspace-config", { workspacePath }),
 	writeWorkspaceConfig: (workspacePath, config) =>

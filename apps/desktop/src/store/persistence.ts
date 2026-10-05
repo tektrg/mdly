@@ -1,5 +1,10 @@
 import type { DocumentTableSort } from "../documentTable/documentTableView";
 import {
+	isDocumentTableSortColumn,
+	sanitizeDocumentViews,
+	type WorkspaceDocumentViews,
+} from "../documentTable/properties/documentViews";
+import {
 	type ContrastPreference,
 	type EditorFontPreference,
 	isContrastPreference,
@@ -52,6 +57,11 @@ type WorkspaceState = {
 	 * Same per-workspace-map shape and middleware as `navHiddenViews`.
 	 */
 	navViewSorts: Record<string, NavViewSorts>;
+	/**
+	 * Phase 3 saved views + the visible property columns, per workspace. Same
+	 * per-workspace-map shape as `navViewSorts`, through the same middleware.
+	 */
+	documentViews: Record<string, WorkspaceDocumentViews>;
 	sortMode: SortMode;
 	files: WorkspaceEntry[];
 	folders: WorkspaceEntry[];
@@ -132,6 +142,7 @@ type Persisted = {
 		navExpandedGroups?: Record<string, string[]>;
 		navHiddenViews?: Record<string, string[]>;
 		navViewSorts?: Record<string, NavViewSorts>;
+		documentViews?: unknown;
 		sortMode?: SortMode;
 	};
 	document?: { lastOpenedPath?: string | null };
@@ -217,10 +228,7 @@ function isValidNavViewSort(value: unknown): value is DocumentTableSort {
 	if (!value || typeof value !== "object") return false;
 	const { column, direction } = value as Record<string, unknown>;
 	return (
-		(column === "name" ||
-			column === "folder" ||
-			column === "modified" ||
-			column === "created") &&
+		isDocumentTableSortColumn(column) &&
 		(direction === "asc" || direction === "desc")
 	);
 }
@@ -266,6 +274,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
 		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
 		navViewSorts: sanitizeNavViewSorts(ws?.navViewSorts),
+		documentViews: sanitizeDocumentViews(ws?.documentViews),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
 		folders: [],
@@ -334,6 +343,7 @@ export function serialize(state: DesktopState): Persisted {
 			navExpandedGroups: state.workspace.navExpandedGroups,
 			navHiddenViews: state.workspace.navHiddenViews,
 			navViewSorts: state.workspace.navViewSorts,
+			documentViews: state.workspace.documentViews,
 			sortMode: state.workspace.sortMode,
 		},
 		document: {

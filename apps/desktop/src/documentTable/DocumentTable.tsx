@@ -1,5 +1,5 @@
 import { Button } from "@hubble.md/ui";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import MingcuteArrowUpLine from "~icons/mingcute/arrow-up-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
@@ -13,6 +13,7 @@ import {
 import type { DocumentRowListMenu } from "./DocumentRowMenu";
 import type { DocumentListingState } from "./documentListingState";
 import {
+	type DocumentTableLayoutColumn,
 	moveDocumentTableColumn,
 	resetDocumentTableColumnWidth,
 	resetDocumentTableLayout,
@@ -22,10 +23,23 @@ import {
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
+	DocumentTableSortColumn,
 	DocumentTableView,
 } from "./documentTableView";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
+import {
+	AddPropertyColumnMenu,
+	PropertyColumnMenu,
+} from "./properties/PropertyControls";
+import { PropertyViewBar, SavedViewTabs } from "./properties/PropertyViewBar";
+import {
+	fallbackPropertyLabel,
+	type PropertyField,
+	type PropertyFieldId,
+} from "./properties/propertyFields";
+import { usePropertyScanState } from "./properties/usePropertyModel";
+import { useCurrentDocumentView } from "./useDocumentTableRows";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 export const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
@@ -37,27 +51,111 @@ export const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
 
 function ariaSortFor(
 	view: DocumentTableView,
-	column: DocumentTableColumn,
+	column: DocumentTableSortColumn,
 ): "ascending" | "descending" | "none" {
 	if (view.sort.column !== column) return "none";
 	return view.sort.direction === "asc" ? "ascending" : "descending";
 }
 
+const SORT_ARROW_CLASS =
+	"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none";
+const HEADER_BUTTON_CLASS =
+	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] uppercase text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none";
+
+/** A front-matter property column header: sort on click (unless multi-value), menu, resize. */
+function PropertyColumnHeader({
+	fieldId,
+	field,
+	view,
+	onToggleSort,
+	resizeHandle,
+}: {
+	fieldId: PropertyFieldId;
+	field: PropertyField | undefined;
+	view: DocumentTableView;
+	onToggleSort: (column: DocumentTableSortColumn) => void;
+	resizeHandle: ReactNode;
+}) {
+	const label = field?.label ?? fallbackPropertyLabel(fieldId);
+	const sortable = field !== undefined && field.type !== "multiSelect";
+	const isSorted = view.sort.column === fieldId;
+	return (
+		<div
+			role="columnheader"
+			tabIndex={-1}
+			aria-sort={ariaSortFor(view, fieldId)}
+			className="group relative flex min-w-0 items-center"
+		>
+			<button
+				type="button"
+				className={cn(HEADER_BUTTON_CLASS, "min-w-0 flex-1 normal-case")}
+				onClick={() => (sortable ? onToggleSort(fieldId) : undefined)}
+				title={
+					sortable ? `Sort by ${label}.` : `${label} (tags cannot be sorted).`
+				}
+			>
+				<span className="min-w-0 truncate">{label}</span>
+				{sortable ? (
+					<MingcuteArrowUpLine
+						aria-hidden="true"
+						className={cn(
+							SORT_ARROW_CLASS,
+							isSorted
+								? "opacity-100"
+								: "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
+							(isSorted ? view.sort.direction : "asc") === "desc" &&
+								"rotate-180",
+						)}
+					/>
+				) : null}
+			</button>
+			<PropertyColumnMenu
+				fieldId={fieldId}
+				field={field}
+				label={label}
+				view={view}
+			/>
+			{resizeHandle}
+		</div>
+	);
+}
+
 function DocumentTableHeader({
 	view,
 	onToggleSort,
+	propertyFields,
 }: {
 	view: DocumentTableView;
-	onToggleSort: (column: DocumentTableColumn) => void;
+	onToggleSort: (column: DocumentTableSortColumn) => void;
+	propertyFields: readonly PropertyField[];
 }) {
-	const { columns, gridStyle } = useDocumentTableLayout();
+	const { columns, gridStyle, propertyColumns } = useDocumentTableLayout();
 	const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
 	const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
 	const resizeDragRef = useRef<{
-		column: DocumentTableColumn;
+		column: DocumentTableLayoutColumn;
 		startX: number;
 		startWidth: number;
 	} | null>(null);
+	const resizeHandleFor = (column: DocumentTableLayoutColumn) => (
+		<ColumnResizeHandle
+			onResizeStart={(clientX, startWidth) => {
+				resizeDragRef.current = { column, startX: clientX, startWidth };
+			}}
+			onResizeMove={(clientX) => {
+				const drag = resizeDragRef.current;
+				if (!drag) return;
+				setDocumentTableColumnWidth(
+					drag.column,
+					drag.startWidth + (clientX - drag.startX),
+				);
+			}}
+			onResizeEnd={() => {
+				resizeDragRef.current = null;
+			}}
+			onReset={() => resetDocumentTableColumnWidth(column)}
+		/>
+	);
 
 	return (
 		<div role="rowgroup" className="shrink-0 border-b border-border">
@@ -171,30 +269,20 @@ function DocumentTableHeader({
 									)}
 								/>
 							</button>
-							<ColumnResizeHandle
-								onResizeStart={(clientX, startWidth) => {
-									resizeDragRef.current = {
-										column,
-										startX: clientX,
-										startWidth,
-									};
-								}}
-								onResizeMove={(clientX) => {
-									const drag = resizeDragRef.current;
-									if (!drag) return;
-									setDocumentTableColumnWidth(
-										drag.column,
-										drag.startWidth + (clientX - drag.startX),
-									);
-								}}
-								onResizeEnd={() => {
-									resizeDragRef.current = null;
-								}}
-								onReset={() => resetDocumentTableColumnWidth(column)}
-							/>
+							{resizeHandleFor(column)}
 						</div>
 					);
 				})}
+				{propertyColumns.map((fieldId) => (
+					<PropertyColumnHeader
+						key={fieldId}
+						fieldId={fieldId}
+						field={propertyFields.find((field) => field.id === fieldId)}
+						view={view}
+						onToggleSort={onToggleSort}
+						resizeHandle={resizeHandleFor(fieldId)}
+					/>
+				))}
 			</div>
 		</div>
 	);
@@ -207,10 +295,15 @@ function DocumentTableHeader({
 function DocumentTableEmptyState({
 	listing,
 	filter,
+	hasPropertyFilters,
+	propertiesPending = false,
 	onRetryListing,
 }: {
 	listing: DocumentListingState;
 	filter: string;
+	hasPropertyFilters: boolean;
+	/** Chips are set but the property scan has not finished: not "no match" yet. */
+	propertiesPending?: boolean;
 	onRetryListing: () => void;
 }) {
 	if (listing.kind === "scanning") {
@@ -244,9 +337,17 @@ function DocumentTableEmptyState({
 		);
 	}
 
+	if (hasPropertyFilters && propertiesPending) {
+		return (
+			<p aria-busy="true" className="m-0 p-3 text-sm text-muted-foreground">
+				Reading front matter…
+			</p>
+		);
+	}
+
 	return (
 		<p className="m-0 p-3 text-sm text-muted-foreground">
-			{filter.length > 0
+			{filter.length > 0 || hasPropertyFilters
 				? "No documents match this filter."
 				: "No documents in this workspace yet."}
 		</p>
@@ -259,7 +360,7 @@ export type DocumentTableProps = {
 	listing: DocumentListingState;
 	onOpenDocument: (row: DocumentTableRow) => void;
 	onFilterChange: (filter: string) => void;
-	onToggleSort: (column: DocumentTableColumn) => void;
+	onToggleSort: (column: DocumentTableSortColumn) => void;
 	onRetryListing: () => void;
 	/** Title-column menu; omitted in tests that only exercise the grid. */
 	rowMenu?: DocumentRowListMenu;
@@ -276,7 +377,13 @@ export function DocumentTable({
 	onRetryListing,
 	rowMenu,
 }: DocumentTableProps) {
-	const { isCustomized } = useDocumentTableLayout();
+	const { isCustomized, propertyColumns } = useDocumentTableLayout();
+	const { savedView, savedViews, propertyFields } = useCurrentDocumentView();
+	const propertyScan = usePropertyScanState();
+	const canSaveView =
+		view.propertyFilters.length > 0 ||
+		view.propertyGroupBy !== null ||
+		propertyColumns.length > 0;
 	return (
 		<section className="flex h-full min-h-0 flex-col bg-background">
 			<header
@@ -287,10 +394,18 @@ export function DocumentTable({
 					WINDOW_CHROME_INSET_CLASS,
 				)}
 			>
-				<h1 className="m-0 min-w-0 truncate text-sm font-medium">
-					All documents
-				</h1>
+				<h1 className="sr-only">{savedView?.name ?? "All documents"}</h1>
+				<SavedViewTabs
+					savedViews={savedViews}
+					activeView={savedView}
+					canSave={canSaveView}
+				/>
 				<div className="flex items-center gap-2">
+					<AddPropertyColumnMenu
+						fields={propertyFields}
+						visibleColumns={propertyColumns}
+						isScanning={propertyScan.status === "scanning"}
+					/>
 					{isCustomized ? (
 						<Button
 							size="sm"
@@ -307,13 +422,22 @@ export function DocumentTable({
 					/>
 				</div>
 			</header>
+			<PropertyViewBar
+				view={view}
+				fields={propertyFields}
+				scan={propertyScan}
+			/>
 			<div
 				role="grid"
 				aria-label="Documents"
 				aria-rowcount={rows.length + 1}
 				className="flex min-h-0 flex-1 flex-col px-2 pb-2"
 			>
-				<DocumentTableHeader view={view} onToggleSort={onToggleSort} />
+				<DocumentTableHeader
+					view={view}
+					onToggleSort={onToggleSort}
+					propertyFields={propertyFields}
+				/>
 				<NavListHeader />
 				<DocumentRowList
 					rows={rows}
@@ -325,6 +449,11 @@ export function DocumentTable({
 						<DocumentTableEmptyState
 							listing={listing}
 							filter={view.filter}
+							hasPropertyFilters={view.propertyFilters.length > 0}
+							propertiesPending={
+								propertyScan.status === "scanning" ||
+								propertyScan.status === "idle"
+							}
 							onRetryListing={onRetryListing}
 						/>
 					}

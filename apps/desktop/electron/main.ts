@@ -85,6 +85,7 @@ import {
 } from "./docImport";
 import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
+import { scanFrontMatterProperties } from "./frontMatterProperties";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { installMainProcessErrorHandlers } from "./mainProcessErrors";
 import {
@@ -1465,22 +1466,29 @@ function registerIpc() {
 		},
 	);
 
+	// Same access boundary as reading a file directly -- a head scan can only
+	// touch paths the renderer was already granted.
+	const grantedScanPaths = (paths: unknown): string[] =>
+		(Array.isArray(paths) ? paths : [])
+			.map((candidate) => {
+				try {
+					return assertGranted(String(candidate));
+				} catch {
+					return null;
+				}
+			})
+			.filter((path): path is string => path !== null);
+
 	ipcMain.handle(
 		"desktop:scan-front-matter-tags",
-		async (_event, { paths }: { paths: string[] }) => {
-			// Same access boundary as reading a file directly -- the scan can only
-			// touch paths the renderer was already granted.
-			const granted = (Array.isArray(paths) ? paths : [])
-				.map((candidate) => {
-					try {
-						return assertGranted(String(candidate));
-					} catch {
-						return null;
-					}
-				})
-				.filter((path): path is string => path !== null);
-			return await scanFrontMatterTags(granted);
-		},
+		async (_event, { paths }: { paths: string[] }) =>
+			await scanFrontMatterTags(grantedScanPaths(paths)),
+	);
+
+	ipcMain.handle(
+		"desktop:scan-front-matter-properties",
+		async (_event, { paths }: { paths: string[] }) =>
+			await scanFrontMatterProperties(grantedScanPaths(paths)),
 	);
 
 	ipcMain.handle(

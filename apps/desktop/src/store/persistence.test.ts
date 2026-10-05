@@ -135,4 +135,69 @@ describe("desktop state persistence", () => {
 		expect(Object.getPrototypeOf(sorts)).toBe(Object.prototype);
 		expect(({} as Record<string, unknown>).tag).toBeUndefined();
 	});
+
+	it("round-trips saved views and property columns, dropping malformed entries", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({
+							workspace: {
+								navViewSorts: {
+									"/ws": { recent: { column: "prop:due", direction: "desc" } },
+								},
+								documentViews: {
+									"/ws": {
+										propertyColumns: ["prop:status", "name", "prop:status"],
+										saved: [
+											{
+												id: "v1",
+												name: "  Board ",
+												sort: { column: "prop:priority", direction: "asc" },
+												filters: [
+													{ fieldId: "prop:due", kind: "has" },
+													{ fieldId: "prop:status", kind: "is", value: "Done" },
+													{ fieldId: "status", kind: "has" },
+													{ fieldId: "prop:x", kind: "is", value: { a: 1 } },
+												],
+												groupBy: "prop:status",
+												propertyColumns: ["prop:status"],
+											},
+											{ id: "v1", name: "duplicate id" },
+											{ id: "v2", name: "   " },
+											"garbage",
+										],
+									},
+									"/empty": { saved: [], propertyColumns: [] },
+								},
+							},
+						})
+					: null,
+		});
+		const state = getInitialState();
+		expect(state.workspace.navViewSorts["/ws"]?.recent).toEqual({
+			column: "prop:due",
+			direction: "desc",
+		});
+		expect(state.workspace.documentViews).toEqual({
+			"/ws": {
+				propertyColumns: ["prop:status"],
+				saved: [
+					{
+						id: "v1",
+						name: "Board",
+						sort: { column: "prop:priority", direction: "asc" },
+						filters: [
+							{ fieldId: "prop:due", kind: "has" },
+							{ fieldId: "prop:status", kind: "is", value: "Done" },
+						],
+						groupBy: "prop:status",
+						propertyColumns: ["prop:status"],
+					},
+				],
+			},
+		});
+		expect(serialize(state).workspace?.documentViews).toEqual(
+			state.workspace.documentViews,
+		);
+	});
 });
