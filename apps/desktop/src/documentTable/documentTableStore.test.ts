@@ -33,6 +33,7 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
+			layout: { viewType: "table", boardField: null, calendarField: null },
 		});
 	});
 
@@ -57,6 +58,7 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
+			layout: { viewType: "table", boardField: null, calendarField: null },
 		});
 		expect(workspaceStore.get().navViewSorts["/ws"]).toEqual({
 			recent: { column: "name", direction: "asc" },
@@ -93,6 +95,7 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
+			layout: { viewType: "table", boardField: null, calendarField: null },
 		});
 		// Sort is persisted per workspace, not session state: it stays put.
 		expect(workspaceStore.get().navViewSorts["/ws"]?.recent).toEqual({
@@ -199,6 +202,48 @@ describe("documentTableStore", () => {
 		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
 	});
 
+	it("keeps the layout per view: session for All documents, saved into a saved view", async () => {
+		const {
+			documentTableViewStore,
+			saveCurrentViewAs,
+			selectSavedView,
+			setBoardField,
+			setCalendarField,
+			setDocumentViewType,
+			workspaceStore,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		workspacePathStore.set("/ws");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		setDocumentViewType("board");
+		setBoardField("prop:stage");
+		expect(documentTableViewStore.get().layout).toEqual({
+			viewType: "board",
+			boardField: "prop:stage",
+			calendarField: null,
+		});
+
+		const id = saveCurrentViewAs("Pipeline");
+		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]).toMatchObject({
+			id,
+			viewType: "board",
+			boardField: "prop:stage",
+			calendarField: null,
+		});
+
+		setDocumentViewType("calendar");
+		setCalendarField("prop:start");
+		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]).toMatchObject({
+			viewType: "calendar",
+			calendarField: "prop:start",
+		});
+		// The unsaved view's own layout is untouched by edits to the saved one.
+		expect(documentTableViewStore.get().layout.viewType).toBe("board");
+		selectSavedView(null);
+		expect(documentTableViewStore.get().layout.viewType).toBe("board");
+	});
+
 	it("routes a header sort into the active saved view and drops a deleted view", async () => {
 		const {
 			deleteSavedView,
@@ -242,6 +287,7 @@ describe("documentTableStore", () => {
 			groupBy: "folder",
 			propertyGroupBy: null,
 			activeSavedViewId: null,
+			layout: { viewType: "table", boardField: null, calendarField: null },
 		});
 	});
 });

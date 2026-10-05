@@ -12,6 +12,7 @@ import {
 import { groupByToViewId } from "./navHiddenViews";
 import { useNavViewSort } from "./navViewSort";
 import {
+	type DocumentViewLayout,
 	EMPTY_WORKSPACE_DOCUMENT_VIEWS,
 	type SavedDocumentView,
 	type WorkspaceDocumentViews,
@@ -36,6 +37,8 @@ export type CurrentDocumentView = {
 	/** Visible property columns, in order, after the built-in columns. */
 	propertyColumns: PropertyFieldId[];
 	savedView: SavedDocumentView | null;
+	/** Table, board or calendar, and the field the board/calendar reads. */
+	layout: DocumentViewLayout;
 	savedViews: SavedDocumentView[];
 	propertyFields: PropertyField[];
 };
@@ -53,7 +56,11 @@ export function useCurrentDocumentView(): CurrentDocumentView {
 	const savedView =
 		views.saved.find((view) => view.id === session.activeSavedViewId) ?? null;
 	const view = useMemo<DocumentTableView>(() => {
-		const { activeSavedViewId: _unused, ...fieldsOfSession } = session;
+		const {
+			activeSavedViewId: _unused,
+			layout: _layout,
+			...fieldsOfSession
+		} = session;
 		return savedView
 			? {
 					...fieldsOfSession,
@@ -69,6 +76,13 @@ export function useCurrentDocumentView(): CurrentDocumentView {
 			? savedView.propertyColumns
 			: views.propertyColumns,
 		savedView,
+		layout: savedView
+			? {
+					viewType: savedView.viewType,
+					boardField: savedView.boardField,
+					calendarField: savedView.calendarField,
+				}
+			: session.layout,
 		savedViews: views.saved,
 		propertyFields: fields,
 	};

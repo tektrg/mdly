@@ -192,6 +192,10 @@ describe("desktop state persistence", () => {
 						],
 						groupBy: "prop:status",
 						propertyColumns: ["prop:status"],
+						// Views saved before board/calendar existed read as tables.
+						viewType: "table",
+						boardField: null,
+						calendarField: null,
 					},
 				],
 			},
