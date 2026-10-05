@@ -384,6 +384,8 @@ export function DocumentTable({
 	const { savedView, savedViews, propertyFields, layout } =
 		useCurrentDocumentView();
 	const propertyScan = usePropertyScanState();
+	const isReadingProperties =
+		propertyScan.status === "scanning" || propertyScan.status === "idle";
 	const canSaveView =
 		layout.viewType !== "table" ||
 		view.propertyFilters.length > 0 ||
@@ -439,6 +441,7 @@ export function DocumentTable({
 					fields={propertyFields}
 					boardField={layout.boardField}
 					propertyColumns={propertyColumns}
+					isReadingProperties={isReadingProperties}
 					onOpenDocument={onOpenDocument}
 				/>
 			) : layout.viewType === "calendar" ? (
@@ -446,6 +449,7 @@ export function DocumentTable({
 					rows={rows}
 					fields={propertyFields}
 					calendarField={layout.calendarField}
+					isReadingProperties={isReadingProperties}
 					onOpenDocument={onOpenDocument}
 				/>
 			) : (

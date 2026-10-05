@@ -1,5 +1,5 @@
 import { Button } from "@hubble.md/ui";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import { setBoardField } from "../documentTableStore";
 import type { DocumentTableRow } from "../documentTableView";
@@ -10,53 +10,53 @@ import type {
 import {
 	BOARD_COLUMN_CARD_LIMIT,
 	type BoardColumn,
+	type BoardModel,
+	boardFieldCandidates,
 	buildBoardModel,
-	isBoardField,
+	cardValue,
+	moveTargetsFor,
 	resolveBoardField,
 } from "./boardModel";
-import { NoteCard, ViewFieldPicker } from "./NoteCard";
-import { draggedNotePath, isNoteDrag, writeDroppedProperty } from "./viewDrag";
+import {
+	fieldLabelMap,
+	NoteCard,
+	type NoteMoveTarget,
+	ReadingPropertiesNotice,
+	ViewFieldPicker,
+} from "./NoteCard";
+import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
 
-function columnKey(value: string | null): string {
-	return value === null ? "\u0000empty" : value;
-}
+type BoardActions = {
+	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
+	onMove: (row: DocumentTableRow, columnKey: string) => void;
+	onDropPath: (path: string, column: BoardColumn) => void;
+	onShowMore: (column: BoardColumn) => void;
+};
 
-function BoardColumnView({
+const BoardColumnView = memo(function BoardColumnView({
 	column,
-	field,
-	rowByPath,
 	propertyColumns,
-	fields,
+	labelById,
+	actions,
 	onOpenDocument,
-	onShowMore,
 }: {
 	column: BoardColumn;
-	field: PropertyField;
-	rowByPath: ReadonlyMap<string, DocumentTableRow>;
 	propertyColumns: readonly PropertyFieldId[];
-	fields: readonly PropertyField[];
+	labelById: ReadonlyMap<PropertyFieldId, string>;
+	actions: BoardActions;
 	onOpenDocument: (row: DocumentTableRow) => void;
-	onShowMore: () => void;
 }) {
-	const [isDropTarget, setIsDropTarget] = useState(false);
+	const { isDropTarget, dropHandlers } = useNoteDropTarget((path) =>
+		actions.onDropPath(path, column),
+	);
 	const hidden = column.total - column.rows.length;
+	const acceptsDrops = column.kind !== "other";
 	return (
 		<section
 			aria-label={`${column.label}, ${column.total} notes`}
-			data-board-column={column.value ?? ""}
-			onDragOver={(event) => {
-				if (!isNoteDrag(event)) return;
-				event.preventDefault();
-				event.dataTransfer.dropEffect = "move";
-				setIsDropTarget(true);
-			}}
-			onDragLeave={() => setIsDropTarget(false)}
-			onDrop={(event) => {
-				event.preventDefault();
-				setIsDropTarget(false);
-				const row = rowByPath.get(draggedNotePath(event) ?? "");
-				if (row) void writeDroppedProperty(row, field, column.value);
-			}}
+			data-board-column={column.kind === "value" ? column.value : ""}
+			data-board-column-kind={column.kind}
+			{...(acceptsDrops ? dropHandlers : {})}
 			className={cn(
 				"flex h-full w-64 shrink-0 flex-col rounded-md bg-muted/40",
 				isDropTarget && "ring-1 ring-ring",
@@ -74,18 +74,72 @@ function BoardColumnView({
 						key={row.path}
 						row={row}
 						propertyColumns={propertyColumns}
-						fields={fields}
+						labelById={labelById}
+						moveTargets={actions.moveTargets}
+						onMove={actions.onMove}
 						onOpenDocument={onOpenDocument}
 					/>
 				))}
 				{hidden > 0 ? (
-					<Button size="sm" variant="ghost" onClick={onShowMore}>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => actions.onShowMore(column)}
+					>
 						Show {Math.min(hidden, BOARD_COLUMN_CARD_LIMIT)} more
 					</Button>
 				) : null}
 			</div>
 		</section>
 	);
+});
+
+/** Drag, keyboard move and "show more", stable across renders (columns stay memoized). */
+function useBoardActions(
+	model: BoardModel | null,
+	rows: readonly DocumentTableRow[],
+	setLimits: (
+		update: (limits: Record<string, number>) => Record<string, number>,
+	) => void,
+): BoardActions {
+	const latest = useRef({ model, rows });
+	latest.current = { model, rows };
+	return useMemo<BoardActions>(() => {
+		const moveTo = (row: DocumentTableRow, column: BoardColumn) => {
+			const current = latest.current.model;
+			if (!current || column.kind === "other") return;
+			// Dropped on its own column: nothing to write.
+			if (cardValue(row, current.field.id) === column.value) return;
+			void writeDroppedProperty(row, current.field, column.value);
+		};
+		const columnByKey = (key: string) =>
+			latest.current.model?.columns.find((column) => column.key === key);
+		return {
+			moveTargets: (row) => {
+				const current = latest.current.model;
+				if (!current) return [];
+				return moveTargetsFor(row, current).map((column) => ({
+					key: column.key,
+					label: column.label,
+				}));
+			},
+			onMove: (row, key) => {
+				const column = columnByKey(key);
+				if (column) moveTo(row, column);
+			},
+			onDropPath: (path, column) => {
+				const row = latest.current.rows.find(
+					(candidate) => candidate.path === path,
+				);
+				if (row) moveTo(row, column);
+			},
+			onShowMore: (column) =>
+				setLimits((limits) => ({
+					...limits,
+					[column.key]: column.rows.length + BOARD_COLUMN_CARD_LIMIT,
+				})),
+		};
+	}, [setLimits]);
 }
 
 /**
@@ -98,32 +152,42 @@ export function DocumentBoard({
 	fields,
 	boardField,
 	propertyColumns,
+	isReadingProperties = false,
 	onOpenDocument,
 }: {
 	rows: DocumentTableRow[];
 	fields: readonly PropertyField[];
 	boardField: PropertyFieldId | null;
 	propertyColumns: readonly PropertyFieldId[];
+	/** The property scan is still running: no field yet is not "no field". */
+	isReadingProperties?: boolean;
 	onOpenDocument: (row: DocumentTableRow) => void;
 }) {
 	const [limits, setLimits] = useState<Record<string, number>>({});
-	const field = resolveBoardField(fields, boardField);
+	const candidates = useMemo(
+		() => boardFieldCandidates(fields, rows),
+		[fields, rows],
+	);
+	const field = resolveBoardField(candidates, boardField);
 	const model = useMemo(
 		() =>
 			field
 				? buildBoardModel(
 						rows,
 						field,
-						(value) => limits[columnKey(value)] ?? BOARD_COLUMN_CARD_LIMIT,
+						(key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
 					)
 				: null,
 		[rows, field, limits],
 	);
-	const rowByPath = useMemo(
-		() => new Map(rows.map((row) => [row.path, row])),
-		[rows],
+	const labelById = useMemo(() => fieldLabelMap(fields), [fields]);
+	const cardColumns = useMemo(
+		() => propertyColumns.filter((id) => id !== field?.id),
+		[propertyColumns, field],
 	);
+	const actions = useBoardActions(model, rows, setLimits);
 	if (!field || !model) {
+		if (isReadingProperties) return <ReadingPropertiesNotice />;
 		return (
 			<p className="m-0 p-3 text-sm text-muted-foreground">
 				A board needs a property with a few repeated values, like{" "}
@@ -131,13 +195,12 @@ export function DocumentBoard({
 			</p>
 		);
 	}
-	const cardColumns = propertyColumns.filter((id) => id !== field.id);
 	return (
 		<div className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">
 			<div className="flex shrink-0 items-center px-1">
 				<ViewFieldPicker
 					label="Columns by"
-					fields={fields.filter(isBoardField)}
+					fields={candidates}
 					value={field.id}
 					onChange={setBoardField}
 				/>
@@ -145,20 +208,12 @@ export function DocumentBoard({
 			<div className="flex min-h-0 flex-1 gap-2 overflow-x-auto">
 				{model.columns.map((column) => (
 					<BoardColumnView
-						key={columnKey(column.value)}
+						key={column.key}
 						column={column}
-						field={field}
-						rowByPath={rowByPath}
 						propertyColumns={cardColumns}
-						fields={fields}
+						labelById={labelById}
+						actions={actions}
 						onOpenDocument={onOpenDocument}
-						onShowMore={() =>
-							setLimits((current) => ({
-								...current,
-								[columnKey(column.value)]:
-									column.rows.length + BOARD_COLUMN_CARD_LIMIT,
-							}))
-						}
 					/>
 				))}
 			</div>

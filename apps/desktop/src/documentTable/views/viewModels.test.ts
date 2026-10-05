@@ -5,10 +5,18 @@ import type {
 	PropertyField,
 	PropertyRowValues,
 } from "../properties/propertyFields";
-import { buildBoardModel, resolveBoardField } from "./boardModel";
+import {
+	BOARD_MAX_VALUE_COLUMNS,
+	boardFieldCandidates,
+	buildBoardModel,
+	moveTargetsFor,
+	resolveBoardField,
+} from "./boardModel";
 import {
 	buildCalendarModel,
+	calendarMoveTargets,
 	resolveCalendarField,
+	shiftDate,
 	shiftMonth,
 } from "./calendarModel";
 
@@ -158,5 +166,74 @@ describe("saved view layout persistence", () => {
 			{ viewType: "table", boardField: null, calendarField: null },
 			{ viewType: "table", boardField: null, calendarField: null },
 		]);
+	});
+});
+
+describe("QA pass 2: board limits and keyboard moves", () => {
+	const TEXT: PropertyField = {
+		id: "prop:owner",
+		label: "owner",
+		type: "text",
+		documentCount: 40,
+	};
+
+	it("offers free text as a board only with at most 30 distinct values", () => {
+		const few = Array.from({ length: 40 }, (_, index) =>
+			row(`f${index}`, { "prop:owner": `p${index % 5}` }),
+		);
+		const many = Array.from({ length: 40 }, (_, index) =>
+			row(`m${index}`, { "prop:owner": `p${index}` }),
+		);
+		expect(boardFieldCandidates([TEXT, STATUS], few).map((f) => f.id)).toEqual([
+			"prop:owner",
+			"prop:status",
+		]);
+		expect(boardFieldCandidates([TEXT, STATUS], many).map((f) => f.id)).toEqual(
+			["prop:status"],
+		);
+	});
+
+	it("caps value columns at 30, folding the rest into Other, empty column last", () => {
+		const rows = Array.from({ length: 45 }, (_, index) =>
+			row(`n${index}`, { "prop:status": `v${index}` }),
+		);
+		const model = buildBoardModel(rows, { ...STATUS, options: [] });
+		const kinds = model.columns.map((column) => column.kind);
+		expect(kinds.filter((kind) => kind === "value")).toHaveLength(
+			BOARD_MAX_VALUE_COLUMNS,
+		);
+		expect(kinds.slice(-2)).toEqual(["other", "empty"]);
+		expect(model.columns[BOARD_MAX_VALUE_COLUMNS]?.total).toBe(15);
+		expect(model.columns[BOARD_MAX_VALUE_COLUMNS]?.label).toBe(
+			"Other (15 values)",
+		);
+	});
+
+	it("offers every droppable column but the card's own as a move target", () => {
+		const card = row("a", { "prop:status": "Todo" });
+		const model = buildBoardModel([card, row("b")], STATUS);
+		expect(moveTargetsFor(card, model).map((column) => column.label)).toEqual([
+			"Done",
+			"No Status",
+		]);
+	});
+
+	it("offers day moves and keeps the day's full list for +N more", () => {
+		expect(shiftDate("2026-03-01", -1)).toBe("2026-02-28");
+		expect(calendarMoveTargets("2026-12-31").map((t) => t.date)).toEqual([
+			"2026-12-30",
+			"2027-01-01",
+			"2027-01-07",
+			"2026-12-24",
+			null,
+		]);
+		const rows = ["a", "b", "c", "d"].map((name) =>
+			row(name, { "prop:due": "2026-10-05" }),
+		);
+		const day = buildCalendarModel(rows, DUE, { year: 2026, month: 9 }, 2)
+			.weeks.flat()
+			.find((candidate) => candidate.date === "2026-10-05");
+		expect(day?.rows).toHaveLength(2);
+		expect(day?.allRows.map((card) => card.name)).toEqual(["a", "b", "c", "d"]);
 	});
 });

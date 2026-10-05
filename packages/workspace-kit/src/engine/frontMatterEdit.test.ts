@@ -357,3 +357,19 @@ describe("setFrontMatterValue: QA pass 1", () => {
 		);
 	});
 });
+
+describe("setFrontMatterValue: refusal wording", () => {
+	it("explains refusals in plain English, without YAML jargon", () => {
+		const cases: [string, string][] = [
+			["---\nstatus: [unclosed\n---\n", "status"],
+			["---\nstatus: a\nstatus: b\n---\n", "status"],
+			["---\nstatus: todo\n", "status"],
+			["---\nstatus: |\n  x\n---\n", "status"],
+			["\n---\na: 1\n---\n", "status"],
+		];
+		for (const [text, key] of cases) {
+			const reason = refusal(text, key, "x");
+			expect(reason).not.toMatch(/YAML|front matter|scalar|block/i);
+		}
+	});
+});

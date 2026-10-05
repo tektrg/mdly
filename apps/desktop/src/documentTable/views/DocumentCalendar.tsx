@@ -1,10 +1,15 @@
 import { Button } from "@hubble.md/ui";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import MingcuteLeftLine from "~icons/mingcute/left-line";
 import MingcuteRightLine from "~icons/mingcute/right-line";
 import { cn } from "../../lib/utils";
 import { setCalendarField } from "../documentTableStore";
 import type { DocumentTableRow } from "../documentTableView";
+import {
+	PropertyMenu,
+	PropertyMenuItem,
+	PropertyMenuLabel,
+} from "../properties/PropertyMenu";
 import type {
 	PropertyField,
 	PropertyFieldId,
@@ -13,28 +18,67 @@ import {
 	buildCalendarModel,
 	type CalendarDay,
 	type CalendarMonth,
+	calendarMoveTargets,
 	formatMonthLabel,
 	monthOf,
 	resolveCalendarField,
 	shiftMonth,
 } from "./calendarModel";
-import { NoteCard, ViewFieldPicker } from "./NoteCard";
-import { draggedNotePath, isNoteDrag, writeDroppedProperty } from "./viewDrag";
+import {
+	NoteCard,
+	type NoteMoveTarget,
+	ReadingPropertiesNotice,
+	ViewFieldPicker,
+} from "./NoteCard";
+import { useNoteDropTarget, writeDroppedProperty } from "./viewDrag";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function CalendarDayCell({
+type CalendarActions = {
+	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
+	onMove: (row: DocumentTableRow, date: string) => void;
+	onDropPath: (path: string, date: string) => void;
+};
+
+/** "+N more": a menu listing every note on the day (opens the chosen one). */
+function MoreNotesMenu({
 	day,
-	field,
-	rowByPath,
+	hidden,
 	onOpenDocument,
 }: {
 	day: CalendarDay;
-	field: PropertyField;
-	rowByPath: ReadonlyMap<string, DocumentTableRow>;
+	hidden: number;
 	onOpenDocument: (row: DocumentTableRow) => void;
 }) {
-	const [isDropTarget, setIsDropTarget] = useState(false);
+	return (
+		<PropertyMenu
+			trigger={<>+{hidden} more</>}
+			triggerClassName="self-start rounded-sm px-0.5 text-[11px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+			triggerLabel={`All ${day.total} notes on ${day.date}`}
+			align="start"
+		>
+			<PropertyMenuLabel>{day.date}</PropertyMenuLabel>
+			{day.allRows.map((row) => (
+				<PropertyMenuItem key={row.path} onClick={() => onOpenDocument(row)}>
+					{row.name}
+				</PropertyMenuItem>
+			))}
+		</PropertyMenu>
+	);
+}
+
+const CalendarDayCell = memo(function CalendarDayCell({
+	day,
+	actions,
+	onOpenDocument,
+}: {
+	day: CalendarDay;
+	actions: CalendarActions;
+	onOpenDocument: (row: DocumentTableRow) => void;
+}) {
+	const { isDropTarget, dropHandlers } = useNoteDropTarget((path) =>
+		actions.onDropPath(path, day.date),
+	);
 	const hidden = day.total - day.rows.length;
 	return (
 		<div
@@ -42,19 +86,7 @@ function CalendarDayCell({
 			tabIndex={-1}
 			aria-label={`${day.date}, ${day.total} notes`}
 			data-calendar-day={day.date}
-			onDragOver={(event) => {
-				if (!isNoteDrag(event)) return;
-				event.preventDefault();
-				event.dataTransfer.dropEffect = "move";
-				setIsDropTarget(true);
-			}}
-			onDragLeave={() => setIsDropTarget(false)}
-			onDrop={(event) => {
-				event.preventDefault();
-				setIsDropTarget(false);
-				const row = rowByPath.get(draggedNotePath(event) ?? "");
-				if (row) void writeDroppedProperty(row, field, day.date);
-			}}
+			{...dropHandlers}
 			className={cn(
 				"flex min-h-0 min-w-0 flex-col gap-0.5 overflow-hidden border-border border-t p-1",
 				!day.inMonth && "bg-muted/30 text-muted-foreground",
@@ -69,16 +101,58 @@ function CalendarDayCell({
 					key={row.path}
 					row={row}
 					compact
+					moveTargets={actions.moveTargets}
+					onMove={actions.onMove}
 					onOpenDocument={onOpenDocument}
 				/>
 			))}
 			{hidden > 0 ? (
-				<span className="text-[11px] text-muted-foreground">
-					+{hidden} more
-				</span>
+				<MoreNotesMenu
+					day={day}
+					hidden={hidden}
+					onOpenDocument={onOpenDocument}
+				/>
 			) : null}
 		</div>
 	);
+});
+
+/** Remove-date target key (a date key is always `YYYY-MM-DD`). */
+const REMOVE_DATE_KEY = "none";
+
+function useCalendarActions(
+	field: PropertyField | null,
+	rows: readonly DocumentTableRow[],
+): CalendarActions {
+	const latest = useRef({ field, rows });
+	latest.current = { field, rows };
+	return useMemo<CalendarActions>(() => {
+		const moveTo = (row: DocumentTableRow, date: string | null) => {
+			const current = latest.current.field;
+			if (!current) return;
+			// Dropped on its own day: nothing to write.
+			if ((row.properties?.[current.id] ?? null) === date) return;
+			void writeDroppedProperty(row, current, date);
+		};
+		return {
+			moveTargets: (row) => {
+				const current = latest.current.field;
+				const date = current ? row.properties?.[current.id] : null;
+				if (typeof date !== "string") return [];
+				return calendarMoveTargets(date).map((target) => ({
+					key: target.date ?? REMOVE_DATE_KEY,
+					label: target.label,
+				}));
+			},
+			onMove: (row, key) => moveTo(row, key === REMOVE_DATE_KEY ? null : key),
+			onDropPath: (path, date) => {
+				const row = latest.current.rows.find(
+					(candidate) => candidate.path === path,
+				);
+				if (row) moveTo(row, date);
+			},
+		};
+	}, []);
 }
 
 /** Calendar layout: a month grid of notes by a date property. */
@@ -86,11 +160,14 @@ export function DocumentCalendar({
 	rows,
 	fields,
 	calendarField,
+	isReadingProperties = false,
 	onOpenDocument,
 }: {
 	rows: DocumentTableRow[];
 	fields: readonly PropertyField[];
 	calendarField: PropertyFieldId | null;
+	/** The property scan is still running: no field yet is not "no field". */
+	isReadingProperties?: boolean;
 	onOpenDocument: (row: DocumentTableRow) => void;
 }) {
 	const [month, setMonth] = useState<CalendarMonth>(() => monthOf(new Date()));
@@ -99,11 +176,9 @@ export function DocumentCalendar({
 		() => (field ? buildCalendarModel(rows, field, month) : null),
 		[rows, field, month],
 	);
-	const rowByPath = useMemo(
-		() => new Map(rows.map((row) => [row.path, row])),
-		[rows],
-	);
+	const actions = useCalendarActions(field, rows);
 	if (!field || !model) {
+		if (isReadingProperties) return <ReadingPropertiesNotice />;
 		return (
 			<p className="m-0 p-3 text-sm text-muted-foreground">
 				A calendar needs a date property, like <code>due: 2026-10-05</code>, in
@@ -174,8 +249,7 @@ export function DocumentCalendar({
 						<CalendarDayCell
 							key={day.date}
 							day={day}
-							field={field}
-							rowByPath={rowByPath}
+							actions={actions}
 							onOpenDocument={onOpenDocument}
 						/>
 					))}

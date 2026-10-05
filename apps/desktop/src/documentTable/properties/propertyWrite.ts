@@ -72,19 +72,34 @@ function updateScanForPath(path: string, text: string) {
 }
 
 /** Moves the open note's buffer and baseline to the written text (only if untouched). */
+/**
+ * Moves the open note's baseline to the written text. If the user typed
+ * while the write was in flight, the same one-key edit is merged into their
+ * buffer, so their next save keeps the property change. If the merge is not
+ * safe, the baseline stays put: the editor then sees the disk change as an
+ * external edit (auto-applied with Undo), never a silent drop.
+ */
 function applyWrittenTextToEditor(
 	path: string,
 	original: string,
 	next: string,
+	key: string,
+	value: FrontMatterEditValue | null,
 ) {
+	flushEditorDraft();
 	viewerStore.set((state) => {
 		if (state.currentPath !== path || state.diskContent !== original) {
 			return state;
 		}
-		const untouched = state.content === original;
+		let content = next;
+		if (state.content !== original) {
+			const merged = setFrontMatterValue(state.content, key, value);
+			if (!merged.ok) return state;
+			content = merged.text;
+		}
 		return {
 			...state,
-			...(untouched ? { content: next } : {}),
+			content,
 			diskContent: next,
 			externalChange: { kind: "none" },
 			status: "ready",
@@ -156,7 +171,7 @@ async function writeNow(
 	}
 	if (!result.ok) return refuse(CAS_REASONS[result.reason]);
 
-	applyWrittenTextToEditor(path, original, edit.text);
+	applyWrittenTextToEditor(path, original, edit.text, key, value);
 	touchFile(target.path);
 	updateScanForPath(target.path, edit.text);
 	return { ok: true, changed: true };

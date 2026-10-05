@@ -20,7 +20,10 @@ export type CalendarDay = {
 	date: string;
 	dayOfMonth: number;
 	inMonth: boolean;
+	/** Notes listed in the cell (capped). */
 	rows: DocumentTableRow[];
+	/** Every note on the day, for the "+N more" list. */
+	allRows: DocumentTableRow[];
 	total: number;
 };
 
@@ -121,9 +124,29 @@ export function buildCalendarModel(
 				dayOfMonth: Number(date.slice(8, 10)),
 				inMonth: date.startsWith(monthPrefix),
 				rows: bucket.slice(0, dayLimit),
+				allRows: bucket,
 				total: bucket.length,
 			};
 		}),
 	);
 	return { field, month, weeks, outsideCount, undatedCount };
+}
+
+/** `YYYY-MM-DD` moved by whole days (UTC, so no DST surprises). */
+export function shiftDate(date: string, days: number): string {
+	const [year, month, day] = date.split("-").map(Number);
+	return isoDate(year ?? 1970, (month ?? 1) - 1, (day ?? 1) + days);
+}
+
+export type CalendarMoveTarget = { label: string; date: string | null };
+
+/** Keyboard "Move to" choices for a note dated `date`. */
+export function calendarMoveTargets(date: string): CalendarMoveTarget[] {
+	return [
+		{ label: "Previous day", date: shiftDate(date, -1) },
+		{ label: "Next day", date: shiftDate(date, 1) },
+		{ label: "Same day next week", date: shiftDate(date, 7) },
+		{ label: "Same day last week", date: shiftDate(date, -7) },
+		{ label: "Remove date", date: null },
+	];
 }

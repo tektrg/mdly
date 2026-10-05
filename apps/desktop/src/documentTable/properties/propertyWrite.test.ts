@@ -189,4 +189,42 @@ describe("writeDocumentProperty", () => {
 		expect(loaded.viewerStore.get().content).toBe(ORIGINAL);
 		expect(loaded.viewerStore.get().diskContent).toBe(ORIGINAL);
 	});
+
+	it("merges the edit into a buffer the user typed into while the write was in flight", async () => {
+		const { api, disk } = fakeDisk(ORIGINAL);
+		const loaded = await load(api);
+		openNote(loaded, ORIGINAL, ORIGINAL);
+		api.writeFileTextIfUnchanged.mockImplementationOnce(
+			async (_path: string, _expected: string, content: string) => {
+				disk.text = content;
+				loaded.updateEditorContent(PATH, `${ORIGINAL}typed`);
+				return { ok: true };
+			},
+		);
+		const result = await loaded.writeDocumentProperty(TARGET, "status", "done");
+		expect(result).toEqual({ ok: true, changed: true });
+		// The user's text is kept AND carries the property edit, so the next
+		// save cannot drop it; the baseline is the file now on disk.
+		expect(loaded.viewerStore.get().content).toBe(`${EDITED}typed`);
+		expect(loaded.viewerStore.get().diskContent).toBe(EDITED);
+	});
+
+	it("keeps the old baseline when the typed buffer cannot take the edit", async () => {
+		const { api, disk } = fakeDisk(ORIGINAL);
+		const loaded = await load(api);
+		openNote(loaded, ORIGINAL, ORIGINAL);
+		const broken = "---\nstatus: [oops\n---\n";
+		api.writeFileTextIfUnchanged.mockImplementationOnce(
+			async (_path: string, _expected: string, content: string) => {
+				disk.text = content;
+				loaded.updateEditorContent(PATH, broken);
+				return { ok: true };
+			},
+		);
+		await loaded.writeDocumentProperty(TARGET, "status", "done");
+		// Baseline unchanged: the editor sees the disk change as an external
+		// edit (auto-apply + Undo) instead of overwriting it on the next save.
+		expect(loaded.viewerStore.get().content).toBe(broken);
+		expect(loaded.viewerStore.get().diskContent).toBe(ORIGINAL);
+	});
 });

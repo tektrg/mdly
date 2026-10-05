@@ -249,10 +249,10 @@ function hasDuplicateKeys(items: readonly BlockItem[]): boolean {
 function validateBlock(raw: string): string | null {
 	const doc = parseDocument(raw, { schema: "core", uniqueKeys: false });
 	if (doc.errors.length > 0) {
-		return `Front matter is not valid YAML: ${doc.errors[0]?.message ?? ""}`;
+		return "The note's properties have a formatting mistake. Fix it in the note first.";
 	}
 	if (doc.contents !== null && !isMap(doc.contents)) {
-		return "Front matter is not a list of properties.";
+		return "The note's properties aren't written as name: value lines.";
 	}
 	return null;
 }
@@ -334,12 +334,13 @@ function editLines(
 ): Line[] | string {
 	const keyLine = block[item.start] as Line;
 	const parsedKey = parseKey(keyLine.text);
-	if (!parsedKey) return "Unrecognized property line.";
+	if (!parsedKey)
+		return "The note's properties aren't written as name: value lines.";
 	const continuation = block.slice(item.start + 1, item.end);
 	if (continuation.length === 0) {
 		const nextText = replaceInlineValue(keyLine.text, parsedKey.length, value);
 		if (nextText === null) {
-			return `"${item.key}" uses a multi-line value that cannot be edited safely.`;
+			return `"${item.key}" spans several lines in this note, so it can only be changed in the note itself.`;
 		}
 		const next = [...block];
 		next[item.start] = { ...keyLine, text: nextText };
@@ -349,7 +350,7 @@ function editLines(
 	const indent = blockListIndent(continuation);
 	const keyRest = keyLine.text.slice(parsedKey.length).trim();
 	if (indent === null || keyRest.length > 0 || !Array.isArray(value)) {
-		return `"${item.key}" uses a multi-line value that cannot be edited safely.`;
+		return `"${item.key}" spans several lines in this note, so it can only be changed in the note itself.`;
 	}
 	const eol = keyLine.eol || newlineOf(joinLines(block));
 	const lastEol = (block[item.end - 1] as Line).eol;
@@ -406,23 +407,29 @@ export function setFrontMatterValue(
 	value: FrontMatterEditValue | null,
 ): FrontMatterEditResult {
 	const targetKey = lowerKey(key);
-	if (targetKey.length === 0) return refuse("Property name is empty.");
+	if (targetKey.length === 0) return refuse("The property has no name.");
 	if (typeof value === "number" && !Number.isFinite(value)) {
-		return refuse("Number is not finite.");
+		return refuse("That number can't be saved.");
 	}
 	const split = splitDocument(text);
 	if (split === "unclosed") {
-		return refuse("Front matter block is not closed with ---.");
+		return refuse(
+			"The note's properties section is missing its closing --- line.",
+		);
 	}
 	if (split === "none") {
 		if (value === null) return { ok: true, text, changed: false };
 		// `---` after blank lines: some tools read it as front matter. Never
 		// put a second block in front of it.
 		if (/^\uFEFF?(?:[ \t]*\r?\n)+---[ \t]*(?:\r?\n|$)/.test(text)) {
-			return refuse("Front matter does not start on the first line.");
+			return refuse(
+				"The note's properties section doesn't start on the first line.",
+			);
 		}
 		if (!isSimplePropertyKey(key.trim())) {
-			return refuse(`"${key}" cannot be written as a property name.`);
+			return refuse(
+				`"${key}" can't be used as a property name (letters, numbers, - and _ only).`,
+			);
 		}
 		return {
 			ok: true,
@@ -435,9 +442,12 @@ export function setFrontMatterValue(
 	const invalid = validateBlock(raw);
 	if (invalid) return refuse(invalid);
 	const items = blockItems(split.block);
-	if (!items) return refuse("Front matter has a line this editor cannot read.");
+	if (!items)
+		return refuse("The note's properties aren't written as name: value lines.");
 	if (hasDuplicateKeys(items)) {
-		return refuse("Front matter repeats a property name.");
+		return refuse(
+			"The note lists the same property twice (it repeats a name). Remove one first.",
+		);
 	}
 	const item = items.find((candidate) => lowerKey(candidate.key) === targetKey);
 
@@ -445,7 +455,9 @@ export function setFrontMatterValue(
 	if (!item) {
 		if (value === null) return { ok: true, text, changed: false };
 		if (!isSimplePropertyKey(key.trim())) {
-			return refuse(`"${key}" cannot be written as a property name.`);
+			return refuse(
+				`"${key}" can't be used as a property name (letters, numbers, - and _ only).`,
+			);
 		}
 		nextBlock = appendItem(split.block, key.trim(), value, split.opening.eol);
 	} else if (value === null) {
@@ -461,7 +473,9 @@ export function setFrontMatterValue(
 		validateBlock(nextRaw) ||
 		!sameValue(readBack(nextRaw, targetKey), value)
 	) {
-		return refuse("The edit could not be verified, so nothing was written.");
+		return refuse(
+			"This change couldn't be checked safely, so nothing was saved.",
+		);
 	}
 	const nextText =
 		split.bom +

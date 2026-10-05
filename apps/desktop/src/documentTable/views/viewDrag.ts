@@ -1,5 +1,5 @@
 import type { FrontMatterEditValue } from "@mdly/workspace-kit/engine";
-import type { DragEvent } from "react";
+import { type DragEvent, useState } from "react";
 import { toast } from "sonner";
 import type { DocumentTableRow } from "../documentTableView";
 import type { PropertyField } from "../properties/propertyFields";
@@ -33,9 +33,40 @@ export async function writeDroppedProperty(
 ): Promise<boolean> {
 	const result = await writeDocumentProperty(row, field.label, value);
 	if (!result.ok) {
-		toast.error(`Could not update “${row.name}”`, {
+		toast.error(`“${row.name}” was not changed`, {
 			description: result.reason,
 		});
 	}
 	return result.ok;
+}
+
+/**
+ * Drop-zone state + handlers. `dragleave` also fires when the pointer moves
+ * onto a child (a card), so leaving is only counted when the pointer really
+ * left the zone — otherwise the highlight flickers while dragging over cards.
+ */
+export function useNoteDropTarget(onDropPath: (path: string) => void) {
+	const [isDropTarget, setIsDropTarget] = useState(false);
+	return {
+		isDropTarget,
+		dropHandlers: {
+			onDragOver: (event: DragEvent<HTMLElement>) => {
+				if (!isNoteDrag(event)) return;
+				event.preventDefault();
+				event.dataTransfer.dropEffect = "move";
+				if (!isDropTarget) setIsDropTarget(true);
+			},
+			onDragLeave: (event: DragEvent<HTMLElement>) => {
+				const next = event.relatedTarget as Node | null;
+				if (next && event.currentTarget.contains(next)) return;
+				setIsDropTarget(false);
+			},
+			onDrop: (event: DragEvent<HTMLElement>) => {
+				event.preventDefault();
+				setIsDropTarget(false);
+				const path = draggedNotePath(event);
+				if (path) onDropPath(path);
+			},
+		},
+	};
 }
