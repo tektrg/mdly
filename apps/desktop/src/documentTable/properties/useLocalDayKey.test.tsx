@@ -26,13 +26,13 @@ describe("useLocalDayKey", () => {
 		}
 		const root = createRoot(document.createElement("div"));
 		act(() => root.render(<Probe />));
-		expect(seen.at(-1)).toBe("2026-10-05");
+		expect(seen[seen.length - 1]).toBe("2026-10-05");
 		act(() => vi.advanceTimersByTime(61_000));
-		expect(seen.at(-1)).toBe("2026-10-06");
+		expect(seen[seen.length - 1]).toBe("2026-10-06");
 		// A sleeping Mac skips timers: focus re-reads the day.
 		vi.setSystemTime(new Date(2026, 9, 8, 9, 0, 0));
 		act(() => window.dispatchEvent(new Event("focus")));
-		expect(seen.at(-1)).toBe(localDayKey());
+		expect(seen[seen.length - 1]).toBe(localDayKey());
 		act(() => root.unmount());
 	});
 });

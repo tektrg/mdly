@@ -19,6 +19,7 @@ export function msUntilNextLocalDay(at: Date = new Date()): number {
  */
 export function useLocalDayKey(): string {
 	const [dayKey, setDayKey] = useState(() => localDayKey());
+	// biome-ignore lint/correctness/useExhaustiveDependencies: dayKey re-arms the timer for the next midnight.
 	useEffect(() => {
 		const refresh = () => setDayKey(localDayKey());
 		const timer = setTimeout(refresh, msUntilNextLocalDay());
