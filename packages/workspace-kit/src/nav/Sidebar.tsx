@@ -387,7 +387,10 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 			setActivePage(list.indexOf(next));
 			onPageChange?.(next.id);
 			requestAnimationFrame(() => {
-				next.navRef.current?.focus();
+				// preventScroll: the pane is still sliding in, and a plain focus()
+				// scrolls the clipped swipe region to reveal it -- stranding the
+				// track one page off (History tab showing Tags).
+				next.navRef.current?.focus({ preventScroll: true });
 			});
 		},
 		[onPageChange],

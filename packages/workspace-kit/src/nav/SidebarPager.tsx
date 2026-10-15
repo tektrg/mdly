@@ -52,6 +52,14 @@ export function SidebarPager({
 				data-sidebar-swipe-region
 				className="relative min-h-0 flex-1 overflow-hidden"
 				onWheel={onWheel}
+				// The region is overflow-hidden, yet the browser still scrolls it
+				// programmatically (focus, find-in-page, scrollIntoView on a pane
+				// that is off-screen). The track is positioned only by transform,
+				// so any such scroll shifts the view one page sideways. Pin it.
+				onScroll={(event) => {
+					const region = event.currentTarget;
+					if (region.scrollLeft !== 0) region.scrollLeft = 0;
+				}}
 			>
 				{/* The track stays the width of one page and each pane is pinned to
 				    that same width, so a flip is a whole -100% step. Sizing the
