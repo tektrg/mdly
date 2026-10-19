@@ -14,12 +14,22 @@
 //
 // Run this once after `pnpm install` at the repo root (or whenever the kit's
 // own dependencies change), then `npm run build` / `npm run serve` as usual.
-import { existsSync, mkdirSync, readdirSync, readlinkSync, symlinkSync, unlinkSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readlinkSync,
+	symlinkSync,
+	unlinkSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const demoDir = fileURLToPath(new URL(".", import.meta.url));
-const kitNodeModules = join(demoDir, "../../packages/workspace-kit/node_modules");
+const kitNodeModules = join(
+	demoDir,
+	"../../packages/workspace-kit/node_modules",
+);
 const kitPackageDir = join(demoDir, "../../packages/workspace-kit");
 const demoNodeModules = join(demoDir, "node_modules");
 const repoRootPnpmStore = join(demoDir, "../../node_modules/.pnpm");
@@ -40,7 +50,7 @@ const packages = [
 	"@tiptap/starter-kit",
 	"@tiptap/extension-code-block-lowlight",
 	"@tiptap/extension-list",
-	"pele",
+	"@tektrg/diagram-kit",
 	"lowlight",
 	"highlight.js",
 	"cmdk",

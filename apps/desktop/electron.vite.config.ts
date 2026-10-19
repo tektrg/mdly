@@ -44,6 +44,7 @@ export default defineConfig({
 					"@tiptap/pm",
 					"@tiptap/core",
 					"@tiptap/extension-list",
+					"@tektrg/diagram-kit",
 					"@mdly/workspace-kit",
 					"@mdly/workspace-kit/file-discovery",
 					"@mdly/doc-history",

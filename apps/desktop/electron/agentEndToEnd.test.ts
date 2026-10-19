@@ -96,19 +96,23 @@ describe("Slice 4 Plug A end-to-end", () => {
 		expect(res.status).toBe(401);
 	});
 
-	it("publishes all seven tools with their safety annotations intact", async () => {
+	it("publishes all nine tools (seven comment + two diagram) with their safety annotations intact", async () => {
 		const { body } = await rpc("tools/list", {});
 		const tools = (body as { result: { tools: { name: string }[] } }).result
 			.tools;
-		expect(tools.map((t) => t.name).sort()).toEqual([
-			"create_thread",
-			"list_documents",
-			"list_threads",
-			"read_thread",
-			"reopen",
-			"reply",
-			"resolve",
-		]);
+		expect(tools.map((t) => t.name).sort()).toEqual(
+			[
+				"create_thread",
+				"listDiagramTypes",
+				"list_documents",
+				"list_threads",
+				"read_thread",
+				"reopen",
+				"reply",
+				"resolve",
+				"validateDiagram",
+			].sort(),
+		);
 		// The whole point of the slice's safety posture: comment text is
 		// model-read, so anything returning it must stay flagged across the wire.
 		for (const name of ["list_documents", "list_threads", "read_thread"]) {
@@ -118,6 +122,40 @@ describe("Slice 4 Plug A end-to-end", () => {
 			expect(tool.annotations.readOnlyHint).toBe(true);
 			expect(tool.annotations.untrustedContentHint).toBe(true);
 		}
+	});
+
+	it("validates diagram source over the wire with fix hints", async () => {
+		const valid = await rpc("tools/call", {
+			name: "validateDiagram",
+			arguments: { source: "flowchart LR\n  A --> B" },
+		});
+		const validResult = (
+			valid.body as { result: { structuredContent: Record<string, unknown> } }
+		).result;
+		expect(validResult.structuredContent).toMatchObject({ valid: true });
+
+		const invalid = await rpc("tools/call", {
+			name: "validateDiagram",
+			arguments: { source: "not a diagram" },
+		});
+		const invalidResult = (
+			invalid.body as {
+				result: {
+					structuredContent: { valid: boolean; errors: { hint?: string }[] };
+				};
+			}
+		).result;
+		expect(invalidResult.structuredContent.valid).toBe(false);
+		expect(invalidResult.structuredContent.errors[0].hint).toBeTruthy();
+
+		const types = await rpc("tools/call", {
+			name: "listDiagramTypes",
+			arguments: {},
+		});
+		const typesResult = (
+			types.body as { result: { structuredContent: { types: unknown[] } } }
+		).result;
+		expect(typesResult.structuredContent.types.length).toBeGreaterThan(0);
 	});
 
 	it("creates, reads, replies to, resolves and reopens a thread over the wire", async () => {

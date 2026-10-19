@@ -33,7 +33,7 @@ export default defineConfig({
 		lib: {
 			entry: {
 				index: resolve("./src/index.ts"),
-				// Engine-only entry point (zero UI-library deps: no pele,
+				// Engine-only entry point (zero UI-library deps: no diagram-kit/pele,
 				// @dnd-kit, @base-ui/react, or cmdk). Consumers that only need pure
 				// Markdown-parsing functions — e.g. an Electron main process — import
 				// "@mdly/workspace-kit/engine" instead of the main barrel, so a
@@ -44,7 +44,7 @@ export default defineConfig({
 				// Search-scoring-only entry point, for the same reason as the
 				// engine above: mdly's command palette imports these pure string
 				// functions from a plain unit test, and reaching them through the
-				// main barrel would drag Tiptap, pele and this package's
+				// main barrel would drag Tiptap, diagram-kit and this package's
 				// Tailwind CSS in behind them.
 				search: resolve("./src/nav/searchScore.ts"),
 				// Node-only filesystem traversal. Kept outside the UI barrel so

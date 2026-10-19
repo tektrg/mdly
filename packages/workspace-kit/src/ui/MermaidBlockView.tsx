@@ -3,23 +3,18 @@ import {
 	NodeViewWrapper,
 	ReactNodeViewRenderer,
 } from "@tiptap/react";
-import { useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { MermaidBlockExtension } from "../engine/index.js";
 import { Button } from "../primitives/button";
 import { Modal } from "../primitives/modal";
 
-type PeleModule = typeof import("pele");
-
-let pelePromise: Promise<PeleModule> | null = null;
-
-// Lazy-load pele only when the first diagram actually renders, keeping editor
-// startup lean for documents without diagrams.
-function loadPele(): Promise<PeleModule> {
-	if (!pelePromise) {
-		pelePromise = import("pele");
-	}
-	return pelePromise;
-}
+// Lazy-load diagram-kit (and pele behind it) only when the first diagram
+// actually renders, keeping editor startup lean for documents without diagrams.
+const MermaidDiagram = lazy(() =>
+	import("@tektrg/diagram-kit/react").then((module) => ({
+		default: module.MermaidDiagram,
+	})),
+);
 
 export const MermaidBlockViewExtension = MermaidBlockExtension.extend({
 	addNodeView() {
@@ -29,50 +24,9 @@ export const MermaidBlockViewExtension = MermaidBlockExtension.extend({
 
 function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 	const raw = typeof node.attrs.raw === "string" ? node.attrs.raw : "";
-	const diagramRef = useRef<HTMLDivElement>(null);
-	const reactId = useId();
-	const idPrefix = `mermaid-${reactId.replace(/[^a-zA-Z0-9-]/g, "")}-`;
 	const [error, setError] = useState<string | null>(null);
 	const [isEditing, setIsEditing] = useState(false);
 	const [draft, setDraft] = useState(raw);
-
-	useEffect(() => {
-		const container = diagramRef.current;
-		if (!container) return;
-		if (raw.trim() === "") {
-			container.innerHTML = "";
-			setError(null);
-			return;
-		}
-
-		let cancelled = false;
-		void (async () => {
-			try {
-				const { render } = await loadPele();
-				if (cancelled) return;
-				// Colors come from `--pele-*` CSS variables (EditorView.css), so
-				// theme switches restyle the SVG without re-rendering.
-				const { svg } = render(raw, {
-					idPrefix,
-					maxWidth: container.clientWidth || undefined,
-				});
-				container.innerHTML = svg;
-				setError(null);
-			} catch (renderError) {
-				if (cancelled) return;
-				container.innerHTML = "";
-				setError(
-					renderError instanceof Error
-						? renderError.message
-						: "Failed to render diagram",
-				);
-			}
-		})();
-
-		return () => {
-			cancelled = true;
-		};
-	}, [raw, idPrefix]);
 
 	const openEditor = () => {
 		setDraft(raw);
@@ -111,13 +65,20 @@ function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 								<code className="pm-mermaid-block-source">{raw}</code>
 							</span>
 						)}
-						{/* Stays mounted through errors so a fixed source can render into it. */}
-						<div
-							ref={diagramRef}
-							className="pm-mermaid-block-diagram"
-							aria-hidden="true"
-							hidden={error !== null}
-						/>
+						{/* diagram-kit keeps its SVG container mounted through errors, so a
+						    fixed source renders into it; its own error box is hidden by CSS
+						    in favour of the one above. */}
+						<span aria-hidden="true" style={{ display: "contents" }}>
+							<Suspense fallback={null}>
+								<MermaidDiagram
+									source={raw}
+									className="pm-mermaid-block-diagram"
+									onError={(diagramError) =>
+										setError(diagramError?.message ?? null)
+									}
+								/>
+							</Suspense>
+						</span>
 					</>
 				)}
 			</button>
