@@ -53,6 +53,9 @@ importers:
       '@tailwindcss/browser':
         specifier: ^4.3.1
         version: 4.3.1
+      '@tektrg/diagram-kit':
+        specifier: 0.1.0
+        version: 0.1.0(react@19.2.4)
       '@tektrg/table-core':
         specifier: ^1.2.0
         version: 1.2.0(esbuild@0.28.1)
@@ -523,6 +526,9 @@ importers:
       '@mdly/workspace-scan':
         specifier: workspace:*
         version: link:../workspace-scan
+      '@tektrg/diagram-kit':
+        specifier: 0.1.0
+        version: 0.1.0(react@19.2.4)
       '@tektrg/table-core':
         specifier: ^1.2.0
         version: 1.2.0(esbuild@0.28.1)
@@ -571,9 +577,6 @@ importers:
       lowlight:
         specifier: ^3.3.0
         version: 3.3.0
-      pele:
-        specifier: 1.6.0
-        version: 1.6.0
       react:
         specifier: ^19.1.0
         version: 19.2.4
@@ -2794,13 +2797,18 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7
 
+  '@tektrg/diagram-kit@0.1.0':
+    resolution: {integrity: sha512-yu5Vsp7Q9+pu7dK+PJCgk6YGsfu4v8a7zk7wE6gFVCrwiwh5HRN7gkomYa9PeY/wLw1GShRiy+xqU0sqsATV3g==, tarball: https://npm.pkg.github.com/download/@tektrg/diagram-kit/0.1.0/becab50810fcf818b25838b01e9a621c03064a66}
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
+        optional: true
+
   '@tektrg/table-core@1.2.0':
     resolution: {integrity: sha512-LYcAe7nw17ZqgrN7Dj6RLAM3wxLoZtQCMJSC2WhDXaN7Ysi+z2+Ul66q4QcVkRmoB3UuBPLM5aLM8yuKijpoYw==, tarball: https://npm.pkg.github.com/download/@tektrg/table-core/1.2.0/46fd78a489ed30c6d9d4466c307ab66619d6de1d}
     peerDependencies:
       esbuild: '>=0.21'
-    peerDependenciesMeta:
-      esbuild:
-        optional: true
 
   '@tiptap/core@3.20.0':
     resolution: {integrity: sha512-aC9aROgia/SpJqhsXFiX9TsligL8d+oeoI8W3u00WI45s0VfsqjgeKQLDLF7Tu7hC+7F02teC84SAHuup003VQ==}
@@ -8313,8 +8321,14 @@ snapshots:
       tailwindcss: 4.1.18
       vite: 7.3.5(@types/node@25.5.0)(jiti@2.6.1)(lightningcss@1.30.2)(yaml@2.9.0)
 
-  '@tektrg/table-core@1.2.0(esbuild@0.28.1)':
+  '@tektrg/diagram-kit@0.1.0(react@19.2.4)':
+    dependencies:
+      pele: 1.6.0
     optionalDependencies:
+      react: 19.2.4
+
+  '@tektrg/table-core@1.2.0(esbuild@0.28.1)':
+    dependencies:
       esbuild: 0.28.1
 
   '@tiptap/core@3.20.0(@tiptap/pm@3.20.0)':

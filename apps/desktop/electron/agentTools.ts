@@ -1,5 +1,6 @@
 /**
- * The seven agent-facing comment tools, published to every transport
+ * The seven agent-facing comment tools (plus diagram-kit's diagram tools from
+ * `diagramAgentTools.ts`), published to every transport
  * (`mcpServer.ts`'s loopback MCP server, `../src/webmcp.ts`'s WebMCP bridge)
  * from this one table — see `agentToolContract.ts`'s module doc for why
  * that's the standing design. Each tool here is a thin adapter: parse/coerce
@@ -27,6 +28,7 @@ import {
 	toDescriptor,
 	untrustedBlock,
 } from "./agentToolContract";
+import { DIAGRAM_AGENT_TOOLS } from "./diagramAgentTools";
 
 const SCOPES: readonly AgentThreadScope[] = ["workspace", "open"];
 const STATES: readonly AgentThreadStateFilter[] = ["open", "resolved", "all"];
@@ -326,6 +328,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 	replyTool,
 	resolveTool,
 	reopenTool,
+	...DIAGRAM_AGENT_TOOLS,
 ];
 
 /** What every transport actually publishes — descriptors only, no `execute`. */

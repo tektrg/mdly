@@ -628,11 +628,15 @@ describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
 		const readOnly = AGENT_TOOL_DESCRIPTORS.filter(
 			(descriptor) => descriptor.annotations.readOnlyHint,
 		);
-		expect(readOnly.map((descriptor) => descriptor.name).sort()).toEqual([
-			"list_documents",
-			"list_threads",
-			"read_thread",
-		]);
+		expect(readOnly.map((descriptor) => descriptor.name).sort()).toEqual(
+			[
+				"listDiagramTypes",
+				"list_documents",
+				"list_threads",
+				"read_thread",
+				"validateDiagram",
+			].sort(),
+		);
 	});
 
 	it.each(
@@ -660,7 +664,7 @@ describe("Agent Context Gap", () => {
 		const relativePath = "gap.md";
 		// "duplicate" appears twice. One in plain text, one in markdown.
 		// Wait, if it appears twice, anchorForUniqueQuote throws.
-		// We want to see if the anchor's context includes markdown, 
+		// We want to see if the anchor's context includes markdown,
 		// and if it causes orphaning when we try to resolve it.
 		// BUT anchorForUniqueQuote only uses context if it's unique in anchorForUniqueQuote!
 		// Wait, if it's unique in anchorForUniqueQuote, it won't need disambiguation in resolveByQuoteContext!
@@ -701,8 +705,8 @@ describe("Agent Context Markdown Gap", () => {
 			ctx,
 		);
 		const thread = documents[0].threads[0];
-		
-		// If context was saved with markdown (**bold**), resolveByQuoteContext will compare it to 
+
+		// If context was saved with markdown (**bold**), resolveByQuoteContext will compare it to
 		// "This is bold and a ". They won't match, and the thread will be orphaned!
 		expect(thread.anchorStatus).not.toBe("orphaned");
 	});

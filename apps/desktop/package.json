@@ -39,6 +39,7 @@
 		"@simplestack/store": "^0.7.5",
 		"@tailwindcss/browser": "^4.3.1",
 		"@tektrg/table-core": "^1.2.0",
+		"@tektrg/diagram-kit": "0.1.0",
 		"@tiptap/core": "^3.4.3",
 		"@tiptap/extension-image": "^3.4.2",
 		"@tiptap/extension-list": "^3.4.2",

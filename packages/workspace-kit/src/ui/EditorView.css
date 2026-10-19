@@ -782,6 +782,11 @@
 	--pele-error: var(--destructive);
 }
 
+/* The node view shows its own error box (with the source); hide diagram-kit's. */
+[data-hubble-editor] .pm-mermaid-block-diagram .diagram-kit-error {
+	display: none;
+}
+
 [data-hubble-editor] .pm-mermaid-block-diagram svg {
 	max-inline-size: 100%;
 	block-size: auto;
