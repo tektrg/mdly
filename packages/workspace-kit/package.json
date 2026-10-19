@@ -1,6 +1,6 @@
 {
 	"name": "@mdly/workspace-kit",
-  "version": "0.8.3",
+	"version": "0.8.3",
 	"description": "Shared Markdown editor engine, editor surface, and file-navigation UI for mdly-based products",
 	"license": "MIT",
 	"type": "module",
@@ -55,7 +55,7 @@
 		"ignore": "^7.0.5",
 		"keymatch": "^1.0.5",
 		"lowlight": "^3.3.0",
-		"mermaid": "^11.4.1",
+		"pele": "1.6.0",
 		"remark-gfm": "^4.0.1",
 		"remark-parse": "^11.0.0",
 		"tailwind-merge": "^3.5.0",
