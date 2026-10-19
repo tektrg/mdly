@@ -769,6 +769,19 @@
 	border-color: var(--ring);
 }
 
+[data-hubble-editor] .pm-mermaid-block-diagram .pele {
+	--pele-bg: var(--muted);
+	--pele-fg: var(--foreground);
+	--pele-muted: var(--muted-foreground);
+	--pele-line: var(--muted-foreground);
+	--pele-surface: var(--background);
+	--pele-surface-alt: var(--accent);
+	--pele-border: var(--border);
+	--pele-accent: var(--primary);
+	--pele-critical: var(--destructive);
+	--pele-error: var(--destructive);
+}
+
 [data-hubble-editor] .pm-mermaid-block-diagram svg {
 	max-inline-size: 100%;
 	block-size: auto;

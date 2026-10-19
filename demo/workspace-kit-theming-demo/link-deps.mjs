@@ -40,7 +40,7 @@ const packages = [
 	"@tiptap/starter-kit",
 	"@tiptap/extension-code-block-lowlight",
 	"@tiptap/extension-list",
-	"mermaid",
+	"pele",
 	"lowlight",
 	"highlight.js",
 	"cmdk",
