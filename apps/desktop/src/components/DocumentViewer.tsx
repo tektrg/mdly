@@ -42,6 +42,7 @@ export function DocumentViewer({
 	onScrollContainerChange,
 	commentsOpen,
 	onCommentsOpenChange,
+	isSingleFile = false,
 }: {
 	path: string;
 	content: string;
@@ -49,6 +50,12 @@ export function DocumentViewer({
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 	commentsOpen: boolean;
 	onCommentsOpenChange: (open: boolean) => void;
+	/**
+	 * Strict single-file window: skip the comment-thread identity fetch so
+	 * merely opening the file never mints a `.mdly` sidecar next to it.
+	 * History/comments UI is hidden by the shell in this mode.
+	 */
+	isSingleFile?: boolean;
 }) {
 	if (hasHtmlExtension(path)) {
 		return (
@@ -81,6 +88,7 @@ export function DocumentViewer({
 			onScrollContainerChange={onScrollContainerChange}
 			commentsOpen={commentsOpen}
 			onCommentsOpenChange={onCommentsOpenChange}
+			isSingleFile={isSingleFile}
 		/>
 	);
 }
@@ -123,12 +131,14 @@ function MarkdownEditor({
 	onScrollContainerChange,
 	commentsOpen,
 	onCommentsOpenChange,
+	isSingleFile,
 }: {
 	path: string;
 	initialMarkdown: string;
 	onScrollContainerChange?: (el: HTMLDivElement | null) => void;
 	commentsOpen: boolean;
 	onCommentsOpenChange: (open: boolean) => void;
+	isSingleFile: boolean;
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const notionAccount =
@@ -236,6 +246,9 @@ function MarkdownEditor({
 		currentAuthor: CommentOptions["currentAuthor"];
 	} | null>(null);
 	useEffect(() => {
+		// Single-file windows never fetch comment identity: resolving it
+		// would mint a `.mdly` sidecar next to the opened file.
+		if (isSingleFile) return;
 		let active = true;
 		desktopApi
 			.listCommentThreads(path)
@@ -260,7 +273,7 @@ function MarkdownEditor({
 		return () => {
 			active = false;
 		};
-	}, [path]);
+	}, [isSingleFile, path]);
 	// Slice 4: an agent writing a comment through the WebMCP bridge or the local
 	// MCP server appends to the log behind this editor's back. `CommentOptions`
 	// has always accepted a `refreshSignal` for exactly this, but nothing ever
@@ -286,7 +299,7 @@ function MarkdownEditor({
 		};
 	}, [path]);
 	const commentOptions = useMemo<CommentOptions | undefined>(() => {
-		if (!commentIdentity) return undefined;
+		if (isSingleFile || !commentIdentity) return undefined;
 		return {
 			currentAuthor: commentIdentity.currentAuthor,
 			docId: commentIdentity.docId,
@@ -320,6 +333,7 @@ function MarkdownEditor({
 		};
 	}, [
 		commentIdentity,
+		isSingleFile,
 		path,
 		commentRefreshSignal,
 		commentsOpen,

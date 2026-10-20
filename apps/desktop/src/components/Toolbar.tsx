@@ -28,6 +28,7 @@ const PILL_SEGMENT_CLASS =
 	"pointer-events-auto rounded-none text-muted-foreground hover:bg-accent hover:text-foreground";
 
 export function Toolbar({
+	isSingleFile,
 	onOpenNotionPage,
 	onOpenNotionInBrowser,
 	onPushNotionPage,
@@ -39,6 +40,8 @@ export function Toolbar({
 	notionSyncMode,
 	docImported,
 }: {
+	/** Strict single-file window: no workspace, so workspace-only actions hide. */
+	isSingleFile: boolean;
 	scrollContainer: HTMLDivElement | null;
 	onOpenNotionPage: () => void;
 	onOpenNotionInBrowser: () => void;
@@ -111,7 +114,10 @@ export function Toolbar({
 		};
 	}, [workspacePath]);
 
-	if (!workspacePath) return null;
+	// Single-file windows keep the note-action pill (history, comments,
+	// reveal, copy path) but none of the workspace-only chrome. With neither,
+	// there is nothing to act on.
+	if (!workspacePath && !currentPath) return null;
 
 	return (
 		<>
@@ -143,6 +149,8 @@ export function Toolbar({
 					)}
 					<NoteActionsMenu
 						path={currentPath ?? null}
+						canMoveFile={!isSingleFile}
+						hideHistoryItems={isSingleFile}
 						onOpenNotionPage={onOpenNotionPage}
 						onOpenNotionInBrowser={onOpenNotionInBrowser}
 						onPushNotionPage={onPushNotionPage}
@@ -175,6 +183,8 @@ function PillDivider() {
 
 function NoteActionsMenu({
 	path,
+	canMoveFile,
+	hideHistoryItems,
 	onOpenNotionPage,
 	onOpenNotionInBrowser,
 	onPushNotionPage,
@@ -187,6 +197,14 @@ function NoteActionsMenu({
 	docImported,
 }: {
 	path: string | null;
+	/** False in single-file windows: there is no workspace to move within. */
+	canMoveFile: boolean;
+	/**
+	 * True in single-file windows: revision history and comments are
+	 * unavailable there (their sidecars would have to live next to the file),
+	 * so their menu entries hide instead of opening empty panels.
+	 */
+	hideHistoryItems: boolean;
 	onOpenNotionPage: () => void;
 	onOpenNotionInBrowser: () => void;
 	onPushNotionPage: () => void;
@@ -300,13 +318,15 @@ function NoteActionsMenu({
 									</span>
 									<ShortcutHint>⌘⌥R</ShortcutHint>
 								</Menu.Item>
-								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-									onClick={onMoveFile}
-								>
-									<MingcuteFolderOpenLine className="size-3 shrink-0" />
-									<span className="min-w-0 flex-1">Move to...</span>
-								</Menu.Item>
+								{canMoveFile ? (
+									<Menu.Item
+										className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+										onClick={onMoveFile}
+									>
+										<MingcuteFolderOpenLine className="size-3 shrink-0" />
+										<span className="min-w-0 flex-1">Move to...</span>
+									</Menu.Item>
+								) : null}
 								<Menu.Item
 									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={() => void copyFilePath()}
@@ -315,20 +335,26 @@ function NoteActionsMenu({
 									<span className="min-w-0 flex-1">Copy file path</span>
 									<ShortcutHint>⌘⇧C</ShortcutHint>
 								</Menu.Item>
-								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-									onClick={onOpenRevisionHistory}
-								>
-									<MingcuteHistoryLine className="size-3 shrink-0" />
-									<span className="min-w-0 flex-1">View revision history</span>
-								</Menu.Item>
-								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-									onClick={onOpenComments}
-								>
-									<MingcuteMessage3Line className="size-3 shrink-0" />
-									<span className="min-w-0 flex-1">View comments</span>
-								</Menu.Item>
+								{hideHistoryItems ? null : (
+									<>
+										<Menu.Item
+											className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+											onClick={onOpenRevisionHistory}
+										>
+											<MingcuteHistoryLine className="size-3 shrink-0" />
+											<span className="min-w-0 flex-1">
+												View revision history
+											</span>
+										</Menu.Item>
+										<Menu.Item
+											className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+											onClick={onOpenComments}
+										>
+											<MingcuteMessage3Line className="size-3 shrink-0" />
+											<span className="min-w-0 flex-1">View comments</span>
+										</Menu.Item>
+									</>
+								)}
 							</>
 						) : null}
 					</Menu.Popup>

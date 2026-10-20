@@ -156,12 +156,38 @@ export function MainPanel({
 		onDeletePath: (path) => void deleteMarkdownFile(path),
 	};
 
-	if (!hasWorkspace) {
+	if (!hasWorkspace && requestedPath === null) {
 		return (
 			<div className="flex h-full items-center justify-center p-6">
 				<WelcomeScreen
 					onCreateFolder={onCreateFolder}
 					onOpenFolder={onOpenFolder}
+				/>
+			</div>
+		);
+	}
+
+	// Strict single-file mode: a document open with no workspace renders the
+	// document pane alone — no table, no narrow list, no sibling files.
+	if (!hasWorkspace) {
+		return (
+			<div
+				data-document-pane
+				className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+			>
+				<DocumentPaneBody
+					isSingleFile
+					status={status}
+					error={error}
+					currentPath={currentPath}
+					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+					onScrollContainerChange={onScrollContainerChange}
+					historyOpen={historyOpen}
+					onHistoryOpenChange={onHistoryOpenChange}
+					commentsOpen={commentsOpen}
+					onCommentsOpenChange={onCommentsOpenChange}
+					viewingRevision={viewingRevision}
+					onViewingRevisionChange={onViewingRevisionChange}
 				/>
 			</div>
 		);
@@ -225,45 +251,97 @@ export function MainPanel({
 				data-document-pane
 				className="flex min-h-0 flex-1 flex-col overflow-hidden"
 			>
-				{status === "loading" ? (
-					<p
-						aria-live="polite"
-						aria-busy="true"
-						className="m-0 flex items-center gap-2 p-3 text-sm text-muted-foreground"
-					>
-						<MingcuteLoading3Line
-							aria-hidden="true"
-							className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
-						/>
-						Opening this document…
-					</p>
-				) : null}
-				{status === "error" ? (
-					<p aria-live="polite" className="m-0 p-3 text-sm text-destructive">
-						{error ?? "Failed to open file."}
-					</p>
-				) : null}
-				{status === "ready" && currentPath ? (
-					<ReadyDocument
-						currentPath={currentPath}
-						notionDatabaseRefreshToken={notionDatabaseRefreshToken}
-						onScrollContainerChange={onScrollContainerChange}
-						historyOpen={historyOpen}
-						onHistoryOpenChange={onHistoryOpenChange}
-						commentsOpen={commentsOpen}
-						onCommentsOpenChange={onCommentsOpenChange}
-						viewingRevision={viewingRevision}
-						onViewingRevisionChange={onViewingRevisionChange}
-					/>
-				) : null}
+				<DocumentPaneBody
+					isSingleFile={false}
+					status={status}
+					error={error}
+					currentPath={currentPath}
+					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+					onScrollContainerChange={onScrollContainerChange}
+					historyOpen={historyOpen}
+					onHistoryOpenChange={onHistoryOpenChange}
+					commentsOpen={commentsOpen}
+					onCommentsOpenChange={onCommentsOpenChange}
+					viewingRevision={viewingRevision}
+					onViewingRevisionChange={onViewingRevisionChange}
+				/>
 			</div>
 		</div>
+	);
+}
+
+// Shared document-pane body: loading/error/ready states shared by the
+// workspace peek-split branch and the strict single-file branch, so the two
+// layouts cannot drift apart.
+function DocumentPaneBody({
+	isSingleFile,
+	currentPath,
+	status,
+	error,
+	notionDatabaseRefreshToken,
+	onScrollContainerChange,
+	historyOpen,
+	onHistoryOpenChange,
+	commentsOpen,
+	onCommentsOpenChange,
+	viewingRevision,
+	onViewingRevisionChange,
+}: {
+	isSingleFile: boolean;
+	currentPath: string | null;
+	status: "idle" | "loading" | "ready" | "error";
+	error: string | null;
+	notionDatabaseRefreshToken: number;
+	onScrollContainerChange: (el: HTMLDivElement | null) => void;
+	historyOpen: boolean;
+	onHistoryOpenChange: (open: boolean) => void;
+	commentsOpen: boolean;
+	onCommentsOpenChange: (open: boolean) => void;
+	viewingRevision: HistoryRevision | null;
+	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
+}) {
+	return (
+		<>
+			{status === "loading" ? (
+				<p
+					aria-live="polite"
+					aria-busy="true"
+					className="m-0 flex items-center gap-2 p-3 text-sm text-muted-foreground"
+				>
+					<MingcuteLoading3Line
+						aria-hidden="true"
+						className="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+					/>
+					Opening this document…
+				</p>
+			) : null}
+			{status === "error" ? (
+				<p aria-live="polite" className="m-0 p-3 text-sm text-destructive">
+					{error ?? "Failed to open file."}
+				</p>
+			) : null}
+			{status === "ready" && currentPath ? (
+				<ReadyDocument
+					isSingleFile={isSingleFile}
+					currentPath={currentPath}
+					notionDatabaseRefreshToken={notionDatabaseRefreshToken}
+					onScrollContainerChange={onScrollContainerChange}
+					historyOpen={historyOpen}
+					onHistoryOpenChange={onHistoryOpenChange}
+					commentsOpen={commentsOpen}
+					onCommentsOpenChange={onCommentsOpenChange}
+					viewingRevision={viewingRevision}
+					onViewingRevisionChange={onViewingRevisionChange}
+				/>
+			) : null}
+		</>
 	);
 }
 
 // Isolates the live-content subscription so per-keystroke content updates
 // re-render only the document view, not the whole App shell.
 function ReadyDocument({
+	isSingleFile,
 	currentPath,
 	notionDatabaseRefreshToken,
 	onScrollContainerChange,
@@ -274,6 +352,7 @@ function ReadyDocument({
 	viewingRevision,
 	onViewingRevisionChange,
 }: {
+	isSingleFile: boolean;
 	currentPath: string;
 	notionDatabaseRefreshToken: number;
 	onScrollContainerChange: (el: HTMLDivElement | null) => void;
@@ -338,6 +417,7 @@ function ReadyDocument({
 					onScrollContainerChange={onScrollContainerChange}
 					commentsOpen={commentsOpen}
 					onCommentsOpenChange={onCommentsOpenChange}
+					isSingleFile={isSingleFile}
 				/>
 			)}
 			<RevisionHistoryPanel

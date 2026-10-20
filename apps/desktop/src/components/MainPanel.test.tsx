@@ -119,7 +119,7 @@ describe("MainPanel", () => {
 		return container.querySelector<HTMLElement>("[data-document-pane]");
 	}
 
-	it("shows the welcome screen when there is no workspace", () => {
+	it("shows the welcome screen when there is no workspace and no document", () => {
 		setViewer({ requestedPath: null, status: "idle" });
 		renderPanel({ hasWorkspace: false });
 
@@ -127,6 +127,54 @@ describe("MainPanel", () => {
 			container.querySelector('[data-testid="welcome-screen"]'),
 		).toBeTruthy();
 		expect(documentPane()).toBeNull();
+		expect(listRows()).toHaveLength(0);
+	});
+
+	it("renders just the document with no workspace chrome in single-file mode", () => {
+		act(() => {
+			workspaceStore.set((workspace) => ({
+				...workspace,
+				workspacePath: null,
+				files: [],
+				hasListedOnce: false,
+				listingError: null,
+			}));
+		});
+		setViewer({
+			requestedPath: OPEN_PATH,
+			currentPath: OPEN_PATH,
+			status: "ready",
+		});
+		renderPanel({ hasWorkspace: false });
+
+		expect(
+			container.querySelector('[data-testid="welcome-screen"]'),
+		).toBeNull();
+		expect(listRows()).toHaveLength(0);
+		const viewers = container.querySelectorAll(
+			'[data-testid="document-viewer"]',
+		);
+		expect(viewers).toHaveLength(1);
+		expect(documentPane()?.contains(viewers[0] as Node)).toBe(true);
+	});
+
+	it("shows the opening state with no welcome screen while a single file loads", () => {
+		act(() => {
+			workspaceStore.set((workspace) => ({
+				...workspace,
+				workspacePath: null,
+				files: [],
+				hasListedOnce: false,
+				listingError: null,
+			}));
+		});
+		setViewer({ requestedPath: OPEN_PATH, status: "loading" });
+		renderPanel({ hasWorkspace: false });
+
+		expect(
+			container.querySelector('[data-testid="welcome-screen"]'),
+		).toBeNull();
+		expect(documentPane()?.textContent).toContain("Opening this document…");
 		expect(listRows()).toHaveLength(0);
 	});
 

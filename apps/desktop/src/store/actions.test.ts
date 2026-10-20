@@ -1801,6 +1801,44 @@ describe("desktop document-table seam", () => {
 		expect(viewerStore.get().status).toBe("ready");
 	});
 
+	it("openSingleFile empties the rehydrated workspace so no ghost sidebar/table shows", async () => {
+		const api = createDesktopApi();
+		api.readFileText.mockResolvedValue("# single");
+		const { openSingleFile, uiStore, viewerStore, workspaceStore } =
+			await loadStoreActions(api, {
+				workspace: {
+					workspacePath: "/ws",
+					recentWorkspaces: ["/ws"],
+					lastOpenedPaths: { "/ws": "/ws/a.md" },
+				},
+			});
+		expect(workspaceStore.get().workspacePath).toBe("/ws");
+
+		await openSingleFile("/outside/note.md");
+
+		expect(workspaceStore.get().workspacePath).toBeNull();
+		expect(workspaceStore.get().files).toEqual([]);
+		expect(workspaceStore.get().recentWorkspaces).toEqual([]);
+		expect(uiStore.get().singleFileWindow).toBe(true);
+		expect(viewerStore.get().currentPath).toBe("/outside/note.md");
+		expect(viewerStore.get().status).toBe("ready");
+	});
+
+	it("openWorkspace leaves single-file mode and tells the main process", async () => {
+		const api = createDesktopApi();
+		const { openSingleFile, openWorkspace, uiStore, workspaceStore } =
+			await loadStoreActions(api);
+
+		await openSingleFile("/outside/note.md");
+		expect(uiStore.get().singleFileWindow).toBe(true);
+
+		await openWorkspace("/ws");
+
+		expect(uiStore.get().singleFileWindow).toBe(false);
+		expect(workspaceStore.get().workspacePath).toBe("/ws");
+		expect(api.exitSingleFileMode).toHaveBeenCalledTimes(1);
+	});
+
 	it("claims the document pane synchronously, before any await", async () => {
 		const api = createDesktopApi();
 		api.readFileText.mockReturnValue(new Promise<string>(() => {}));

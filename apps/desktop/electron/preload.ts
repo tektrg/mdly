@@ -194,6 +194,7 @@ const desktopApi = {
 	getLaunchFilePath: () => ipcRenderer.invoke("desktop:get-launch-file-path"),
 	getLaunchWorkspacePath: () =>
 		ipcRenderer.invoke("desktop:get-launch-workspace-path"),
+	exitSingleFileMode: () => ipcRenderer.invoke("desktop:exit-single-file-mode"),
 	setMenuState: (state) => ipcRenderer.invoke("desktop:set-menu-state", state),
 	getUpdateState: () => ipcRenderer.invoke("desktop:get-update-state"),
 	getFullScreen: () => ipcRenderer.invoke("desktop:get-fullscreen"),

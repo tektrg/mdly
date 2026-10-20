@@ -121,6 +121,38 @@ describe("desktop state persistence", () => {
 		});
 	});
 
+	it("keeps the remembered workspace on disk when a single-file window persists", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({
+							workspace: {
+								workspacePath: "/ws",
+								recentWorkspaces: ["/ws"],
+								lastOpenedPaths: { "/ws": "/ws/a.md" },
+							},
+							document: { lastOpenedPath: "/ws/a.md" },
+						})
+					: null,
+		});
+		const state = getInitialState();
+		// A single-file window holds an emptied workspace in memory.
+		state.ui.singleFileWindow = true;
+		state.workspace.workspacePath = null;
+		state.workspace.recentWorkspaces = [];
+		state.document.lastOpenedPath = "/outside/note.md";
+
+		const snapshot = serialize(state);
+
+		expect(snapshot.workspace?.workspacePath).toBe("/ws");
+		expect(snapshot.workspace?.recentWorkspaces).toEqual(["/ws"]);
+		expect(snapshot.workspace?.lastOpenedPaths).toEqual({
+			"/ws": "/ws/a.md",
+		});
+		expect(snapshot.document?.lastOpenedPath).toBe("/ws/a.md");
+		expect(JSON.stringify(snapshot)).not.toContain("singleFileWindow");
+	});
+
 	it("ignores a __proto__ workspace key in persisted view sorts", () => {
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) =>
