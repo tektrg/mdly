@@ -1070,6 +1070,110 @@ describe("Sidebar symlink activation", () => {
 		});
 	}
 
+	describe("open-document reveal", () => {
+		const manyFiles = Array.from({ length: 60 }, (_, index) => ({
+			path: `/workspace/note-${index.toString().padStart(3, "0")}.md`,
+			modifiedAt: index,
+		}));
+
+		function navEl(): HTMLElement {
+			const el = container.querySelector<HTMLElement>("[data-sidebar-nav]");
+			if (!el) throw new Error("sidebar nav not rendered");
+			return el;
+		}
+
+		function treePane(): HTMLElement {
+			const el = container.querySelector<HTMLElement>(
+				'[data-sidebar-page="tree"]',
+			);
+			if (!el) throw new Error("sidebar tree page not rendered");
+			return el;
+		}
+
+		function activeRow(): HTMLElement | null {
+			return treePane().querySelector<HTMLElement>(
+				'[role="treeitem"][aria-selected="true"]',
+			);
+		}
+
+		it("scrolls the opened file's row into view", async () => {
+			await renderSidebar({ files: manyFiles, currentPath: null });
+			expect(navEl().scrollTop).toBe(0);
+
+			await renderSidebar({
+				files: manyFiles,
+				currentPath: "/workspace/note-059.md",
+			});
+
+			expect(navEl().scrollTop).toBeGreaterThan(0);
+			expect(activeRow()?.textContent).toContain("note-059.md");
+		});
+
+		it("reveals a file inside collapsed folders and scrolls to it", async () => {
+			const files = [
+				{ path: "/workspace/top.md", modifiedAt: 1 },
+				{ path: "/workspace/deep/nested/buried.md", modifiedAt: 2 },
+			];
+			// Fresh localStorage stub: no folder starts expanded.
+			await renderSidebar({ files, currentPath: null });
+			expect(treePane().textContent).not.toContain("buried.md");
+
+			await renderSidebar({
+				files,
+				currentPath: "/workspace/deep/nested/buried.md",
+			});
+
+			expect(treePane().textContent).toContain("buried.md");
+			expect(navEl().scrollTop).toBeGreaterThan(0);
+			expect(activeRow()?.textContent).toContain("buried.md");
+		});
+
+		it("reveals the pending path before the file finishes loading", async () => {
+			await renderSidebar({
+				files: manyFiles,
+				currentPath: null,
+				pendingPath: "/workspace/note-059.md",
+			});
+
+			expect(navEl().scrollTop).toBeGreaterThan(0);
+			expect(activeRow()?.textContent).toContain("note-059.md");
+		});
+
+		it("never moves DOM focus into the tree on reveal", async () => {
+			await renderSidebar({ files: manyFiles, currentPath: null });
+			await renderSidebar({
+				files: manyFiles,
+				currentPath: "/workspace/note-059.md",
+			});
+
+			expect(navEl().contains(document.activeElement)).toBe(false);
+		});
+
+		it("never scrolls on a re-sort under the same open document", async () => {
+			await renderSidebar({
+				files: manyFiles,
+				currentPath: "/workspace/note-000.md",
+				sortMode: "recent",
+			});
+			const nav = navEl();
+			expect(nav.scrollTop).toBeGreaterThan(0);
+			nav.scrollTop = 0;
+
+			// Same open document, now the newest file instead of the oldest.
+			await renderSidebar({
+				files: manyFiles.map((file) =>
+					file.path === "/workspace/note-000.md"
+						? { ...file, modifiedAt: 9999 }
+						: file,
+				),
+				currentPath: "/workspace/note-000.md",
+				sortMode: "recent",
+			});
+
+			expect(navEl().scrollTop).toBe(0);
+		});
+	});
+
 	async function renderSidebar({
 		files,
 		folders = [],
@@ -1087,6 +1191,8 @@ describe("Sidebar symlink activation", () => {
 		onSearchChange,
 		searchQuery,
 		storageScope,
+		currentPath = null,
+		pendingPath = null,
 		handleRef,
 		renderTagIcon,
 		formatTagLabel,
@@ -1114,6 +1220,8 @@ describe("Sidebar symlink activation", () => {
 		onSearchChange?: (query: string) => void;
 		searchQuery?: string;
 		storageScope?: string | null;
+		currentPath?: string | null;
+		pendingPath?: string | null;
 		handleRef?: { current: SidebarHandle | null };
 		renderTagIcon?: Parameters<typeof Sidebar>[0]["renderTagIcon"];
 		formatTagLabel?: Parameters<typeof Sidebar>[0]["formatTagLabel"];
@@ -1129,7 +1237,8 @@ describe("Sidebar symlink activation", () => {
 				<Sidebar
 					activeTag={activeTag}
 					chrome={chrome}
-					currentPath={null}
+					currentPath={currentPath}
+					pendingPath={pendingPath}
 					files={files}
 					folders={folders}
 					formatTagLabel={formatTagLabel}

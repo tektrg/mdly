@@ -387,14 +387,14 @@ describe("DocumentNarrowList density tiers", () => {
 		);
 	});
 
-	it("List wraps the 2nd info too — wrapping starts wherever it appears", () => {
+	it("List shows the 2nd info on one clamped line, not two", () => {
 		renderTier("list");
 
 		const rows = bodyRows();
 		expect(rows.length).toBeGreaterThan(0);
 		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
 		const meta = rowMeta(rows[0]);
-		expect(meta?.className).toContain("line-clamp-2");
+		expect(meta?.className).toContain("line-clamp-1");
 		expect(meta?.textContent).toContain("—");
 		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
 	});

@@ -161,7 +161,7 @@ export function DocumentNarrowList({
 	rowMenu,
 }: DocumentNarrowListProps) {
 	// R9: Rail shows the title only; every tier that shows the 2nd info wraps
-	// it — two lines on List/Card, three on Table — so widening keeps
+	// it — one line on List, two on Card, three on Table — so widening keeps
 	// revealing more info.
 	const showSecondary = columnsForTier(navTier).length > 1;
 	// Own ref for the kit's width watcher; the host's `listRef` still gets

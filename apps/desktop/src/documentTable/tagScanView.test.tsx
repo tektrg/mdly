@@ -10,7 +10,13 @@ import {
 	resetTagScan,
 	tagScanStore,
 } from "./tagScanStore";
-import { buildRows, viewWith } from "./testFixtures";
+import { buildRows, viewWith, WORKSPACE_FILES } from "./testFixtures";
+
+const scanFrontMatterTags = vi.hoisted(() => vi.fn());
+
+vi.mock("../desktopApi", () => ({
+	desktopApi: { scanFrontMatterTags },
+}));
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -35,7 +41,13 @@ describe("tag scan view (A9)", () => {
 		document.body.append(container);
 		root = createRoot(container);
 		resetTagScan();
-		setWorkspace(WORKSPACE);
+		scanFrontMatterTags.mockReset();
+		scanFrontMatterTags.mockResolvedValue({});
+		workspaceStore.set((state) => ({
+			...state,
+			workspacePath: WORKSPACE,
+			files: WORKSPACE_FILES,
+		}));
 	});
 
 	afterEach(() => {
@@ -48,8 +60,8 @@ describe("tag scan view (A9)", () => {
 
 	async function renderTagList() {
 		const view = viewWith({ groupBy: "tag" });
-		// The store notifies on a microtask, so the entering-scan effect and
-		// the progress paint land after an async flush.
+		// The store notifies on a microtask, so the scan effect and its result
+		// land after an async flush.
 		await act(async () => {
 			root.render(
 				<DocumentRowList
@@ -63,21 +75,68 @@ describe("tag scan view (A9)", () => {
 		});
 	}
 
-	it("triggers a scan on entering tag mode and shows progress, zero groups", async () => {
+	it("reads the workspace's markdown files on entering tag mode", async () => {
+		scanFrontMatterTags.mockReturnValue(new Promise(() => {}));
 		expect(tagScanStore.get()).toEqual({ kind: "idle" });
+
 		await renderTagList();
 
-		expect(tagScanStore.get()).toEqual({
-			kind: "scanning",
-			scope: WORKSPACE,
-		});
+		expect(scanFrontMatterTags).toHaveBeenCalledTimes(1);
+		const scanned = scanFrontMatterTags.mock.calls[0]?.[0] as string[];
+		expect(scanned).toEqual([
+			"/ws/alpha.md",
+			"/ws/notes/beta.markdown",
+			"/ws/notes/deep/gamma.md",
+		]);
+		expect(tagScanStore.get()).toEqual({ kind: "scanning", scope: WORKSPACE });
 		expect(
 			container.querySelector('[data-tag-scan-state="scanning"]')?.textContent,
 		).toContain("Reading tags");
 		expect(container.querySelectorAll("[data-group-id]")).toHaveLength(0);
 	});
 
-	it("shows the failed shape with retry and no Untagged group", async () => {
+	it("completes the scan and groups documents by their front-matter tags", async () => {
+		scanFrontMatterTags.mockResolvedValue({
+			"/ws/alpha.md": ["idea"],
+			"/ws/notes/beta.markdown": ["idea", "meeting"],
+		});
+
+		await renderTagList();
+		await act(async () => {});
+
+		expect(tagScanStore.get()).toMatchObject({
+			kind: "scanned",
+			scope: WORKSPACE,
+			tagsByPath: {
+				"/ws/alpha.md": ["idea"],
+				"/ws/notes/beta.markdown": ["idea", "meeting"],
+			},
+		});
+		// The scan resolves, so the list renders real tag groups — never the
+		// "Reading tags…" pending row it would be stuck on without a reader.
+		expect(
+			container.querySelector('[data-tag-scan-state="scanning"]'),
+		).toBeNull();
+		expect(container.querySelector('[data-group-id="idea"]')).not.toBeNull();
+	});
+
+	it("shows the failed shape when the scan rejects", async () => {
+		scanFrontMatterTags.mockRejectedValue(new Error("EACCES"));
+
+		await renderTagList();
+		await act(async () => {});
+
+		expect(tagScanStore.get()).toMatchObject({
+			kind: "failed",
+			scope: WORKSPACE,
+			message: "EACCES",
+		});
+		expect(
+			container.querySelector('[data-tag-scan-state="failed"]')?.textContent,
+		).toContain("Try again");
+	});
+
+	it("shows the failed shape with retry, and a retry re-runs the scan", async () => {
 		beginTagScan(WORKSPACE);
 		failTagScan(WORKSPACE, "EACCES");
 		await renderTagList();
@@ -92,8 +151,11 @@ describe("tag scan view (A9)", () => {
 				?.querySelector("button")
 				?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
-		expect(tagScanStore.get()).toEqual({
-			kind: "scanning",
+		await act(async () => {});
+
+		expect(scanFrontMatterTags).toHaveBeenCalledTimes(1);
+		expect(tagScanStore.get()).toMatchObject({
+			kind: "scanned",
 			scope: WORKSPACE,
 		});
 	});
@@ -112,6 +174,7 @@ describe("tag scan view (A9)", () => {
 			);
 		});
 
+		expect(scanFrontMatterTags).not.toHaveBeenCalled();
 		expect(tagScanStore.get()).toEqual({ kind: "idle" });
 	});
 });

@@ -29,6 +29,7 @@ import {
 } from "../store/actions";
 import {
 	currentPathStore,
+	requestedPathStore,
 	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
 	workspaceStore,
@@ -50,6 +51,11 @@ function SidebarComponent({
 	// the user's saved `sidebarOpen` preference ever being rewritten.
 	const sidebarAutoCollapsed = useStoreValue(sidebarAutoCollapsedStore);
 	const currentPath = useStoreValue(currentPathStore);
+	// `requestedPath` flips on the same frame as a command-palette pick while
+	// `currentPath` only lands after the file is read: highlighting the
+	// request reveals the picked file in the tree instantly, matching the
+	// document list (which highlights `requestedPath` for the same reason).
+	const requestedPath = useStoreValue(requestedPathStore);
 	const { workspacePath, files, folders, pinnedNotes, sortMode } = workspace;
 
 	// Tags are read out of front matter, which workspace discovery deliberately
@@ -195,6 +201,7 @@ function SidebarComponent({
 			files={sidebarFiles}
 			folders={sidebarFolders}
 			currentPath={currentPath ?? null}
+			pendingPath={requestedPath}
 			sortMode={sortMode}
 			storageScope={workspacePath}
 			header={<WorkspaceSwitcher />}

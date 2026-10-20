@@ -68,10 +68,61 @@ describe("nav group rows (R2)", () => {
 		).map((row) => row.textContent);
 	}
 
+	function docRow(nameFragment: string): HTMLElement {
+		const row = Array.from(
+			container.querySelectorAll<HTMLElement>(
+				"[data-document-row-index]:not([data-group-id])",
+			),
+		).find((el) => el.textContent?.includes(nameFragment));
+		if (!row) throw new Error(`document row "${nameFragment}" not rendered`);
+		return row;
+	}
+
+	/** The rem value out of the row's `calc(var(--row-pad-inline) + Nrem)`. */
+	function docIndentRem(nameFragment: string): number | null {
+		const raw = docRow(nameFragment).style.paddingInlineStart;
+		if (!raw) return null;
+		const match = /\+ ([\d.]+)rem/.exec(raw);
+		return match ? Number(match[1]) : Number.NaN;
+	}
+
 	it("renders flat with no view prop — no headers, same documents", () => {
 		renderList();
 		expect(groupIds()).toHaveLength(0);
 		expect(docNames()).toHaveLength(3);
+	});
+
+	it("leaves the flat list's leaf inset at zero", () => {
+		renderList();
+		expect(docRow("alpha").style.paddingInlineStart).toBe("");
+	});
+
+	it("indents folder-view leaves under their group header", () => {
+		renderList(viewWith({ groupBy: "folder" }));
+		const root = docIndentRem("alpha");
+		const nested = docIndentRem("beta");
+		expect(root).not.toBeNull();
+		expect(nested).not.toBeNull();
+		expect(nested as number).toBeGreaterThan(root as number);
+	});
+
+	it("indents tag-view leaves under their group header", () => {
+		setWorkspace(WORKSPACE);
+		beginTagScan(WORKSPACE);
+		completeTagScan({
+			scope: WORKSPACE,
+			files: [
+				{ path: "/ws/alpha.md", modifiedAt: 1_700_000_300 },
+				{ path: "/ws/notes/beta.markdown", modifiedAt: 1_700_000_200 },
+			],
+			scannedPaths: ["/ws/notes/beta.markdown"],
+			tags: { "/ws/notes/beta.markdown": ["meeting"] },
+		});
+		renderList(viewWith({ groupBy: "tag" }));
+
+		const beta = docIndentRem("beta");
+		expect(beta).not.toBeNull();
+		expect(beta as number).toBeGreaterThan(0);
 	});
 
 	it("groups by folder with headers above their documents", () => {
@@ -158,7 +209,7 @@ describe("nav group rows (R2)", () => {
 					/>,
 				);
 			});
-			const expected = density === "table" ? "28px" : "62px";
+			const expected = density === "table" ? "28px" : "46px";
 			const header = container.querySelector<HTMLElement>("[data-group-id]");
 			expect(header?.style.blockSize).toBe(expected);
 			const doc = container.querySelector<HTMLElement>(
