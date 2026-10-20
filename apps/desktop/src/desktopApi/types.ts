@@ -620,6 +620,8 @@ export type DesktopApi = {
 	toAssetUrl(path: string): string;
 	getLaunchFilePath(): Promise<string | null>;
 	getLaunchWorkspacePath(): Promise<string | null>;
+	/** A single-file window that just became a workspace window calls this so its saves record history again. */
+	exitSingleFileMode(): Promise<void>;
 	setMenuState(state: MenuState): Promise<void>;
 	getUpdateState(): Promise<DesktopUpdateState>;
 	getFullScreen(): Promise<boolean>;

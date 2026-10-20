@@ -27,27 +27,28 @@ import {
  */
 export const DOCUMENT_TABLE_ROW_HEIGHT = SIDEBAR_VIRTUAL_ROW_HEIGHT;
 /**
- * Rail-tier density (title only, no secondary line). Keeps the old narrow-list
- * rhythm for the narrowest tier.
+ * Rail-tier density (title only, no secondary line): one text line, so it takes
+ * the app's compact single-line rhythm rather than a roomy row the title cannot
+ * fill.
  */
-export const DOCUMENT_LIST_ROW_HEIGHT = 44;
+export const DOCUMENT_LIST_ROW_HEIGHT = 32;
 /**
- * Card-tier density: the secondary line becomes a wrapped meta block — every
- * data column plus tags, clamped to two lines — so it needs headroom for the
- * title plus two wrapped lines. The List tier (260–399px) uses this height
- * too: whenever the 2nd info appears, it wraps.
+ * List-tier density (260–399px): title plus the 2nd info on a single clamped
+ * line. Two lines, so it matches the card tier's height — the narrow tier must
+ * not be TALLER than the wider one above it, and a short meta must not leave
+ * dead space.
  */
-export const DOCUMENT_CARD_ROW_HEIGHT = 62;
+export const DOCUMENT_CARD_ROW_HEIGHT = 46;
 /**
  * Card-tier density (400–559px): title row (dates on its right) plus one
- * truncated detail line — two single lines, so it fits tighter than List.
+ * truncated detail line — two single lines.
  */
 export const DOCUMENT_CARD_TIER_ROW_HEIGHT = 46;
 /**
- * Table-tier density (560px+ of list width): same wrapped meta block as the
- * card, but allowed a third line so widening keeps revealing more info.
+ * Table-tier density (560px+ of list width): the card layout with room for a
+ * second detail line, so widening keeps revealing more info.
  */
-export const DOCUMENT_NARROW_TABLE_ROW_HEIGHT = 78;
+export const DOCUMENT_NARROW_TABLE_ROW_HEIGHT = 62;
 
 /**
  * Shared by the header row and the body rows so the two grids cannot drift.
@@ -61,9 +62,9 @@ export type DocumentRowDensity = "table" | "list";
 
 /**
  * Uniform row height for the virtualizer. The full-width table is always one
- * line; the narrow list grows with the density tier so the wrapped card meta
- * never overflows its row — the virtualizer needs one number per tier, so the
- * meta block is line-clamped to match (2 lines on list/card, 3 on table).
+ * line; the narrow list grows with the density tier so the card meta never
+ * overflows its row — the virtualizer needs one number per tier, so the meta
+ * block is line-clamped to match (1 line on list, 2 on card, 3 on table).
  * Rail keeps the compact title-only height.
  */
 export function documentRowHeight(
@@ -149,7 +150,7 @@ type DocumentListRowProps = {
 	hideSecondary?: boolean;
 	/**
 	 * Peek-list density tier. Only read at `list` density: every tier that
-	 * shows the 2nd info wraps it into a meta block — two lines on list and
+	 * shows the 2nd info wraps it into a meta block — one line on list, two on
 	 * card, three on table. Defaults to `list`.
 	 */
 	navTier?: NavDensityTier;
@@ -157,6 +158,12 @@ type DocumentListRowProps = {
 	metaColumns?: DocumentTableColumn[];
 	/** Front-matter tags when the tag scan has them; appended to the card meta. */
 	tags?: readonly string[];
+	/**
+	 * A10: extra start inset in rem so a document under a group header lines up
+	 * with its hierarchy. Zero in the ungrouped list, so the flat view is
+	 * byte-for-byte unchanged.
+	 */
+	indentRem?: number;
 	/** Right-click opens the host-wired row menu. Absent means no menu. */
 	onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 	/** Front-matter property cells after the built-in ones; full table only. */
@@ -404,6 +411,7 @@ export function DocumentListRow({
 	navTier = "list",
 	metaColumns,
 	tags,
+	indentRem = 0,
 	onContextMenu,
 	propertyColumns = [],
 }: DocumentListRowProps) {
@@ -426,6 +434,14 @@ export function DocumentListRow({
 			style={{
 				transform: `translateY(${index * rowHeight}px)`,
 				blockSize: rowHeight,
+				// Group view only: keep the row's own start padding and add the
+				// hierarchy inset on top, exactly as DocumentGroupHeader does
+				// (its outer div carries the indent, its button the padding).
+				...(indentRem > 0
+					? {
+							paddingInlineStart: `calc(var(--row-pad-inline) + ${indentRem}rem)`,
+						}
+					: null),
 			}}
 			className={cn(
 				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
@@ -493,7 +509,7 @@ export function DocumentListRow({
 					>
 						{row.name}
 					</span>
-					<span className={cn(cardMetaClass(row.isActive), "line-clamp-2")}>
+					<span className={cn(cardMetaClass(row.isActive), "line-clamp-1")}>
 						{cardMetaItems(
 							row,
 							metaColumns ?? columns.filter((column) => column !== "name"),

@@ -68,6 +68,7 @@ import {
 	isSidebarVisible,
 	loadPath,
 	moveMarkdownFileToFolder,
+	openSingleFile,
 	openWorkspace,
 	openWorkspaceWithSidebar,
 	refreshFiles,
@@ -190,6 +191,9 @@ function App() {
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
 	const hasWorkspace = workspacePath !== null;
+	// Strict single-file mode: a document open with no workspace. The shell
+	// hides the sidebar and the table/list so only that file is visible.
+	const isSingleFile = !hasWorkspace && requestedPath !== null;
 	const [scrollContainerEl, setScrollContainerEl] =
 		useState<HTMLDivElement | null>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -767,7 +771,7 @@ function App() {
 
 	useEffect(() => {
 		const unlisten = desktopApi.onOpenFile((path) => {
-			void loadPath(path);
+			void openSingleFile(path);
 		});
 		return () => {
 			unlisten();
@@ -809,7 +813,7 @@ function App() {
 			if (!active) return;
 
 			if (typeof launchPath === "string" && launchPath.length > 0) {
-				await loadPath(launchPath);
+				await openSingleFile(launchPath);
 				return;
 			}
 			const launchWorkspacePath = await desktopApi.getLaunchWorkspacePath();
@@ -840,6 +844,7 @@ function App() {
 		<main className="flex h-dvh flex-col bg-background text-foreground">
 			<WindowDragRegion />
 			<Toolbar
+				isSingleFile={isSingleFile}
 				scrollContainer={scrollContainerEl}
 				onOpenNotionPage={() => setNotionDialogOpen(true)}
 				onOpenNotionInBrowser={openNotionInBrowser}
@@ -886,11 +891,13 @@ function App() {
 				</div>
 			)}
 			<div className="flex min-h-0 flex-1 overflow-hidden">
-				<Sidebar
-					onFocusedPathChange={setFocusedSidebarPath}
-					onMoveFile={openMoveFileCommandBar}
-					footer={sidebarFooter}
-				/>
+				{isSingleFile ? null : (
+					<Sidebar
+						onFocusedPathChange={setFocusedSidebarPath}
+						onMoveFile={openMoveFileCommandBar}
+						footer={sidebarFooter}
+					/>
+				)}
 				<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					<MainPanel
 						hasWorkspace={hasWorkspace}

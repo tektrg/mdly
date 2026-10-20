@@ -46,6 +46,7 @@ import { flushEditorDraft } from "./editorDraft";
 export { clearDocNavigationHistory };
 
 import type { SourceRetentionPreference } from "./persistence";
+import { getEmptyWorkspaceState } from "./persistence";
 import {
 	applyFileAction,
 	appStore,
@@ -64,6 +65,7 @@ import {
 	sourceRetentionPreferenceStore,
 	switcherOpenStore,
 	themePreferenceStore,
+	uiStore,
 	viewerStore,
 	withOpenedDoc,
 	workspaceStore,
@@ -456,8 +458,27 @@ export async function createWorkspaceWithSidebar() {
 	}
 }
 
+/**
+ * Opens a single file with no workspace (strict single-file window).
+ *
+ * A fresh window rehydrates the remembered workspace from storage, so it
+ * must be emptied in memory first — otherwise the new window shows that
+ * workspace's sidebar and table behind the opened file. The flag is set
+ * before the workspace is cleared so `serialize` never persists the emptied
+ * workspace over the remembered one.
+ */
+export async function openSingleFile(path: string): Promise<void> {
+	uiStore.set((state) => ({ ...state, singleFileWindow: true }));
+	workspaceStore.set(() => getEmptyWorkspaceState());
+	await loadPath(path);
+}
+
 /** Opens a workspace by path. If no path given, shows a folder picker first. */
 export async function openWorkspace(path?: string): Promise<boolean> {
+	// Leaving single-file mode (if in it): this window is a workspace window
+	// again, so its writes persist normally and its saves record history.
+	uiStore.set((state) => ({ ...state, singleFileWindow: false }));
+	void desktopApi.exitSingleFileMode().catch(() => {});
 	let nextPath = path;
 	if (!nextPath) {
 		const selected = await desktopApi.openFolderPicker();

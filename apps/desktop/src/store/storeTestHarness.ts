@@ -19,6 +19,7 @@ export type MockDesktopApi = {
 	pathExists: ReturnType<typeof vi.fn>;
 	openFolderPicker: ReturnType<typeof vi.fn>;
 	deleteFile: ReturnType<typeof vi.fn>;
+	exitSingleFileMode: ReturnType<typeof vi.fn>;
 };
 
 export function createDesktopApi(): MockDesktopApi {
@@ -33,6 +34,7 @@ export function createDesktopApi(): MockDesktopApi {
 		pathExists: vi.fn(async () => false),
 		openFolderPicker: vi.fn(async () => undefined),
 		deleteFile: vi.fn(async () => {}),
+		exitSingleFileMode: vi.fn(async () => {}),
 	};
 }
 

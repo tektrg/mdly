@@ -10,6 +10,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { desktopApi } from "../desktopApi";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
 import { workspacePathStore, workspaceStore } from "../store/state";
 import { DocumentGroupHeader } from "./DocumentGroupHeader";
@@ -24,11 +25,12 @@ import {
 	useDocumentTableLayout,
 } from "./documentTableLayout";
 import {
+	buildDocumentRows,
 	type DocumentTableRow,
 	type DocumentTableView,
 	ROOT_FOLDER_LABEL,
 } from "./documentTableView";
-import type { NavDensityTier } from "./navDensity";
+import { type NavDensityTier, navIndentRem } from "./navDensity";
 import { setNavExpandedIds } from "./navExpandedGroups";
 import {
 	buildGroupTree,
@@ -47,8 +49,11 @@ import { usePropertyModel } from "./properties/usePropertyModel";
 import { TagScanStateView } from "./TagScanState";
 import {
 	beginTagScan,
+	completeTagScan,
+	failTagScan,
 	isTagScanReadyFor,
 	resetTagScan,
+	tagScanPathsToScan,
 	tagScanStore,
 	tagsForScope,
 } from "./tagScanStore";
@@ -210,6 +215,10 @@ export function DocumentRowList({
 	const storedExpandedIds = useStoreValue(workspaceStore, (workspace) =>
 		workspacePath ? (workspace.navExpandedGroups[workspacePath] ?? null) : null,
 	);
+	const workspaceFiles = useStoreValue(
+		workspaceStore,
+		(workspace) => workspace.files,
+	);
 	const tagScanState = useStoreValue(tagScanStore);
 
 	const navView: NavView = useMemo(
@@ -340,14 +349,64 @@ export function DocumentRowList({
 		[workspacePath, expandedIds, propertyTree],
 	);
 
-	// A9: entering the tag view starts a scan for this workspace. Fires from
-	// idle and when the store still holds another workspace's outcome — never
-	// when this workspace is already scanning, failed or scanned.
+	// A9's reader: the tag view's actual scan. Entering the tag view — or a file
+	// changing while it is open — diffs the workspace listing against the store
+	// and reads the head of only the paths that need it, then completes (or
+	// fails) the scan. The scope lives in the store, so a result for a workspace
+	// the user already left is dropped instead of painted here.
+	const tagScanRequestRef = useRef(0);
 	useEffect(() => {
 		if (spec.groupBy !== "tag" || !workspacePath) return;
-		const scope = tagScanState.kind === "idle" ? undefined : tagScanState.scope;
-		if (scope !== workspacePath) beginTagScan(workspacePath);
-	}, [spec.groupBy, tagScanState, workspacePath]);
+		// A scan already in flight for this workspace is left alone; a failed
+		// one waits for the user's "Try again" (which resets to idle) rather
+		// than looping on the failure.
+		if (
+			tagScanState.kind === "scanning" &&
+			tagScanState.scope === workspacePath
+		)
+			return;
+		if (tagScanState.kind === "failed" && tagScanState.scope === workspacePath)
+			return;
+		const files = buildDocumentRows(workspaceFiles, workspacePath).map(
+			(row) => ({ path: row.path, modifiedAt: row.modifiedAt }),
+		);
+		const paths = tagScanPathsToScan(tagScanState, workspacePath, files);
+		if (paths.length === 0) {
+			// Nothing to read: still settle out of the pending state (an empty
+			// workspace, or a refresh that changed nothing) so the view does not
+			// read "Reading tags…" forever.
+			if (!isTagScanReadyFor(tagScanState, workspacePath)) {
+				beginTagScan(workspacePath);
+				completeTagScan({
+					scope: workspacePath,
+					files,
+					scannedPaths: [],
+					tags: {},
+				});
+			}
+			return;
+		}
+		beginTagScan(workspacePath);
+		const request = ++tagScanRequestRef.current;
+		void desktopApi.scanFrontMatterTags(paths).then(
+			(tags) => {
+				if (tagScanRequestRef.current !== request) return;
+				completeTagScan({
+					scope: workspacePath,
+					files,
+					scannedPaths: paths,
+					tags,
+				});
+			},
+			(error: unknown) => {
+				if (tagScanRequestRef.current !== request) return;
+				failTagScan(
+					workspacePath,
+					error instanceof Error ? error.message : String(error),
+				);
+			},
+		);
+	}, [spec.groupBy, tagScanState, workspacePath, workspaceFiles]);
 
 	// A view switch lands at the top of the new view, not at the old view's
 	// scroll offset clamped into a different-length list.
@@ -603,6 +662,11 @@ export function DocumentRowList({
 										? propertyColumns
 										: undefined
 								}
+								// A10: a leaf sits one level under its group header, so
+								// it carries the same depth inset — the folder/tag tree
+								// reads as a tree. The flat list has `groupBy === null`
+								// and keeps a zero inset.
+								indentRem={spec.groupBy ? navIndentRem(navRow.depth) : 0}
 								onContextMenu={
 									menu
 										? (event) => {

@@ -544,6 +544,11 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 	const activeIndex = rows.findIndex(
 		(row) => row.kind === "file" && row.file.path === highlightPath,
 	);
+	// Read through a ref so the reveal effect below can depend on *which file
+	// is open* rather than on its position. Same reason as DocumentRowList's
+	// twin: an index-keyed effect would scroll on every live re-sort.
+	const activeIndexRef = useRef(activeIndex);
+	activeIndexRef.current = activeIndex;
 	const { focusedIndex, setFocusedIndex, onKeyDown } = useSidebarKeyboardNav({
 		items: rows,
 		onSelect: activateRow,
@@ -562,6 +567,19 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 		if (focusedIndex === null) return;
 		virtualRows.scrollToIndex(focusedIndex);
 	}, [focusedIndex, virtualRows.scrollToIndex]);
+
+	// Reveals the open document's row when it opens from anywhere but this
+	// tree — the command palette, a wiki link, Finder. Ancestor expansion
+	// lands a commit later (useSidebarTree), so this keys on the open path
+	// plus whether its row is currently rendered: hidden -> shown refires the
+	// scroll after the expansion commits, while shown -> shown (a live
+	// re-sort under the same open document) stays silent. DOM focus is
+	// deliberately untouched — the editor keeps it so typing can continue.
+	const activeVisibility = activeIndex === -1 ? "hidden" : "shown";
+	useEffect(() => {
+		if (highlightPath === null || activeVisibility === "hidden") return;
+		virtualRows.scrollToIndex(activeIndexRef.current);
+	}, [highlightPath, activeVisibility, virtualRows.scrollToIndex]);
 
 	useEffect(() => {
 		const row = focusedIndex === null ? null : rows[focusedIndex];

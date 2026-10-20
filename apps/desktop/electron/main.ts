@@ -210,6 +210,14 @@ let saveWindowStateTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingOpenPath: string | null = firstExistingFileArg(
 	process.argv.slice(1),
 );
+// Per-window launch files: a window opened for a specific file pulls its own
+// path via `desktop:get-launch-file-path`, so rapid double-opens never lose
+// or cross files through the single global `pendingOpenPath` slot.
+const windowLaunchPaths = new Map<number, string>();
+// Windows born for a specific file (strict single-file mode). Their saves
+// and external-edit sightings must never mint a `.mdly` sidecar next to the
+// opened file, so history recording is skipped for these senders.
+const singleFileWindowIds = new Set<number>();
 const launchWorkspacePath =
 	isDev && process.env.HUBBLE_DESKTOP_DEV_WORKSPACE
 		? resolvePath(process.env.HUBBLE_DESKTOP_DEV_WORKSPACE)
@@ -1283,7 +1291,7 @@ function matchesGlob(relativePath: string, glob: string): boolean {
 	return new RegExp(`^${source}$`).test(relativePath);
 }
 
-async function createWindow() {
+async function createWindow(openFilePath?: string) {
 	const existingWindows = BrowserWindow.getAllWindows();
 	const cascadeSource =
 		existingWindows.length === 0
@@ -1315,6 +1323,8 @@ async function createWindow() {
 			sandbox: false,
 		},
 	});
+	const launchContentsId = window.webContents.id;
+	if (openFilePath) windowLaunchPaths.set(launchContentsId, openFilePath);
 	// Only claim the routing pointer if no window currently holds it (the
 	// very first window, or all previous windows closed). A window opened
 	// alongside an already-focused one must not steal menu/dialog routing
@@ -1424,6 +1434,8 @@ async function createWindow() {
 		saveWindowState(window);
 	});
 	window.on("closed", () => {
+		windowLaunchPaths.delete(launchContentsId);
+		singleFileWindowIds.delete(launchContentsId);
 		if (mainWindow !== window) return;
 		// Don't leave the routing pointer null while other windows remain
 		// open — that would send the next menu click/dialog nowhere until
@@ -1575,12 +1587,6 @@ function registerIpc() {
 	);
 
 	ipcMain.handle(
-		"desktop:cloud-sync-get-state",
-		async (_event, { workspacePath }) =>
-			readCloudSyncWorkspaceState(resolvePath(workspacePath)),
-	);
-
-	ipcMain.handle(
 		"desktop:files-scope-get",
 		async (_event, { workspacePath, legacyShowIgnoredFiles }) =>
 			readWorkspaceFilesScope(
@@ -1619,6 +1625,12 @@ function registerIpc() {
 				pendingFolders.map((folder) => folder.path),
 			);
 		},
+	);
+
+	ipcMain.handle(
+		"desktop:cloud-sync-get-state",
+		async (_event, { workspacePath }) =>
+			readCloudSyncWorkspaceState(resolvePath(workspacePath)),
 	);
 
 	ipcMain.handle(
@@ -1758,14 +1770,18 @@ function registerIpc() {
 
 	ipcMain.handle(
 		"desktop:write-file-text",
-		async (_event, { path: filePath, content, historyCause }) => {
+		async (event, { path: filePath, content, historyCause }) => {
 			const resolved = assertGranted(filePath);
 			await fs.mkdir(path.dirname(resolved), { recursive: true });
 			const text = String(content);
 			await fs.writeFile(resolved, text);
 			// Never affects the write above (R29) — recordInAppWriteHistory
-			// swallows its own errors.
-			if (isInAppHistoryCause(historyCause)) {
+			// swallows its own errors. Single-file windows skip recording so
+			// saving never mints a `.mdly` sidecar next to the opened file.
+			if (
+				isInAppHistoryCause(historyCause) &&
+				!singleFileWindowIds.has(event.sender.id)
+			) {
 				await recordInAppWriteHistory({
 					absoluteFilePath: resolved,
 					content: text,
@@ -2221,6 +2237,11 @@ function registerIpc() {
 			// focused) — this watch, and its file-change events, belong to
 			// whichever window registered it.
 			const sender = event.sender;
+			// Captured at watch time: a watch registered by a single-file window
+			// for its document must never record external-write history (that is
+			// what would mint a `.mdly` sidecar next to the file). Watches
+			// registered after the window leaves the mode record normally.
+			const watchIsSingleFile = singleFileWindowIds.has(sender.id);
 			const emit = (changedPath: string) => {
 				if (sender.isDestroyed()) return;
 				sender.send(`desktop:watch-path:${watchId}`, [
@@ -2252,7 +2273,7 @@ function registerIpc() {
 				// no-ops when the read fails, as defense in depth.
 				const emitFileAndRecordHistory = (changedPath: string) => {
 					emitFile(changedPath);
-					if (hasMarkdownExtension(changedPath)) {
+					if (hasMarkdownExtension(changedPath) && !watchIsSingleFile) {
 						void recordExternalWriteHistory({
 							absoluteFilePath: path.resolve(changedPath),
 							grantedRoots,
@@ -2302,10 +2323,25 @@ function registerIpc() {
 		fs.realpath(assertGranted(filePath)),
 	);
 
-	ipcMain.handle("desktop:get-launch-file-path", () => {
+	ipcMain.handle("desktop:get-launch-file-path", (event) => {
+		// Per-window path first: a window opened for a file consumes its own
+		// routing; otherwise fall back to the cold-start global slot. Any
+		// window that pulls a file path is a strict single-file window from
+		// here on (until it opens a workspace and exits the mode below).
+		const windowPath = windowLaunchPaths.get(event.sender.id);
+		if (windowPath !== undefined) {
+			windowLaunchPaths.delete(event.sender.id);
+			singleFileWindowIds.add(event.sender.id);
+			return windowPath;
+		}
 		const pathToOpen = pendingOpenPath;
 		pendingOpenPath = null;
+		if (pathToOpen) singleFileWindowIds.add(event.sender.id);
 		return pathToOpen;
+	});
+
+	ipcMain.handle("desktop:exit-single-file-mode", (event) => {
+		singleFileWindowIds.delete(event.sender.id);
 	});
 
 	ipcMain.handle(
@@ -2446,20 +2482,25 @@ if (!singleInstanceLock) {
 	app.on("second-instance", (_event, argv) => {
 		const openPath = firstExistingFileArg(argv.slice(1));
 		if (!openPath) return;
-		pendingOpenPath = openPath;
-		if (mainWindow) {
-			if (mainWindow.isMinimized()) mainWindow.restore();
-			mainWindow.focus();
-			sendToRenderer("desktop:open-file", openPath);
+		// Warm opens land in a NEW window with their own launch path — never
+		// hijack the focused workspace window. Not-ready-yet keeps the
+		// pull-model via `pendingOpenPath` for the first window to consume.
+		if (!app.isReady()) {
+			pendingOpenPath = openPath;
+			return;
 		}
+		void createWindow(openPath);
 	});
 
 	app.on("open-file", (event, filePath) => {
 		event.preventDefault();
 		const resolved = resolvePath(filePath);
 		grantFileWithParent(resolved);
-		pendingOpenPath = resolved;
-		sendToRenderer("desktop:open-file", resolved);
+		if (!app.isReady()) {
+			pendingOpenPath = resolved;
+			return;
+		}
+		void createWindow(resolved);
 	});
 
 	app.whenReady().then(async () => {

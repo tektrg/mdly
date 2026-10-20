@@ -111,6 +111,13 @@ type DocumentState = {
 };
 
 type UiState = {
+	/**
+	 * Strict single-file window: a document open with no workspace.
+	 * Runtime-only (same in-state/not-in-serialize pattern as
+	 * `sidebarAutoCollapsed`/`isSwitcherOpen`) — a single-file window must
+	 * never persist its emptied workspace over the remembered one.
+	 */
+	singleFileWindow: boolean;
 	sidebarOpen: boolean;
 	/**
 	 * R3: runtime-only "the sidebar was auto-collapsed to make room for a document
@@ -290,6 +297,7 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 		SYSTEM_EDITOR_FONT_PREFERENCE;
 
 	return {
+		singleFileWindow: false,
 		sidebarOpen: ui?.sidebarOpen ?? false,
 		sidebarAutoCollapsed: false,
 		isSwitcherOpen: false,
@@ -333,7 +341,42 @@ export function getInitialState(): DesktopState {
 	};
 }
 
+/**
+ * A workspace slice with no workspace — what a strict single-file window
+ * holds in memory so no ghost of the remembered workspace leaks into the UI.
+ * Never persisted (see `serialize`): the remembered workspace on disk is
+ * always kept.
+ */
+export function getEmptyWorkspaceState(): WorkspaceState {
+	return hydrateWorkspace(undefined);
+}
+
+function serializeUi(ui: UiState): NonNullable<Persisted["ui"]> {
+	return {
+		sidebarOpen: ui.sidebarOpen,
+		themePreference: ui.themePreference,
+		contrastPreference: ui.contrastPreference,
+		editorFontPreference: ui.editorFontPreference,
+		showIgnoredWorkspaceFiles: ui.showIgnoredWorkspaceFiles,
+		sourceRetentionPreference: ui.sourceRetentionPreference,
+	};
+}
+
 export function serialize(state: DesktopState): Persisted {
+	// A single-file window holds an emptied workspace in memory. Persisting
+	// that would wipe the remembered workspace (and its last-opened files)
+	// for every other window and the next launch — so the workspace and
+	// document sections are re-read from disk instead. UI prefs still save.
+	// Read fresh on every call so a workspace window's newer persist is never
+	// clobbered by this window's stale in-memory copy.
+	if (state.ui.singleFileWindow) {
+		const disk = readStorage<Persisted>(STORAGE_KEY) ?? {};
+		return {
+			workspace: disk.workspace,
+			document: disk.document,
+			ui: serializeUi(state.ui),
+		};
+	}
 	return {
 		workspace: {
 			workspacePath: state.workspace.workspacePath,
@@ -349,13 +392,6 @@ export function serialize(state: DesktopState): Persisted {
 		document: {
 			lastOpenedPath: state.document.lastOpenedPath,
 		},
-		ui: {
-			sidebarOpen: state.ui.sidebarOpen,
-			themePreference: state.ui.themePreference,
-			contrastPreference: state.ui.contrastPreference,
-			editorFontPreference: state.ui.editorFontPreference,
-			showIgnoredWorkspaceFiles: state.ui.showIgnoredWorkspaceFiles,
-			sourceRetentionPreference: state.ui.sourceRetentionPreference,
-		},
+		ui: serializeUi(state.ui),
 	};
 }
