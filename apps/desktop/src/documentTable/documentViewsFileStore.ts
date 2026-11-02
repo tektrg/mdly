@@ -101,6 +101,8 @@ type Internal = {
 	timer: ReturnType<typeof setTimeout> | null;
 	dirty: boolean;
 	flushing: Promise<void>;
+	/** A save failed (R19): the in-memory edit is the only copy this session. */
+	unsavedAfterError: boolean;
 };
 
 const internals = new Map<string, Internal>();
@@ -141,6 +143,7 @@ function internalFor(workspacePath: string): Internal {
 			timer: null,
 			dirty: false,
 			flushing: Promise.resolve(),
+			unsavedAfterError: false,
 		};
 		internals.set(workspacePath, internal);
 	}
@@ -336,6 +339,11 @@ export function loadWorkspaceSavedViews(
 	options: { migrate?: boolean; fromSave?: boolean } = {},
 ): Promise<void> {
 	const internal = internalFor(workspacePath);
+	// R19: re-opening must not replace the edit a failed save kept in memory;
+	// it (and its banner) stays for the session.
+	if (internal.unsavedAfterError && !options.fromSave) {
+		return Promise.resolve();
+	}
 	const generation = ++internal.generation;
 	if (!savedViewsStore.get()[workspacePath]) patch(workspacePath, EMPTY);
 	else patch(workspacePath, { status: "loading" });
@@ -440,6 +448,7 @@ async function save(workspacePath: string, internal: Internal) {
 		result = { status: "error", error: String(error) };
 	}
 	if (result.status === "ok") {
+		internal.unsavedAfterError = false;
 		// The unusable entries now live in base.invalidViews.
 		internal.base = file;
 		internal.snapshot = result.snapshot;
@@ -455,6 +464,7 @@ async function save(workspacePath: string, internal: Internal) {
 	}
 	if (result.status === "conflict") {
 		// The newer file wins: re-read it (no migration) and say so.
+		internal.unsavedAfterError = false;
 		await loadWorkspaceSavedViews(workspacePath, {
 			migrate: false,
 			fromSave: true,
@@ -463,6 +473,7 @@ async function save(workspacePath: string, internal: Internal) {
 		return;
 	}
 	// The edit stays in memory for this session; no retry loop (R19).
+	internal.unsavedAfterError = true;
 	patch(workspacePath, {
 		notice: { kind: "write-error", error: result.error },
 		saveState: "error",

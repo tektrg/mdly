@@ -266,6 +266,28 @@ describe("corrupt / failing / conflicting file (R18, R19, R21)", () => {
 		});
 	});
 
+	it("an edit kept after a failed write survives switching workspace and back, banner included (R19)", async () => {
+		const m = await load({
+			wrap: (_ws, store) => ({
+				read: store.read,
+				write: async () => ({ status: "error", error: "EROFS" }),
+			}),
+		});
+		m.workspacePathStore.set("/a");
+		await settle();
+		m.saveCurrentViewAs("Stays");
+		await m.flushSavedViews("/a");
+		m.workspacePathStore.set("/b");
+		await settle();
+		m.workspacePathStore.set("/a");
+		await settle();
+		await m.flushAllSavedViews();
+		expect(m.getWorkspaceSavedViews("/a")).toMatchObject({
+			views: [{ name: "Stays" }],
+			notice: { kind: "write-error", error: "EROFS" },
+		});
+	});
+
 	it("a file changed on disk since it was read refuses the save, re-reads, and shows a conflict", async () => {
 		const m = await load({});
 		m.workspacePathStore.set("/ws");
