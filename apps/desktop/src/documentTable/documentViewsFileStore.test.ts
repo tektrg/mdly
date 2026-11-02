@@ -122,6 +122,36 @@ describe("saved views file store (R11, R12, R20)", () => {
 		expect(m.disk.map.has(fileKey("/b"))).toBe(false);
 	});
 
+	it("switching away and straight back waits for the pending save before re-reading", async () => {
+		const m = await load({
+			wrap: (_ws, store) => ({
+				read: store.read,
+				write: async (file, snapshot) => {
+					await new Promise((resolve) => setTimeout(resolve, 20));
+					return store.write(file, snapshot);
+				},
+			}),
+		});
+		m.workspacePathStore.set("/a");
+		await settle();
+		m.saveCurrentViewAs("First");
+		await m.flushSavedViews("/a");
+		m.saveCurrentViewAs("Second");
+		m.workspacePathStore.set("/b");
+		await Promise.resolve();
+		m.workspacePathStore.set("/a");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await m.flushAllSavedViews();
+		expect(m.getWorkspaceSavedViews("/a")).toMatchObject({
+			views: [{ name: "First" }, { name: "Second" }],
+			notice: null,
+		});
+		expect(viewsOnDisk(m.disk, "/a")?.map((v) => v.name)).toEqual([
+			"First",
+			"Second",
+		]);
+	});
+
 	it("rename and delete persist; rename rules reject blank / duplicate / built-in names", async () => {
 		const m = await load({});
 		m.workspacePathStore.set("/ws");

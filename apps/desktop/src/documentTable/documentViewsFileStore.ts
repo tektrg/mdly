@@ -333,13 +333,22 @@ async function migrateLegacy(
  */
 export function loadWorkspaceSavedViews(
 	workspacePath: string,
-	options: { migrate?: boolean } = {},
+	options: { migrate?: boolean; fromSave?: boolean } = {},
 ): Promise<void> {
 	const internal = internalFor(workspacePath);
 	const generation = ++internal.generation;
 	if (!savedViewsStore.get()[workspacePath]) patch(workspacePath, EMPTY);
 	else patch(workspacePath, { status: "loading" });
+	// A save still in flight for this workspace (e.g. flushed on switch-away)
+	// lands first, or the read returns the stale file and the save then
+	// conflicts with it.
+	// (The conflict re-read runs inside that save, so it must not wait on it.)
+	const pendingFlush = options.fromSave
+		? Promise.resolve()
+		: internal.flushing;
 	const loading = (async () => {
+		await pendingFlush.catch(() => undefined);
+		if (generation !== internal.generation) return;
 		let read: ViewStoreReadResult;
 		try {
 			read = await internal.viewStore.read();
@@ -399,8 +408,11 @@ export function flushSavedViews(workspacePath: string): Promise<void> {
 		clearTimeout(internal.timer);
 		internal.timer = null;
 	}
+	// Wait only for a load already running now: a later load waits for this
+	// flush instead (no cycle).
+	const loadingNow = internal.loading;
 	internal.flushing = internal.flushing.then(async () => {
-		if (internal.loading) await internal.loading;
+		if (loadingNow) await loadingNow;
 		if (!internal.dirty) return;
 		internal.dirty = false;
 		await save(workspacePath, internal);
@@ -443,7 +455,10 @@ async function save(workspacePath: string, internal: Internal) {
 	}
 	if (result.status === "conflict") {
 		// The newer file wins: re-read it (no migration) and say so.
-		await loadWorkspaceSavedViews(workspacePath, { migrate: false });
+		await loadWorkspaceSavedViews(workspacePath, {
+			migrate: false,
+			fromSave: true,
+		});
 		patch(workspacePath, { notice: { kind: "conflict" }, saveState: "error" });
 		return;
 	}
