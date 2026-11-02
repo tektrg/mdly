@@ -148,6 +148,11 @@
 	text-wrap: pretty;
 }
 
+/* Display serif (SpeechToDo identity face) for the top heading levels. */
+[data-hubble-editor] .ProseMirror :is(h1, h2, h3) {
+	font-family: var(--font-display, Georgia, serif);
+}
+
 [data-hubble-editor] .ProseMirror h1 {
 	font-size: 1.75em;
 	font-weight: 600;

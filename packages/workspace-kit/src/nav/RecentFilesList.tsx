@@ -40,9 +40,9 @@ export type RecentTagAppearance = {
 };
 
 const DEFAULT_TAG_APPEARANCE: Required<RecentTagAppearance> = {
-	background: "var(--muted)",
-	color: "var(--muted-foreground)",
-	border: "0.5px solid transparent",
+	background: "var(--chip)",
+	color: "var(--chip-foreground)",
+	border: "0.5px solid var(--chip-border)",
 };
 
 /**

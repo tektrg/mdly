@@ -388,7 +388,16 @@ function CardTierCell({
 						</span>
 					) : null}
 					{tagLabel ? (
-						<span className="min-w-0 flex-1 truncate">{tagLabel}</span>
+						<span
+							className="flex min-w-0 flex-1 gap-1 overflow-hidden"
+							title={tagLabel}
+						>
+							{tagLabel.split(" ").map((tag) => (
+								<span key={tag} className="mdly-chip shrink-0">
+									{tag}
+								</span>
+							))}
+						</span>
 					) : null}
 				</span>
 			) : null}

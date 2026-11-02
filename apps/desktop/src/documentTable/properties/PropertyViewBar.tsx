@@ -26,10 +26,9 @@ import {
 import type { PropertyField } from "./propertyFields";
 import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
-const CHIP_CLASS =
-	"inline-flex h-6 max-w-64 items-center gap-1 rounded-full border border-border bg-muted/40 ps-2.5 pe-1 text-[11px] text-foreground";
+const CHIP_CLASS = "mdly-chip max-w-64";
 const CHIP_REMOVE_CLASS =
-	"inline-flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring";
+	"inline-flex size-4 shrink-0 items-center justify-center rounded-full text-current outline-hidden opacity-70 hover:bg-chip-foreground/15 hover:opacity-100 focus-visible:ring-1 focus-visible:ring-ring";
 const TAB_CLASS =
 	"inline-flex h-7 max-w-48 items-center rounded-md px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
