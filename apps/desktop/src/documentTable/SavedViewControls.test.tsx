@@ -59,11 +59,18 @@ describe("saved view name box", () => {
 	});
 
 	it("blur with an invalid name cancels", async () => {
-		const onCommit = vi.fn(() => ({ ok: false as const, reason: "empty" as const }));
+		const onCommit = vi.fn(() => ({
+			ok: false as const,
+			reason: "empty" as const,
+		}));
 		const onCancel = vi.fn();
 		act(() =>
 			root.render(
-				<SavedViewNameInput initialName="" onCommit={onCommit} onCancel={onCancel} />,
+				<SavedViewNameInput
+					initialName=""
+					onCommit={onCommit}
+					onCancel={onCancel}
+				/>,
 			),
 		);
 		await act(async () => {
@@ -88,7 +95,7 @@ describe("saved view name box", () => {
 	});
 
 	it("Save view with no workspace shows a generic error, not 'can't be empty'", async () => {
-		workspacePathStore.set(null);
+		workspacePathStore.set(undefined);
 		act(() => root.render(<SaveViewButton canSave />));
 		await act(async () => {
 			container.querySelector("button")?.click();

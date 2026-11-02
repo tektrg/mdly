@@ -352,9 +352,7 @@ export function loadWorkspaceSavedViews(
 	// lands first, or the read returns the stale file and the save then
 	// conflicts with it.
 	// (The conflict re-read runs inside that save, so it must not wait on it.)
-	const pendingFlush = options.fromSave
-		? Promise.resolve()
-		: internal.flushing;
+	const pendingFlush = options.fromSave ? Promise.resolve() : internal.flushing;
 	const loading = (async () => {
 		await pendingFlush.catch(() => undefined);
 		if (generation !== internal.generation) return;
@@ -452,7 +450,8 @@ function describeLostChanges(
 			lost.push(`your changes to "${record.name}"`);
 	}
 	for (const record of before) {
-		if (!afterIds.has(record.id)) lost.push(`your deletion of "${record.name}"`);
+		if (!afterIds.has(record.id))
+			lost.push(`your deletion of "${record.name}"`);
 	}
 	return lost;
 }
@@ -493,7 +492,10 @@ async function save(workspacePath: string, internal: Internal) {
 			migrate: false,
 			fromSave: true,
 		});
-		patch(workspacePath, { notice: { kind: "conflict", lost }, saveState: "error" });
+		patch(workspacePath, {
+			notice: { kind: "conflict", lost },
+			saveState: "error",
+		});
 		return;
 	}
 	// The edit stays in memory for this session; no retry loop (R19).
