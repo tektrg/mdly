@@ -89,7 +89,6 @@ import {
 } from "./docImport";
 import { ensureLoginShellPathMerged } from "./externalCommand";
 import { collectDocumentFiles } from "./fileDiscovery";
-import { scanFrontMatterProperties } from "./frontMatterProperties";
 import {
 	appListingOptions,
 	countFilesInScope,
@@ -98,9 +97,9 @@ import {
 	saveFilesScopeDefaults,
 	writeWorkspaceFilesScope,
 } from "./filesScopeWiring";
+import { scanFrontMatterProperties } from "./frontMatterProperties";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { installMainProcessErrorHandlers } from "./mainProcessErrors";
-import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
 	agentMcpConnectCommand,
 	type RunningAgentMcpServer,
@@ -114,6 +113,7 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
+import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
