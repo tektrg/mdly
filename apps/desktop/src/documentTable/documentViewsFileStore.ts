@@ -348,8 +348,16 @@ export function loadWorkspaceSavedViews(
 		}
 		if (generation !== internal.generation) return;
 		applyRead(workspacePath, internal, read);
-		if (options.migrate !== false) {
+		if (options.migrate !== false && legacyViewsOf(workspacePath).length > 0) {
+			// Stay "loading" until the import settles: a definite "missing"/"ok"
+			// now would make the remembered selection (a legacy view) fall back
+			// to Recent before the migrated views land (R3, R15).
+			const settled = getWorkspaceSavedViews(workspacePath).status;
+			patch(workspacePath, { status: "loading" });
 			await migrateLegacy(workspacePath, internal, read);
+			if (getWorkspaceSavedViews(workspacePath).status === "loading") {
+				patch(workspacePath, { status: settled });
+			}
 		}
 	})();
 	internal.loading = loading;

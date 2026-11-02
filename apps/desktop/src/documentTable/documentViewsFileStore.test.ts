@@ -288,6 +288,34 @@ describe("legacy localStorage migration (R15-R17)", () => {
 		expect(m.disk.map.has(fileKey("/b"))).toBe(false);
 	});
 
+	it("keeps the remembered legacy view selected on the first open after upgrade (views.json missing)", async () => {
+		vi.resetModules();
+		vi.stubGlobal("localStorage", {
+			getItem: vi.fn(() =>
+				JSON.stringify({
+					workspace: {
+						documentViews: { "/a": { saved: [legacyView("1", "One")] } },
+						selectedSavedViews: { "/a": "1" },
+					},
+				}),
+			),
+			setItem: vi.fn(),
+		});
+		const disk = memoryStorage();
+		const fileStore = await import("./documentViewsFileStore");
+		fileStore.setViewStoreFactoryForTest((ws) =>
+			createLocalStorageViewStore(disk, ws),
+		);
+		const tableStore = await import("./documentTableStore");
+		const state = await import("../store/state");
+		state.workspacePathStore.set("/a");
+		await settle();
+		await fileStore.flushSavedViews("/a");
+		await settle();
+		expect(tableStore.getActiveSavedView()?.name).toBe("One");
+		expect(state.workspaceStore.get().selectedSavedViews["/a"]).toBe("1");
+	});
+
 	it("merges into an existing file by id, file wins; re-running never duplicates", async () => {
 		const disk = memoryStorage();
 		disk.setItem(
