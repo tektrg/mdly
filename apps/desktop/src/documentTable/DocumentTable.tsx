@@ -33,7 +33,7 @@ import {
 	AddPropertyColumnMenu,
 	PropertyColumnMenu,
 } from "./properties/PropertyControls";
-import { PropertyViewBar, SavedViewTabs } from "./properties/PropertyViewBar";
+import { PropertyViewBar, SaveViewButton } from "./properties/PropertyViewBar";
 import {
 	fallbackPropertyLabel,
 	type PropertyField,
@@ -383,8 +383,7 @@ export function DocumentTable({
 	rowMenu,
 }: DocumentTableProps) {
 	const { isCustomized, propertyColumns } = useDocumentTableLayout();
-	const { savedView, savedViews, propertyFields, layout } =
-		useCurrentDocumentView();
+	const { savedView, propertyFields, layout } = useCurrentDocumentView();
 	const propertyScan = usePropertyScanState();
 	const isReadingProperties =
 		propertyScan.status === "scanning" || propertyScan.status === "idle";
@@ -403,12 +402,8 @@ export function DocumentTable({
 					WINDOW_CHROME_INSET_CLASS,
 				)}
 			>
-				<h1 className="sr-only">{savedView?.name ?? "All documents"}</h1>
-				<SavedViewTabs
-					savedViews={savedViews}
-					activeView={savedView}
-					canSave={canSaveView}
-				/>
+				<h1 className="sr-only">{savedView?.name ?? "Documents"}</h1>
+				<SaveViewButton canSave={canSaveView && savedView === null} />
 				<div className="flex items-center gap-2">
 					<ViewTypeSwitcher value={layout.viewType} />
 					<AddPropertyColumnMenu

@@ -4,19 +4,29 @@ import { type WheelEvent as ReactWheelEvent, useCallback, useRef } from "react";
 import { workspacePathStore, workspaceStore } from "../store/state";
 import {
 	documentTableViewStore,
-	setDocumentTableGroupBy,
+	selectBuiltInView,
+	selectSavedView,
 } from "./documentTableStore";
+import { savedViewsStore } from "./documentViewsFileStore";
 import {
 	groupByToViewId,
 	NAV_VIEW_IDS,
 	type NavViewId,
 	type NavViewOption,
 	setNavHiddenViewToggled,
-	viewIdToGroupBy,
 } from "./navHiddenViews";
+import {
+	builtInEntries,
+	type NavSwitcherEntry,
+	type NavSwitcherKey,
+	savedEntries,
+	savedViewKey,
+} from "./navSwitcherEntries";
+import type { SavedDocumentView } from "./properties/documentViews";
 
 /** Stable empty for the hidden-views selector (see below). */
 const NO_HIDDEN_VIEWS: NavViewOption[] = [];
+const NO_SAVED_VIEWS: SavedDocumentView[] = [];
 
 /**
  * The one place that knows which nav views exist, which are visible, which is
@@ -25,10 +35,21 @@ const NO_HIDDEN_VIEWS: NavViewOption[] = [];
  * own copy of that logic.
  */
 export function useNavViewSwitcher() {
+	// The built-in the list is grouped by (sort, hide fallback): a saved view
+	// shows with no nav grouping, so it reads as "recent" here.
 	const activeView = useStoreValue(documentTableViewStore, (view) =>
 		groupByToViewId(view.groupBy),
 	);
+	const activeSavedId = useStoreValue(
+		documentTableViewStore,
+		(view) => view.activeSavedViewId,
+	);
 	const workspacePath = useStoreValue(workspacePathStore) ?? null;
+	const savedViews = useStoreValue(savedViewsStore, (all) =>
+		workspacePath
+			? (all[workspacePath]?.views ?? NO_SAVED_VIEWS)
+			: NO_SAVED_VIEWS,
+	);
 	// The fallback is a module constant, not a literal: the selector must
 	// return a stable reference or the external-store snapshot never settles.
 	const hidden = useStoreValue(workspaceStore, (workspace) =>
@@ -40,10 +61,30 @@ export function useNavViewSwitcher() {
 	const visible = NAV_VIEW_IDS.filter(
 		(view) => view === "recent" || !hidden.includes(view),
 	);
+	const saved = savedEntries(savedViews);
+	/** Dots and swipe: visible built-ins, then saved views (R1). */
+	const entries: NavSwitcherEntry[] = [...builtInEntries(visible), ...saved];
+	/** Inline buttons: every built-in (hidden ones dimmed), then saved views. */
+	const inlineEntries: NavSwitcherEntry[] = [
+		...builtInEntries(NAV_VIEW_IDS),
+		...saved,
+	];
+	// Only a loaded saved view counts as active; during the brief first paint
+	// before the file is read, no icon is pressed (the selection is kept).
+	const activeKey: NavSwitcherKey | null = activeSavedId
+		? savedViews.some((view) => view.id === activeSavedId)
+			? savedViewKey(activeSavedId)
+			: null
+		: activeView;
 
 	const select = (view: NavViewId) => {
-		if (view === activeView) return;
-		setDocumentTableGroupBy(viewIdToGroupBy(view));
+		if (view === activeKey) return;
+		selectBuiltInView(view);
+	};
+
+	const selectEntry = (entry: NavSwitcherEntry) => {
+		if (entry.kind === "builtin") select(entry.view);
+		else if (entry.key !== activeKey) selectSavedView(entry.id);
 	};
 
 	const toggleHidden = (view: NavViewOption) => {
@@ -63,11 +104,14 @@ export function useNavViewSwitcher() {
 	};
 
 	const { onWheel } = useSidebarSwipeNav({
-		activePage: visible.indexOf(activeView),
-		pageCount: visible.length,
+		activePage: Math.max(
+			0,
+			entries.findIndex((entry) => entry.key === activeKey),
+		),
+		pageCount: entries.length,
 		onPageChange: (page) => {
-			const view = visible[page];
-			if (view !== undefined) select(view);
+			const entry = entries[page];
+			if (entry !== undefined) selectEntry(entry);
 		},
 	});
 
@@ -98,9 +142,13 @@ export function useNavViewSwitcher() {
 
 	return {
 		activeView,
+		activeKey,
 		hidden,
 		visible,
+		entries,
+		inlineEntries,
 		select,
+		selectEntry,
 		selectInline,
 		toggleHidden,
 		onWheel,

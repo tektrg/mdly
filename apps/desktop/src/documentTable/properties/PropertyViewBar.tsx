@@ -1,23 +1,16 @@
 import { useState } from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
-import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { cn } from "../../lib/utils";
+import { workspacePathStore } from "../../store/state";
 import {
-	deleteSavedView,
 	removePropertyFilter,
-	renameSavedView,
 	saveCurrentViewAs,
-	selectSavedView,
 	setPropertyGroupBy,
 } from "../documentTableStore";
 import type { DocumentTableView } from "../documentTableView";
-import {
-	describeGroupBy,
-	describePropertyFilter,
-	MAX_SAVED_VIEW_NAME_LENGTH,
-	type SavedDocumentView,
-} from "./documentViews";
-import { PropertyMenu, PropertyMenuItem } from "./PropertyMenu";
+import { validateSavedViewName } from "../documentViewsFileStore";
+import { SavedViewNameInput } from "../SavedViewControls";
+import { describeGroupBy, describePropertyFilter } from "./documentViews";
 import type { PropertyField } from "./propertyFields";
 import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
@@ -28,144 +21,38 @@ const CHIP_REMOVE_CLASS =
 const TAB_CLASS =
 	"inline-flex h-7 max-w-48 items-center rounded-md px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
 
-/** Inline name box for "Save view" and "Rename". Enter commits, Escape cancels. */
-function ViewNameInput({
-	initialName,
-	onCommit,
-	onCancel,
-}: {
-	initialName: string;
-	onCommit: (name: string) => void;
-	onCancel: () => void;
-}) {
-	const [name, setName] = useState(initialName);
-	return (
-		<input
-			// biome-ignore lint/a11y/noAutofocus: opened by an explicit click, the user is about to type
-			autoFocus
-			aria-label="View name"
-			value={name}
-			maxLength={MAX_SAVED_VIEW_NAME_LENGTH}
-			placeholder="View name"
-			onChange={(event) => setName(event.target.value)}
-			onBlur={onCancel}
-			onKeyDown={(event) => {
-				if (event.key === "Enter") {
-					event.preventDefault();
-					if (name.trim()) onCommit(name);
-					else onCancel();
-				} else if (event.key === "Escape") {
-					event.preventDefault();
-					onCancel();
-				}
-			}}
-			className="h-7 w-40 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-		/>
-	);
-}
-
 /**
- * Phase 3: "All documents" plus the workspace's saved views, as tabs in the
- * table header. Edits made while a saved view is shown are saved into it.
+ * Saved views R6: the property bar's only saved-view control. Snapshots the
+ * current view under a name; the new view appears (selected) as an icon in
+ * the view switcher row.
  */
-export function SavedViewTabs({
-	savedViews,
-	activeView,
-	canSave,
-}: {
-	savedViews: readonly SavedDocumentView[];
-	activeView: SavedDocumentView | null;
-	/** "Save view" shows only when the unsaved view has something worth keeping. */
-	canSave: boolean;
-}) {
-	const [naming, setNaming] = useState<"new" | string | null>(null);
+export function SaveViewButton({ canSave }: { canSave: boolean }) {
+	const [naming, setNaming] = useState(false);
+	if (naming) {
+		return (
+			<SavedViewNameInput
+				initialName=""
+				onCommit={(name) => {
+					const workspacePath = workspacePathStore.get() ?? null;
+					const valid = validateSavedViewName(workspacePath, name);
+					if (!valid.ok) return valid;
+					const id = saveCurrentViewAs(name);
+					if (id) setNaming(false);
+					return id ? valid : { ok: false, reason: "empty" };
+				}}
+				onCancel={() => setNaming(false)}
+			/>
+		);
+	}
+	if (!canSave) return null;
 	return (
-		<nav
-			aria-label="Saved views"
-			className="flex min-w-0 flex-wrap items-center gap-1"
+		<button
+			type="button"
+			className={cn(TAB_CLASS, "text-xs text-muted-foreground hover:bg-accent")}
+			onClick={() => setNaming(true)}
 		>
-			<button
-				type="button"
-				aria-current={activeView === null ? "page" : undefined}
-				className={cn(
-					TAB_CLASS,
-					activeView === null
-						? "font-medium text-foreground"
-						: "text-muted-foreground hover:bg-accent",
-				)}
-				onClick={() => selectSavedView(null)}
-			>
-				All documents
-			</button>
-			{savedViews.map((view) =>
-				naming === view.id ? (
-					<ViewNameInput
-						key={view.id}
-						initialName={view.name}
-						onCommit={(name) => {
-							renameSavedView(view.id, name);
-							setNaming(null);
-						}}
-						onCancel={() => setNaming(null)}
-					/>
-				) : (
-					<span key={view.id} className="group inline-flex items-center">
-						<button
-							type="button"
-							aria-current={activeView?.id === view.id ? "page" : undefined}
-							className={cn(
-								TAB_CLASS,
-								"truncate",
-								activeView?.id === view.id
-									? "bg-accent font-medium text-foreground"
-									: "text-muted-foreground hover:bg-accent",
-							)}
-							onClick={() => selectSavedView(view.id)}
-						>
-							<span className="truncate">{view.name}</span>
-						</button>
-						{activeView?.id === view.id ? (
-							<PropertyMenu
-								trigger={
-									<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
-								}
-								triggerClassName="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-								triggerLabel={`${view.name} options`}
-								align="start"
-							>
-								<PropertyMenuItem onClick={() => setNaming(view.id)}>
-									Rename view
-								</PropertyMenuItem>
-								<PropertyMenuItem onClick={() => deleteSavedView(view.id)}>
-									Delete view
-								</PropertyMenuItem>
-							</PropertyMenu>
-						) : null}
-					</span>
-				),
-			)}
-			{naming === "new" ? (
-				<ViewNameInput
-					initialName=""
-					onCommit={(name) => {
-						saveCurrentViewAs(name);
-						setNaming(null);
-					}}
-					onCancel={() => setNaming(null)}
-				/>
-			) : canSave && activeView === null ? (
-				<button
-					type="button"
-					className={cn(
-						TAB_CLASS,
-						"text-xs text-muted-foreground hover:bg-accent",
-					)}
-					onClick={() => setNaming("new")}
-				>
-					Save view…
-				</button>
-			) : null}
-		</nav>
+			Save view…
+		</button>
 	);
 }
 

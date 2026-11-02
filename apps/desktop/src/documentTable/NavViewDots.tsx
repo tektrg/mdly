@@ -1,7 +1,8 @@
 import type { MouseEvent as ReactMouseEvent, WheelEventHandler } from "react";
 import { cn } from "../lib/utils";
-import { NAV_VIEW_LABEL, NavViewIcon } from "./NavViewIcon";
-import type { NavViewId, NavViewOption } from "./navHiddenViews";
+import { NavEntryIcon, navEntryLabel } from "./NavViewIcon";
+import type { NavViewOption } from "./navHiddenViews";
+import type { NavSwitcherEntry, NavSwitcherKey } from "./navSwitcherEntries";
 
 /**
  * A12: the Rail-width view switcher. The sidebar pager's dot-tab language —
@@ -9,27 +10,34 @@ import type { NavViewId, NavViewOption } from "./navHiddenViews";
  * with the pager's own wheel/swipe paging reused (not reimplemented).
  */
 export function NavViewDots({
-	views,
+	entries,
 	active,
 	onSelect,
 	onToggleHidden,
+	onSavedViewMenu,
 	onWheel,
 }: {
-	/** Visible views, in dot order. Only rendered with more than one. */
-	views: readonly NavViewId[];
-	active: NavViewId;
-	onSelect: (view: NavViewId) => void;
+	/** Visible built-ins then saved views, in dot order. Only rendered with more than one. */
+	entries: readonly NavSwitcherEntry[];
+	active: NavSwitcherKey | null;
+	onSelect: (entry: NavSwitcherEntry) => void;
 	onToggleHidden: (view: NavViewOption) => void;
+	/** Right-click on a saved-view dot: opens its Rename/Delete menu. */
+	onSavedViewMenu: (id: string, anchor: HTMLElement) => void;
 	/** Swipe paging from `useNavViewSwitcher`, shared with the list region. */
 	onWheel: WheelEventHandler<HTMLElement>;
 }) {
 	const onDotContextMenu = (
 		event: ReactMouseEvent<HTMLElement>,
-		view: NavViewId,
+		entry: NavSwitcherEntry,
 	) => {
 		event.preventDefault();
+		if (entry.kind === "saved") {
+			onSavedViewMenu(entry.id, event.currentTarget);
+			return;
+		}
 		// Recent is the fallback view, so it has nothing to hide.
-		if (view !== "recent") onToggleHidden(view);
+		if (entry.view !== "recent") onToggleHidden(entry.view);
 	};
 
 	return (
@@ -38,19 +46,22 @@ export function NavViewDots({
 			className="flex shrink-0 items-center justify-center gap-3 py-1"
 			onWheel={onWheel}
 		>
-			{views.map((view) => {
-				const isActive = active === view;
+			{entries.map((entry) => {
+				const isActive = active === entry.key;
+				const label = navEntryLabel(entry);
 				return (
 					<button
-						key={view}
+						key={entry.key}
 						type="button"
-						data-nav-view-dot={view}
+						data-nav-view-dot={entry.key}
 						aria-pressed={isActive}
-						aria-label={`${NAV_VIEW_LABEL[view]} view`}
+						aria-label={`${label} view`}
 						title={
-							view === "recent"
-								? "Recent view"
-								: `${NAV_VIEW_LABEL[view]} view — right-click to hide`
+							entry.kind === "saved"
+								? `${label} — right-click to rename or delete`
+								: entry.view === "recent"
+									? "Recent view"
+									: `${label} view — right-click to hide`
 						}
 						className={cn(
 							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] outline-hidden transition-all duration-200 ease-out focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
@@ -58,8 +69,8 @@ export function NavViewDots({
 								? "bg-selected text-selected-foreground"
 								: "text-muted-foreground/60 hover:text-foreground",
 						)}
-						onClick={() => onSelect(view)}
-						onContextMenu={(event) => onDotContextMenu(event, view)}
+						onClick={() => onSelect(entry)}
+						onContextMenu={(event) => onDotContextMenu(event, entry)}
 					>
 						<span
 							aria-hidden="true"
@@ -79,7 +90,7 @@ export function NavViewDots({
 									: "pointer-events-none scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:scale-100 group-focus-visible:opacity-100",
 							)}
 						>
-							<NavViewIcon view={view} />
+							<NavEntryIcon entry={entry} />
 						</span>
 					</button>
 				);

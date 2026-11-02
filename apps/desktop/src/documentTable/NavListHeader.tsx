@@ -1,19 +1,21 @@
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
+import { useState } from "react";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
 import { cn } from "../lib/utils";
 import { workspacePathStore } from "../store/state";
+import { deleteSavedView, renameSavedView } from "./documentTableStore";
 import { DEFAULT_NAV_VIEW_SORT } from "./documentTableView";
 import { NavViewDots } from "./NavViewDots";
-import { NAV_VIEW_LABEL, NavViewIcon } from "./NavViewIcon";
+import { NavEntryIcon, navEntryLabel } from "./NavViewIcon";
 import type { NavDensityTier } from "./navDensity";
-import { NAV_VIEW_IDS } from "./navHiddenViews";
 import {
 	describeNavViewSort,
 	setNavViewSort,
 	useNavViewSort,
 } from "./navViewSort";
+import { SavedViewContextMenu, SavedViewNameInput } from "./SavedViewControls";
 import { useNavViewSwitcher } from "./useNavViewSwitcher";
 
 /**
@@ -31,13 +33,29 @@ export function NavListHeader({
 	const workspacePath = useStoreValue(workspacePathStore) ?? null;
 	const {
 		activeView,
+		activeKey,
 		hidden,
-		visible,
-		select,
+		entries,
+		inlineEntries,
+		selectEntry,
 		selectInline,
 		toggleHidden,
 		onWheel,
 	} = useNavViewSwitcher();
+	// Saved views R2: the right-clicked saved icon (menu anchor) and the one
+	// being renamed in place of the switcher.
+	const [menu, setMenu] = useState<{ id: string; anchor: HTMLElement } | null>(
+		null,
+	);
+	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const savedName = (id: string | null) => {
+		const entry = entries.find(
+			(candidate) => candidate.kind === "saved" && candidate.id === id,
+		);
+		return entry ? navEntryLabel(entry) : "";
+	};
+	const openSavedViewMenu = (id: string, anchor: HTMLElement) =>
+		setMenu({ id, anchor });
 	const sort = useNavViewSort(activeView);
 	const isNameSort = sort.column === "name" && sort.direction === "asc";
 	const sortNext = isNameSort ? "recent" : "name";
@@ -50,66 +68,108 @@ export function NavListHeader({
 		);
 
 	const isRail = navTier === "rail";
-	const showDots = isRail && visible.length > 1;
+	const showDots = isRail && entries.length > 1;
+	const renamingName = renamingId ? savedName(renamingId) : "";
 
 	return (
 		<div
 			data-nav-list-header
 			className="flex shrink-0 items-center justify-between gap-1"
 		>
-			{showDots ? (
+			{renamingId && renamingName ? (
+				<SavedViewNameInput
+					className="flex min-w-0 flex-1 flex-col"
+					initialName={renamingName}
+					onCommit={(name) => {
+						const result = renameSavedView(renamingId, name);
+						if (result.ok) setRenamingId(null);
+						return result;
+					}}
+					onCancel={() => setRenamingId(null)}
+				/>
+			) : showDots ? (
 				<NavViewDots
-					views={visible}
-					active={activeView}
-					onSelect={select}
+					entries={entries}
+					active={activeKey}
+					onSelect={selectEntry}
 					onToggleHidden={toggleHidden}
+					onSavedViewMenu={openSavedViewMenu}
 					onWheel={onWheel}
 				/>
 			) : !isRail ? (
 				<div
 					data-nav-view-switcher
-					className="flex shrink-0 items-center gap-1"
+					className="flex min-w-0 items-center gap-1 overflow-x-auto"
 					onWheel={onWheel}
 				>
-					{NAV_VIEW_IDS.map((option) => {
-						const isActive = activeView === option;
-						const isHidden = option !== "recent" && hidden.includes(option);
+					{inlineEntries.map((entry) => {
+						const isActive = activeKey === entry.key;
+						const label = navEntryLabel(entry);
+						const isHidden =
+							entry.kind === "builtin" &&
+							entry.view !== "recent" &&
+							hidden.includes(entry.view);
 						return (
 							<button
-								key={option}
+								key={entry.key}
 								type="button"
-								data-nav-view-option={option}
+								data-nav-view-option={entry.key}
 								aria-pressed={isActive}
-								aria-label={`${NAV_VIEW_LABEL[option]} view`}
+								aria-label={`${label} view`}
 								title={
-									option === "recent"
-										? "Recent view"
-										: isHidden
-											? `${NAV_VIEW_LABEL[option]} view (hidden from Rail — select to restore)`
-											: `${NAV_VIEW_LABEL[option]} view — right-click to hide`
+									entry.kind === "saved"
+										? `${label} — right-click to rename or delete`
+										: entry.view === "recent"
+											? "Recent view"
+											: isHidden
+												? `${label} view (hidden from Rail — select to restore)`
+												: `${label} view — right-click to hide`
 								}
 								className={cn(
 									"flex h-7 min-w-0 items-center gap-1 rounded-[var(--radius-row)] text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
+									entry.kind === "saved" && "max-w-40",
 									isActive
 										? "bg-selected font-medium text-selected-foreground"
 										: "text-muted-foreground hover:text-foreground",
 									isHidden && !isActive && "opacity-50",
 								)}
-								onClick={() => selectInline(option)}
+								onClick={() =>
+									entry.kind === "builtin"
+										? selectInline(entry.view)
+										: selectEntry(entry)
+								}
 								onContextMenu={(event) => {
 									event.preventDefault();
-									if (option !== "recent") toggleHidden(option);
+									if (entry.kind === "saved") {
+										openSavedViewMenu(entry.id, event.currentTarget);
+									} else if (entry.view !== "recent") {
+										toggleHidden(entry.view);
+									}
 								}}
 							>
-								<NavViewIcon view={option} />
-								<span className="min-w-0 truncate">
-									{NAV_VIEW_LABEL[option]}
-								</span>
+								<NavEntryIcon entry={entry} />
+								<span className="min-w-0 truncate">{label}</span>
 							</button>
 						);
 					})}
 				</div>
 			) : null}
+			<SavedViewContextMenu
+				anchor={menu?.anchor ?? null}
+				name={savedName(menu?.id ?? null)}
+				onClose={() => setMenu(null)}
+				onRename={() => {
+					const id = menu?.id;
+					setMenu(null);
+					// Open the name box after the menu has closed and settled focus,
+					// or the closing menu's focus move would blur (cancel) it.
+					if (id) setTimeout(() => setRenamingId(id), 0);
+				}}
+				onDelete={() => {
+					if (menu) deleteSavedView(menu.id);
+					setMenu(null);
+				}}
+			/>
 			<Button
 				variant="ghost"
 				size="icon-xs"
