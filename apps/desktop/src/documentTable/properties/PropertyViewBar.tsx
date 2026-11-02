@@ -232,7 +232,7 @@ function FolderPicker({
 								role="option"
 								tabIndex={0}
 								aria-selected={folder === current}
-								className="cursor-default truncate rounded px-1.5 py-1 outline-hidden hover:bg-accent focus-visible:bg-accent"
+								className="shrink-0 cursor-default truncate rounded px-1.5 py-1 outline-hidden hover:bg-accent focus-visible:bg-accent"
 								onClick={() => pick(folder)}
 								onKeyDown={(event) => {
 									if (event.key === "Enter") pick(folder);
