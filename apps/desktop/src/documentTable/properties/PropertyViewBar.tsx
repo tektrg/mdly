@@ -37,8 +37,11 @@ export function SaveViewButton({ canSave }: { canSave: boolean }) {
 					const valid = validateSavedViewName(workspacePath, name);
 					if (!valid.ok) return valid;
 					const id = saveCurrentViewAs(name);
-					if (id) setNaming(false);
-					return id ? valid : { ok: false, reason: "empty" };
+					if (!id) {
+						return { ok: false, message: "The view couldn't be saved" };
+					}
+					setNaming(false);
+					return valid;
 				}}
 				onCancel={() => setNaming(false)}
 			/>

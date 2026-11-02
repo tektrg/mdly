@@ -99,6 +99,7 @@ export function NavListHeader({
 			{renamingId && renamingName ? (
 				<SavedViewNameInput
 					className="flex min-w-0 flex-1 flex-col"
+					fill
 					initialName={renamingName}
 					onCommit={(name) => {
 						const result = renameSavedView(renamingId, name);

@@ -1,7 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { usePortalContainer } from "@mdly/workspace-kit";
 import type { ViewNameError, ViewNameResult } from "@tektrg/table-core";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { MAX_SAVED_VIEW_NAME_LENGTH } from "./properties/documentViews";
 
 const NAME_ERROR: Record<ViewNameError, string> = {
@@ -11,24 +11,38 @@ const NAME_ERROR: Record<ViewNameError, string> = {
 	builtin: "That name is taken by a built-in view",
 };
 
+/** A refusal that is not about the name itself (e.g. no workspace open). */
+export type SavedViewNameFailure = { ok: false; message: string };
+
+export type SavedViewNameCommit = ViewNameResult | SavedViewNameFailure;
+
+function failureText(result: Exclude<SavedViewNameCommit, { ok: true }>) {
+	return "message" in result ? result.message : NAME_ERROR[result.reason];
+}
+
 /**
  * Inline name box for "Save view…" and "Rename" (saved views R2). Enter
  * commits through `onCommit`; a refused name keeps the box open with the
- * reason shown. Escape or blur cancels.
+ * reason shown. Blur commits a valid name and cancels an invalid one; Escape
+ * cancels. `fill` stretches the box to its row (header rename, any tier).
  */
 export function SavedViewNameInput({
 	initialName,
 	onCommit,
 	onCancel,
 	className,
+	fill = false,
 }: {
 	initialName: string;
-	onCommit: (name: string) => ViewNameResult;
+	onCommit: (name: string) => SavedViewNameCommit;
 	onCancel: () => void;
 	className?: string;
+	fill?: boolean;
 }) {
 	const [name, setName] = useState(initialName);
 	const [error, setError] = useState<string | null>(null);
+	// Enter/Escape already closed the box: the blur that follows is not a choice.
+	const closed = useRef(false);
 	return (
 		<span className={className ?? "inline-flex min-w-0 flex-col"}>
 			<input
@@ -43,18 +57,24 @@ export function SavedViewNameInput({
 					setName(event.target.value);
 					setError(null);
 				}}
-				onBlur={onCancel}
+				onBlur={() => {
+					if (closed.current) return;
+					closed.current = true;
+					if (!onCommit(name).ok) onCancel();
+				}}
 				onKeyDown={(event) => {
 					if (event.key === "Enter") {
 						event.preventDefault();
 						const result = onCommit(name);
-						if (!result.ok) setError(NAME_ERROR[result.reason]);
+						if (result.ok) closed.current = true;
+						else setError(failureText(result));
 					} else if (event.key === "Escape") {
 						event.preventDefault();
+						closed.current = true;
 						onCancel();
 					}
 				}}
-				className="h-7 w-40 min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive"
+				className={`h-7 ${fill ? "w-full" : "w-40"} min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive`}
 			/>
 			{error ? (
 				<span role="alert" className="text-[11px] text-destructive">
