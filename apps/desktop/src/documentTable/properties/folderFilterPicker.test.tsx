@@ -78,7 +78,7 @@ describe("+ Folder picker", () => {
 			(b) => b.textContent === label || b.getAttribute("aria-label") === label,
 		);
 	const options = () =>
-		[...container.querySelectorAll('[role="option"]')].map(
+		[...document.body.querySelectorAll('[role="option"]')].map(
 			(o) => o.textContent,
 		);
 
@@ -95,13 +95,14 @@ describe("+ Folder picker", () => {
 		);
 		act(() => button("+ Folder")?.click());
 		expect(options()).toEqual(folders);
-		const sub = container.querySelectorAll<HTMLElement>('[role="option"]')[1];
+		const sub =
+			document.body.querySelectorAll<HTMLElement>('[role="option"]')[1];
 		act(() => sub.click());
 		expect(addPropertyFilter).toHaveBeenCalledWith({
 			kind: "folder",
 			path: "AptusFit/sub",
 		});
-		expect(container.querySelector('[role="listbox"]')).toBeNull();
+		expect(document.body.querySelector('[role="listbox"]')).toBeNull();
 	});
 
 	it("search narrows the list", () => {
@@ -116,7 +117,7 @@ describe("+ Folder picker", () => {
 			),
 		);
 		act(() => button("+ Folder")?.click());
-		const input = container.querySelector<HTMLInputElement>(
+		const input = document.body.querySelector<HTMLInputElement>(
 			'input[aria-label="Search folders"]',
 		);
 		act(() => {
@@ -143,7 +144,7 @@ describe("+ Folder picker", () => {
 		);
 		act(() => button("Folder: AptusFit")?.click());
 		const notes = [
-			...container.querySelectorAll<HTMLElement>('[role="option"]'),
+			...document.body.querySelectorAll<HTMLElement>('[role="option"]'),
 		].find((o) => o.textContent === "Notes");
 		act(() => notes?.click());
 		expect(removePropertyFilter).toHaveBeenCalledWith(chip);

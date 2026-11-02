@@ -1,5 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "../../components/ui/popover";
 import { cn } from "../../lib/utils";
 import { workspacePathStore } from "../../store/state";
 import {
@@ -181,84 +186,64 @@ function FolderPicker({
 }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const ref = useRef<HTMLSpanElement>(null);
-	useEffect(() => {
-		if (!open) return;
-		const onDown = (event: MouseEvent) => {
-			if (!ref.current?.contains(event.target as Node)) setOpen(false);
-		};
-		document.addEventListener("mousedown", onDown);
-		return () => document.removeEventListener("mousedown", onDown);
-	}, [open]);
 	const needle = query.trim().toLowerCase();
 	const shown = needle
 		? folders.filter((folder) => folder.toLowerCase().includes(needle))
 		: folders;
+	const pick = (folder: string) => {
+		setOpen(false);
+		if (folder !== current) onPick(folder);
+	};
+	// Portalled popover: an inline absolute panel was painted under the table.
 	return (
-		<span ref={ref} className="relative inline-flex min-w-0">
-			<button
-				type="button"
-				className={triggerClassName}
-				aria-haspopup="listbox"
-				aria-expanded={open}
-				onClick={() => {
-					setQuery("");
-					setOpen((value) => !value);
-				}}
-			>
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				if (next) setQuery("");
+				setOpen(next);
+			}}
+		>
+			<PopoverTrigger className={triggerClassName} aria-haspopup="listbox">
 				{triggerLabel}
-			</button>
-			{open ? (
-				<div
-					role="dialog"
-					aria-label="Choose a folder"
-					className="absolute top-full z-50 mt-1 flex w-64 flex-col gap-1 rounded-md border border-border bg-popover p-1.5 text-[11px] text-popover-foreground shadow-overlay [inset-inline-start:0]"
-					onKeyDown={(event) => {
-						if (event.key === "Escape") setOpen(false);
-					}}
-				>
-					<input
-						// biome-ignore lint/a11y/noAutofocus: picker opened by an explicit click
-						autoFocus
-						aria-label="Search folders"
-						placeholder="Search folders…"
-						className="h-6 rounded border border-border bg-transparent px-1.5 outline-hidden"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
-					/>
-					<span
-						role="listbox"
-						className="flex max-h-64 flex-col overflow-y-auto"
-					>
-						{shown.length === 0 ? (
-							<span className="px-1.5 py-1 text-muted-foreground">
-								No folders
-							</span>
-						) : (
-							shown.map((folder) => (
-								<span
-									key={folder}
-									role="option"
-									tabIndex={0}
-									aria-selected={folder === current}
-									className="cursor-default truncate rounded px-1.5 py-1 hover:bg-accent focus-visible:bg-accent outline-hidden"
-									onClick={() => {
-										setOpen(false);
-										if (folder !== current) onPick(folder);
-									}}
-									onKeyDown={(event) => {
-										if (event.key !== "Enter") return;
-										setOpen(false);
-										if (folder !== current) onPick(folder);
-									}}
-								>
-									{folder}
-								</span>
-							))
-						)}
-					</span>
+			</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				aria-label="Choose a folder"
+				className="w-64 gap-1 p-1.5"
+			>
+				<input
+					// biome-ignore lint/a11y/noAutofocus: picker opened by an explicit click
+					autoFocus
+					aria-label="Search folders"
+					placeholder="Search folders…"
+					className="h-6 rounded border border-border bg-transparent px-1.5 outline-hidden"
+					value={query}
+					onChange={(event) => setQuery(event.target.value)}
+				/>
+				<div role="listbox" className="flex max-h-64 flex-col overflow-y-auto">
+					{shown.length === 0 ? (
+						<span className="px-1.5 py-1 text-muted-foreground">
+							No folders
+						</span>
+					) : (
+						shown.map((folder) => (
+							<div
+								key={folder}
+								role="option"
+								tabIndex={0}
+								aria-selected={folder === current}
+								className="cursor-default truncate rounded px-1.5 py-1 outline-hidden hover:bg-accent focus-visible:bg-accent"
+								onClick={() => pick(folder)}
+								onKeyDown={(event) => {
+									if (event.key === "Enter") pick(folder);
+								}}
+							>
+								{folder}
+							</div>
+						))
+					)}
 				</div>
-			) : null}
-		</span>
+			</PopoverContent>
+		</Popover>
 	);
 }
