@@ -5,8 +5,14 @@ import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascendin
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
 import { cn } from "../lib/utils";
 import { workspacePathStore } from "../store/state";
-import { deleteSavedView, renameSavedView } from "./documentTableStore";
+import {
+	deleteSavedView,
+	documentTableViewStore,
+	renameSavedView,
+	setDocumentTableSort,
+} from "./documentTableStore";
 import { DEFAULT_NAV_VIEW_SORT } from "./documentTableView";
+import { savedViewsStore } from "./documentViewsFileStore";
 import { NavViewDots } from "./NavViewDots";
 import { NavEntryIcon, navEntryLabel } from "./NavViewIcon";
 import type { NavDensityTier } from "./navDensity";
@@ -56,16 +62,30 @@ export function NavListHeader({
 	};
 	const openSavedViewMenu = (id: string, anchor: HTMLElement) =>
 		setMenu({ id, anchor });
-	const sort = useNavViewSort(activeView);
+	// A saved view owns its sort: the button shows and edits it, never the
+	// built-in view's persisted sort underneath.
+	const activeSavedViewId = useStoreValue(
+		documentTableViewStore,
+		(view) => view.activeSavedViewId,
+	);
+	const savedSort = useStoreValue(savedViewsStore, (all) =>
+		workspacePath && activeSavedViewId
+			? all[workspacePath]?.views.find((view) => view.id === activeSavedViewId)
+					?.sort
+			: undefined,
+	);
+	const navSort = useNavViewSort(activeView);
+	const sort = savedSort ?? navSort;
 	const isNameSort = sort.column === "name" && sort.direction === "asc";
 	const sortNext = isNameSort ? "recent" : "name";
 
-	const toggleSortMode = () =>
-		setNavViewSort(
-			workspacePath,
-			activeView,
-			isNameSort ? DEFAULT_NAV_VIEW_SORT : { column: "name", direction: "asc" },
-		);
+	const toggleSortMode = () => {
+		const next = isNameSort
+			? DEFAULT_NAV_VIEW_SORT
+			: ({ column: "name", direction: "asc" } as const);
+		if (savedSort) setDocumentTableSort(next);
+		else setNavViewSort(workspacePath, activeView, next);
+	};
 
 	const isRail = navTier === "rail";
 	const showDots = isRail && entries.length > 1;

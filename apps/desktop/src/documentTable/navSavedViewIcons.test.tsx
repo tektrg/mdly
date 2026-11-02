@@ -11,12 +11,14 @@ import {
 	saveCurrentViewAs,
 	selectSavedView,
 	setDocumentTableGroupBy,
+	setDocumentTableSort,
 } from "./documentTableStore";
 import {
 	getSavedViews,
 	loadWorkspaceSavedViews,
 	setViewStoreFactoryForTest,
 } from "./documentViewsFileStore";
+import { getNavViewSort } from "./navViewSort";
 import { buildRows, viewWith } from "./testFixtures";
 import { createLocalStorageViewStore } from "./viewStores";
 
@@ -318,5 +320,32 @@ describe("saved views in the view switcher", () => {
 		expect(fresh).toBeDefined();
 		expect(documentTableViewStore.get().activeSavedViewId).toBe(fresh?.id);
 		expect(inline()).toContain(`saved:${fresh?.id}`);
+	});
+
+	it("the header sort button shows and edits the active saved view's sort, not Recent's", async () => {
+		const { a } = saveTwo();
+		await act(async () => {
+			selectSavedView(a);
+		});
+		await act(async () => {
+			setDocumentTableSort({ column: "name", direction: "asc" });
+		});
+		renderNarrow("list");
+		await act(async () => {});
+		const button = () =>
+			container.querySelector(
+				'[data-nav-list-header] button[aria-label="Sort documents"]',
+			) as HTMLButtonElement;
+		expect(getNavViewSort(WORKSPACE, "recent").column).toBe("modified");
+		expect(button().getAttribute("aria-pressed")).toBe("true");
+		await act(async () => {
+			button().click();
+		});
+		expect(getSavedViews(WORKSPACE).find((v) => v.id === a)?.sort).toEqual({
+			column: "modified",
+			direction: "desc",
+		});
+		expect(getNavViewSort(WORKSPACE, "recent").column).toBe("modified");
+		expect(button().getAttribute("aria-pressed")).toBe("false");
 	});
 });
