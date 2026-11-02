@@ -16,7 +16,7 @@
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
 		"dev:debug": "HUBBLE_DESKTOP_ENABLE_CDP=1 node scripts/dev.mjs",
-		"build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build",
+		"build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && node scripts/check-bundled-deps.mjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
 		"bundle": "pnpm build && electron-builder --mac --arm64",
 		"bundle:publish": "pnpm build && electron-builder --mac --arm64 --publish always",

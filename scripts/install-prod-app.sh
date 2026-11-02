@@ -96,6 +96,43 @@ rm -rf "$INSTALLED_APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
 	-f "$INSTALLED_APP"
 
-open "$INSTALLED_APP" || echo "[prod-app] installed $INSTALLED_APP but relaunch needs a local double-click (no GUI session)"
+if ! open "$INSTALLED_APP"; then
+	echo "[prod-app] installed $INSTALLED_APP but relaunch needs a local double-click (no GUI session); launch smoke skipped"
+	exit 0
+fi
+
+# 3. Launch smoke: a main-process crash (e.g. a require() the packaged app can't
+#    resolve) shows only an Electron "JavaScript error" dialog and no window, and
+#    a bundle-level guard can't catch everything. Require, within ~20s, a live
+#    mdly process with at least one window. The error dialog itself is a window
+#    of the process, so also reject a window titled like the crash dialog.
+#    SKIP_LAUNCH_SMOKE=1 opts out (e.g. no Accessibility permission for osascript).
+if [[ "${SKIP_LAUNCH_SMOKE:-0}" != "1" ]]; then
+	smoke_ok=0
+	smoke_detail="no mdly window appeared"
+	for _ in $(seq 1 40); do
+		sleep 0.5
+		if ! pgrep -x mdly >/dev/null 2>&1; then
+			smoke_detail="mdly process is not running (exited on launch)"
+			continue
+		fi
+		dialog="$(osascript -e 'tell application "System Events" to get value of static text of window 1 of process "mdly"' 2>/dev/null || true)"
+		if [[ "$dialog" == *"JavaScript error"* || "$dialog" == *"Uncaught Exception"* ]]; then
+			smoke_detail="main-process crash dialog: ${dialog:0:400}"
+			break
+		fi
+		windows="$(osascript -e 'tell application "System Events" to count windows of process "mdly"' 2>/dev/null || echo 0)"
+		if [[ "$windows" =~ ^[0-9]+$ ]] && ((windows > 0)); then
+			smoke_ok=1
+			break
+		fi
+	done
+	if [[ "$smoke_ok" != "1" ]]; then
+		echo "[prod-app] LAUNCH SMOKE FAILED: $smoke_detail" >&2
+		echo "[prod-app] Likely a main-process require() the packaged app can't resolve; run apps/desktop/scripts/check-bundled-deps.mjs and see electron.vite.config.ts exclude." >&2
+		exit 1
+	fi
+	echo "[prod-app] launch smoke OK: mdly running with a window"
+fi
 
 echo "[prod-app] installed and launched $INSTALLED_APP"

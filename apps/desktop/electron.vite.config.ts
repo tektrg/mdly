@@ -52,6 +52,16 @@ export default defineConfig({
 					"@mdly/doc-history",
 					"@mdly/doc-history/node",
 					"@mdly/doc-comments",
+					// Previously externalized and only resolvable by luck of
+					// electron-builder's node_modules packing (pnpm symlink layout,
+					// exports conditions). Bundled so out/main is self-contained;
+					// scripts/check-bundled-deps.mjs enforces this.
+					"@hubble.md/sync",
+					"@hubble.md/sync/node",
+					"@mdly/cloudflare-client",
+					"@mdly/cloudflare-client/keychain",
+					"@mdly/cloudflare-client/node-ws",
+					"@modelcontextprotocol/sdk",
 					"diff",
 					"ignore",
 					"zod",
