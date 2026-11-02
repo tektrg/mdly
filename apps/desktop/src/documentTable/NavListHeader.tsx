@@ -1,6 +1,7 @@
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
 import { useState } from "react";
+import { toast } from "sonner";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
 import { cn } from "../lib/utils";
@@ -187,8 +188,21 @@ export function NavListHeader({
 					if (id) setTimeout(() => setRenamingId(id), 0);
 				}}
 				onDelete={() => {
-					if (menu) deleteSavedView(menu.id);
+					const undo = menu ? deleteSavedView(menu.id) : null;
 					setMenu(null);
+					// One toast id: a second delete replaces it (undo = latest only).
+					if (undo) {
+						toast("View deleted", {
+							id: "saved-view-deleted",
+							duration: 5000,
+							action: {
+								label: "Undo",
+								onClick: () => {
+									undo();
+								},
+							},
+						});
+					}
 				}}
 			/>
 			<Button

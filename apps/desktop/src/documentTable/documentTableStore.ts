@@ -345,20 +345,46 @@ export function renameSavedView(id: string, name: string): ViewNameResult {
 	return valid;
 }
 
-export function deleteSavedView(id: string) {
+/** Bumped on every delete so only the latest delete's undo can apply. */
+let latestDeleteToken = 0;
+
+/**
+ * Deletes a saved view immediately. Returns an undo function (null when nothing
+ * was deleted) that restores the same view at its original position and
+ * re-selects it if it was active. Undo is a no-op (returns false) once a newer
+ * delete happened, the workspace changed, or the view is already back.
+ */
+export function deleteSavedView(id: string): (() => boolean) | null {
 	const workspacePath = currentWorkspacePath();
-	if (!workspacePath) return;
+	if (!workspacePath) return null;
+	const before = getSavedViews(workspacePath);
+	const index = before.findIndex((view) => view.id === id);
+	if (index === -1) return null;
+	const view = before[index] as SavedDocumentView;
+	const wasActive = documentTableViewStore.get().activeSavedViewId === id;
 	updateSavedViews(workspacePath, (views) =>
-		views.some((view) => view.id === id)
-			? views.filter((view) => view.id !== id)
-			: views,
+		views.filter((candidate) => candidate.id !== id),
 	);
 	// R3: deleting the active view lands on Recent, never a blank selection.
-	if (documentTableViewStore.get().activeSavedViewId === id) {
+	if (wasActive) {
 		selectSavedView(null);
 	} else if (workspaceStore.get().selectedSavedViews[workspacePath] === id) {
 		rememberSelectedSavedView(workspacePath, null);
 	}
+	const token = ++latestDeleteToken;
+	return () => {
+		if (token !== latestDeleteToken) return false;
+		if (currentWorkspacePath() !== workspacePath) return false;
+		latestDeleteToken++;
+		if (getSavedViews(workspacePath).some((v) => v.id === id)) return false;
+		updateSavedViews(workspacePath, (views) => {
+			const next = [...views];
+			next.splice(Math.min(index, next.length), 0, view);
+			return next;
+		});
+		if (wasActive) selectSavedView(id);
+		return true;
+	};
 }
 
 /**
