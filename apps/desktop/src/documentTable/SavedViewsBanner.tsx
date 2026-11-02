@@ -7,7 +7,7 @@ import {
 } from "./documentViewsFileStore";
 import { useWorkspaceSavedViewsState } from "./useDocumentTableRows";
 
-function noticeText(notice: SavedViewsNotice): string {
+export function savedViewsNoticeText(notice: SavedViewsNotice): string {
 	switch (notice.kind) {
 		case "corrupt":
 			return "Saved views file (.hubble/views.json) can't be read, so only the built-in views are shown. The file was left untouched.";
@@ -18,6 +18,11 @@ function noticeText(notice: SavedViewsNotice): string {
 		case "write-error":
 			return `Saved views couldn't be saved (${notice.error}). Your change is kept until you close this workspace.`;
 		case "conflict":
+			if (notice.lost.length > 0) {
+				const what = notice.lost.join(", ");
+				const verb = notice.lost.length === 1 ? "wasn't" : "weren't";
+				return `${what.charAt(0).toUpperCase()}${what.slice(1)} ${verb} saved — the file changed elsewhere (another window or Mac). The newer views are shown.`;
+			}
 			return "Saved views changed elsewhere (another window or Mac), so your last change was not saved. The newer views are shown.";
 	}
 }
@@ -38,7 +43,7 @@ export function SavedViewsBanner() {
 			data-testid="saved-views-banner"
 			data-notice={notice.kind}
 		>
-			<span className="min-w-0 flex-1">{noticeText(notice)}</span>
+			<span className="min-w-0 flex-1">{savedViewsNoticeText(notice)}</span>
 			{notice.kind === "corrupt" ? (
 				<button
 					type="button"

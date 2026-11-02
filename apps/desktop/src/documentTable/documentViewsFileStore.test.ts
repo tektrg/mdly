@@ -304,7 +304,25 @@ describe("corrupt / failing / conflicting file (R18, R19, R21)", () => {
 		expect(viewsOnDisk(m.disk, "/ws")?.map((v) => v.name)).toEqual(["Theirs"]);
 		expect(m.getWorkspaceSavedViews("/ws")).toMatchObject({
 			views: [{ name: "Theirs" }],
-			notice: { kind: "conflict" },
+			notice: { kind: "conflict", lost: ['your new view "Second"'] },
+		});
+	});
+
+	it("a refused rename names what was lost (R21)", async () => {
+		const m = await load({});
+		m.workspacePathStore.set("/ws");
+		await settle();
+		const id = m.saveCurrentViewAs("Mine") as string;
+		await m.flushSavedViews("/ws");
+		m.disk.setItem(
+			fileKey("/ws"),
+			`${JSON.stringify({ version: 1, views: [legacyView(id, "Mine")] })}\n`,
+		);
+		m.renameSavedView(id, "Renamed");
+		await m.flushSavedViews("/ws");
+		expect(m.getWorkspaceSavedViews("/ws").notice).toEqual({
+			kind: "conflict",
+			lost: ['your rename to "Renamed"'],
 		});
 	});
 });

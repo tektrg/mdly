@@ -62,7 +62,8 @@ export type SavedViewsNotice =
 	| { kind: "unreadable"; error: string }
 	| { kind: "skipped"; warnings: string[] }
 	| { kind: "write-error"; error: string }
-	| { kind: "conflict" };
+	/** `lost`: plain-English edits that were not saved, e.g. `your rename to "X"`. */
+	| { kind: "conflict"; lost: string[] };
 
 export type SavedViewsSaveState =
 	| "idle"
@@ -434,6 +435,28 @@ export function flushAllSavedViews(): Promise<void> {
 	);
 }
 
+/** What an unsaved edit changed relative to the last file read/written (R21). */
+function describeLostChanges(
+	before: readonly SavedViewRecord[],
+	after: readonly SavedViewRecord[],
+): string[] {
+	const lost: string[] = [];
+	const beforeById = new Map(before.map((record) => [record.id, record]));
+	const afterIds = new Set(after.map((record) => record.id));
+	for (const record of after) {
+		const old = beforeById.get(record.id);
+		if (!old) lost.push(`your new view "${record.name}"`);
+		else if (old.name !== record.name)
+			lost.push(`your rename to "${record.name}"`);
+		else if (JSON.stringify(old) !== JSON.stringify(record))
+			lost.push(`your changes to "${record.name}"`);
+	}
+	for (const record of before) {
+		if (!afterIds.has(record.id)) lost.push(`your deletion of "${record.name}"`);
+	}
+	return lost;
+}
+
 async function save(workspacePath: string, internal: Internal) {
 	const { status } = getWorkspaceSavedViews(workspacePath);
 	const file = toFile(workspacePath, internal);
@@ -465,11 +488,12 @@ async function save(workspacePath: string, internal: Internal) {
 	if (result.status === "conflict") {
 		// The newer file wins: re-read it (no migration) and say so.
 		internal.unsavedAfterError = false;
+		const lost = describeLostChanges(internal.base?.views ?? [], file.views);
 		await loadWorkspaceSavedViews(workspacePath, {
 			migrate: false,
 			fromSave: true,
 		});
-		patch(workspacePath, { notice: { kind: "conflict" }, saveState: "error" });
+		patch(workspacePath, { notice: { kind: "conflict", lost }, saveState: "error" });
 		return;
 	}
 	// The edit stays in memory for this session; no retry loop (R19).

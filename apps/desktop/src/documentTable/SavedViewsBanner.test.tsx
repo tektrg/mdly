@@ -7,7 +7,7 @@ import {
 	loadWorkspaceSavedViews,
 	setViewStoreFactoryForTest,
 } from "./documentViewsFileStore";
-import { SavedViewsBanner } from "./SavedViewsBanner";
+import { SavedViewsBanner, savedViewsNoticeText } from "./SavedViewsBanner";
 import { createLocalStorageViewStore } from "./viewStores";
 
 (
@@ -42,5 +42,16 @@ describe("SavedViewsBanner (R18)", () => {
 		expect(banner?.textContent).toContain("can't be read");
 		expect(map.get("mdly.savedViews.v1:/bad")).toBe("{bad");
 		act(() => root.unmount());
+	});
+
+	it("names what a conflict lost (R21)", () => {
+		expect(
+			savedViewsNoticeText({
+				kind: "conflict",
+				lost: ['your rename to "X"'],
+			}),
+		).toBe(
+			'Your rename to "X" wasn\'t saved — the file changed elsewhere (another window or Mac). The newer views are shown.',
+		);
 	});
 });
