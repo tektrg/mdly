@@ -97,6 +97,11 @@ import {
 	saveFilesScopeDefaults,
 	writeWorkspaceFilesScope,
 } from "./filesScopeWiring";
+import {
+	createFlushBeforeClose,
+	FLUSH_DONE_CHANNEL,
+	FLUSH_REQUEST_CHANNEL,
+} from "./flushBeforeClose";
 import { scanFrontMatterProperties } from "./frontMatterProperties";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { installMainProcessErrorHandlers } from "./mainProcessErrors";
@@ -207,6 +212,29 @@ if (isDev) {
 }
 
 let mainWindow: BrowserWindow | null = null;
+/** Set once a quit starts, so a window closed after its R20 flush resumes the quit. */
+let isQuitting = false;
+let nextFlushRequestId = 0;
+
+/** Asks one window's renderer to save pending edits; resolves on its answer. */
+function requestRendererFlush(window: BrowserWindow): Promise<void> {
+	if (window.isDestroyed() || window.webContents.isCrashed()) {
+		return Promise.resolve();
+	}
+	const requestId = ++nextFlushRequestId;
+	return new Promise<void>((resolve) => {
+		const listener = (event: Electron.IpcMainEvent, replyId: unknown) => {
+			if (event.sender !== window.webContents || replyId !== requestId) return;
+			ipcMain.removeListener(FLUSH_DONE_CHANNEL, listener);
+			resolve();
+		};
+		ipcMain.on(FLUSH_DONE_CHANNEL, listener);
+		window.once("closed", () =>
+			ipcMain.removeListener(FLUSH_DONE_CHANNEL, listener),
+		);
+		window.webContents.send(FLUSH_REQUEST_CHANNEL, requestId);
+	});
+}
 let saveWindowStateTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingOpenPath: string | null = firstExistingFileArg(
 	process.argv.slice(1),
@@ -1434,6 +1462,19 @@ async function createWindow(openFilePath?: string) {
 		}
 		saveWindowState(window);
 	});
+	// Saved views R20: hold the close until the renderer has written any
+	// pending saved-views edit (to the workspace it was made in).
+	window.on(
+		"close",
+		createFlushBeforeClose({
+			requestFlush: () => requestRendererFlush(window),
+			timeoutMs: 2000,
+			close: () => {
+				if (!window.isDestroyed()) window.close();
+				if (isQuitting) app.quit();
+			},
+		}),
+	);
 	window.on("closed", () => {
 		windowLaunchPaths.delete(launchContentsId);
 		singleFileWindowIds.delete(launchContentsId);
@@ -2617,6 +2658,10 @@ if (!singleInstanceLock) {
 	// the exception — a dying process leaks nothing; the kernel reclaims
 	// FSEvent handles for free.
 	app.on("before-quit", () => {
+		// A quit held by a window's R20 flush re-fires before-quit when it
+		// resumes; tear down once.
+		if (isQuitting) return;
+		isQuitting = true;
 		// The app is exiting; the kernel reclaims FSEvent handles for free. Closing
 		// chokidar's per-directory handles here blocks the AppKit main thread for
 		// minutes on large workspaces (see the Cmd+Q freeze note in project memory).

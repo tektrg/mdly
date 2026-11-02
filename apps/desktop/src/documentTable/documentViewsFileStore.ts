@@ -499,4 +499,6 @@ if (
 	window.addEventListener("beforeunload", () => {
 		void flushAllSavedViews();
 	});
+	// R20: the reliable path — main holds the close until this resolves.
+	window.desktopApi?.onFlushPendingSaves?.(flushAllSavedViews);
 }

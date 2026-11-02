@@ -496,6 +496,11 @@ export type DesktopApi = {
 		workspacePath: string,
 		file: ViewsFile,
 	): Promise<ViewStoreWriteResult>;
+	/**
+	 * Saved views R20: main asks before a window closes / the app quits; the
+	 * window is held until `flush` settles (or main's timeout).
+	 */
+	onFlushPendingSaves?(flush: () => Promise<void>): Unsubscribe;
 	/** Read-only: never starts or stops a watcher/subscription (R27, R29). */
 	getCloudSyncState(workspacePath: string): Promise<CloudSyncWorkspaceState>;
 	/** Turns Cloud Sync on for this workspace (R26/R27's opt-in half, R28). */

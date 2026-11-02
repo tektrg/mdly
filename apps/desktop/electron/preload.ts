@@ -57,6 +57,16 @@ const desktopApi = {
 		}),
 	resetCorruptWorkspaceViews: (workspacePath, file) =>
 		ipcRenderer.invoke("desktop:views-reset-corrupt", { workspacePath, file }),
+	onFlushPendingSaves: (flush) =>
+		subscribe("desktop:flush-pending-saves", (requestId: number) => {
+			// Always answer, even on failure: main is holding the window open.
+			void Promise.resolve()
+				.then(flush)
+				.catch(() => undefined)
+				.then(() =>
+					ipcRenderer.send("desktop:flush-pending-saves-done", requestId),
+				);
+		}),
 	getCloudSyncState: (workspacePath) =>
 		ipcRenderer.invoke("desktop:cloud-sync-get-state", { workspacePath }),
 	enableCloudSync: (workspacePath, options) =>
