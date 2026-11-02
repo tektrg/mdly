@@ -11,7 +11,8 @@ async function loadDocumentTableStore() {
 	vi.stubGlobal("localStorage", { getItem: vi.fn(() => null), setItem });
 	const tableStore = await import("./documentTableStore");
 	const state = await import("../store/state");
-	return { ...tableStore, ...state, setItem };
+	const { getSavedViews } = await import("./documentViewsFileStore");
+	return { ...tableStore, ...state, getSavedViews, setItem };
 }
 
 describe("documentTableStore", () => {
@@ -160,6 +161,7 @@ describe("documentTableStore", () => {
 			addPropertyFilter,
 			documentTableViewStore,
 			saveCurrentViewAs,
+			getSavedViews,
 			selectSavedView,
 			setPropertyGroupBy,
 			togglePropertyColumn,
@@ -181,7 +183,7 @@ describe("documentTableStore", () => {
 		]);
 
 		const id = saveCurrentViewAs("  Due work  ");
-		const saved = workspaceStore.get().documentViews["/ws"]?.saved[0];
+		const saved = getSavedViews("/ws")[0];
 		expect(saved).toMatchObject({
 			id,
 			name: "Due work",
@@ -193,9 +195,7 @@ describe("documentTableStore", () => {
 
 		// Edits while the saved view is shown are written into it, not the session.
 		addPropertyFilter({ fieldId: "prop:status", kind: "is", value: "Done" });
-		expect(
-			workspaceStore.get().documentViews["/ws"]?.saved[0]?.filters,
-		).toHaveLength(2);
+		expect(getSavedViews("/ws")[0]?.filters).toHaveLength(2);
 		expect(documentTableViewStore.get().propertyFilters).toHaveLength(1);
 
 		selectSavedView(null);
@@ -206,11 +206,11 @@ describe("documentTableStore", () => {
 		const {
 			documentTableViewStore,
 			saveCurrentViewAs,
+			getSavedViews,
 			selectSavedView,
 			setBoardField,
 			setCalendarField,
 			setDocumentViewType,
-			workspaceStore,
 			workspacePathStore,
 		} = await loadDocumentTableStore();
 		workspacePathStore.set("/ws");
@@ -225,7 +225,7 @@ describe("documentTableStore", () => {
 		});
 
 		const id = saveCurrentViewAs("Pipeline");
-		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]).toMatchObject({
+		expect(getSavedViews("/ws")[0]).toMatchObject({
 			id,
 			viewType: "board",
 			boardField: "prop:stage",
@@ -234,7 +234,7 @@ describe("documentTableStore", () => {
 
 		setDocumentViewType("calendar");
 		setCalendarField("prop:start");
-		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]).toMatchObject({
+		expect(getSavedViews("/ws")[0]).toMatchObject({
 			viewType: "calendar",
 			calendarField: "prop:start",
 		});
@@ -249,6 +249,7 @@ describe("documentTableStore", () => {
 			deleteSavedView,
 			documentTableViewStore,
 			saveCurrentViewAs,
+			getSavedViews,
 			toggleDocumentTableSort,
 			workspaceStore,
 			workspacePathStore,
@@ -258,14 +259,14 @@ describe("documentTableStore", () => {
 
 		const id = saveCurrentViewAs("Mine") as string;
 		toggleDocumentTableSort("prop:priority");
-		expect(workspaceStore.get().documentViews["/ws"]?.saved[0]?.sort).toEqual({
+		expect(getSavedViews("/ws")[0]?.sort).toEqual({
 			column: "prop:priority",
 			direction: "asc",
 		});
 		expect(workspaceStore.get().navViewSorts["/ws"]).toBeUndefined();
 
 		deleteSavedView(id);
-		expect(workspaceStore.get().documentViews["/ws"]?.saved).toEqual([]);
+		expect(getSavedViews("/ws")).toEqual([]);
 		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
 	});
 

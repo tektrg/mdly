@@ -1,4 +1,5 @@
 import { store } from "@simplestack/store";
+import type { ViewNameResult } from "@tektrg/table-core";
 import { workspacePathStore, workspaceStore } from "../store/state";
 import {
 	createDefaultSessionView,
@@ -7,6 +8,11 @@ import {
 	type DocumentTableSortColumn,
 	toggleSort,
 } from "./documentTableView";
+import {
+	getSavedViews,
+	updateSavedViews,
+	validateSavedViewName,
+} from "./documentViewsFileStore";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 import { groupByToViewId } from "./navHiddenViews";
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
@@ -14,7 +20,6 @@ import {
 	type DocumentViewLayout,
 	type DocumentViewType,
 	EMPTY_WORKSPACE_DOCUMENT_VIEWS,
-	MAX_SAVED_VIEW_NAME_LENGTH,
 	type PropertyFilter,
 	type SavedDocumentView,
 	sameFilter,
@@ -53,16 +58,23 @@ function currentWorkspacePath(): string | null {
 	return workspacePathStore.get() ?? null;
 }
 
+/**
+ * The workspace's views: saved views from the views file store
+ * (`documentViewsFileStore.ts`), the unsaved view's columns from localStorage.
+ */
 export function getWorkspaceDocumentViews(
 	workspacePath: string | null,
 ): WorkspaceDocumentViews {
 	if (!workspacePath) return EMPTY_WORKSPACE_DOCUMENT_VIEWS;
-	return (
-		workspaceStore.get().documentViews[workspacePath] ??
-		EMPTY_WORKSPACE_DOCUMENT_VIEWS
-	);
+	return {
+		propertyColumns:
+			workspaceStore.get().documentViews[workspacePath]?.propertyColumns ??
+			EMPTY_WORKSPACE_DOCUMENT_VIEWS.propertyColumns,
+		saved: getSavedViews(workspacePath),
+	};
 }
 
+/** Built-in ("All documents") view state only — never saved views (R12). */
 function writeWorkspaceDocumentViews(
 	workspacePath: string,
 	update: (views: WorkspaceDocumentViews) => WorkspaceDocumentViews,
@@ -119,12 +131,9 @@ function editCurrentView(edit: ViewEdit) {
 	const workspacePath = currentWorkspacePath();
 	const saved = getActiveSavedView();
 	if (saved && workspacePath) {
-		writeWorkspaceDocumentViews(workspacePath, (views) => ({
-			...views,
-			saved: views.saved.map((view) =>
-				view.id === saved.id ? { ...view, ...edit } : view,
-			),
-		}));
+		updateSavedViews(workspacePath, (views) =>
+			views.map((view) => (view.id === saved.id ? { ...view, ...edit } : view)),
+		);
 		return;
 	}
 	const layoutEdit = layoutEditOf(edit);
@@ -254,8 +263,10 @@ function newSavedViewId(): string {
 /** Snapshots the current view under `name` and switches to it. Returns its id. */
 export function saveCurrentViewAs(name: string): string | null {
 	const workspacePath = currentWorkspacePath();
-	const trimmed = name.trim().slice(0, MAX_SAVED_VIEW_NAME_LENGTH);
-	if (!workspacePath || trimmed.length === 0) return null;
+	if (!workspacePath) return null;
+	const valid = validateSavedViewName(workspacePath, name);
+	if (!valid.ok) return null;
+	const trimmed = valid.name;
 	const session = documentTableViewStore.get();
 	const saved = getActiveSavedView();
 	const view: SavedDocumentView = {
@@ -267,10 +278,7 @@ export function saveCurrentViewAs(name: string): string | null {
 		propertyColumns: [...getCurrentPropertyColumns()],
 		...getCurrentViewLayout(),
 	};
-	writeWorkspaceDocumentViews(workspacePath, (views) => ({
-		...views,
-		saved: [...views.saved, view],
-	}));
+	updateSavedViews(workspacePath, (views) => [...views, view]);
 	documentTableViewStore.set((current) => ({
 		...current,
 		activeSavedViewId: view.id,
@@ -288,25 +296,34 @@ export function selectSavedView(id: string | null) {
 	}));
 }
 
-export function renameSavedView(id: string, name: string) {
+/**
+ * Renames a saved view (R2: trimmed, non-empty, unique ignoring case, not a
+ * built-in, length-capped). Returns why when refused; nothing is written then.
+ */
+export function renameSavedView(id: string, name: string): ViewNameResult {
 	const workspacePath = currentWorkspacePath();
-	const trimmed = name.trim().slice(0, MAX_SAVED_VIEW_NAME_LENGTH);
-	if (!workspacePath || trimmed.length === 0) return;
-	writeWorkspaceDocumentViews(workspacePath, (views) => ({
-		...views,
-		saved: views.saved.map((view) =>
-			view.id === id ? { ...view, name: trimmed } : view,
-		),
-	}));
+	const valid = validateSavedViewName(workspacePath, name, id);
+	if (!workspacePath || !valid.ok) {
+		return valid.ok ? { ok: false, reason: "empty" } : valid;
+	}
+	updateSavedViews(workspacePath, (views) =>
+		views.some((view) => view.id === id)
+			? views.map((view) =>
+					view.id === id ? { ...view, name: valid.name } : view,
+				)
+			: views,
+	);
+	return valid;
 }
 
 export function deleteSavedView(id: string) {
 	const workspacePath = currentWorkspacePath();
 	if (!workspacePath) return;
-	writeWorkspaceDocumentViews(workspacePath, (views) => ({
-		...views,
-		saved: views.saved.filter((view) => view.id !== id),
-	}));
+	updateSavedViews(workspacePath, (views) =>
+		views.some((view) => view.id === id)
+			? views.filter((view) => view.id !== id)
+			: views,
+	);
 	if (documentTableViewStore.get().activeSavedViewId === id) {
 		selectSavedView(null);
 	}

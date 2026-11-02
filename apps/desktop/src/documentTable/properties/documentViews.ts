@@ -266,7 +266,7 @@ function sanitizeLayout(value: Record<string, unknown>): DocumentViewLayout {
 	};
 }
 
-function sanitizeSavedView(value: unknown): SavedDocumentView | null {
+export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 	if (!isRecord(value)) return null;
 	if (typeof value.id !== "string" || value.id.length === 0) return null;
 	if (typeof value.name !== "string") return null;

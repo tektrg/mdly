@@ -58,8 +58,9 @@ type WorkspaceState = {
 	 */
 	navViewSorts: Record<string, NavViewSorts>;
 	/**
-	 * Phase 3 saved views + the visible property columns, per workspace. Same
-	 * per-workspace-map shape as `navViewSorts`, through the same middleware.
+	 * The unsaved view's property columns, per workspace. `saved` here is
+	 * LEGACY only: saved views now live in `<workspace>/.hubble/views.json`
+	 * (`documentViewsFileStore.ts`), which imports and then empties it.
 	 */
 	documentViews: Record<string, WorkspaceDocumentViews>;
 	sortMode: SortMode;

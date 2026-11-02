@@ -9,6 +9,10 @@ import {
 	type DocumentTableView,
 	withPropertyValues,
 } from "./documentTableView";
+import {
+	savedViewsStore,
+	type WorkspaceSavedViews,
+} from "./documentViewsFileStore";
 import { groupByToViewId } from "./navHiddenViews";
 import { useNavViewSort } from "./navViewSort";
 import {
@@ -26,10 +30,35 @@ import { usePropertyModel } from "./properties/usePropertyModel";
 /** The open workspace's persisted views; a stable object when none are stored. */
 export function useWorkspaceDocumentViews(): WorkspaceDocumentViews {
 	const workspacePath = useStoreValue(workspacePathStore);
-	const stored = useStoreValue(workspaceStore, (workspace) =>
-		workspacePath ? workspace.documentViews[workspacePath] : undefined,
+	const propertyColumns = useStoreValue(workspaceStore, (workspace) =>
+		workspacePath
+			? workspace.documentViews[workspacePath]?.propertyColumns
+			: undefined,
 	);
-	return stored ?? EMPTY_WORKSPACE_DOCUMENT_VIEWS;
+	const saved = useStoreValue(savedViewsStore, (all) =>
+		workspacePath ? all[workspacePath]?.views : undefined,
+	);
+	return useMemo(
+		() =>
+			propertyColumns === undefined && saved === undefined
+				? EMPTY_WORKSPACE_DOCUMENT_VIEWS
+				: {
+						propertyColumns:
+							propertyColumns ?? EMPTY_WORKSPACE_DOCUMENT_VIEWS.propertyColumns,
+						saved: saved ?? EMPTY_WORKSPACE_DOCUMENT_VIEWS.saved,
+					},
+		[propertyColumns, saved],
+	);
+}
+
+/** The open workspace's saved-views file state (status, notice, save state). */
+export function useWorkspaceSavedViewsState(): WorkspaceSavedViews | null {
+	const workspacePath = useStoreValue(workspacePathStore);
+	return (
+		useStoreValue(savedViewsStore, (all) =>
+			workspacePath ? all[workspacePath] : undefined,
+		) ?? null
+	);
 }
 
 export type CurrentDocumentView = {

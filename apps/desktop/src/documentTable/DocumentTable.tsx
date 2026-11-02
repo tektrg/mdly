@@ -40,6 +40,7 @@ import {
 	type PropertyFieldId,
 } from "./properties/propertyFields";
 import { usePropertyScanState } from "./properties/usePropertyModel";
+import { SavedViewsBanner } from "./SavedViewsBanner";
 import { useCurrentDocumentView } from "./useDocumentTableRows";
 import { DocumentBoard } from "./views/DocumentBoard";
 import { DocumentCalendar } from "./views/DocumentCalendar";
@@ -435,6 +436,7 @@ export function DocumentTable({
 					/>
 				</div>
 			</header>
+			<SavedViewsBanner />
 			<PropertyViewBar
 				view={view}
 				fields={propertyFields}
