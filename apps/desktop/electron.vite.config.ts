@@ -45,6 +45,8 @@ export default defineConfig({
 					"@tiptap/core",
 					"@tiptap/extension-list",
 					"@tektrg/diagram-kit",
+					// ESM-only (exports has no "require"), used by the views.json adapter.
+					"@tektrg/table-core",
 					"@mdly/workspace-kit",
 					"@mdly/workspace-kit/file-discovery",
 					"@mdly/doc-history",
