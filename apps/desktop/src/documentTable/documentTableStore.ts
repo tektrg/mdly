@@ -10,11 +10,17 @@ import {
 } from "./documentTableView";
 import {
 	getSavedViews,
+	getWorkspaceSavedViews,
+	savedViewsStore,
 	updateSavedViews,
 	validateSavedViewName,
 } from "./documentViewsFileStore";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
-import { groupByToViewId } from "./navHiddenViews";
+import {
+	groupByToViewId,
+	type NavViewId,
+	viewIdToGroupBy,
+} from "./navHiddenViews";
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
 import {
 	type DocumentViewLayout,
@@ -279,21 +285,44 @@ export function saveCurrentViewAs(name: string): string | null {
 		...getCurrentViewLayout(),
 	};
 	updateSavedViews(workspacePath, (views) => [...views, view]);
-	documentTableViewStore.set((current) => ({
-		...current,
-		activeSavedViewId: view.id,
-		groupBy: null,
-	}));
+	selectSavedView(view.id);
 	return view.id;
 }
 
-/** Shows a saved view, or (null) the unsaved "All documents" view. */
+/** R3: remembers (or forgets, null) the selected saved view for a workspace. */
+function rememberSelectedSavedView(
+	workspacePath: string | null,
+	id: string | null,
+) {
+	if (!workspacePath) return;
+	const current = workspaceStore.get().selectedSavedViews[workspacePath];
+	if ((current ?? null) === id) return;
+	workspaceStore.set((state) => {
+		const { [workspacePath]: _dropped, ...rest } = state.selectedSavedViews;
+		return {
+			...state,
+			selectedSavedViews: id ? { ...rest, [workspacePath]: id } : rest,
+		};
+	});
+}
+
+/** Shows a saved view, or (null) the unsaved Recent view. */
 export function selectSavedView(id: string | null) {
 	documentTableViewStore.set((view) => ({
 		...view,
 		activeSavedViewId: id,
 		groupBy: null,
 	}));
+	rememberSelectedSavedView(currentWorkspacePath(), id);
+}
+
+/** View-switcher pick of a built-in (Recent / Folder / Tag): leaves any saved view. */
+export function selectBuiltInView(view: NavViewId) {
+	if (view === "recent") {
+		selectSavedView(null);
+		return;
+	}
+	setDocumentTableGroupBy(viewIdToGroupBy(view));
 }
 
 /**
@@ -324,8 +353,11 @@ export function deleteSavedView(id: string) {
 			? views.filter((view) => view.id !== id)
 			: views,
 	);
+	// R3: deleting the active view lands on Recent, never a blank selection.
 	if (documentTableViewStore.get().activeSavedViewId === id) {
 		selectSavedView(null);
+	} else if (workspaceStore.get().selectedSavedViews[workspacePath] === id) {
+		rememberSelectedSavedView(workspacePath, null);
 	}
 }
 
@@ -341,6 +373,7 @@ export function setDocumentTableGroupBy(groupBy: NavGroupBy) {
 			? { ...view, groupBy }
 			: { ...view, groupBy, propertyGroupBy: null, activeSavedViewId: null },
 	);
+	if (groupBy !== null) rememberSelectedSavedView(currentWorkspacePath(), null);
 }
 
 /** A7: the mode the query is read in. Grouping and pinning follow from it. */
@@ -359,6 +392,41 @@ export function resetDocumentTableView() {
 // purpose (defect 4, EC-72): the view resets on a workspace switch exactly as
 // the sidebar's active page did, and survives no relaunch. One store owns it,
 // so there is no second copy to reset in a different order.
+/** R3: a workspace opens on its remembered saved view (if any). */
+function restoreSelectedSavedView() {
+	const workspacePath = currentWorkspacePath();
+	const id = workspacePath
+		? (workspaceStore.get().selectedSavedViews[workspacePath] ?? null)
+		: null;
+	if (id) {
+		documentTableViewStore.set((view) => ({
+			...view,
+			activeSavedViewId: id,
+			groupBy: null,
+		}));
+	}
+}
+
+/**
+ * R3: once the workspace's file has been read, a selected view that is not in
+ * it falls back to Recent. Only a definite answer counts: while loading (the
+ * built-ins-only first paint) or when the file is corrupt/unreadable, the
+ * selection is kept — the view may still be there.
+ */
+function reconcileSelectedSavedView() {
+	const workspacePath = currentWorkspacePath();
+	const id = documentTableViewStore.get().activeSavedViewId;
+	if (!workspacePath || !id) return;
+	const { status, views } = getWorkspaceSavedViews(workspacePath);
+	if (status !== "ok" && status !== "missing") return;
+	if (views.some((view) => view.id === id)) return;
+	selectSavedView(null);
+}
+
 workspacePathStore.subscribe(() => {
 	resetDocumentTableView();
+	restoreSelectedSavedView();
+	reconcileSelectedSavedView();
 });
+restoreSelectedSavedView();
+savedViewsStore.subscribe(() => reconcileSelectedSavedView());

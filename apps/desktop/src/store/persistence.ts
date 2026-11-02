@@ -58,6 +58,12 @@ type WorkspaceState = {
 	 */
 	navViewSorts: Record<string, NavViewSorts>;
 	/**
+	 * Saved views R3: the saved view selected in the view switcher, per
+	 * workspace, so it is restored after restart. Only ids — never stored in
+	 * `navHiddenViews` (R4).
+	 */
+	selectedSavedViews: Record<string, string>;
+	/**
 	 * The unsaved view's property columns, per workspace. `saved` here is
 	 * LEGACY only: saved views now live in `<workspace>/.hubble/views.json`
 	 * (`documentViewsFileStore.ts`), which imports and then empties it.
@@ -150,6 +156,7 @@ type Persisted = {
 		navExpandedGroups?: Record<string, string[]>;
 		navHiddenViews?: Record<string, string[]>;
 		navViewSorts?: Record<string, NavViewSorts>;
+		selectedSavedViews?: unknown;
 		documentViews?: unknown;
 		sortMode?: SortMode;
 	};
@@ -232,6 +239,18 @@ function sanitizeNavHiddenViews(value: unknown): Record<string, string[]> {
 	return hidden;
 }
 
+/** Keeps only non-empty string ids keyed by workspace path. */
+function sanitizeSelectedSavedViews(value: unknown): Record<string, string> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	const selected: Record<string, string> = {};
+	for (const [workspacePath, id] of Object.entries(
+		value as Record<string, unknown>,
+	)) {
+		if (typeof id === "string" && id.length > 0) selected[workspacePath] = id;
+	}
+	return selected;
+}
+
 function isValidNavViewSort(value: unknown): value is DocumentTableSort {
 	if (!value || typeof value !== "object") return false;
 	const { column, direction } = value as Record<string, unknown>;
@@ -282,6 +301,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
 		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
 		navViewSorts: sanitizeNavViewSorts(ws?.navViewSorts),
+		selectedSavedViews: sanitizeSelectedSavedViews(ws?.selectedSavedViews),
 		documentViews: sanitizeDocumentViews(ws?.documentViews),
 		sortMode: ws?.sortMode === "alpha" ? "alpha" : "recent",
 		files: [],
@@ -387,6 +407,7 @@ export function serialize(state: DesktopState): Persisted {
 			navExpandedGroups: state.workspace.navExpandedGroups,
 			navHiddenViews: state.workspace.navHiddenViews,
 			navViewSorts: state.workspace.navViewSorts,
+			selectedSavedViews: state.workspace.selectedSavedViews,
 			documentViews: state.workspace.documentViews,
 			sortMode: state.workspace.sortMode,
 		},
