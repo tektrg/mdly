@@ -24,7 +24,12 @@ import type {
 	DocumentTableSort,
 	DocumentTableView,
 } from "./documentTableView";
-import { propertyFiltersToFilterGroup } from "./properties/documentViews";
+import {
+	isPropertyValueFilter,
+	matchesFolderFilters,
+	type PropertyFilter,
+	propertyFiltersToFilterGroup,
+} from "./properties/documentViews";
 import {
 	isPropertyFieldId,
 	type PropertyField,
@@ -154,8 +159,28 @@ function referencesMissingField(
 	view: EngineView,
 	propertyFields: readonly PropertyField[],
 ): boolean {
-	return (view.propertyFilters ?? []).some(
-		(filter) => !propertyFields.some((field) => field.id === filter.fieldId),
+	return (view.propertyFilters ?? [])
+		.filter(isPropertyValueFilter)
+		.some(
+			(filter) => !propertyFields.some((field) => field.id === filter.fieldId),
+		);
+}
+
+/** The row's workspace-relative path as `folder:` matching needs it. */
+function rowFolderPath(row: DocumentTableRow): string {
+	// Only the folder decides membership; the leaf name is a placeholder so a
+	// root file (`AptusFit.md`) is never "inside" a folder (R7).
+	return row.folderLabel === ROOT_FOLDER_LABEL ? "_" : `${row.folderLabel}/_`;
+}
+
+/** `folder:` chips AND-ed over the rows; the same predicate on both paths. */
+function applyFolderFilters(
+	rows: DocumentTableRow[],
+	filters: readonly PropertyFilter[],
+): DocumentTableRow[] {
+	if (!filters.some((filter) => filter.kind === "folder")) return rows;
+	return rows.filter((row) =>
+		matchesFolderFilters(rowFolderPath(row), filters),
 	);
 }
 
@@ -213,10 +238,9 @@ function evaluateDocumentRows(
 	propertyFields: readonly PropertyField[] = [],
 ): DocumentTableRow[] {
 	if (referencesMissingField(view, propertyFields)) return [];
-	return runEvaluate(
-		toDocumentViewSpec(view, propertyFields),
-		rows,
-		propertyFields,
+	return applyFolderFilters(
+		runEvaluate(toDocumentViewSpec(view, propertyFields), rows, propertyFields),
+		view.propertyFilters ?? [],
 	);
 }
 
@@ -279,15 +303,21 @@ function applyPropertyFilters(
 	) {
 		return propertyFilteredMemo.filtered;
 	}
-	const filtered = runEvaluate(
-		{
-			specVersion: SPEC_VERSION,
-			viewType: "table",
-			filter: propertyFiltersToFilterGroup(filters, propertyFields),
-			tieBreak: "sourceOrder",
-		},
-		sorted,
-		propertyFields,
+	const valueGroup = propertyFiltersToFilterGroup(filters, propertyFields);
+	const filtered = applyFolderFilters(
+		valueGroup
+			? runEvaluate(
+					{
+						specVersion: SPEC_VERSION,
+						viewType: "table",
+						filter: valueGroup,
+						tieBreak: "sourceOrder",
+					},
+					sorted,
+					propertyFields,
+				)
+			: sorted,
+		filters,
 	);
 	propertyFilteredMemo = { sorted, filtersKey, filtered };
 	return filtered;

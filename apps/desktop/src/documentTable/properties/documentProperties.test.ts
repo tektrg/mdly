@@ -9,7 +9,7 @@ import {
 	resetDocumentRowsMemo,
 	withPropertyValues,
 } from "../documentTableView";
-import type { PropertyFilter } from "./documentViews";
+import { type PropertyFilter, sanitizeDocumentViews } from "./documentViews";
 import { derivePropertyModel } from "./propertyFields";
 import { buildPropertyGroupTree } from "./propertyGroupTree";
 
@@ -225,5 +225,114 @@ describe("group by property (table-core groupBy)", () => {
 			fields,
 		).children.find((group) => group.label === "Todo");
 		expect(todo?.ownPaths).toEqual(["/ws/c.md", "/ws/a.md"]);
+	});
+});
+
+describe("folder:<path> filter (saved views R7-R10)", () => {
+	const FOLDER_PROPS: Record<string, Props> = {
+		"/ws/AptusFit/a.md": { status: t("Todo") },
+		"/ws/AptusFit/x/y/b.md": {},
+		"/ws/AptusFitOld/c.md": { status: t("Todo") },
+		"/ws/AptusFit.md": {},
+		"/ws/other/d.md": {},
+		"/ws/My Notes/e.md": {},
+		"/ws/Café/f.md": {},
+	};
+	const folder = (path: string): PropertyFilter => ({ kind: "folder", path });
+	const both = (
+		rows: ReturnType<typeof setup>["rows"],
+		v: DocumentTableView,
+		fields: ReturnType<typeof setup>["fields"],
+	) => {
+		const fast = names(rows, v, fields).sort();
+		const reference = evaluateDocumentRowsForTest(rows, v, fields)
+			.map((row) => row.name)
+			.sort();
+		expect(fast).toEqual(reference);
+		return fast;
+	};
+
+	it("matches the folder and every subfolder, never a prefix sibling or same-named root file", () => {
+		const { rows, fields } = setup(FOLDER_PROPS);
+		expect(
+			both(rows, view({ propertyFilters: [folder("AptusFit")] }), fields),
+		).toEqual(["a", "b"]);
+		expect(
+			both(rows, view({ propertyFilters: [folder("aptusfit/")] }), fields),
+		).toEqual(["a", "b"]);
+		expect(
+			both(rows, view({ propertyFilters: [folder("AptusFit/x")] }), fields),
+		).toEqual(["b"]);
+	});
+
+	it("spaces and NFC/NFD both match; empty, missing and escaping paths give zero rows", () => {
+		const { rows, fields } = setup(FOLDER_PROPS);
+		expect(
+			both(rows, view({ propertyFilters: [folder("My Notes")] }), fields),
+		).toEqual(["e"]);
+		expect(
+			both(rows, view({ propertyFilters: [folder("Café")] }), fields),
+		).toEqual(["f"]);
+		for (const bad of ["", "Nope", "..", "/ws", "~", "AptusFit/../.."]) {
+			expect(
+				both(rows, view({ propertyFilters: [folder(bad)] }), fields),
+			).toEqual([]);
+		}
+	});
+
+	it("is AND-ed with has/is chips and the name box", () => {
+		const { rows, fields } = setup(FOLDER_PROPS);
+		const has: PropertyFilter = { fieldId: "prop:status", kind: "has" };
+		expect(
+			both(rows, view({ propertyFilters: [folder("AptusFit"), has] }), fields),
+		).toEqual(["a"]);
+		expect(
+			both(
+				rows,
+				view({ filter: "b", propertyFilters: [folder("AptusFit")] }),
+				fields,
+			),
+		).toEqual(["b"]);
+	});
+
+	it("updates live when a file moves into or out of the folder (new listing)", () => {
+		const v = view({ propertyFilters: [folder("AptusFit")] });
+		const before = setup(FOLDER_PROPS);
+		expect(names(before.rows, v, before.fields).sort()).toEqual(["a", "b"]);
+		const moved = { ...FOLDER_PROPS };
+		delete moved["/ws/AptusFit/a.md"];
+		moved["/ws/other/a.md"] = {};
+		moved["/ws/AptusFit/d2.md"] = {};
+		const after = setup(moved);
+		expect(names(after.rows, v, after.fields).sort()).toEqual(["b", "d2"]);
+	});
+
+	it("a view whose folder chip points nowhere still loads with the chip kept (R8)", () => {
+		const loaded = sanitizeDocumentViews({
+			"/ws": {
+				saved: [
+					{
+						id: "v",
+						name: "Gone",
+						filters: [
+							{ kind: "folder", path: "Deleted/Folder" },
+							{ kind: "folder" },
+						],
+					},
+				],
+			},
+		});
+		expect(loaded["/ws"].saved[0].filters).toEqual([
+			{ kind: "folder", path: "Deleted/Folder" },
+		]);
+	});
+
+	it("has/is results are unchanged when no folder chip is present (R9)", () => {
+		const { rows, fields } = setup();
+		const has: PropertyFilter = { fieldId: "prop:priority", kind: "has" };
+		expect(names(rows, view({ propertyFilters: [has] }), fields)).toEqual([
+			"b",
+			"a",
+		]);
 	});
 });

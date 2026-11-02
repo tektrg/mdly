@@ -4,10 +4,11 @@
  * Pure and store-free, so persistence can sanitize with it and the engine can
  * compile it without importing React or the stores.
  */
-import type {
-	FilterCondition,
-	FilterGroup,
-	ScalarValue,
+import {
+	type FilterCondition,
+	type FilterGroup,
+	matchesFolder,
+	type ScalarValue,
 } from "@tektrg/table-core";
 import type { DocumentTableSort } from "../documentTableView";
 import {
@@ -22,9 +23,29 @@ import {
  * `has` = carries a non-empty value; `is` = equals a value (has the tag, for a
  * multi-value field).
  */
-export type PropertyFilter =
+export type PropertyFilter = PropertyValueFilter | FolderFilter;
+
+/** A `has`/`is` chip on one property field. */
+export type PropertyValueFilter =
 	| { fieldId: PropertyFieldId; kind: "has" }
 	| { fieldId: PropertyFieldId; kind: "is"; value: ScalarValue };
+
+/**
+ * Built-in read-only `folder:<path>` chip (saved views R7-R10): documents in
+ * that workspace-relative folder or any subfolder, matched by table-core's
+ * `matchesFolder` (case/NFC-insensitive; empty or escaping paths match none).
+ */
+export type FolderFilter = { kind: "folder"; path: string };
+
+export function isFolderFilter(filter: PropertyFilter): filter is FolderFilter {
+	return filter.kind === "folder";
+}
+
+export function isPropertyValueFilter(
+	filter: PropertyFilter,
+): filter is PropertyValueFilter {
+	return filter.kind !== "folder";
+}
 
 /** How a view lays its documents out. Views saved before step 5 are tables. */
 export type DocumentViewType = "table" | "board" | "calendar";
@@ -74,6 +95,9 @@ export const EMPTY_WORKSPACE_DOCUMENT_VIEWS: WorkspaceDocumentViews = {
 export const MAX_SAVED_VIEW_NAME_LENGTH = 60;
 
 export function sameFilter(a: PropertyFilter, b: PropertyFilter): boolean {
+	if (a.kind === "folder" || b.kind === "folder") {
+		return a.kind === "folder" && b.kind === "folder" && a.path === b.path;
+	}
 	return (
 		a.fieldId === b.fieldId &&
 		a.kind === b.kind &&
@@ -95,6 +119,7 @@ export function describePropertyFilter(
 	filter: PropertyFilter,
 	fields: readonly PropertyField[],
 ): string {
+	if (filter.kind === "folder") return `folder:${filter.path}`;
 	const label = fieldLabel(filter.fieldId, fields);
 	if (filter.kind === "has") return `has ${label}`;
 	const value =
@@ -117,7 +142,7 @@ export function describeGroupBy(
 }
 
 function toCondition(
-	filter: PropertyFilter,
+	filter: PropertyValueFilter,
 	fields: readonly PropertyField[],
 ): FilterCondition {
 	if (filter.kind === "has") {
@@ -136,17 +161,38 @@ function toCondition(
 	};
 }
 
-/** All chips AND-ed into one engine filter; undefined when there are none. */
+/**
+ * All property (`has`/`is`) chips AND-ed into one engine filter; undefined
+ * when there are none. `folder:` chips are not engine conditions — callers
+ * AND them in with `matchesFolderFilters` on every evaluation path.
+ */
 export function propertyFiltersToFilterGroup(
 	filters: readonly PropertyFilter[],
 	fields: readonly PropertyField[],
 ): FilterGroup | undefined {
-	if (filters.length === 0) return undefined;
+	const valueFilters = filters.filter(isPropertyValueFilter);
+	if (valueFilters.length === 0) return undefined;
 	return {
 		kind: "group",
 		combinator: "and",
-		children: filters.map((filter) => toCondition(filter, fields)),
+		children: valueFilters.map((filter) => toCondition(filter, fields)),
 	};
+}
+
+/**
+ * True when the workspace-relative `docPath` satisfies every `folder:` chip
+ * (AND). No folder chips → true.
+ */
+export function matchesFolderFilters(
+	docPath: string,
+	filters: readonly PropertyFilter[],
+): boolean {
+	for (const filter of filters) {
+		if (filter.kind === "folder" && !matchesFolder(docPath, filter.path)) {
+			return false;
+		}
+	}
+	return true;
 }
 
 // --- sanitizing persisted JSON -------------------------------------------
@@ -156,7 +202,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function sanitizeFilter(value: unknown): PropertyFilter | null {
-	if (!isRecord(value) || !isPropertyFieldId(value.fieldId)) return null;
+	if (!isRecord(value)) return null;
+	if (value.kind === "folder") {
+		// Kept even when the folder is gone or the path is unsafe: it then
+		// matches nothing (R8), and the view is never dropped for it.
+		return typeof value.path === "string"
+			? { kind: "folder", path: value.path }
+			: null;
+	}
+	if (!isPropertyFieldId(value.fieldId)) return null;
 	if (value.kind === "has") return { fieldId: value.fieldId, kind: "has" };
 	const scalar = value.value;
 	if (
