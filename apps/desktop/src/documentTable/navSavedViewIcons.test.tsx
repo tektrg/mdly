@@ -212,6 +212,26 @@ describe("saved views in the view switcher", () => {
 		expect(documentTableViewStore.get().groupBy).toBe("tag");
 	});
 
+	it("R3: before the remembered view has loaded, a swipe cannot replace it", async () => {
+		renderNarrow("list");
+		await act(async () => {
+			documentTableViewStore.set((view) => ({
+				...view,
+				activeSavedViewId: "not-loaded-yet",
+			}));
+		});
+		const groups = container.querySelectorAll<HTMLElement>('[role="rowgroup"]');
+		await act(async () => {
+			groups[groups.length - 1]?.dispatchEvent(
+				new WheelEvent("wheel", { deltaX: 80, deltaY: 0, bubbles: true }),
+			);
+		});
+		expect(documentTableViewStore.get().activeSavedViewId).toBe(
+			"not-loaded-yet",
+		);
+		expect(documentTableViewStore.get().groupBy).toBeNull();
+	});
+
 	function openMenu(key: string, attr = "data-nav-view-option") {
 		const el = container.querySelector<HTMLElement>(`[${attr}="${key}"]`);
 		act(() => {

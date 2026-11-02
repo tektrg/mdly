@@ -110,6 +110,9 @@ export function useNavViewSwitcher() {
 		),
 		pageCount: entries.length,
 		onPageChange: (page) => {
+			// First paint (remembered saved view not loaded yet): paging from a
+			// guessed page 0 would replace the remembered view (R3).
+			if (activeKey === null) return;
 			const entry = entries[page];
 			if (entry !== undefined) selectEntry(entry);
 		},
