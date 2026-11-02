@@ -251,6 +251,24 @@ function foldFileName(fileName: string): string {
  * the keystroke path: typing in the filter box re-runs filter+sort only.
  * Reads nothing from disk — everything comes from the listing already in memory.
  */
+/**
+ * Every workspace folder holding a document, plus its ancestors, sorted; the
+ * "+ Folder" filter picker's choices. Root documents contribute nothing.
+ */
+export function workspaceFolderPaths(
+	rows: readonly Pick<DocumentTableRow, "folderLabel">[],
+): string[] {
+	const paths = new Set<string>();
+	for (const { folderLabel } of rows) {
+		if (folderLabel === ROOT_FOLDER_LABEL) continue;
+		const parts = folderLabel.split("/");
+		for (let i = 1; i <= parts.length; i++) {
+			paths.add(parts.slice(0, i).join("/"));
+		}
+	}
+	return [...paths].sort((a, b) => a.localeCompare(b));
+}
+
 export function buildDocumentRows(
 	files: FileEntry[],
 	workspacePath: string | null,

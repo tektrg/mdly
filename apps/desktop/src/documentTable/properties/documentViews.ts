@@ -119,7 +119,7 @@ export function describePropertyFilter(
 	filter: PropertyFilter,
 	fields: readonly PropertyField[],
 ): string {
-	if (filter.kind === "folder") return `folder:${filter.path}`;
+	if (filter.kind === "folder") return `Folder: ${filter.path}`;
 	const label = fieldLabel(filter.fieldId, fields);
 	if (filter.kind === "has") return `has ${label}`;
 	const value =

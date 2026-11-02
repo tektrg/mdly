@@ -41,7 +41,10 @@ import {
 } from "./properties/propertyFields";
 import { usePropertyScanState } from "./properties/usePropertyModel";
 import { SavedViewsBanner } from "./SavedViewsBanner";
-import { useCurrentDocumentView } from "./useDocumentTableRows";
+import {
+	useCurrentDocumentView,
+	useWorkspaceFolderPaths,
+} from "./useDocumentTableRows";
 import { DocumentBoard } from "./views/DocumentBoard";
 import { DocumentCalendar } from "./views/DocumentCalendar";
 import { ViewTypeSwitcher } from "./views/ViewTypeSwitcher";
@@ -385,6 +388,7 @@ export function DocumentTable({
 	const { isCustomized, propertyColumns } = useDocumentTableLayout();
 	const { savedView, propertyFields, layout } = useCurrentDocumentView();
 	const propertyScan = usePropertyScanState();
+	const folders = useWorkspaceFolderPaths();
 	const isReadingProperties =
 		propertyScan.status === "scanning" || propertyScan.status === "idle";
 	const canSaveView =
@@ -436,6 +440,7 @@ export function DocumentTable({
 				view={view}
 				fields={propertyFields}
 				scan={propertyScan}
+				folders={folders}
 			/>
 			{layout.viewType === "board" ? (
 				<DocumentBoard

@@ -1,16 +1,23 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import { cn } from "../../lib/utils";
 import { workspacePathStore } from "../../store/state";
 import {
+	addPropertyFilter,
 	removePropertyFilter,
+	replacePropertyFilter,
 	saveCurrentViewAs,
 	setPropertyGroupBy,
 } from "../documentTableStore";
 import type { DocumentTableView } from "../documentTableView";
 import { validateSavedViewName } from "../documentViewsFileStore";
 import { SavedViewNameInput } from "../SavedViewControls";
-import { describeGroupBy, describePropertyFilter } from "./documentViews";
+import {
+	describeGroupBy,
+	describePropertyFilter,
+	type FolderFilter,
+	isFolderFilter,
+} from "./documentViews";
 import type { PropertyField } from "./propertyFields";
 import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
@@ -67,22 +74,34 @@ export function PropertyViewBar({
 	view,
 	fields,
 	scan,
+	folders = [],
 }: {
 	view: DocumentTableView;
 	fields: readonly PropertyField[];
 	scan: PropertyScanState;
+	/** Workspace folders for the "+ Folder" picker (PO 2026-11-02). */
+	folders?: readonly string[];
 }) {
 	const status = scanStatusText(scan);
-	const hasChips =
-		view.propertyFilters.length > 0 || view.propertyGroupBy !== null;
-	if (!hasChips && !status) return null;
 	return (
 		<div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 [padding-block-end:0.5rem]">
 			{view.propertyFilters.map((filter) => {
 				const label = describePropertyFilter(filter, fields);
 				return (
 					<span key={label} className={CHIP_CLASS}>
-						<span className="truncate">{label}</span>
+						{isFolderFilter(filter) ? (
+							<FolderPicker
+								folders={folders}
+								current={filter.path}
+								triggerClassName="truncate outline-hidden hover:underline focus-visible:underline"
+								triggerLabel={label}
+								onPick={(path) =>
+									replacePropertyFilter(filter, { kind: "folder", path })
+								}
+							/>
+						) : (
+							<span className="truncate">{label}</span>
+						)}
 						<button
 							type="button"
 							className={CHIP_REMOVE_CLASS}
@@ -111,6 +130,16 @@ export function PropertyViewBar({
 					</button>
 				</span>
 			) : null}
+			<FolderPicker
+				folders={folders}
+				current={null}
+				triggerClassName={cn(
+					TAB_CLASS,
+					"h-6 text-[11px] text-muted-foreground hover:bg-accent",
+				)}
+				triggerLabel="+ Folder"
+				onPick={(path) => addPropertyFilter({ kind: "folder", path })}
+			/>
 			{status ? (
 				<span
 					role="status"
@@ -130,5 +159,106 @@ export function PropertyViewBar({
 				</span>
 			) : null}
 		</div>
+	);
+}
+
+/**
+ * "+ Folder" / folder-chip picker: a searchable list of workspace folders.
+ * The only way to enter a folder filter (no typed syntax, PO 2026-11-02).
+ */
+function FolderPicker({
+	folders,
+	current,
+	triggerClassName,
+	triggerLabel,
+	onPick,
+}: {
+	folders: readonly string[];
+	current: FolderFilter["path"] | null;
+	triggerClassName: string;
+	triggerLabel: string;
+	onPick: (path: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const ref = useRef<HTMLSpanElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		const onDown = (event: MouseEvent) => {
+			if (!ref.current?.contains(event.target as Node)) setOpen(false);
+		};
+		document.addEventListener("mousedown", onDown);
+		return () => document.removeEventListener("mousedown", onDown);
+	}, [open]);
+	const needle = query.trim().toLowerCase();
+	const shown = needle
+		? folders.filter((folder) => folder.toLowerCase().includes(needle))
+		: folders;
+	return (
+		<span ref={ref} className="relative inline-flex min-w-0">
+			<button
+				type="button"
+				className={triggerClassName}
+				aria-haspopup="listbox"
+				aria-expanded={open}
+				onClick={() => {
+					setQuery("");
+					setOpen((value) => !value);
+				}}
+			>
+				{triggerLabel}
+			</button>
+			{open ? (
+				<div
+					role="dialog"
+					aria-label="Choose a folder"
+					className="absolute top-full z-50 mt-1 flex w-64 flex-col gap-1 rounded-md border border-border bg-popover p-1.5 text-[11px] text-popover-foreground shadow-overlay [inset-inline-start:0]"
+					onKeyDown={(event) => {
+						if (event.key === "Escape") setOpen(false);
+					}}
+				>
+					<input
+						// biome-ignore lint/a11y/noAutofocus: picker opened by an explicit click
+						autoFocus
+						aria-label="Search folders"
+						placeholder="Search folders…"
+						className="h-6 rounded border border-border bg-transparent px-1.5 outline-hidden"
+						value={query}
+						onChange={(event) => setQuery(event.target.value)}
+					/>
+					<span
+						role="listbox"
+						className="flex max-h-64 flex-col overflow-y-auto"
+					>
+						{shown.length === 0 ? (
+							<span className="px-1.5 py-1 text-muted-foreground">
+								No folders
+							</span>
+						) : (
+							shown.map((folder) => (
+								<span
+									key={folder}
+									role="option"
+									tabIndex={0}
+									aria-selected={folder === current}
+									className="cursor-default truncate rounded px-1.5 py-1 hover:bg-accent focus-visible:bg-accent outline-hidden"
+									onClick={() => {
+										setOpen(false);
+										if (folder !== current) onPick(folder);
+									}}
+									onKeyDown={(event) => {
+										if (event.key !== "Enter") return;
+										setOpen(false);
+										if (folder !== current) onPick(folder);
+									}}
+								>
+									{folder}
+								</span>
+							))
+						)}
+					</span>
+				</div>
+			) : null}
+		</span>
 	);
 }

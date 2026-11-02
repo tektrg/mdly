@@ -246,6 +246,18 @@ export function removePropertyFilter(filter: PropertyFilter) {
 	});
 }
 
+/** Swaps one chip for another in place (the folder chip's picker edit). */
+export function replacePropertyFilter(
+	previous: PropertyFilter,
+	next: PropertyFilter,
+) {
+	const filters = getCurrentPropertyFilters().filter(
+		(existing) =>
+			!sameFilter(existing, previous) && !sameFilter(existing, next),
+	);
+	editCurrentView({ filters: [...filters, next] });
+}
+
 export function setPropertyGroupBy(fieldId: PropertyFieldId | null) {
 	editCurrentView({ groupBy: fieldId });
 }

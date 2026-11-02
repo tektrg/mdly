@@ -8,6 +8,7 @@ import {
 	type DocumentTableRow,
 	type DocumentTableView,
 	withPropertyValues,
+	workspaceFolderPaths,
 } from "./documentTableView";
 import {
 	savedViewsStore,
@@ -157,4 +158,14 @@ export function useDocumentTableRows(activePath: string | null): {
 		],
 	);
 	return { rows, view };
+}
+
+/** The open workspace's folders (unfiltered), for the "+ Folder" picker. */
+export function useWorkspaceFolderPaths(): string[] {
+	const files = useStoreValue(workspaceStore, (workspace) => workspace.files);
+	const workspacePath = useStoreValue(workspacePathStore);
+	return useMemo(
+		() => workspaceFolderPaths(buildDocumentRows(files, workspacePath ?? null)),
+		[files, workspacePath],
+	);
 }
