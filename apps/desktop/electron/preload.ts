@@ -47,6 +47,16 @@ const desktopApi = {
 			workspacePath,
 			config,
 		}),
+	readWorkspaceViews: (workspacePath) =>
+		ipcRenderer.invoke("desktop:views-read", { workspacePath }),
+	writeWorkspaceViews: (workspacePath, file, expected) =>
+		ipcRenderer.invoke("desktop:views-write", {
+			workspacePath,
+			file,
+			expected,
+		}),
+	resetCorruptWorkspaceViews: (workspacePath, file) =>
+		ipcRenderer.invoke("desktop:views-reset-corrupt", { workspacePath, file }),
 	getCloudSyncState: (workspacePath) =>
 		ipcRenderer.invoke("desktop:cloud-sync-get-state", { workspacePath }),
 	enableCloudSync: (workspacePath, options) =>

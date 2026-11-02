@@ -1,5 +1,11 @@
 // Type-only: the rules live in `@mdly/workspace-scan`'s files-scope module.
 import type { FilesScope } from "@mdly/workspace-kit/file-discovery";
+import type {
+	ViewStoreReadResult,
+	ViewStoreSnapshot,
+	ViewStoreWriteResult,
+	ViewsFile,
+} from "@tektrg/table-core";
 
 export type {
 	FilesScope,
@@ -477,6 +483,19 @@ export type DesktopApi = {
 		workspacePath: string,
 		config: WorkspaceConfig,
 	): Promise<void>;
+	/** Saved views: strict read of `<workspace>/.hubble/views.json` (never error → empty). */
+	readWorkspaceViews(workspacePath: string): Promise<ViewStoreReadResult>;
+	/** Compare-and-swap write; `expected` null = the file must not exist yet. */
+	writeWorkspaceViews(
+		workspacePath: string,
+		file: ViewsFile,
+		expected: ViewStoreSnapshot | null,
+	): Promise<ViewStoreWriteResult>;
+	/** Backs a corrupt views.json up to `views.json.corrupt-<ts>`, then writes `file`. */
+	resetCorruptWorkspaceViews(
+		workspacePath: string,
+		file: ViewsFile,
+	): Promise<ViewStoreWriteResult>;
 	/** Read-only: never starts or stops a watcher/subscription (R27, R29). */
 	getCloudSyncState(workspacePath: string): Promise<CloudSyncWorkspaceState>;
 	/** Turns Cloud Sync on for this workspace (R26/R27's opt-in half, R28). */

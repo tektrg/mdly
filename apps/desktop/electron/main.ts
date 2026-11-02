@@ -100,6 +100,7 @@ import {
 } from "./filesScopeWiring";
 import { scanFrontMatterTags } from "./frontMatterTags";
 import { installMainProcessErrorHandlers } from "./mainProcessErrors";
+import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
 	agentMcpConnectCommand,
 	type RunningAgentMcpServer,
@@ -1584,6 +1585,27 @@ function registerIpc() {
 			await fs.writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`);
 			grantFile(configPath);
 		},
+	);
+
+	// Saved views (R11/R13/R18/R21): `<workspace>/.hubble/views.json` through
+	// the ViewStore adapter. Same root check as the files-scope handlers.
+	ipcMain.handle("desktop:views-read", async (_event, { workspacePath }) =>
+		createWorkspaceViewStore(assertGrantedRoot(workspacePath)).read(),
+	);
+	ipcMain.handle(
+		"desktop:views-write",
+		async (_event, { workspacePath, file, expected }) =>
+			createWorkspaceViewStore(assertGrantedRoot(workspacePath)).write(
+				file,
+				expected ?? null,
+			),
+	);
+	ipcMain.handle(
+		"desktop:views-reset-corrupt",
+		async (_event, { workspacePath, file }) =>
+			createWorkspaceViewStore(assertGrantedRoot(workspacePath)).resetCorrupt(
+				file,
+			),
 	);
 
 	ipcMain.handle(
