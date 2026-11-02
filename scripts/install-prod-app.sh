@@ -96,43 +96,42 @@ rm -rf "$INSTALLED_APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
 	-f "$INSTALLED_APP"
 
-if ! open "$INSTALLED_APP"; then
+# Main-process stdout/stderr go to a log so the launch smoke can read a crash
+# without Accessibility (osascript System Events fails over SSH, -25211).
+LAUNCH_LOG="${TMPDIR:-/tmp}/mdly-prod-launch.log"
+: >"$LAUNCH_LOG"
+if ! open --env ELECTRON_ENABLE_LOGGING=1 --stdout "$LAUNCH_LOG" --stderr "$LAUNCH_LOG" "$INSTALLED_APP"; then
 	echo "[prod-app] installed $INSTALLED_APP but relaunch needs a local double-click (no GUI session); launch smoke skipped"
 	exit 0
 fi
 
 # 3. Launch smoke: a main-process crash (e.g. a require() the packaged app can't
-#    resolve) shows only an Electron "JavaScript error" dialog and no window, and
-#    a bundle-level guard can't catch everything. Require, within ~20s, a live
-#    mdly process with at least one window. The error dialog itself is a window
-#    of the process, so also reject a window titled like the crash dialog.
-#    SKIP_LAUNCH_SMOKE=1 opts out (e.g. no Accessibility permission for osascript).
+#    resolve) shows only Electron's "A JavaScript error occurred in the main
+#    process" dialog; Electron prints the error ("App threw an error during load" / "Uncaught Exception") to
+#    stderr. Require: the mdly process is still alive after ~20s AND its
+#    main-process output (LAUNCH_LOG) holds no such crash line.
+#    SKIP_LAUNCH_SMOKE=1 opts out.
 if [[ "${SKIP_LAUNCH_SMOKE:-0}" != "1" ]]; then
-	smoke_ok=0
-	smoke_detail="no mdly window appeared"
+	smoke_detail=""
+	crash_re='Uncaught Exception|A JavaScript error occurred|App threw an error during load'
 	for _ in $(seq 1 40); do
 		sleep 0.5
-		if ! pgrep -x mdly >/dev/null 2>&1; then
-			smoke_detail="mdly process is not running (exited on launch)"
-			continue
-		fi
-		dialog="$(osascript -e 'tell application "System Events" to get value of static text of window 1 of process "mdly"' 2>/dev/null || true)"
-		if [[ "$dialog" == *"JavaScript error"* || "$dialog" == *"Uncaught Exception"* ]]; then
-			smoke_detail="main-process crash dialog: ${dialog:0:400}"
-			break
-		fi
-		windows="$(osascript -e 'tell application "System Events" to count windows of process "mdly"' 2>/dev/null || echo 0)"
-		if [[ "$windows" =~ ^[0-9]+$ ]] && ((windows > 0)); then
-			smoke_ok=1
+		if grep -Eq "$crash_re" "$LAUNCH_LOG" 2>/dev/null; then
+			smoke_detail="main-process crash in launch output"
 			break
 		fi
 	done
-	if [[ "$smoke_ok" != "1" ]]; then
+	if [[ -z "$smoke_detail" ]] && ! pgrep -x mdly >/dev/null 2>&1; then
+		smoke_detail="mdly process is not running after ~20s (exited on launch)"
+	fi
+	if [[ -n "$smoke_detail" ]]; then
 		echo "[prod-app] LAUNCH SMOKE FAILED: $smoke_detail" >&2
+		echo "[prod-app] --- $LAUNCH_LOG (crash excerpt / tail) ---" >&2
+		{ grep -En -A15 "$crash_re" "$LAUNCH_LOG" || tail -n 40 "$LAUNCH_LOG"; } | head -n 60 >&2
 		echo "[prod-app] Likely a main-process require() the packaged app can't resolve; run apps/desktop/scripts/check-bundled-deps.mjs and see electron.vite.config.ts exclude." >&2
 		exit 1
 	fi
-	echo "[prod-app] launch smoke OK: mdly running with a window"
+	echo "[prod-app] launch smoke OK: mdly alive after ~20s, no main-process crash in $LAUNCH_LOG"
 fi
 
 echo "[prod-app] installed and launched $INSTALLED_APP"
