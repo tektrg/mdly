@@ -54,7 +54,9 @@ async function readRaw(filePath: string): Promise<RawRead> {
 	}
 }
 
-function classify(raw: Extract<RawRead, { kind: "bytes" }>): ViewStoreReadResult {
+function classify(
+	raw: Extract<RawRead, { kind: "bytes" }>,
+): ViewStoreReadResult {
 	let text: string;
 	try {
 		text = strictUtf8.decode(raw.bytes);

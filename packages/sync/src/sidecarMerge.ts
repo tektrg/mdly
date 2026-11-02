@@ -21,10 +21,7 @@
  *   sorted lexicographically, one per line, with a single trailing newline.
  * - Empty union (both sides empty / whitespace-free of lines) returns "".
  */
-export function mergeJsonlUnion(
-	localText: string,
-	remoteText: string,
-): string {
+export function mergeJsonlUnion(localText: string, remoteText: string): string {
 	const byId = new Map<string, string>();
 	const idLess = new Set<string>();
 
@@ -45,10 +42,7 @@ export function mergeJsonlUnion(
 
 	const ids = [...byId.keys()].sort(compareStrings);
 	const tails = [...idLess].sort(compareStrings);
-	const out = [
-		...ids.map((id) => byId.get(id) as string),
-		...tails,
-	];
+	const out = [...ids.map((id) => byId.get(id) as string), ...tails];
 	if (out.length === 0) return "";
 	return `${out.join("\n")}\n`;
 }
@@ -60,9 +54,9 @@ export function mergeJsonlUnion(
  */
 function splitLogLines(text: string): string[] {
 	if (text === "") return [];
-	const parts = text.split("\n").map((line) =>
-		line.endsWith("\r") ? line.slice(0, -1) : line,
-	);
+	const parts = text
+		.split("\n")
+		.map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 	// Drop only the artifact segment produced by a trailing newline.
 	if (text.endsWith("\n")) parts.pop();
 	return parts;

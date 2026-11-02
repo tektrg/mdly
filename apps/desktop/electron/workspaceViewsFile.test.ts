@@ -3,10 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { emptyViewsFile, type ViewsFile } from "@tektrg/table-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-	createWorkspaceViewStore,
-	viewsFilePath,
-} from "./workspaceViewsFile";
+import { createWorkspaceViewStore, viewsFilePath } from "./workspaceViewsFile";
 
 let ws: string;
 beforeEach(async () => {
@@ -121,14 +118,19 @@ describe("workspace views file adapter (R11, R13, R18, R21)", () => {
 		await store.write(read.file, read.snapshot);
 		const saved = JSON.parse(await onDisk());
 		expect(saved.future).toBe("keep");
-		expect(saved.views).toEqual([{ extra: 1, id: "x", name: "X" }, { nope: true }]);
+		expect(saved.views).toEqual([
+			{ extra: 1, id: "x", name: "X" },
+			{ nope: true },
+		]);
 	});
 
 	it("refuses (conflict) when the file changed since it was read; newer content survives", async () => {
 		const store = createWorkspaceViewStore(ws);
 		const first = await store.write(file("A"), null);
 		if (first.status !== "ok") throw new Error(first.status);
-		await writeRaw(`${JSON.stringify({ version: 1, views: [{ id: "o", name: "Other Mac" }] })}\n`);
+		await writeRaw(
+			`${JSON.stringify({ version: 1, views: [{ id: "o", name: "Other Mac" }] })}\n`,
+		);
 		expect((await store.write(file("Mine"), first.snapshot)).status).toBe(
 			"conflict",
 		);

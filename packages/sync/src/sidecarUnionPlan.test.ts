@@ -252,11 +252,7 @@ describe("plan() wires sidecars without un-fencing notes", () => {
 		const backend = backendWith([
 			remoteRow(CANON, `${ev("a")}\n${ev("b")}\n`, { hash: "h-remote" }),
 		]);
-		const computed = await plan(
-			backend,
-			createNodeFileSystem(),
-			workspaceRoot,
-		);
+		const computed = await plan(backend, createNodeFileSystem(), workspaceRoot);
 		// No baseline: local sidecar counts as changed → merged, not conflict.
 		expect(computed.sidecarOps?.merged.map((o) => o.path)).toEqual([CANON]);
 		expect(computed.conflicts).toEqual([]);
@@ -266,10 +262,12 @@ describe("plan() wires sidecars without un-fencing notes", () => {
 			computed.toDelete,
 			computed.conflicts,
 		]) {
-			expect(list.some((entry) => {
-				const p = typeof entry === "string" ? entry : entry.path;
-				return p.startsWith(".mdly/");
-			})).toBe(false);
+			expect(
+				list.some((entry) => {
+					const p = typeof entry === "string" ? entry : entry.path;
+					return p.startsWith(".mdly/");
+				}),
+			).toBe(false);
 		}
 		// totalOps counts sidecar work now that execute() performs it (Round 4).
 		expect(computed.totalOps).toBe(
@@ -286,8 +284,6 @@ describe("plan() wires sidecars without un-fencing notes", () => {
 		);
 	});
 });
-
-
 
 describe("planSidecars: .hubble/views.json (saved views R24)", () => {
 	const VIEWS = ".hubble/views.json";
@@ -314,7 +310,13 @@ describe("planSidecars: .hubble/views.json (saved views R24)", () => {
 		);
 		const remote = remoteRow(
 			VIEWS,
-			`${JSON.stringify({ version: 1, views: [{ id: "a", name: "Remote A" }, { id: "b", name: "B" }] })}\n`,
+			`${JSON.stringify({
+				version: 1,
+				views: [
+					{ id: "a", name: "Remote A" },
+					{ id: "b", name: "B" },
+				],
+			})}\n`,
 		);
 		const ops = await planSidecars(await stubFs([local]), "/ws", [remote], {
 			[VIEWS]: { hash: "older", mtime: 0 } as never,
