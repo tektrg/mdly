@@ -45,6 +45,16 @@ describe("sidecarScope fence", () => {
 		expect(isSyncedSidecarPath("note.md")).toBe(false);
 	});
 
+	it("carries the workspace saved-views file (.hubble/views.json) only", () => {
+		expect(isSyncedSidecarPath(".hubble/views.json")).toBe(true);
+		expect(isSidecarPath(".hubble/views.json")).toBe(true);
+		expect(isPushableSidecarPath(".hubble/views.json")).toBe(true);
+		expect(isSyncedSidecarPath(".hubble/config.json")).toBe(false);
+		expect(isSidecarPath(".hubble/config.json")).toBe(false);
+		expect(isSyncedSidecarPath(".hubble/views.json.corrupt-1")).toBe(false);
+		expect(isSyncedSidecarPath("sub/.hubble/views.json")).toBe(false);
+	});
+
 	it("commentLogSlotOf mirrors the server slot invariant", () => {
 		// Canonical (desktop-owned): null.
 		expect(commentLogSlotOf(".mdly/comments/note.jsonl")).toBeNull();

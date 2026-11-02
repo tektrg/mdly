@@ -288,3 +288,54 @@ describe("plan() wires sidecars without un-fencing notes", () => {
 });
 
 
+
+describe("planSidecars: .hubble/views.json (saved views R24)", () => {
+	const VIEWS = ".hubble/views.json";
+	const viewsText = (ids: string[]) =>
+		`${JSON.stringify({ version: 1, views: ids.map((id) => ({ id, name: id })) }, null, 2)}\n`;
+
+	it("local-only views file plans a push; remote-only plans a pull", async () => {
+		const local = await localFile(VIEWS, viewsText(["a"]));
+		const pushOps = await planSidecars(await stubFs([local]), "/ws", [], {});
+		expect(pushOps.toPush.map((o) => o.path)).toEqual([VIEWS]);
+		const pullOps = await planSidecars(
+			await stubFs([]),
+			"/ws",
+			[remoteRow(VIEWS, viewsText(["b"]))],
+			{},
+		);
+		expect(pullOps.toPull.map((o) => o.path)).toEqual([VIEWS]);
+	});
+
+	it("diverged on both sides merges views by id (local wins), as valid JSON", async () => {
+		const local = await localFile(
+			VIEWS,
+			`${JSON.stringify({ version: 1, views: [{ id: "a", name: "Local A" }] })}\n`,
+		);
+		const remote = remoteRow(
+			VIEWS,
+			`${JSON.stringify({ version: 1, views: [{ id: "a", name: "Remote A" }, { id: "b", name: "B" }] })}\n`,
+		);
+		const ops = await planSidecars(await stubFs([local]), "/ws", [remote], {
+			[VIEWS]: { hash: "older", mtime: 0 } as never,
+		});
+		expect(ops.merged).toHaveLength(1);
+		const merged = JSON.parse(ops.merged[0].content);
+		expect(merged.version).toBe(1);
+		expect(merged.views).toEqual([
+			{ id: "a", name: "Local A" },
+			{ id: "b", name: "B" },
+		]);
+	});
+
+	it("diverged with an unparseable side plans nothing (never clobbers)", async () => {
+		const local = await localFile(VIEWS, "{bad");
+		const remote = remoteRow(VIEWS, viewsText(["b"]));
+		const ops = await planSidecars(await stubFs([local]), "/ws", [remote], {
+			[VIEWS]: { hash: "older", mtime: 0 } as never,
+		});
+		expect(ops.merged).toEqual([]);
+		expect(ops.toPull).toEqual([]);
+		expect(ops.toPush).toEqual([]);
+	});
+});

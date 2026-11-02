@@ -10,11 +10,12 @@ import {
 import type { FileSystem, InitFileSystem } from "./fs.js";
 import { contentHash } from "./fs.js";
 import { isUnchangedByStat } from "./scope.js";
-import { mergeJsonlUnion } from "./sidecarMerge.js";
+import { mergeJsonlUnion, mergeViewsJson } from "./sidecarMerge.js";
 import {
 	isPushableSidecarPath,
 	isSidecarPath,
 	isSyncedSidecarPath,
+	VIEWS_FILE_PATH,
 } from "./sidecarScope.js";
 import type {
 	CloudSyncConfig,
@@ -467,7 +468,12 @@ export async function planSidecars(
 			});
 			continue;
 		}
-		const content = mergeJsonlUnion(local.content, remote.content);
+		const content =
+			local.relativePath === VIEWS_FILE_PATH
+				? mergeViewsJson(local.content, remote.content)
+				: mergeJsonlUnion(local.content, remote.content);
+		// An unreadable views.json on either side: plan nothing, clobber nothing.
+		if (content === null) continue;
 		ops.merged.push({
 			path: local.relativePath,
 			hash: await contentHash(content),

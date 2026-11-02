@@ -86,3 +86,55 @@ function eventIdOf(line: string): string | undefined {
 function compareStrings(a: string, b: string): number {
 	return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/**
+ * Merge for `.hubble/views.json` (saved views, R24) — a JSON document, not a
+ * JSONL log, so the line union above would corrupt it. Views merge by `id`,
+ * local first and winning on a shared id; other top-level fields are taken
+ * from local over remote. Returns null when either side is not a readable
+ * views file (the caller then plans nothing, so no side is ever clobbered).
+ */
+export function mergeViewsJson(
+	localText: string,
+	remoteText: string,
+): string | null {
+	const local = parseViews(localText);
+	const remote = parseViews(remoteText);
+	if (!local || !remote) return null;
+	const ids = new Set<string>();
+	const views: unknown[] = [];
+	for (const view of [...local.views, ...remote.views]) {
+		const id =
+			typeof view === "object" && view !== null && !Array.isArray(view)
+				? (view as { id?: unknown }).id
+				: undefined;
+		if (typeof id === "string") {
+			if (ids.has(id)) continue;
+			ids.add(id);
+		}
+		views.push(view);
+	}
+	const { version, views: _l, ...localExtra } = local;
+	const { version: _v, views: _r, ...remoteExtra } = remote;
+	return `${JSON.stringify({ version, views, ...remoteExtra, ...localExtra }, null, 2)}\n`;
+}
+
+function parseViews(
+	text: string,
+): ({ version: number; views: unknown[] } & Record<string, unknown>) | null {
+	try {
+		const data = JSON.parse(text);
+		if (
+			typeof data !== "object" ||
+			data === null ||
+			Array.isArray(data) ||
+			data.version !== 1 ||
+			!Array.isArray(data.views)
+		) {
+			return null;
+		}
+		return data;
+	} catch {
+		return null;
+	}
+}

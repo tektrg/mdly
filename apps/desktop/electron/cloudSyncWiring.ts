@@ -309,7 +309,11 @@ export function isWatchedSidecarPath(
 	if (
 		posix === ".mdly" ||
 		posix === ".mdly/comments" ||
-		posix === ".mdly/history"
+		posix === ".mdly/history" ||
+		// Saved views (R24): the one synced `.hubble` file, plus its folder so
+		// chokidar descends into it. Other `.hubble` files fall to the prune.
+		posix === ".hubble" ||
+		posix === ".hubble/views.json"
 	) {
 		return true;
 	}

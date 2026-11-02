@@ -183,3 +183,26 @@ describe("createNodeFileSystem.listSidecarFiles (Step 2, sidecar-walker-details)
 		expect(files).toEqual([]);
 	});
 });
+
+describe("createNodeFileSystem.listSidecarFiles: saved views (R24)", () => {
+	beforeEach(async () => {
+		workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fs-node-"));
+	});
+	afterEach(async () => {
+		await fs.rm(workspaceRoot, { recursive: true, force: true });
+	});
+
+	it("lists .hubble/views.json but not config.json or corrupt backups", async () => {
+		await writeFixture(".hubble/views.json", '{"version":1,"views":[]}\n');
+		await writeFixture(".hubble/config.json", "{}");
+		await writeFixture(".hubble/views.json.corrupt-1", "{bad");
+		await writeFixture(".mdly/comments/doc-1.jsonl", "{}");
+
+		const files = await createNodeFileSystem().listSidecarFiles(workspaceRoot);
+
+		expect(files.map((f) => f.relativePath).sort()).toEqual([
+			".hubble/views.json",
+			".mdly/comments/doc-1.jsonl",
+		]);
+	});
+});

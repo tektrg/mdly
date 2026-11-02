@@ -645,6 +645,20 @@ describe("isWatchedSidecarPath (Round 5)", () => {
 	});
 });
 
+describe("isWatchedSidecarPath: saved views (R24)", () => {
+	it("watches .hubble/views.json (and descends into .hubble) but nothing else there", () => {
+		expect(isWatchedSidecarPath("/ws/.hubble/views.json", "/ws")).toBe(true);
+		expect(isWatchedSidecarPath("/ws/.hubble", "/ws")).toBe(true);
+		expect(isWatchedSidecarPath("/ws/.hubble/config.json", "/ws")).toBe(false);
+		expect(
+			isWatchedSidecarPath("/ws/.hubble/views.json.corrupt-1", "/ws"),
+		).toBe(false);
+		expect(isWatchedSidecarPath("/ws/sub/.hubble/views.json", "/ws")).toBe(
+			false,
+		);
+	});
+});
+
 describe("pulled comment logs notify the open document view (Round 5)", () => {
 	it("a pulled comment log calls notifyCommentsChanged with the absolute note path", async () => {
 		await fs.writeFile(path.join(workspaceRoot, "note.md"), "hello");

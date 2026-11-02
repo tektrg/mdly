@@ -28,8 +28,19 @@ export const SIDECAR_PREFIX = ".mdly/";
  */
 export function isSidecarPath(path: string): boolean {
 	const normalized = path.replace(/\\/g, "/");
-	return normalized === ".mdly" || normalized.startsWith(SIDECAR_PREFIX);
+	return (
+		normalized === ".mdly" ||
+		normalized.startsWith(SIDECAR_PREFIX) ||
+		normalized === VIEWS_FILE_PATH
+	);
 }
+
+/**
+ * The workspace's saved views (mdly saved-views R24): the one `.hubble` file
+ * cloud sync carries, so views travel with the folder. Exact path only —
+ * `.hubble/config.json` and `views.json.corrupt-*` backups stay local.
+ */
+export const VIEWS_FILE_PATH = ".hubble/views.json";
 
 /** Workspace-relative prefix for per-document comment logs. */
 const COMMENTS_PREFIX = ".mdly/comments/";
@@ -55,6 +66,7 @@ const COMMENT_LOG_PATTERN = /^\.mdly\/comments\/(.+?)(?: (\d+))?\.jsonl$/i;
  */
 export function isSyncedSidecarPath(path: string): boolean {
 	const normalized = path.replace(/\\/g, "/");
+	if (normalized === VIEWS_FILE_PATH) return true;
 	if (
 		normalized.startsWith(COMMENTS_PREFIX) &&
 		normalized.length > COMMENTS_PREFIX.length

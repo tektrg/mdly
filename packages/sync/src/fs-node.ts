@@ -14,7 +14,7 @@ import {
 	type LocalAsset,
 	type LocalFile,
 } from "./fs.js";
-import { isSyncedSidecarPath } from "./sidecarScope.js";
+import { isSyncedSidecarPath, VIEWS_FILE_PATH } from "./sidecarScope.js";
 
 export {
 	WorkspaceDirectoryLimitError,
@@ -133,9 +133,15 @@ export function createNodeFileSystem(
 		// listMarkdownFiles above. Wired into plan() (Round 3) and
 		// execute() (Round 4).
 		async listSidecarFiles(dir) {
-			const { files, details } = await sidecarWalker(dir, {
+			const walked = await sidecarWalker(dir, {
 				include: isSyncedSidecarPath,
 			});
+			const details = walked.details;
+			// The walker only covers `.mdly/`; the saved-views file (R24) is the
+			// one `.hubble` file sync carries, so it is added by exact path.
+			const files = existsSync(join(dir, VIEWS_FILE_PATH))
+				? [...walked.files, VIEWS_FILE_PATH]
+				: walked.files;
 			const results: LocalFile[] = [];
 			for (const relativePath of files) {
 				let content: string;
