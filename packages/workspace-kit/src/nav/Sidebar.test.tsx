@@ -369,13 +369,17 @@ describe("Sidebar symlink activation", () => {
 		await clickPagerDot("Recent files");
 		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
 
-		// Two right-aligned dates (created, updated), each labelled by tooltip.
-		expect(recentPane?.textContent).toContain("Jan 5, 2026");
-		expect(recentPane?.textContent).toContain("Jan 9, 2026");
+		// One right-aligned date (the sort field: modified); tooltip names both.
 		const dates = recentPane?.querySelectorAll("[data-recent-date]") ?? [];
-		expect(
-			Array.from(dates, (d) => d.getAttribute("title")?.split(" ")[0]),
-		).toEqual(["Created", "Modified"]);
+		expect(dates).toHaveLength(1);
+		expect(dates[0].getAttribute("data-recent-date")).toBe("modified");
+		expect(dates[0].textContent).toMatch(/^9 Jan/);
+		expect(dates[0].getAttribute("title")).toMatch(
+			/^Modified {2}9 Jan 2026, .*\nCreated {3}5 Jan 2026, /,
+		);
+		// The file-path tooltip sits on the title only, never over the date.
+		expect(dates[0].closest("[title]")).toBe(dates[0]);
+		expect(dates[0].closest("button")?.hasAttribute("title")).toBe(false);
 	});
 
 	it("recent-files row renders unchanged when createdAt is absent (default-absent guard)", async () => {

@@ -10,6 +10,7 @@ import {
 	buildRecentFilesList,
 	RECENT_FILES_LIMIT,
 } from "./buildRecentFilesList";
+import { rowDate } from "./dateLabels";
 import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
 import type { SidebarFile } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
@@ -89,59 +90,27 @@ function RecentFileTags({
 	);
 }
 
-function formatRecentTimestamp(ms: number): string {
-	return new Date(ms).toLocaleDateString(undefined, {
-		year: "numeric",
-		month: "short",
-		day: "numeric",
-	});
-}
-
 /**
- * Right-aligned date column on a recent-file row's title line: muted 12px
- * tabular figures so dates line up across rows. Created and updated collapse
- * to one label when they render the same string; each label's tooltip names
- * its fact ("Created"/"Modified") with the full datetime.
+ * One right-aligned date on the title line: muted 12px tabular figures. The
+ * list is sorted by modified, so modified is the date shown; the tooltip
+ * names both facts with full datetimes.
  */
-export function recentFileDates(
-	createdAt: number,
-	modifiedAt: number | undefined,
-): { key: "created" | "modified"; label: string; title: string }[] {
-	const updated = modifiedAt ?? createdAt;
-	const created = {
-		key: "created" as const,
-		label: formatRecentTimestamp(createdAt),
-		title: `Created ${new Date(createdAt).toLocaleString()}`,
-	};
-	const modified = {
-		key: "modified" as const,
-		label: formatRecentTimestamp(updated),
-		title: `Modified ${new Date(updated).toLocaleString()}`,
-	};
-	if (created.label === modified.label)
-		return [{ ...created, title: `${created.title}\n${modified.title}` }];
-	return [created, modified];
-}
-
-function RecentFileTimestamps({
+function RecentFileDate({
 	createdAt,
 	modifiedAt,
 }: {
-	createdAt: number;
-	modifiedAt: number | undefined;
+	createdAt: number | undefined;
+	modifiedAt: number;
 }) {
+	const date = rowDate(modifiedAt, createdAt, "modified");
+	if (!date.label) return null;
 	return (
-		<span className="flex shrink-0 items-baseline gap-2 text-[12px] font-normal tabular-nums text-muted-foreground/70">
-			{recentFileDates(createdAt, modifiedAt).map((date) => (
-				<span
-					key={date.key}
-					data-recent-date={date.key}
-					title={date.title}
-					className="whitespace-nowrap text-end"
-				>
-					{date.label}
-				</span>
-			))}
+		<span
+			data-recent-date={date.field}
+			title={date.title}
+			className="shrink-0 whitespace-nowrap text-end text-[12px] font-normal tabular-nums text-muted-foreground/70"
+		>
+			{date.label}
 		</span>
 	);
 }
@@ -231,7 +200,6 @@ export const RecentFilesList = forwardRef<
 							role="option"
 							data-sidebar-index={index}
 							aria-selected={isActive}
-							title={displayPath}
 							className={cn(
 								"flex w-full min-w-0 flex-col gap-1 rounded-[var(--radius-row)] px-2.5 py-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
@@ -241,13 +209,13 @@ export const RecentFilesList = forwardRef<
 							onClick={() => activateFile(file)}
 						>
 							<span className="flex min-w-0 items-baseline gap-3">
-								<span className="min-w-0 flex-1 truncate">
+								<span className="min-w-0 flex-1 truncate" title={displayPath}>
 									{fileNameFromPath(displayPath)}
 								</span>
 								{file.createdAt != null ? (
-									<RecentFileTimestamps
+									<RecentFileDate
 										createdAt={file.createdAt}
-										modifiedAt={file.modifiedAt}
+										modifiedAt={file.modifiedAt ?? file.createdAt}
 									/>
 								) : null}
 							</span>

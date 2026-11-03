@@ -132,6 +132,13 @@ export {
 	type TagTreeNode,
 	tagGroupAncestors,
 } from "./nav/buildTagTree";
+export {
+	formatFullDateTime,
+	formatRowDate,
+	type RowDate,
+	type RowDateField,
+	rowDate,
+} from "./nav/dateLabels";
 export { SearchList } from "./nav/SearchList";
 export {
 	ActionItem,

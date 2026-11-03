@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardDates } from "./DocumentListRow";
+import { cardDate } from "./DocumentListRow";
 import { lastFolderName } from "./FolderChip";
 
 describe("lastFolderName", () => {
@@ -18,26 +18,23 @@ describe("lastFolderName", () => {
 	});
 });
 
-describe("cardDates", () => {
+describe("cardDate", () => {
 	const now = new Date(2026, 10, 3, 23, 0);
-	const at = Math.floor(new Date(2026, 10, 3, 22, 57).getTime() / 1000);
-	it("dedupes identical created/modified labels into one", () => {
-		const dates = cardDates(
-			{ modifiedAt: at, createdAt: at },
-			["modified", "created"],
-			now,
-		);
-		expect(dates).toHaveLength(1);
-		expect(dates[0].column).toBe("modified");
-		expect(dates[0].title).toMatch(/^Modified .*\nCreated /);
+	const modified = Math.floor(new Date(2026, 10, 3, 22, 50).getTime() / 1000);
+	const created = Math.floor(new Date(2026, 9, 29, 9, 12).getTime() / 1000);
+	const row = { modifiedAt: modified, createdAt: created };
+	it("shows modified by default and when sorting by modified", () => {
+		expect(cardDate(row, undefined, now).field).toBe("modified");
+		expect(cardDate(row, "modified", now).label).toBe("10:50 PM");
 	});
-	it("keeps both, in column order, when they differ", () => {
-		const earlier = at - 86_400 * 30;
-		const dates = cardDates(
-			{ modifiedAt: at, createdAt: earlier },
-			["created", "modified"],
-			now,
+	it("shows created when sorting by created", () => {
+		const date = cardDate(row, "created", now);
+		expect(date.field).toBe("created");
+		expect(date.label).toBe("29 Oct");
+	});
+	it("tooltip lists both fields with full datetimes", () => {
+		expect(cardDate(row, "name", now).title).toBe(
+			"Modified  3 Nov 2026, 10:50 PM\nCreated   29 Oct 2026, 9:12 AM",
 		);
-		expect(dates.map((d) => d.column)).toEqual(["created", "modified"]);
 	});
 });

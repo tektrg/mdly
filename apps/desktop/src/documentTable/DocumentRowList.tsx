@@ -657,6 +657,8 @@ export function DocumentRowList({
 								navTier={navTier}
 								metaColumns={metaColumns}
 								tags={navRow.doc.tags}
+								sortColumn={view?.sort.column}
+								hasMenu={menu != null}
 								propertyColumns={
 									density === "table" && !gridCells
 										? propertyColumns

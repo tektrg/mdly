@@ -14,7 +14,6 @@ import {
 	DOCUMENT_LIST_ROW_HEIGHT,
 	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 	documentRowHeight,
-	formatCardDate,
 } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
 import { clampPeekListWidth, columnsForTier, densityTier } from "./navDensity";
@@ -407,11 +406,11 @@ describe("DocumentNarrowList density tiers", () => {
 		const cell = rows[0].querySelector('[role="gridcell"]');
 		const titleRow = cell?.children[0];
 		const dates = titleRow?.querySelectorAll("[data-card-date]") ?? [];
-		// Same-day created/modified collapse to one label; tooltip keeps both.
+		// Exactly one date (the sort field); its tooltip names both facts.
 		expect(dates.length).toBe(1);
-		expect(dates[0].getAttribute("title")).toMatch(
-			/Modified[\s\S]*Created|Created[\s\S]*Modified/,
-		);
+		expect(dates[0].getAttribute("title")).toMatch(/^Modified .*\nCreated /);
+		// The path tooltip lives on the title, so it never masks the date's.
+		expect(rows[0].hasAttribute("title")).toBe(false);
 		for (const date of dates) {
 			expect(date.className).toContain("tabular-nums");
 			expect(date.className).toContain("shrink-0");
@@ -434,7 +433,7 @@ describe("DocumentNarrowList density tiers", () => {
 		expect(rows[0].querySelectorAll("[data-card-date]").length).toBe(1);
 	});
 
-	it("Card shows dates the List tier hides (created distinct from modified)", () => {
+	it("Card shows only the sort field's date (created distinct from modified)", () => {
 		const files: FileEntry[] = [
 			{
 				path: "/ws/alpha.md",
@@ -458,7 +457,9 @@ describe("DocumentNarrowList density tiers", () => {
 		});
 
 		const row = bodyRows()[0];
-		expect(row.textContent).toContain(formatCardDate(1_700_000_300));
-		expect(row.textContent).toContain(formatCardDate(1_600_000_000));
+		const dates = row.querySelectorAll("[data-card-date]");
+		expect(dates).toHaveLength(1);
+		expect(dates[0].getAttribute("data-card-date")).toBe("modified");
+		expect(dates[0].getAttribute("title")).toContain("Created");
 	});
 });

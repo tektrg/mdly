@@ -1,6 +1,7 @@
 import {
 	COMPACT_GAP_VAR,
 	formatRevisionTime,
+	rowDate,
 	SIDEBAR_VIRTUAL_ROW_HEIGHT,
 } from "@mdly/workspace-kit";
 import type {
@@ -168,6 +169,13 @@ type DocumentListRowProps = {
 	onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 	/** Front-matter property cells after the built-in ones; full table only. */
 	propertyColumns?: readonly PropertyFieldId[];
+	/** Live sort column; picks which date a card row shows. */
+	sortColumn?: string;
+	/**
+	 * A hover "⋮" menu overlays the row's end edge (DocumentRowList). Card rows
+	 * then reserve that gutter so the date never sits under the trigger.
+	 */
+	hasMenu?: boolean;
 };
 
 function PropertyCell({
@@ -234,6 +242,7 @@ function TableCell({
 			role="gridcell"
 			tabIndex={-1}
 			data-flip-id={flipId(row, "name")}
+			title={row.path}
 			className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
 		>
 			{row.name}
@@ -295,12 +304,14 @@ function CardTierCell({
 	row,
 	metaColumns,
 	tags,
+	sortColumn,
 }: {
 	row: DocumentTableRow;
 	metaColumns: DocumentTableColumn[];
 	tags: readonly string[] | undefined;
+	sortColumn: string | undefined;
 }) {
-	const dates = cardDates(row, metaColumns);
+	const date = cardDate(row, sortColumn);
 	const showFolder =
 		metaColumns.includes("folder") && lastFolderName(row.folderLabel) !== "";
 	const tagLabel = tagText(tags);
@@ -312,26 +323,22 @@ function CardTierCell({
 			<span className="flex min-w-0 items-baseline gap-3">
 				<span
 					data-flip-id={flipId(row, "name")}
+					title={row.path}
 					className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)]"
 				>
 					{row.name}
 				</span>
-				{dates.length > 0 ? (
-					<span className="flex shrink-0 items-baseline gap-2">
-						{dates.map((date) => (
-							<span
-								key={date.column}
-								data-card-date={date.column}
-								data-flip-id={flipId(row, date.column)}
-								title={date.title}
-								className={cn(
-									"shrink-0 whitespace-nowrap text-end text-[12px] font-normal tabular-nums",
-									faded,
-								)}
-							>
-								{date.label}
-							</span>
-						))}
+				{date.label ? (
+					<span
+						data-card-date={date.field}
+						data-flip-id={flipId(row, date.field)}
+						title={date.title}
+						className={cn(
+							"shrink-0 whitespace-nowrap text-end text-[12px] font-normal tabular-nums",
+							faded,
+						)}
+					>
+						{date.label}
 					</span>
 				) : null}
 			</span>
@@ -368,37 +375,17 @@ function CardTierCell({
 	);
 }
 
-export type CardDate = {
-	column: "modified" | "created";
-	label: string;
-	title: string;
-};
-
 /**
- * Card-row dates in the live column order. When created and modified render
- * the same compact string, the pair collapses to one label (keeping the first
- * column's slot) whose tooltip still names both facts.
+ * The one date a card row shows: the list's sort field when it is a date
+ * column (created/modified), modified otherwise. The tooltip names both with
+ * full datetimes. Row timestamps are seconds; the kit takes milliseconds.
  */
-export function cardDates(
+export function cardDate(
 	row: Pick<DocumentTableRow, "modifiedAt" | "createdAt">,
-	metaColumns: readonly DocumentTableColumn[],
+	sortColumn: string | undefined,
 	now = new Date(),
-): CardDate[] {
-	const out: CardDate[] = [];
-	for (const column of metaColumns) {
-		if (column !== "modified" && column !== "created") continue;
-		const seconds = column === "modified" ? row.modifiedAt : row.createdAt;
-		const label = formatCardDate(seconds, now);
-		if (!label) continue;
-		const title = `${column === "modified" ? "Modified" : "Created"} ${formatModifiedAtTitle(seconds)}`;
-		const same = out.find((date) => date.label === label);
-		if (same) {
-			same.title = `${same.title}\n${title}`;
-			continue;
-		}
-		out.push({ column, label, title });
-	}
-	return out;
+) {
+	return rowDate(row.modifiedAt * 1000, row.createdAt * 1000, sortColumn, now);
 }
 
 export function DocumentListRow({
@@ -419,6 +406,8 @@ export function DocumentListRow({
 	indentRem = 0,
 	onContextMenu,
 	propertyColumns = [],
+	sortColumn,
+	hasMenu = false,
 }: DocumentListRowProps) {
 	// Every list-density row that shows the 2nd info is a stacked card — title
 	// plus one meta block wrapping every data column (and tags), clamped to
@@ -435,7 +424,6 @@ export function DocumentListRow({
 			aria-current={row.isActive ? "true" : undefined}
 			data-document-row-index={index}
 			tabIndex={index === tabbableIndex ? 0 : -1}
-			title={row.path}
 			style={{
 				transform: `translateY(${index * rowHeight}px)`,
 				blockSize: rowHeight,
@@ -452,6 +440,9 @@ export function DocumentListRow({
 				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
 				"[padding-inline:var(--row-pad-inline)]",
 				isCard && "[padding-block:8px]",
+				isCard &&
+					hasMenu &&
+					"[padding-inline-end:calc(var(--row-pad-inline)+1.375rem)]",
 				"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none [[data-resizing]_&]:transition-none",
 				"focus-visible:ring-1 focus-visible:ring-ring",
 				// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
@@ -494,6 +485,7 @@ export function DocumentListRow({
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
 					<span
 						data-flip-id={flipId(row, "name")}
+						title={row.path}
 						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
 					>
 						{row.name}
@@ -506,11 +498,13 @@ export function DocumentListRow({
 						metaColumns ?? columns.filter((column) => column !== "name")
 					}
 					tags={tags}
+					sortColumn={sortColumn}
 				/>
 			) : (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
 					<span
 						data-flip-id={flipId(row, "name")}
+						title={row.path}
 						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
 					>
 						{row.name}
