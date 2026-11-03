@@ -395,7 +395,9 @@ describe("DocumentNarrowList density tiers", () => {
 		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
 		const meta = rowMeta(rows[0]);
 		expect(meta?.className).toContain("line-clamp-1");
-		expect(meta?.textContent).toContain("—");
+		// Root-level file: no folder chip, no "—" placeholder.
+		expect(meta?.textContent).not.toContain("—");
+		expect(meta?.querySelector("[data-folder-chip]")).toBeNull();
 		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
 	});
 
@@ -417,12 +419,8 @@ describe("DocumentNarrowList density tiers", () => {
 			);
 		}
 		expect(titleRow?.textContent).not.toContain("•");
-		const details = cell?.querySelector("[data-card-details]");
-		expect(details?.textContent).toContain("—");
-		expect(details?.textContent).not.toContain("•");
-		expect(
-			details?.querySelector("[data-flip-id]")?.getAttribute("data-flip-id"),
-		).toMatch(/::folder$/);
+		// Root-level file without tags: the folder chip is omitted, so no details line.
+		expect(cell?.querySelector("[data-card-details]")).toBeNull();
 	});
 
 	it("Table tier (stacked) keeps the card layout", () => {

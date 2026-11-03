@@ -83,10 +83,18 @@ describe("DocumentNarrowList", () => {
 		// The meta block wraps every data column, so each row's second line
 		// *contains* its folder rather than equaling it.
 		expect(secondaryLines()).toEqual([
-			expect.stringContaining("—"),
+			// Root files omit the folder chip; nested ones show only the last folder.
+			expect.not.stringContaining("—"),
 			expect.stringContaining("notes"),
-			expect.stringContaining("notes/deep"),
+			expect.not.stringContaining("notes/deep"),
 		]);
+		const chips = container.querySelectorAll<HTMLElement>("[data-folder-chip]");
+		expect(Array.from(chips, (chip) => chip.textContent)).toEqual([
+			"notes",
+			"deep",
+		]);
+		// Full folder path stays reachable on hover.
+		expect(chips[1].title).toBe("notes/deep");
 	});
 
 	it("shows the first ordered data column under each name", () => {

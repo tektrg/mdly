@@ -14,6 +14,7 @@ import type {
 	DocumentTableColumn,
 	DocumentTableRow,
 } from "./documentTableView";
+import { FolderChip, lastFolderName } from "./FolderChip";
 import { MiddleTruncatedPath } from "./MiddleTruncatedPath";
 import type { NavDensityTier } from "./navDensity";
 import {
@@ -298,7 +299,7 @@ function cardMetaItems(
 					: column === "created"
 						? formatModifiedAt(row.createdAt)
 						: column === "folder"
-							? row.folderLabel
+							? lastFolderName(row.folderLabel) && row.folderLabel
 							: row.name,
 		}))
 		.filter((item) => item.text.length > 0);
@@ -339,7 +340,8 @@ function CardTierCell({
 	const dateColumns = metaColumns.filter(
 		(column) => column === "modified" || column === "created",
 	);
-	const showFolder = metaColumns.includes("folder") && row.folderLabel !== "";
+	const showFolder =
+		metaColumns.includes("folder") && lastFolderName(row.folderLabel) !== "";
 	const tagLabel = tagText(tags);
 	const faded = row.isActive
 		? "text-selected-foreground"
@@ -374,17 +376,14 @@ function CardTierCell({
 			{showFolder || tagLabel ? (
 				<span
 					data-card-details=""
-					className={cn("flex min-w-0 gap-2 text-[11px]", faded)}
+					className={cn("flex min-w-0 items-center gap-1 text-[11px]", faded)}
 				>
 					{showFolder ? (
 						<span
 							data-flip-id={flipId(row, "folder")}
-							className="min-w-0 shrink overflow-hidden"
+							className="flex min-w-0 shrink overflow-hidden"
 						>
-							<MiddleTruncatedPath
-								path={row.folderLabel}
-								className="block truncate"
-							/>
+							<FolderChip folderLabel={row.folderLabel} />
 						</span>
 					) : null}
 					{tagLabel ? (
@@ -527,9 +526,9 @@ export function DocumentListRow({
 							<Fragment key={item.key}>
 								{i > 0 && " • "}
 								{item.key === "folder" ? (
-									<MiddleTruncatedPath
-										path={item.text}
-										className="inline-block max-w-full truncate align-bottom"
+									<FolderChip
+										folderLabel={item.text}
+										className="inline-flex align-middle"
 									/>
 								) : item.key === "tags" ? (
 									item.text

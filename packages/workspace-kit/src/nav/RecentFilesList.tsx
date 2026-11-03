@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useMemo, useRef } from "react";
 import MingcuteCalendarAddLine from "~icons/mingcute/calendar-add-line";
+import MingcuteFolderLine from "~icons/mingcute/folder-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import {
 	dirname,
@@ -15,18 +16,18 @@ import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
 import type { SidebarFile } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
-/** Renders a folder path with the innermost folder always visible and the rest ellipsized from the front. */
-function MiddleTruncatedPath({ path }: { path: string }) {
-	const separator = path.includes("\\") ? "\\" : "/";
-	const segments = path.split(separator);
-	const tail = segments.pop() ?? "";
-	const head =
-		segments.length > 0 ? `${segments.join(separator)}${separator}` : "";
-
+/** Folder chip: icon + innermost folder name; the full folder path shows on hover. */
+function FolderChip({ path }: { path: string }) {
+	const name = path.split(/[\\/]/).filter(Boolean).pop() ?? "";
+	if (!name) return null;
 	return (
-		<span className="flex min-w-0 text-[10px] text-muted-foreground/70">
-			<span className="min-w-0 truncate">{head}</span>
-			<span className="shrink-0 whitespace-nowrap">{tail}</span>
+		<span
+			data-folder-chip=""
+			title={path}
+			className="mdly-chip min-w-0 max-w-full self-start [block-size:18px] [font-size:11px] [padding-inline:6px]"
+		>
+			<MingcuteFolderLine aria-hidden="true" className="size-3 shrink-0" />
+			<span className="min-w-0 truncate">{name}</span>
 		</span>
 	);
 }
@@ -76,7 +77,8 @@ function RecentFileTags({
 							borderRadius: 999,
 							fontSize: 11.5,
 							fontWeight: 500,
-							background: appearance?.background ?? DEFAULT_TAG_APPEARANCE.background,
+							background:
+								appearance?.background ?? DEFAULT_TAG_APPEARANCE.background,
 							color: appearance?.color ?? DEFAULT_TAG_APPEARANCE.color,
 							border: appearance?.border ?? DEFAULT_TAG_APPEARANCE.border,
 						}}
@@ -146,13 +148,7 @@ export const RecentFilesList = forwardRef<
 		getTagAppearance?: (name: string) => RecentTagAppearance;
 	}
 >(function RecentFilesList(
-	{
-		files,
-		currentPath,
-		getDisplayPath,
-		onSelectFile,
-		getTagAppearance,
-	},
+	{ files, currentPath, getDisplayPath, onSelectFile, getTagAppearance },
 	forwardedRef,
 ) {
 	const navRef = useRef<HTMLDivElement>(null);
@@ -229,8 +225,11 @@ export const RecentFilesList = forwardRef<
 							<span className="block min-w-0 truncate">
 								{fileNameFromPath(displayPath)}
 							</span>
-							{parentPath ? <MiddleTruncatedPath path={parentPath} /> : null}
-							<RecentFileTags tags={file.tags ?? []} getAppearance={getTagAppearance} />
+							{parentPath ? <FolderChip path={parentPath} /> : null}
+							<RecentFileTags
+								tags={file.tags ?? []}
+								getAppearance={getTagAppearance}
+							/>
 							{file.createdAt != null ? (
 								<RecentFileTimestamps
 									createdAt={file.createdAt}
