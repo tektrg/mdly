@@ -1,7 +1,5 @@
 import { forwardRef, useCallback, useMemo, useRef } from "react";
-import MingcuteCalendarAddLine from "~icons/mingcute/calendar-add-line";
 import MingcuteFolderLine from "~icons/mingcute/folder-line";
-import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import {
 	dirname,
 	fileNameFromPath,
@@ -24,7 +22,7 @@ function FolderChip({ path }: { path: string }) {
 		<span
 			data-folder-chip=""
 			title={path}
-			className="mdly-chip min-w-0 max-w-full self-start [block-size:18px] [font-size:11px] [padding-inline:6px]"
+			className="mdly-chip min-w-0 max-w-full shrink [block-size:18px] [font-size:11px] [padding-inline:6px]"
 		>
 			<MingcuteFolderLine aria-hidden="true" className="size-3 shrink-0" />
 			<span className="min-w-0 truncate">{name}</span>
@@ -64,7 +62,7 @@ function RecentFileTags({
 }) {
 	if (tags.length === 0) return null;
 	return (
-		<span className="flex min-w-0 flex-wrap items-center gap-1.5">
+		<span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
 			{tags.map((name) => {
 				const appearance = getAppearance?.(name);
 				return (
@@ -100,12 +98,31 @@ function formatRecentTimestamp(ms: number): string {
 }
 
 /**
- * Created/updated timestamps under a recent-file row, styled as the same
- * icon+label metadata pairs the host's own recent-recordings list uses
- * (leading glyph, muted small text, one pair per fact). Only rendered when
- * the host supplies `createdAt` -- rows from hosts that never set it
- * (existing behavior) render exactly as before.
+ * Right-aligned date column on a recent-file row's title line: muted 12px
+ * tabular figures so dates line up across rows. Created and updated collapse
+ * to one label when they render the same string; each label's tooltip names
+ * its fact ("Created"/"Modified") with the full datetime.
  */
+export function recentFileDates(
+	createdAt: number,
+	modifiedAt: number | undefined,
+): { key: "created" | "modified"; label: string; title: string }[] {
+	const updated = modifiedAt ?? createdAt;
+	const created = {
+		key: "created" as const,
+		label: formatRecentTimestamp(createdAt),
+		title: `Created ${new Date(createdAt).toLocaleString()}`,
+	};
+	const modified = {
+		key: "modified" as const,
+		label: formatRecentTimestamp(updated),
+		title: `Modified ${new Date(updated).toLocaleString()}`,
+	};
+	if (created.label === modified.label)
+		return [{ ...created, title: `${created.title}\n${modified.title}` }];
+	return [created, modified];
+}
+
 function RecentFileTimestamps({
 	createdAt,
 	modifiedAt,
@@ -113,17 +130,18 @@ function RecentFileTimestamps({
 	createdAt: number;
 	modifiedAt: number | undefined;
 }) {
-	const updated = modifiedAt ?? createdAt;
 	return (
-		<span className="flex min-w-0 items-center gap-3 text-[10px] text-muted-foreground/70">
-			<span className="flex shrink-0 items-center gap-1">
-				<MingcuteCalendarAddLine className="size-[11px]" />
-				{formatRecentTimestamp(createdAt)}
-			</span>
-			<span className="flex shrink-0 items-center gap-1">
-				<MingcuteHistoryLine className="size-[11px]" />
-				{formatRecentTimestamp(updated)}
-			</span>
+		<span className="flex shrink-0 items-baseline gap-2 text-[12px] font-normal tabular-nums text-muted-foreground/70">
+			{recentFileDates(createdAt, modifiedAt).map((date) => (
+				<span
+					key={date.key}
+					data-recent-date={date.key}
+					title={date.title}
+					className="whitespace-nowrap text-end"
+				>
+					{date.label}
+				</span>
+			))}
 		</span>
 	);
 }
@@ -215,26 +233,32 @@ export const RecentFilesList = forwardRef<
 							aria-selected={isActive}
 							title={displayPath}
 							className={cn(
-								"flex w-full min-w-0 flex-col gap-1.5 rounded-[var(--radius-row)] px-2.5 py-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
+								"flex w-full min-w-0 flex-col gap-1 rounded-[var(--radius-row)] px-2.5 py-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
 								isActive &&
 									"bg-sidebar-accent text-sidebar-accent-foreground font-medium",
 							)}
 							onClick={() => activateFile(file)}
 						>
-							<span className="block min-w-0 truncate">
-								{fileNameFromPath(displayPath)}
+							<span className="flex min-w-0 items-baseline gap-3">
+								<span className="min-w-0 flex-1 truncate">
+									{fileNameFromPath(displayPath)}
+								</span>
+								{file.createdAt != null ? (
+									<RecentFileTimestamps
+										createdAt={file.createdAt}
+										modifiedAt={file.modifiedAt}
+									/>
+								) : null}
 							</span>
-							{parentPath ? <FolderChip path={parentPath} /> : null}
-							<RecentFileTags
-								tags={file.tags ?? []}
-								getAppearance={getTagAppearance}
-							/>
-							{file.createdAt != null ? (
-								<RecentFileTimestamps
-									createdAt={file.createdAt}
-									modifiedAt={file.modifiedAt}
-								/>
+							{parentPath || (file.tags?.length ?? 0) > 0 ? (
+								<span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+									{parentPath ? <FolderChip path={parentPath} /> : null}
+									<RecentFileTags
+										tags={file.tags ?? []}
+										getAppearance={getTagAppearance}
+									/>
+								</span>
 							) : null}
 						</button>
 					);

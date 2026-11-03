@@ -15,7 +15,6 @@ import {
 	DOCUMENT_NARROW_TABLE_ROW_HEIGHT,
 	documentRowHeight,
 	formatCardDate,
-	formatModifiedAt,
 } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
 import { clampPeekListWidth, columnsForTier, densityTier } from "./navDensity";
@@ -303,7 +302,9 @@ describe("DocumentNarrowList density tiers", () => {
 		return Array.from(
 			container.querySelectorAll<HTMLElement>("[data-document-row-index]"),
 		).filter(
-			(row) => row.querySelector('[role="gridcell"]')?.children.length === 2,
+			(row) =>
+				row.querySelector('[role="gridcell"]')?.children.length === 2 ||
+				row.querySelector("[data-card-date]") !== null,
 		).length;
 	}
 
@@ -328,10 +329,6 @@ describe("DocumentNarrowList density tiers", () => {
 				/>,
 			);
 		});
-	}
-
-	function rowMeta(row: HTMLElement): Element | null {
-		return row.querySelector('[role="gridcell"]')?.children[1] ?? null;
 	}
 
 	it("Rail shows titles only; List keeps the secondary line", () => {
@@ -387,18 +384,18 @@ describe("DocumentNarrowList density tiers", () => {
 		);
 	});
 
-	it("List shows the 2nd info on one clamped line, not two", () => {
+	it("List uses the card layout: dates right of the title, no separators", () => {
 		renderTier("list");
 
 		const rows = bodyRows();
 		expect(rows.length).toBeGreaterThan(0);
 		expect(rows[0].style.blockSize).toBe(`${DOCUMENT_CARD_ROW_HEIGHT}px`);
-		const meta = rowMeta(rows[0]);
-		expect(meta?.className).toContain("line-clamp-1");
-		// Root-level file: no folder chip, no "—" placeholder.
-		expect(meta?.textContent).not.toContain("—");
-		expect(meta?.querySelector("[data-folder-chip]")).toBeNull();
-		expect(meta?.textContent).toContain(formatModifiedAt(1_700_000_300));
+		const cell = rows[0].querySelector('[role="gridcell"]');
+		expect(cell?.textContent).not.toContain("•");
+		expect(cell?.textContent).not.toContain("—");
+		expect(cell?.querySelector("[data-folder-chip]")).toBeNull();
+		const dates = cell?.children[0]?.querySelectorAll("[data-card-date]") ?? [];
+		expect(dates.length).toBeGreaterThan(0);
 	});
 
 	it("Card puts dates right of the title and folder on its own line", () => {
@@ -410,7 +407,11 @@ describe("DocumentNarrowList density tiers", () => {
 		const cell = rows[0].querySelector('[role="gridcell"]');
 		const titleRow = cell?.children[0];
 		const dates = titleRow?.querySelectorAll("[data-card-date]") ?? [];
-		expect(dates.length).toBe(2);
+		// Same-day created/modified collapse to one label; tooltip keeps both.
+		expect(dates.length).toBe(1);
+		expect(dates[0].getAttribute("title")).toMatch(
+			/Modified[\s\S]*Created|Created[\s\S]*Modified/,
+		);
 		for (const date of dates) {
 			expect(date.className).toContain("tabular-nums");
 			expect(date.className).toContain("shrink-0");
@@ -430,7 +431,7 @@ describe("DocumentNarrowList density tiers", () => {
 		expect(rows[0].style.blockSize).toBe(
 			`${DOCUMENT_NARROW_TABLE_ROW_HEIGHT}px`,
 		);
-		expect(rows[0].querySelectorAll("[data-card-date]").length).toBe(2);
+		expect(rows[0].querySelectorAll("[data-card-date]").length).toBe(1);
 	});
 
 	it("Card shows dates the List tier hides (created distinct from modified)", () => {

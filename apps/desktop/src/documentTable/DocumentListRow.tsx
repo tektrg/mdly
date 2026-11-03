@@ -8,7 +8,6 @@ import type {
 	KeyboardEvent as ReactKeyboardEvent,
 	MouseEvent as ReactMouseEvent,
 } from "react";
-import { Fragment } from "react";
 import { cn } from "../lib/utils";
 import type {
 	DocumentTableColumn,
@@ -39,17 +38,17 @@ export const DOCUMENT_LIST_ROW_HEIGHT = 32;
  * not be TALLER than the wider one above it, and a short meta must not leave
  * dead space.
  */
-export const DOCUMENT_CARD_ROW_HEIGHT = 46;
+export const DOCUMENT_CARD_ROW_HEIGHT = 56;
 /**
  * Card-tier density (400–559px): title row (dates on its right) plus one
  * truncated detail line — two single lines.
  */
-export const DOCUMENT_CARD_TIER_ROW_HEIGHT = 46;
+export const DOCUMENT_CARD_TIER_ROW_HEIGHT = 56;
 /**
  * Table-tier density (560px+ of list width): the card layout with room for a
  * second detail line, so widening keeps revealing more info.
  */
-export const DOCUMENT_NARROW_TABLE_ROW_HEIGHT = 62;
+export const DOCUMENT_NARROW_TABLE_ROW_HEIGHT = 64;
 
 /**
  * Shared by the header row and the body rows so the two grids cannot drift.
@@ -279,42 +278,6 @@ function secondaryTextClass(isActive: boolean): string {
 	);
 }
 
-/**
- * Card-tier meta: every data column in the live order, plus tags when the tag
- * scan has them — rendered as one wrapping block, not one column. Empty
- * fragments drop out so a missing timestamp never renders a stray separator.
- * The folder item is keyed so the row can middle-truncate it.
- */
-function cardMetaItems(
-	row: DocumentTableRow,
-	metaColumns: DocumentTableColumn[],
-	tags: readonly string[] | undefined,
-): { key: DocumentTableColumn | "tags"; text: string }[] {
-	const items = metaColumns
-		.map((column): { key: DocumentTableColumn | "tags"; text: string } => ({
-			key: column,
-			text:
-				column === "modified"
-					? formatModifiedAt(row.modifiedAt)
-					: column === "created"
-						? formatModifiedAt(row.createdAt)
-						: column === "folder"
-							? lastFolderName(row.folderLabel) && row.folderLabel
-							: row.name,
-		}))
-		.filter((item) => item.text.length > 0);
-	const tagLabel = tagText(tags);
-	if (tagLabel.length > 0) items.push({ key: "tags", text: tagLabel });
-	return items;
-}
-
-function cardMetaClass(isActive: boolean): string {
-	return cn(
-		"min-w-0 break-words text-[11px]",
-		isActive ? "text-selected-foreground" : "text-muted-foreground/70",
-	);
-}
-
 function tagText(tags: readonly string[] | undefined): string {
 	return (tags ?? [])
 		.map((tag) => tag.trim())
@@ -337,9 +300,7 @@ function CardTierCell({
 	metaColumns: DocumentTableColumn[];
 	tags: readonly string[] | undefined;
 }) {
-	const dateColumns = metaColumns.filter(
-		(column) => column === "modified" || column === "created",
-	);
+	const dates = cardDates(row, metaColumns);
 	const showFolder =
 		metaColumns.includes("folder") && lastFolderName(row.folderLabel) !== "";
 	const tagLabel = tagText(tags);
@@ -347,61 +308,97 @@ function CardTierCell({
 		? "text-selected-foreground"
 		: "text-muted-foreground/70";
 	return (
-		<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
-			<span className="flex min-w-0 items-baseline gap-2">
+		<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col gap-1">
+			<span className="flex min-w-0 items-baseline gap-3">
 				<span
 					data-flip-id={flipId(row, "name")}
 					className="min-w-0 flex-1 truncate text-[length:var(--font-size-sidebar)]"
 				>
 					{row.name}
 				</span>
-				{dateColumns.map((column) => {
-					const seconds =
-						column === "modified" ? row.modifiedAt : row.createdAt;
-					const label = formatCardDate(seconds);
-					if (!label) return null;
-					return (
-						<span
-							key={column}
-							data-card-date={column}
-							data-flip-id={flipId(row, column)}
-							title={`${column === "modified" ? "Modified" : "Created"} ${formatModifiedAtTitle(seconds)}`}
-							className={cn("shrink-0 text-[11px] tabular-nums", faded)}
-						>
-							{label}
-						</span>
-					);
-				})}
+				{dates.length > 0 ? (
+					<span className="flex shrink-0 items-baseline gap-2">
+						{dates.map((date) => (
+							<span
+								key={date.column}
+								data-card-date={date.column}
+								data-flip-id={flipId(row, date.column)}
+								title={date.title}
+								className={cn(
+									"shrink-0 whitespace-nowrap text-end text-[12px] font-normal tabular-nums",
+									faded,
+								)}
+							>
+								{date.label}
+							</span>
+						))}
+					</span>
+				) : null}
 			</span>
 			{showFolder || tagLabel ? (
 				<span
 					data-card-details=""
-					className={cn("flex min-w-0 items-center gap-1 text-[11px]", faded)}
+					className={cn(
+						"flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px]",
+						faded,
+					)}
 				>
 					{showFolder ? (
 						<span
 							data-flip-id={flipId(row, "folder")}
-							className="flex min-w-0 shrink overflow-hidden"
+							className="flex min-w-0 shrink items-center overflow-hidden"
 						>
 							<FolderChip folderLabel={row.folderLabel} />
 						</span>
 					) : null}
-					{tagLabel ? (
-						<span
-							className="flex min-w-0 flex-1 gap-1 overflow-hidden"
-							title={tagLabel}
-						>
-							{tagLabel.split(" ").map((tag) => (
-								<span key={tag} className="mdly-chip shrink-0">
+					{tagLabel
+						? tagLabel.split(" ").map((tag) => (
+								<span
+									key={tag}
+									title={tagLabel}
+									className="mdly-chip shrink-0 [block-size:18px] [font-size:11px] [padding-inline:6px]"
+								>
 									{tag}
 								</span>
-							))}
-						</span>
-					) : null}
+							))
+						: null}
 				</span>
 			) : null}
 		</span>
 	);
+}
+
+export type CardDate = {
+	column: "modified" | "created";
+	label: string;
+	title: string;
+};
+
+/**
+ * Card-row dates in the live column order. When created and modified render
+ * the same compact string, the pair collapses to one label (keeping the first
+ * column's slot) whose tooltip still names both facts.
+ */
+export function cardDates(
+	row: Pick<DocumentTableRow, "modifiedAt" | "createdAt">,
+	metaColumns: readonly DocumentTableColumn[],
+	now = new Date(),
+): CardDate[] {
+	const out: CardDate[] = [];
+	for (const column of metaColumns) {
+		if (column !== "modified" && column !== "created") continue;
+		const seconds = column === "modified" ? row.modifiedAt : row.createdAt;
+		const label = formatCardDate(seconds, now);
+		if (!label) continue;
+		const title = `${column === "modified" ? "Modified" : "Created"} ${formatModifiedAtTitle(seconds)}`;
+		const same = out.find((date) => date.label === label);
+		if (same) {
+			same.title = `${same.title}\n${title}`;
+			continue;
+		}
+		out.push({ column, label, title });
+	}
+	return out;
 }
 
 export function DocumentListRow({
@@ -416,7 +413,7 @@ export function DocumentListRow({
 	onOpenDocument,
 	onRowKeyDown,
 	hideSecondary = false,
-	navTier = "list",
+	navTier: _navTier = "list",
 	metaColumns,
 	tags,
 	indentRem = 0,
@@ -454,6 +451,7 @@ export function DocumentListRow({
 			className={cn(
 				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
 				"[padding-inline:var(--row-pad-inline)]",
+				isCard && "[padding-block:8px]",
 				"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none [[data-resizing]_&]:transition-none",
 				"focus-visible:ring-1 focus-visible:ring-ring",
 				// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
@@ -501,7 +499,7 @@ export function DocumentListRow({
 						{row.name}
 					</span>
 				</span>
-			) : isCard && navTier !== "list" ? (
+			) : isCard ? (
 				<CardTierCell
 					row={row}
 					metaColumns={
@@ -509,37 +507,6 @@ export function DocumentListRow({
 					}
 					tags={tags}
 				/>
-			) : isCard ? (
-				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
-					<span
-						data-flip-id={flipId(row, "name")}
-						className="min-w-0 truncate text-[length:var(--font-size-sidebar)]"
-					>
-						{row.name}
-					</span>
-					<span className={cn(cardMetaClass(row.isActive), "line-clamp-1")}>
-						{cardMetaItems(
-							row,
-							metaColumns ?? columns.filter((column) => column !== "name"),
-							tags,
-						).map((item, i) => (
-							<Fragment key={item.key}>
-								{i > 0 && " • "}
-								{item.key === "folder" ? (
-									<FolderChip
-										folderLabel={item.text}
-										className="inline-flex align-middle"
-									/>
-								) : item.key === "tags" ? (
-									item.text
-								) : (
-									// Same flip id as the card/grid date cell, so it glides.
-									<span data-flip-id={flipId(row, item.key)}>{item.text}</span>
-								)}
-							</Fragment>
-						))}
-					</span>
-				</span>
 			) : (
 				<span role="gridcell" tabIndex={-1} className="flex min-w-0 flex-col">
 					<span

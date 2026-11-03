@@ -2,8 +2,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { formatCardDate } from "./DocumentListRow";
 import { DocumentNarrowList } from "./DocumentNarrowList";
-import { formatModifiedAt } from "./DocumentRowList";
 import type { DocumentListingState } from "./documentListingState";
 import { resetDocumentTableLayoutForTests } from "./documentTableLayout";
 import type { DocumentTableRow } from "./documentTableView";
@@ -72,7 +72,7 @@ describe("DocumentNarrowList", () => {
 
 	function secondaryLines() {
 		return bodyRowElements().map(
-			(row) => row.querySelector('[role="gridcell"]')?.children[1]?.textContent,
+			(row) => row.querySelector('[role="gridcell"]')?.textContent ?? "",
 		);
 	}
 
@@ -105,7 +105,7 @@ describe("DocumentNarrowList", () => {
 		resetDocumentTableLayoutForTests();
 		renderList({ rows: buildRows() });
 
-		expect(secondaryLines()[0]).toContain(formatModifiedAt(1_700_000_300));
+		expect(secondaryLines()[0]).toContain(formatCardDate(1_700_000_300));
 	});
 
 	it("returns to the full-width table from the All documents row", () => {

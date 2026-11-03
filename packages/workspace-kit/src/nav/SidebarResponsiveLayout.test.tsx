@@ -74,12 +74,12 @@ describe("Sidebar responsive list -> table layout", () => {
 
 	async function resize(width: number) {
 		await act(async () => {
-			for (const callback of resizeCallbacks) callback([{ contentRect: { width } }]);
+			for (const callback of resizeCallbacks)
+				callback([{ contentRect: { width } }]);
 		});
 	}
 
-	const nav = () =>
-		container.querySelector<HTMLElement>("[data-sidebar-nav]");
+	const nav = () => container.querySelector<HTMLElement>("[data-sidebar-nav]");
 
 	it("starts as a compact list with meta inline", async () => {
 		await render();
@@ -101,9 +101,7 @@ describe("Sidebar responsive list -> table layout", () => {
 			container.querySelector('[data-flip-id="/workspace/a.md:tags"]'),
 		).toBeTruthy();
 		expect(
-			container.querySelector(
-				'[data-flip-id="/workspace/a.md:modified"]',
-			),
+			container.querySelector('[data-flip-id="/workspace/a.md:modified"]'),
 		).toBeTruthy();
 
 		await resize(200);

@@ -63,6 +63,11 @@ import { RecentFilesList, type RecentTagAppearance } from "./RecentFilesList";
 import { SearchList } from "./SearchList";
 import { type SidebarPage, SidebarPager } from "./SidebarPager";
 import { TagList } from "./TagList";
+import {
+	DEFAULT_TABLE_BREAKPOINT,
+	type SidebarRowLayout,
+	useResponsiveRowLayout,
+} from "./useResponsiveRowLayout";
 import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
 import {
 	type SidebarFile,
@@ -71,11 +76,6 @@ import {
 	type SidebarSortMode,
 	useSidebarTree,
 } from "./useSidebarTree";
-import {
-	DEFAULT_TABLE_BREAKPOINT,
-	type SidebarRowLayout,
-	useResponsiveRowLayout,
-} from "./useResponsiveRowLayout";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
 
 export type {
@@ -964,7 +964,8 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 														className={cn(
 															"min-w-0 truncate",
 															rowLayout === "table" ? "flex-1" : "shrink",
-															isPinnedFile && "[direction:rtl] [text-align:left]",
+															isPinnedFile &&
+																"[direction:rtl] [text-align:left]",
 														)}
 													>
 														{row.label}

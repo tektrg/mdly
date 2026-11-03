@@ -18,9 +18,7 @@ describe("buildTagTree", () => {
 			"/",
 		);
 
-		const group = root.children.find(
-			(child) => child.fullPath === "meeting",
-		);
+		const group = root.children.find((child) => child.fullPath === "meeting");
 		expect(group?.segment).toBe("meeting");
 		expect(group?.tagName).toBeNull();
 		expect(group?.children.map((child) => child.fullPath)).toEqual([
@@ -34,10 +32,7 @@ describe("buildTagTree", () => {
 	});
 
 	it("never humanizes segments -- labels are the host's job", () => {
-		const root = buildTagTree(
-			[{ name: "meeting/deep-sync", count: 1 }],
-			"/",
-		);
+		const root = buildTagTree([{ name: "meeting/deep-sync", count: 1 }], "/");
 
 		expect(root.children[0]?.segment).toBe("meeting");
 		expect(root.children[0]?.children[0]?.segment).toBe("deep-sync");
@@ -69,9 +64,7 @@ describe("buildTagTree", () => {
 			"/",
 		);
 
-		const group = root.children.find(
-			(child) => child.fullPath === "meeting",
-		);
+		const group = root.children.find((child) => child.fullPath === "meeting");
 		expect(group?.tagName).toBe("meeting");
 		expect(group?.ownCount).toBe(1);
 		expect(group?.children).toHaveLength(1);
@@ -211,7 +204,8 @@ describe("flattenTagTree", () => {
 		).toEqual(["group:meeting", "tag:work"]);
 	});
 
-	it("reveals series under an expanded namespace and files under an expanded leaf", () => {		const rows = flattenTagTree(
+	it("reveals series under an expanded namespace and files under an expanded leaf", () => {
+		const rows = flattenTagTree(
 			buildTagTree(tags, "/", files),
 			new Set(["meeting", "meeting/deep-sync"]),
 			filesByTag,

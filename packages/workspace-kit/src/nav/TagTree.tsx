@@ -11,17 +11,17 @@ import { fileNameFromPath } from "../lib/filePath";
 import { cn } from "../lib/utils";
 import {
 	buildTagTree,
+	type FlatTagTreeRow,
 	flattenTagTree,
 	groupFilesByTag,
 	tagGroupAncestors,
-	type FlatTagTreeRow,
 } from "./buildTagTree";
 import type { TagListProps } from "./TagList";
 import { useSidebarKeyboardNav } from "./useSidebarKeyboardNav";
 import {
+	compareFiles,
 	readExpandedIdSet,
 	type SidebarFile,
-	compareFiles,
 	writeExpandedIdSet,
 } from "./useSidebarTree";
 import { useVirtualSidebarRows } from "./useVirtualSidebarRows";
@@ -104,7 +104,10 @@ export function TagTreeView({
 		for (const [name, list] of grouped) {
 			// Same comparator as the folder tree, so the nav sort toggle
 			// (Name/Recent) moves tag-inline files exactly like folder files.
-			sorted.set(name, [...list].sort((a, b) => compareFiles(a, b, sortMode)));
+			sorted.set(
+				name,
+				[...list].sort((a, b) => compareFiles(a, b, sortMode)),
+			);
 		}
 		return sorted;
 	}, [files, sortMode]);
@@ -267,10 +270,10 @@ export function TagTreeView({
 						row.kind === "group"
 							? (formatGroupLabel?.(row.fullPath) ?? row.segment)
 							: // Tree leaves default to their own segment ("aptus",
-							// not "team/aptus") — the namespace is already on the
-							// parent row. The host's formatLabel still wins when
-							// given, so flat-list formatting is untouched.
-							(formatLabel?.(row.tag.name) ?? row.segment);
+								// not "team/aptus") — the namespace is already on the
+								// parent row. The host's formatLabel still wins when
+								// given, so flat-list formatting is untouched.
+								(formatLabel?.(row.tag.name) ?? row.segment);
 					const icon =
 						row.kind === "group"
 							? renderGroupIcon?.(row.fullPath)

@@ -175,9 +175,7 @@ export function buildTagTree(
 			// leaves just report their own tag.
 			node.count =
 				memberFiles.get(node.fullPath)?.size ??
-				(node.children.length === 0
-					? node.ownCount
-					: sumOwnCounts(node));
+				(node.children.length === 0 ? node.ownCount : sumOwnCounts(node));
 		}
 	} else {
 		for (const child of root.children) {

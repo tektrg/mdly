@@ -309,7 +309,11 @@ describe("Sidebar symlink activation", () => {
 			onSelectTag: vi.fn(),
 			getRecentTagAppearance: (name) =>
 				name === "work"
-					? { background: "rgb(10, 20, 30)", color: "rgb(1, 2, 3)", border: "0.5px solid rgb(9, 9, 9)" }
+					? {
+							background: "rgb(10, 20, 30)",
+							color: "rgb(1, 2, 3)",
+							border: "0.5px solid rgb(9, 9, 9)",
+						}
 					: { background: "rgb(40, 50, 60)", color: "rgb(4, 5, 6)" },
 		});
 
@@ -319,7 +323,9 @@ describe("Sidebar symlink activation", () => {
 		expect(recentPane?.textContent).toContain("work");
 		expect(recentPane?.textContent).toContain("follow-up");
 		expect(recentPane?.textContent).not.toContain("#work");
-		expect(recentPane?.querySelector('svg[data-testid], [data-testid^="tag-icon-"]')).toBeFalsy();
+		expect(
+			recentPane?.querySelector('svg[data-testid], [data-testid^="tag-icon-"]'),
+		).toBeFalsy();
 		const workTag = Array.from(recentPane?.querySelectorAll("span") ?? []).find(
 			(span) => span.textContent === "work",
 		);
@@ -363,12 +369,13 @@ describe("Sidebar symlink activation", () => {
 		await clickPagerDot("Recent files");
 		const recentPane = container.querySelector('[data-sidebar-page="recent"]');
 
-		// Two icon+date pairs (created, updated), same metadata-row shape as the
-		// host's own recent-recordings list -- no text labels, a leading glyph
-		// per fact instead.
+		// Two right-aligned dates (created, updated), each labelled by tooltip.
 		expect(recentPane?.textContent).toContain("Jan 5, 2026");
 		expect(recentPane?.textContent).toContain("Jan 9, 2026");
-		expect(recentPane?.querySelectorAll("svg").length).toBeGreaterThanOrEqual(2);
+		const dates = recentPane?.querySelectorAll("[data-recent-date]") ?? [];
+		expect(
+			Array.from(dates, (d) => d.getAttribute("title")?.split(" ")[0]),
+		).toEqual(["Created", "Modified"]);
 	});
 
 	it("recent-files row renders unchanged when createdAt is absent (default-absent guard)", async () => {
@@ -618,7 +625,9 @@ describe("Sidebar symlink activation", () => {
 		];
 		const inlineFileNames = () =>
 			Array.from(
-				container.querySelectorAll('[data-sidebar-page="tags"] [data-tag-file]'),
+				container.querySelectorAll(
+					'[data-sidebar-page="tags"] [data-tag-file]',
+				),
 			).map((row) => row.textContent);
 
 		await renderSidebar({
@@ -1229,7 +1238,9 @@ describe("Sidebar symlink activation", () => {
 		tagSeparator?: Parameters<typeof Sidebar>[0]["tagSeparator"];
 		formatTagGroupLabel?: Parameters<typeof Sidebar>[0]["formatTagGroupLabel"];
 		renderTagGroupIcon?: Parameters<typeof Sidebar>[0]["renderTagGroupIcon"];
-		getRecentTagAppearance?: Parameters<typeof Sidebar>[0]["getRecentTagAppearance"];
+		getRecentTagAppearance?: Parameters<
+			typeof Sidebar
+		>[0]["getRecentTagAppearance"];
 		sortMode?: Parameters<typeof Sidebar>[0]["sortMode"];
 	}) {
 		await act(async () => {
@@ -1285,12 +1296,13 @@ describe("Sidebar symlink activation", () => {
 		root = createRoot(container);
 	}
 
-	async function clickTagsRow(label: string) {		// Scoped to the Tags pane: file names also exist as rows on the
+	async function clickTagsRow(label: string) {
+		// Scoped to the Tags pane: file names also exist as rows on the
 		// (hidden) tree page, so an unscoped lookup would click the wrong one.
 		const tagsPage = container.querySelector('[data-sidebar-page="tags"]');
-		const button = Array.from(
-			tagsPage?.querySelectorAll("button") ?? [],
-		).find((candidate) => candidate.textContent?.includes(label));
+		const button = Array.from(tagsPage?.querySelectorAll("button") ?? []).find(
+			(candidate) => candidate.textContent?.includes(label),
+		);
 		expect(button).toBeTruthy();
 		await act(async () => {
 			(button as HTMLButtonElement | undefined)?.click();
@@ -1317,6 +1329,8 @@ describe("Sidebar symlink activation", () => {
 		const row = Array.from(
 			container.querySelectorAll<HTMLElement>('[role="treeitem"]'),
 		).find((candidate) => candidate.textContent?.includes(label));
-		return row?.querySelectorAll("[data-sidebar-stack-effect] > span").length ?? 0;
+		return (
+			row?.querySelectorAll("[data-sidebar-stack-effect] > span").length ?? 0
+		);
 	}
 });

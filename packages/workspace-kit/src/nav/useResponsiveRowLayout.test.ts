@@ -17,6 +17,7 @@ describe("springProgressSamples", () => {
 });
 
 import { compactMetaGap } from "./useResponsiveRowLayout";
+
 describe("compactMetaGap", () => {
 	it("ramps from 0 to ~19px over the 160px before the breakpoint", () => {
 		expect(compactMetaGap(200, 420)).toBe(0);
