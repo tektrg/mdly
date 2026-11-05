@@ -13,7 +13,9 @@ export function ImportDocDialog({
 }) {
 	const [status, setStatus] = useState<"idle" | "importing">("idle");
 	const [converter, setConverter] = useState<ConverterStatus | null>(null);
-	const [converterStatus, setConverterStatus] = useState<"idle" | "checking">("idle");
+	const [converterStatus, setConverterStatus] = useState<"idle" | "checking">(
+		"idle",
+	);
 	const [url, setUrl] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
@@ -139,16 +141,10 @@ export function ImportDocDialog({
 					</p>
 				</div>
 
-				{error ? (
-					<p className="m-0 text-sm text-destructive">{error}</p>
-				) : null}
+				{error ? <p className="m-0 text-sm text-destructive">{error}</p> : null}
 
 				<div className="flex items-center justify-end gap-2">
-					<Button
-						size="sm"
-						variant="ghost"
-						onClick={() => onOpenChange(false)}
-					>
+					<Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
 					<Button

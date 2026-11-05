@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOARD_VIEW_SETTINGS } from "./properties/documentViews";
 
 /**
  * The view store lives outside `appStore`, so it has to be imported fresh (with
@@ -34,7 +35,12 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
-			layout: { viewType: "table", boardField: null, calendarField: null },
+			layout: {
+				viewType: "table",
+				boardField: null,
+				calendarField: null,
+				board: DEFAULT_BOARD_VIEW_SETTINGS,
+			},
 		});
 	});
 
@@ -59,7 +65,12 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
-			layout: { viewType: "table", boardField: null, calendarField: null },
+			layout: {
+				viewType: "table",
+				boardField: null,
+				calendarField: null,
+				board: DEFAULT_BOARD_VIEW_SETTINGS,
+			},
 		});
 		expect(workspaceStore.get().navViewSorts["/ws"]).toEqual({
 			recent: { column: "name", direction: "asc" },
@@ -96,7 +107,12 @@ describe("documentTableStore", () => {
 			propertyFilters: [],
 			propertyGroupBy: null,
 			activeSavedViewId: null,
-			layout: { viewType: "table", boardField: null, calendarField: null },
+			layout: {
+				viewType: "table",
+				boardField: null,
+				calendarField: null,
+				board: DEFAULT_BOARD_VIEW_SETTINGS,
+			},
 		});
 		// Sort is persisted per workspace, not session state: it stays put.
 		expect(workspaceStore.get().navViewSorts["/ws"]?.recent).toEqual({
@@ -209,6 +225,7 @@ describe("documentTableStore", () => {
 			getSavedViews,
 			selectSavedView,
 			setBoardField,
+			updateBoardSettings,
 			setCalendarField,
 			setDocumentViewType,
 			workspacePathStore,
@@ -222,6 +239,7 @@ describe("documentTableStore", () => {
 			viewType: "board",
 			boardField: "prop:stage",
 			calendarField: null,
+			board: DEFAULT_BOARD_VIEW_SETTINGS,
 		});
 
 		const id = saveCurrentViewAs("Pipeline");
@@ -238,7 +256,23 @@ describe("documentTableStore", () => {
 			viewType: "calendar",
 			calendarField: "prop:start",
 		});
+		updateBoardSettings((board) => ({
+			...board,
+			columnOrder: ["v:done"],
+			hiddenColumns: ["v:later"],
+			columnColors: { "v:done": "green" },
+			cardProperties: ["prop:due"],
+		}));
+		expect(getSavedViews("/ws")[0]?.board).toMatchObject({
+			columnOrder: ["v:done"],
+			hiddenColumns: ["v:later"],
+			columnColors: { "v:done": "green" },
+			cardProperties: ["prop:due"],
+		});
 		// The unsaved view's own layout is untouched by edits to the saved one.
+		expect(documentTableViewStore.get().layout.board).toEqual(
+			DEFAULT_BOARD_VIEW_SETTINGS,
+		);
 		expect(documentTableViewStore.get().layout.viewType).toBe("board");
 		selectSavedView(null);
 		expect(documentTableViewStore.get().layout.viewType).toBe("board");
@@ -288,7 +322,12 @@ describe("documentTableStore", () => {
 			groupBy: "folder",
 			propertyGroupBy: null,
 			activeSavedViewId: null,
-			layout: { viewType: "table", boardField: null, calendarField: null },
+			layout: {
+				viewType: "table",
+				boardField: null,
+				calendarField: null,
+				board: DEFAULT_BOARD_VIEW_SETTINGS,
+			},
 		});
 	});
 });

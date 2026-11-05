@@ -173,7 +173,10 @@ function parseYamlStringValue(raw: string): string {
 	}
 }
 
-function markdownFileNameForTitle(title: string, fallback = "notion-page"): string {
+function markdownFileNameForTitle(
+	title: string,
+	fallback = "notion-page",
+): string {
 	const safeName = title
 		.trim()
 		.replace(/[\\/:*?"<>|]+/g, "-")

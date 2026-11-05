@@ -69,7 +69,8 @@ export const commandScopeOptions: {
 ];
 
 export function findScopeTrigger(query: string): ScopeTrigger | null {
-	const tokenStart = Math.max(query.lastIndexOf(" "), query.lastIndexOf("\t")) + 1;
+	const tokenStart =
+		Math.max(query.lastIndexOf(" "), query.lastIndexOf("\t")) + 1;
 	const token = query.slice(tokenStart);
 	if (!/^@[a-z]*$/i.test(token)) return null;
 	return {
@@ -85,8 +86,13 @@ export function insertScopeToken(
 	scope: CommandScopeKind,
 ) {
 	const replacement =
-		scope === "notion" ? "@notion " : scope === "workspace" ? "@workspace " : "@folder:";
-	if (!trigger) return `${query}${query && !/\s$/.test(query) ? " " : ""}${replacement}`;
+		scope === "notion"
+			? "@notion "
+			: scope === "workspace"
+				? "@workspace "
+				: "@folder:";
+	if (!trigger)
+		return `${query}${query && !/\s$/.test(query) ? " " : ""}${replacement}`;
 	return `${query.slice(0, trigger.start)}${replacement}${query.slice(trigger.end)}`;
 }
 
@@ -179,7 +185,9 @@ export function resolveWorkspaceScope(query: string): WorkspaceScopeState {
 	if (scopeStart < 0) return { kind: "none" };
 
 	const beforeScope = query.slice(0, scopeStart).trim();
-	const afterScope = query.slice(scopeStart + workspaceScopePrefix.length).trim();
+	const afterScope = query
+		.slice(scopeStart + workspaceScopePrefix.length)
+		.trim();
 	return {
 		kind: "active",
 		searchQuery: joinQueryParts(beforeScope, afterScope),
