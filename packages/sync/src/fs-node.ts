@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	createReadStream,
 	existsSync,
 	mkdirSync,
 	readFileSync,
@@ -30,6 +31,26 @@ function isEnoent(error: unknown): boolean {
 const READ_CONCURRENCY = 32;
 
 /**
+ * Assets go up to MAX_ASSET_SIZE (10 MB) each and keep only their hash, so
+ * fewer run at once and big ones stream through SHA-256 instead of being
+ * buffered: peak RAM stays ~ASSET_READ_CONCURRENCY x threshold, not 32 x 10 MB.
+ */
+export const ASSET_READ_CONCURRENCY = 4;
+/** Assets at or above this size (bytes) are hashed via a read stream. */
+export const ASSET_STREAM_THRESHOLD = 1024 * 1024;
+
+/** SHA-256 lowercase hex of a file's bytes without buffering the whole file. */
+export function hashFileStream(absolute: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const hash = createHash("sha256");
+		createReadStream(absolute)
+			.on("error", reject)
+			.on("data", (chunk) => hash.update(chunk))
+			.on("end", () => resolve(hash.digest("hex")));
+	});
+}
+
+/**
  * SHA-256 lowercase hex via `node:crypto` — byte-identical to `contentHash`
  * in fs.ts (Web Crypto, kept for browser/worker consumers). Strings hash as
  * UTF-8, which is what `TextEncoder` produces too (lone surrogates → U+FFFD
@@ -49,9 +70,10 @@ export function nodeContentHash(content: string | Uint8Array): string {
  * error is rethrown — the one from the EARLIEST failing path in input
  * order, which is the one the serial loop would have hit first.
  */
-async function readInOrder<T>(
+export async function readInOrder<T>(
 	paths: readonly string[],
 	read: (relativePath: string) => Promise<T>,
+	concurrency: number = READ_CONCURRENCY,
 ): Promise<T[]> {
 	const settled: PromiseSettledResult<T>[] = new Array(paths.length);
 	let next = 0;
@@ -69,7 +91,7 @@ async function readInOrder<T>(
 		}
 	}
 	await Promise.all(
-		Array.from({ length: Math.min(READ_CONCURRENCY, paths.length) }, worker),
+		Array.from({ length: Math.min(concurrency, paths.length) }, worker),
 	);
 	const results: T[] = [];
 	for (const outcome of settled) {
@@ -220,21 +242,30 @@ export function createNodeFileSystem(
 			});
 			// Same walk-then-read race as listMarkdownFiles above — skip a file
 			// deleted between the two passes rather than failing the sync run.
-			return readInOrder(files, async (relativePath) => {
-				const absolute = join(dir, relativePath);
-				const data = await readFile(absolute);
-				const hint = await statHint(
-					absolute,
-					details?.[relativePath]?.modifiedAt,
-					details?.[relativePath]?.size,
-				);
-				return {
-					relativePath,
-					hash: nodeContentHash(data),
-					mtime: hint.mtime,
-					size: hint.size,
-				};
-			});
+			return readInOrder(
+				files,
+				async (relativePath) => {
+					const absolute = join(dir, relativePath);
+					const walkedSize = details?.[relativePath]?.size;
+					// Unknown size (mocked walker): stream — safe for any size.
+					const hash =
+						walkedSize !== undefined && walkedSize < ASSET_STREAM_THRESHOLD
+							? nodeContentHash(await readFile(absolute))
+							: await hashFileStream(absolute);
+					const hint = await statHint(
+						absolute,
+						details?.[relativePath]?.modifiedAt,
+						walkedSize,
+					);
+					return {
+						relativePath,
+						hash,
+						mtime: hint.mtime,
+						size: hint.size,
+					};
+				},
+				ASSET_READ_CONCURRENCY,
+			);
 		},
 	};
 }
