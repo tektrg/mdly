@@ -38,32 +38,24 @@ describe("command query scopes", () => {
 
 	it("inserts scope tokens over the active @ trigger", () => {
 		expect(
-			insertScopeToken(
-				"roadmap @fo",
-				findScopeTrigger("roadmap @fo"),
-				"folder",
-			),
+			insertScopeToken("roadmap @fo", findScopeTrigger("roadmap @fo"), "folder"),
 		).toBe("roadmap @folder:");
 		expect(insertScopeToken("roadmap", null, "notion")).toBe(
 			"roadmap @notion ",
 		);
 		expect(
-			insertScopeToken(
-				"project @wo",
-				findScopeTrigger("project @wo"),
-				"workspace",
-			),
+			insertScopeToken("project @wo", findScopeTrigger("project @wo"), "workspace"),
 		).toBe("project @workspace ");
 	});
 
 	it("resolves exact folder scope values and keeps the remaining file query", () => {
-		expect(
-			resolveFolderScope("@folder:Product Specs roadmap", folders),
-		).toEqual({
-			kind: "resolved",
-			folder: folders[1],
-			searchQuery: "roadmap",
-		});
+		expect(resolveFolderScope("@folder:Product Specs roadmap", folders)).toEqual(
+			{
+				kind: "resolved",
+				folder: folders[1],
+				searchQuery: "roadmap",
+			},
+		);
 	});
 
 	it("keeps folder scope in editing mode until an exact folder resolves", () => {
@@ -100,13 +92,11 @@ describe("command query scopes", () => {
 	});
 
 	it("resolves explicit Notion accounts", () => {
-		expect(resolveNotionScope("@notion:7lab roadmap", ["7lab", "stv"])).toEqual(
-			{
-				kind: "ready",
-				account: "7lab",
-				searchQuery: "roadmap",
-			},
-		);
+		expect(resolveNotionScope("@notion:7lab roadmap", ["7lab", "stv"])).toEqual({
+			kind: "ready",
+			account: "7lab",
+			searchQuery: "roadmap",
+		});
 	});
 
 	it("resolves active workspace scopes and keeps the remaining query", () => {

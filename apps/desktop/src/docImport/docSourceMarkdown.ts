@@ -51,9 +51,7 @@ export function buildDocSourceMarkdownFromMetadata(
 	metadata: DocSourceMetadata,
 ): string {
 	const parsed = parseMarkdownFrontMatter(markdown);
-	const existingFrontMatter = stripDocSourceBlock(
-		parsed.type === "none" ? "" : parsed.raw,
-	).trimEnd();
+	const existingFrontMatter = stripDocSourceBlock(parsed.type === "none" ? "" : parsed.raw).trimEnd();
 	const sourceFrontMatter = docSourceFrontMatter(metadata);
 	return combineMarkdownFrontMatter(
 		[existingFrontMatter, sourceFrontMatter].filter(Boolean).join("\n"),

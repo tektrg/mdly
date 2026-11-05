@@ -64,8 +64,9 @@ describe("editor transaction storm detector", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		(window as unknown as { hubbleDiagnostics?: unknown }).hubbleDiagnostics =
-			undefined;
+		(
+			window as unknown as { hubbleDiagnostics?: unknown }
+		).hubbleDiagnostics = undefined;
 	});
 
 	it("reports once past the threshold with the storming transaction's shape and a stack", async () => {

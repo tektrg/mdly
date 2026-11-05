@@ -28,7 +28,9 @@ export function ReimportDocDialog({
 					without asking. Choose what to do with the freshly converted version.
 				</p>
 
-				{error ? <p className="m-0 text-sm text-destructive">{error}</p> : null}
+				{error ? (
+					<p className="m-0 text-sm text-destructive">{error}</p>
+				) : null}
 
 				<div className="flex flex-col gap-2">
 					<Button size="sm" onClick={() => onResolve("replace")}>
