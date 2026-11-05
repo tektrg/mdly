@@ -1,13 +1,14 @@
-import { type MouseEvent, memo, useState } from "react";
+import { type MouseEvent, memo } from "react";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { cn } from "../../lib/utils";
 import type { DocumentTableRow } from "../documentTableView";
 import { PROPERTY_HEADER_MENU_TRIGGER_CLASS } from "../properties/PropertyControls";
 import {
-	PropertyMenu,
+	type MenuAnchor,
 	PropertyMenuItem,
 	PropertyMenuSeparator,
 	PropertySubmenu,
+	pointerAnchor,
 } from "../properties/PropertyMenu";
 import {
 	fallbackPropertyLabel,
@@ -33,6 +34,15 @@ export type BoardCardActions = {
 	onDuplicate: (row: DocumentTableRow) => void;
 	onRename: (row: DocumentTableRow) => void;
 	onDelete: (row: DocumentTableRow) => void;
+	/**
+	 * Opens the board's one shared card menu for `row`, at `anchor`; focus
+	 * returns to `card` when it closes.
+	 */
+	onOpenMenu: (
+		row: DocumentTableRow,
+		anchor: MenuAnchor,
+		card: HTMLElement,
+	) => void;
 };
 
 function Chip({
@@ -130,7 +140,6 @@ export const BoardCard = memo(function BoardCard({
 	isPeeked: boolean;
 	actions: BoardCardActions;
 }) {
-	const [menuOpen, setMenuOpen] = useState(false);
 	const onClick = (event: MouseEvent) => {
 		if (event.metaKey || event.ctrlKey) actions.onOpen(row);
 		else actions.onPeek(row);
@@ -149,7 +158,11 @@ export const BoardCard = memo(function BoardCard({
 			onDoubleClick={() => actions.onOpen(row)}
 			onContextMenu={(event) => {
 				event.preventDefault();
-				setMenuOpen(true);
+				actions.onOpenMenu(
+					row,
+					pointerAnchor(event.clientX, event.clientY, event.currentTarget),
+					event.currentTarget,
+				);
 			}}
 			className={cn(
 				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background px-2 py-1.5 text-sm outline-hidden transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring",
@@ -173,28 +186,33 @@ export const BoardCard = memo(function BoardCard({
 					/>
 				))}
 			</div>
-			{/* biome-ignore lint/a11y/noStaticElementInteractions: stops the card's click from also peeking. */}
-			<span
-				onClick={(event) => event.stopPropagation()}
+			{/* A plain button: the menu itself is one shared instance per board. */}
+			<button
+				type="button"
+				className={PROPERTY_HEADER_MENU_TRIGGER_CLASS}
+				aria-label={`Actions for ${title}`}
+				aria-haspopup="menu"
+				title={`Actions for ${title}`}
+				onClick={(event) => {
+					event.stopPropagation();
+					const card =
+						event.currentTarget.closest<HTMLElement>("[data-board-card]");
+					actions.onOpenMenu(
+						row,
+						event.currentTarget,
+						card ?? event.currentTarget,
+					);
+				}}
 				onKeyDown={(event) => event.stopPropagation()}
 			>
-				<PropertyMenu
-					trigger={
-						<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
-					}
-					triggerClassName={PROPERTY_HEADER_MENU_TRIGGER_CLASS}
-					triggerLabel={`Actions for ${title}`}
-					open={menuOpen}
-					onOpenChange={setMenuOpen}
-				>
-					{menuOpen ? <CardMenuItems row={row} actions={actions} /> : null}
-				</PropertyMenu>
-			</span>
+				<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
+			</button>
 		</div>
 	);
 });
 
-function CardMenuItems({
+/** The card menu's items; rendered by the board's shared menu. */
+export function CardMenuItems({
 	row,
 	actions,
 }: {

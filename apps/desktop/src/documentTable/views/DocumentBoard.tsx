@@ -30,6 +30,8 @@ import {
 } from "../properties/documentViews";
 import { PROPERTY_HEADER_MENU_TRIGGER_CLASS } from "../properties/PropertyControls";
 import {
+	AnchoredPropertyMenu,
+	type MenuAnchor,
 	PropertyMenu,
 	PropertyMenuItem,
 	PropertyMenuLabel,
@@ -40,7 +42,7 @@ import type {
 	PropertyFieldId,
 } from "../properties/propertyFields";
 import { propertyScanStore } from "../properties/propertyScanStore";
-import { BoardCard, type BoardCardActions } from "./BoardCard";
+import { BoardCard, type BoardCardActions, CardMenuItems } from "./BoardCard";
 import { type BoardDialogState, BoardDialogs } from "./BoardDialogs";
 import { BoardPeek } from "./BoardPeek";
 import {
@@ -62,6 +64,7 @@ import {
 	reorderColumnKeys,
 	resolveBoardField,
 	resolveCardTitle,
+	shareBoardColumns,
 } from "./boardModel";
 import { ReadingPropertiesNotice, ViewFieldPicker } from "./NoteCard";
 import { READ_ONLY_MOVE_TARGETS, useNoteDropTarget } from "./viewDrag";
@@ -510,6 +513,13 @@ export function DocumentBoard({
 	const [pending, setPending] = useState<PendingValues>(new Map());
 	const [peekPath, setPeekPath] = useState<string | null>(null);
 	const [dialog, setDialog] = useState<BoardDialogState>(null);
+	// The one card menu, shared by every card (row kept while it animates out).
+	const [cardMenu, setCardMenu] = useState<{
+		row: DocumentTableRow;
+		anchor: MenuAnchor;
+		card: HTMLElement;
+		open: boolean;
+	} | null>(null);
 	const focusAfterMove = useRef<string | null>(null);
 	const boardRef = useRef<HTMLDivElement | null>(null);
 	const headingByPath = useStoreValue(
@@ -533,17 +543,20 @@ export function DocumentBoard({
 		() => withPendingValues(rows, field?.id, pending),
 		[rows, field, pending],
 	);
-	const model = useMemo(
-		() =>
-			field
-				? buildBoardModel(effectiveRows, field, {
-						limitFor: (key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
-						invalidPaths,
-						settings: boardSettings,
-					})
-				: null,
-		[effectiveRows, field, limits, invalidPaths, boardSettings],
-	);
+	const previousModel = useRef<BoardModel | null>(null);
+	const model = useMemo(() => {
+		if (!field) return null;
+		const built = buildBoardModel(effectiveRows, field, {
+			limitFor: (key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
+			invalidPaths,
+			settings: boardSettings,
+		});
+		// Same field: reuse unchanged columns so only the touched ones re-render.
+		return previousModel.current?.field === field
+			? shareBoardColumns(previousModel.current, built)
+			: built;
+	}, [effectiveRows, field, limits, invalidPaths, boardSettings]);
+	previousModel.current = model;
 	const fieldById = useMemo(
 		() => new Map(fields.map((candidate) => [candidate.id, candidate])),
 		[fields],
@@ -559,8 +572,29 @@ export function DocumentBoard({
 		(row: DocumentTableRow) => resolveCardTitle(row, headingByPath[row.path]),
 		[headingByPath],
 	);
-	const latest = useRef({ model, effectiveRows, titleOf, boardSettings });
-	latest.current = { model, effectiveRows, titleOf, boardSettings };
+	// Callbacks read props through this ref so a parent re-render with
+	// new-but-equal `onOpenDocument`/`rowMenu` keeps `cardActions` stable and
+	// leaves every memoized card alone.
+	const latest = useRef({
+		model,
+		effectiveRows,
+		titleOf,
+		boardSettings,
+		invalidPaths,
+		onOpenDocument,
+		rowMenu,
+	});
+	latest.current = {
+		model,
+		effectiveRows,
+		titleOf,
+		boardSettings,
+		invalidPaths,
+		onOpenDocument,
+		rowMenu,
+	};
+	const hasRowMenu = rowMenu !== undefined;
+	const revealLabel = rowMenu?.revealLabel;
 
 	const moveTo = useCallback((row: DocumentTableRow, target: BoardColumn) => {
 		const current = latest.current.model;
@@ -603,12 +637,12 @@ export function DocumentBoard({
 	const cardActions = useMemo<BoardCardActions>(
 		() => ({
 			onPeek: (row) => setPeekPath(row.path),
-			onOpen: (row) => onOpenDocument(row),
+			onOpen: (row) => latest.current.onOpenDocument(row),
 			moveTargets: (row) => {
 				const current = latest.current.model;
 				if (!current) return [];
 				if (current.field.readOnly) return [...READ_ONLY_MOVE_TARGETS];
-				if (invalidPaths.has(row.path)) return [];
+				if (latest.current.invalidPaths.has(row.path)) return [];
 				return moveTargetsFor(row, current).map((column) => ({
 					key: column.key,
 					label: column.label,
@@ -620,22 +654,28 @@ export function DocumentBoard({
 				);
 				if (target) moveTo(row, target);
 			},
-			onCopyPath: rowMenu ? (row) => rowMenu.onCopyPath(row.path) : undefined,
-			onReveal: rowMenu ? (row) => rowMenu.onRevealPath(row.path) : undefined,
-			revealLabel: rowMenu?.revealLabel,
+			onCopyPath: hasRowMenu
+				? (row) => latest.current.rowMenu?.onCopyPath(row.path)
+				: undefined,
+			onReveal: hasRowMenu
+				? (row) => latest.current.rowMenu?.onRevealPath(row.path)
+				: undefined,
+			revealLabel,
 			onDuplicate: (row) => void duplicateNote(row),
 			onRename: (row) =>
 				setDialog({ kind: "rename", row, title: latest.current.titleOf(row) }),
 			onDelete: (row) =>
 				setDialog({ kind: "delete", row, title: latest.current.titleOf(row) }),
+			onOpenMenu: (row, anchor, card) =>
+				setCardMenu({ row, anchor, card, open: true }),
 		}),
-		[onOpenDocument, rowMenu, moveTo, invalidPaths],
+		[hasRowMenu, revealLabel, moveTo],
 	);
 
 	const columnActions = useMemo<ColumnActions>(
 		() => ({
 			onDropCard: (path, column) => {
-				if (invalidPaths.has(path)) return;
+				if (latest.current.invalidPaths.has(path)) return;
 				const row = latest.current.effectiveRows.find(
 					(candidate) => candidate.path === path,
 				);
@@ -678,7 +718,7 @@ export function DocumentBoard({
 					columnColors: { ...settings.columnColors, [column.key]: color },
 				})),
 		}),
-		[moveTo, invalidPaths],
+		[moveTo],
 	);
 
 	// Keep keyboard focus on a card that Opt+arrow just moved to another column.
@@ -898,6 +938,23 @@ export function DocumentBoard({
 					/>
 				) : null}
 			</div>
+			<AnchoredPropertyMenu
+				anchor={cardMenu?.anchor ?? null}
+				open={cardMenu?.open ?? false}
+				returnFocus={cardMenu?.card ?? null}
+				label={
+					cardMenu ? `Actions for ${titleOf(cardMenu.row)}` : "Card actions"
+				}
+				onClose={() =>
+					setCardMenu((current) =>
+						current ? { ...current, open: false } : null,
+					)
+				}
+			>
+				{cardMenu ? (
+					<CardMenuItems row={cardMenu.row} actions={cardActions} />
+				) : null}
+			</AnchoredPropertyMenu>
 			<BoardDialogs
 				state={dialog}
 				onClose={() => setDialog(null)}

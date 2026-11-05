@@ -9,8 +9,10 @@ import {
 	BOARD_MAX_VALUE_COLUMNS,
 	boardFieldCandidates,
 	buildBoardModel,
+	EMPTY_COLUMN_KEY,
 	moveTargetsFor,
 	resolveBoardField,
+	shareBoardColumns,
 } from "./boardModel";
 import {
 	buildCalendarModel,
@@ -236,5 +238,47 @@ describe("QA pass 2: board limits and keyboard moves", () => {
 			.find((candidate) => candidate.date === "2026-10-05");
 		expect(day?.rows).toHaveLength(2);
 		expect(day?.allRows.map((card) => card.name)).toEqual(["a", "b", "c", "d"]);
+	});
+});
+
+describe("shareBoardColumns", () => {
+	it("keeps unchanged columns by identity so only moved-between columns re-render", () => {
+		const field: PropertyField = {
+			id: "prop:status",
+			label: "status",
+			type: "select",
+			options: ["Todo", "Doing", "Done"],
+			documentCount: 3,
+		};
+		const make = (name: string, status: string): DocumentTableRow => ({
+			path: `/ws/${name}.md`,
+			openPath: `/ws/${name}.md`,
+			name,
+			folderLabel: "—",
+			modifiedAt: 0,
+			createdAt: 0,
+			searchName: name,
+			isActive: false,
+			isPinnedOffFilter: false,
+			properties: { "prop:status": status },
+		});
+		const a = make("a", "Todo");
+		const b = make("b", "Doing");
+		const c = make("c", "Done");
+		const before = buildBoardModel([a, b, c], field);
+		const moved = { ...a, properties: { "prop:status": "Done" } };
+		const after = shareBoardColumns(
+			before,
+			buildBoardModel([moved, b, c], field),
+		);
+		const byKey = (model: typeof before, key: string) =>
+			model.columns.find((column) => column.key === key);
+		expect(byKey(after, "v:doing")).toBe(byKey(before, "v:doing"));
+		expect(byKey(after, EMPTY_COLUMN_KEY)).toBe(
+			byKey(before, EMPTY_COLUMN_KEY),
+		);
+		expect(byKey(after, "v:todo")).not.toBe(byKey(before, "v:todo"));
+		expect(byKey(after, "v:done")).not.toBe(byKey(before, "v:done"));
+		expect(byKey(after, "v:done")?.rows).toEqual([moved, c]);
 	});
 });

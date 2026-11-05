@@ -4,6 +4,79 @@ import type { ReactNode } from "react";
 import MingcuteCheckLine from "~icons/mingcute/check-line";
 import { cn } from "../../lib/utils";
 
+const MENU_POPUP_CLASS =
+	"max-h-80 w-60 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+
+/** What an anchored menu opens against: an element, or a point (right-click). */
+export type MenuAnchor =
+	| Element
+	| { getBoundingClientRect: () => DOMRect; contextElement?: Element };
+
+/** A zero-size anchor at the pointer, for a menu opened by right-click. */
+export function pointerAnchor(
+	clientX: number,
+	clientY: number,
+	contextElement?: Element,
+): MenuAnchor {
+	return {
+		getBoundingClientRect: () =>
+			DOMRect.fromRect({ x: clientX, y: clientY, width: 0, height: 0 }),
+		...(contextElement ? { contextElement } : {}),
+	};
+}
+
+/**
+ * `PropertyMenu`'s popup with no trigger of its own: one instance serves a
+ * whole list (e.g. every board card), opened against whichever element or
+ * point the caller passes, so N rows don't each mount a menu.
+ */
+export function AnchoredPropertyMenu({
+	anchor,
+	open,
+	onClose,
+	returnFocus,
+	label,
+	children,
+	align = "end",
+}: {
+	anchor: MenuAnchor | null;
+	open: boolean;
+	onClose: () => void;
+	/** Focused after the menu closes (the trigger a dropdown would refocus). */
+	returnFocus?: HTMLElement | null;
+	label: string;
+	children: ReactNode;
+	align?: "start" | "end";
+}) {
+	const portalContainer = usePortalContainer();
+	return (
+		<Menu.Root
+			open={open && anchor !== null}
+			onOpenChange={(next) => {
+				if (!next) onClose();
+			}}
+		>
+			<Menu.Portal container={portalContainer}>
+				<Menu.Positioner
+					className="z-50"
+					anchor={anchor}
+					align={align}
+					side="bottom"
+					sideOffset={4}
+				>
+					<Menu.Popup
+						aria-label={label}
+						finalFocus={() => (returnFocus?.isConnected ? returnFocus : true)}
+						className={MENU_POPUP_CLASS}
+					>
+						{children}
+					</Menu.Popup>
+				</Menu.Positioner>
+			</Menu.Portal>
+		</Menu.Root>
+	);
+}
+
 /**
  * The property surfaces' one dropdown: the kit's `ActionsMenu` look (same
  * popup classes) with a caller-supplied trigger and a scrollable body, since a
@@ -52,9 +125,7 @@ export function PropertyMenu({
 					side="bottom"
 					sideOffset={4}
 				>
-					<Menu.Popup className="max-h-80 w-60 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-						{children}
-					</Menu.Popup>
+					<Menu.Popup className={MENU_POPUP_CLASS}>{children}</Menu.Popup>
 				</Menu.Positioner>
 			</Menu.Portal>
 		</Menu.Root>

@@ -1,5 +1,5 @@
 import { Button } from "@hubble.md/ui";
-import { type ReactNode, useRef, useState } from "react";
+import { type ComponentProps, type ReactNode, useRef, useState } from "react";
 import MingcuteArrowUpLine from "~icons/mingcute/arrow-up-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
@@ -39,7 +39,10 @@ import {
 	type PropertyField,
 	type PropertyFieldId,
 } from "./properties/propertyFields";
-import { usePropertyScanState } from "./properties/usePropertyModel";
+import {
+	usePropertyScanState,
+	usePropertyScanStatus,
+} from "./properties/usePropertyModel";
 import { SavedViewsBanner } from "./SavedViewsBanner";
 import {
 	useCurrentDocumentView,
@@ -374,6 +377,17 @@ export type DocumentTableProps = {
 	rowMenu?: DocumentRowListMenu;
 };
 
+/**
+ * The view bar shows scan progress, so it alone subscribes to the whole scan
+ * state; the table/board around it don't re-render on every progress tick.
+ */
+function ScanAwarePropertyViewBar(
+	props: Omit<ComponentProps<typeof PropertyViewBar>, "scan">,
+) {
+	const scan = usePropertyScanState();
+	return <PropertyViewBar {...props} scan={scan} />;
+}
+
 /** The full-width home surface: every Markdown document in the workspace. */
 export function DocumentTable({
 	rows,
@@ -387,10 +401,11 @@ export function DocumentTable({
 }: DocumentTableProps) {
 	const { isCustomized, propertyColumns } = useDocumentTableLayout();
 	const { savedView, propertyFields, layout } = useCurrentDocumentView();
-	const propertyScan = usePropertyScanState();
+	// Status only: progress ticks re-render just the view bar (below).
+	const scanStatus = usePropertyScanStatus();
 	const folders = useWorkspaceFolderPaths();
 	const isReadingProperties =
-		propertyScan.status === "scanning" || propertyScan.status === "idle";
+		scanStatus === "scanning" || scanStatus === "idle";
 	const canSaveView =
 		layout.viewType !== "table" ||
 		view.propertyFilters.length > 0 ||
@@ -417,7 +432,7 @@ export function DocumentTable({
 							propertyColumns,
 						)}
 						visibleColumns={propertyColumns}
-						isScanning={propertyScan.status === "scanning"}
+						isScanning={scanStatus === "scanning"}
 					/>
 					{isCustomized && layout.viewType !== "board" ? (
 						<Button
@@ -436,10 +451,9 @@ export function DocumentTable({
 				</div>
 			</header>
 			<SavedViewsBanner />
-			<PropertyViewBar
+			<ScanAwarePropertyViewBar
 				view={view}
 				fields={propertyFields}
-				scan={propertyScan}
 				folders={folders}
 			/>
 			{layout.viewType === "board" ? (
@@ -486,8 +500,7 @@ export function DocumentTable({
 								filter={view.filter}
 								hasPropertyFilters={view.propertyFilters.length > 0}
 								propertiesPending={
-									propertyScan.status === "scanning" ||
-									propertyScan.status === "idle"
+									scanStatus === "scanning" || scanStatus === "idle"
 								}
 								onRetryListing={onRetryListing}
 							/>
