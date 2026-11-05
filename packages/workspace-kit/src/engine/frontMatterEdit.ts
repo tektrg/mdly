@@ -11,7 +11,10 @@
 import { isMap, parseDocument } from "yaml";
 import { isSimplePropertyKey } from "./frontMatter.js";
 
-export type FrontMatterEditValue = string | number | boolean | string[];
+export type FrontMatterEditScalar = string | number | boolean;
+export type FrontMatterEditValue =
+	| FrontMatterEditScalar
+	| FrontMatterEditScalar[];
 
 export type FrontMatterEditResult =
 	| { ok: true; text: string; changed: boolean }
@@ -181,9 +184,11 @@ function formatInlineValue(
 ): string {
 	if (!Array.isArray(value)) return formatScalar(value, style);
 	const items = value.map((item) =>
-		isSafePlain(item) && !/[,[\]{}]/.test(item)
-			? item
-			: formatString(item, style === "single" ? "single" : "double"),
+		typeof item !== "string"
+			? String(item)
+			: isSafePlain(item) && !/[,[\]{}]/.test(item)
+				? item
+				: formatString(item, style === "single" ? "single" : "double"),
 	);
 	return `[${items.join(", ")}]`;
 }
@@ -355,7 +360,7 @@ function editLines(
 	const eol = keyLine.eol || newlineOf(joinLines(block));
 	const lastEol = (block[item.end - 1] as Line).eol;
 	const listLines: Line[] = value.map((entry, index) => ({
-		text: `${indent}- ${formatString(entry, "plain")}`,
+		text: `${indent}- ${formatScalar(entry, "plain")}`,
 		eol: index === value.length - 1 ? lastEol : eol,
 	}));
 	if (listLines.length === 0) {

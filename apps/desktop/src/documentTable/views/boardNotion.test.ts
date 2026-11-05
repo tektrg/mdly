@@ -172,6 +172,14 @@ describe("move value (front-matter rewrite)", () => {
 		);
 		expect(rawBoardValue(row("a"), "prop:status")).toBeNull();
 	});
+
+	it("undo keeps the original types of list items", () => {
+		// The scan only yields string lists today; guard the writer anyway.
+		const mixed = {
+			"prop:status": [1, 2, true],
+		} as unknown as PropertyRowValues;
+		expect(rawBoardValue(row("a", mixed), "prop:status")).toEqual([1, 2, true]);
+	});
 });
 
 describe("saved-view board settings", () => {

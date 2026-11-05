@@ -341,7 +341,15 @@ export function rawBoardValue(
 ): FrontMatterEditValue | null {
 	const value = row.properties?.[fieldId];
 	if (value === null || value === undefined) return null;
-	if (Array.isArray(value)) return value.length > 0 ? value.map(String) : null;
+	if (Array.isArray(value)) {
+		if (value.length === 0) return null;
+		// Keep numbers/booleans as written so Undo restores the exact YAML.
+		return value.map((item) =>
+			typeof item === "number" || typeof item === "boolean"
+				? item
+				: String(item),
+		);
+	}
 	if (typeof value === "number" || typeof value === "boolean") return value;
 	return String(value);
 }

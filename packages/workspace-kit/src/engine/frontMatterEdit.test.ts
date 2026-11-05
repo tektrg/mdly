@@ -373,3 +373,23 @@ describe("setFrontMatterValue: refusal wording", () => {
 		}
 	});
 });
+
+describe("setFrontMatterValue typed list items", () => {
+	it("writes numbers and booleans in a list unquoted", () => {
+		const result = setFrontMatterValue("---\nids: [a]\n---\n", "ids", [
+			1,
+			true,
+		]);
+		expect(result).toEqual({
+			ok: true,
+			text: "---\nids: [1, true]\n---\n",
+			changed: true,
+		});
+		const block = setFrontMatterValue("---\nids:\n  - a\n---\n", "ids", [1, 2]);
+		expect(block).toEqual({
+			ok: true,
+			text: "---\nids:\n  - 1\n  - 2\n---\n",
+			changed: true,
+		});
+	});
+});
