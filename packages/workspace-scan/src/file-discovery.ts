@@ -115,7 +115,172 @@ type DiscoveryContext = {
 	startedAtMs: number;
 	stats: Omit<WorkspaceDiscoveryStats, "durationMs">;
 	errors: WorkspaceDiscoveryError[];
+	prefetch: IoPrefetcher;
 };
+
+/** How many speculative fs calls may be in flight at once. */
+const PREFETCH_CONCURRENCY = 32;
+
+/**
+ * Speculative read-ahead for the walk. The walk itself stays strictly
+ * serial — every decision (ignore rules, visited set, limits, abort, error
+ * order, output order) happens in exactly the order it always did. This only
+ * starts the fs calls the walk is about to make *before* it asks for them,
+ * bounded to PREFETCH_CONCURRENCY in flight, so the serial loop mostly awaits
+ * already-settled promises instead of one syscall round-trip at a time.
+ *
+ * Each prefetched result is consumed at most once (`take` deletes it), so a
+ * path the walk asks about twice gets a fresh call the second time, exactly
+ * as before. Rejections are parked (no unhandled rejection) and re-surface
+ * only if the walk actually takes that key — the walk's own try/catch then
+ * handles them as it would a direct call.
+ */
+class IoPrefetcher {
+	private readonly results = new Map<string, Promise<unknown>>();
+	private readonly queue: Array<() => void> = [];
+	private active = 0;
+	private closed = false;
+
+	schedule(key: string, run: () => Promise<unknown>): void {
+		if (this.closed || this.results.has(key)) return;
+		const promise = new Promise<unknown>((resolve, reject) => {
+			this.queue.push(() => {
+				if (this.closed) {
+					reject(new Error("prefetch closed"));
+					this.release();
+					return;
+				}
+				run()
+					.then(resolve, reject)
+					.finally(() => this.release());
+			});
+		});
+		promise.catch(() => {});
+		this.results.set(key, promise);
+		this.pump();
+	}
+
+	take<T>(key: string, run: () => Promise<T>): Promise<T> {
+		const promise = this.results.get(key);
+		if (promise === undefined) return run();
+		this.results.delete(key);
+		return promise as Promise<T>;
+	}
+
+	close(): void {
+		this.closed = true;
+		this.results.clear();
+		// Drain queued-but-unstarted tasks; each rejects without doing I/O.
+		this.pump();
+	}
+
+	private release(): void {
+		this.active -= 1;
+		this.pump();
+	}
+
+	private pump(): void {
+		while (
+			this.queue.length > 0 &&
+			(this.closed || this.active < PREFETCH_CONCURRENCY)
+		) {
+			const next = this.queue.shift() as () => void;
+			this.active += 1;
+			next();
+		}
+	}
+}
+
+const fsKey = {
+	realpath: (p: string) => `realpath\0${p}`,
+	stat: (p: string) => `stat\0${p}`,
+	lstat: (p: string) => `lstat\0${p}`,
+	readlink: (p: string) => `readlink\0${p}`,
+	readdir: (p: string) => `readdir\0${p}`,
+	readFile: (p: string) => `readFile\0${p}`,
+};
+
+function cachedRealpath(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.realpath(p), () => fs.realpath(p));
+}
+function cachedStat(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.stat(p), () => fs.stat(p));
+}
+function cachedLstat(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.lstat(p), () => fs.lstat(p));
+}
+function cachedReadlink(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.readlink(p), () => fs.readlink(p));
+}
+function cachedReaddir(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.readdir(p), () =>
+		fs.readdir(p, { withFileTypes: true }),
+	);
+}
+function cachedReadText(context: DiscoveryContext, p: string) {
+	return context.prefetch.take(fsKey.readFile(p), () => fs.readFile(p, "utf8"));
+}
+
+/**
+ * Starts (bounded) the fs calls the serial walk will make for `entries` of
+ * `dir`: per-entry stat/realpath, symlink probes, and for each visible
+ * subdirectory its realpath, `.git` probe, ignore files and listing. Pure
+ * read-ahead — it makes no decisions and mutates nothing the walk reads.
+ */
+function prefetchEntries(
+	dir: string,
+	entries: Dirent[],
+	ignoredFlags: boolean[],
+	options: WorkspaceDiscoveryOptions,
+	context: DiscoveryContext,
+): void {
+	const prefetch = context.prefetch;
+	for (let index = 0; index < entries.length; index++) {
+		if (ignoredFlags[index]) continue;
+		const entry = entries[index];
+		const entryPath = path.join(dir, entry.name);
+		if (entry.isSymbolicLink()) {
+			prefetch.schedule(fsKey.lstat(entryPath), () => fs.lstat(entryPath));
+			prefetch.schedule(fsKey.readlink(entryPath), () =>
+				fs.readlink(entryPath),
+			);
+			prefetch.schedule(fsKey.stat(entryPath), () => fs.stat(entryPath));
+			prefetch.schedule(fsKey.realpath(entryPath), () =>
+				fs.realpath(entryPath),
+			);
+		} else if (entry.isDirectory()) {
+			if (
+				options.isVisibleFolderName &&
+				!options.isVisibleFolderName(entry.name)
+			)
+				continue;
+			prefetch.schedule(fsKey.stat(entryPath), () => fs.stat(entryPath));
+			prefetch.schedule(fsKey.realpath(entryPath), () =>
+				fs.realpath(entryPath),
+			);
+			if (options.pruneNestedRepos) {
+				const gitPath = path.join(entryPath, ".git");
+				prefetch.schedule(fsKey.stat(gitPath), () => fs.stat(gitPath));
+			}
+			if (!options.includeIgnoredWorkspaceFiles) {
+				for (const fileName of IGNORE_CONFIG_FILES) {
+					const ignorePath = path.join(entryPath, fileName);
+					prefetch.schedule(fsKey.readFile(ignorePath), () =>
+						fs.readFile(ignorePath, "utf8"),
+					);
+				}
+			}
+			prefetch.schedule(fsKey.readdir(entryPath), () =>
+				fs.readdir(entryPath, { withFileTypes: true }),
+			);
+		} else if (entry.isFile() && options.isSupportedFile(entryPath)) {
+			prefetch.schedule(fsKey.stat(entryPath), () => fs.stat(entryPath));
+			prefetch.schedule(fsKey.realpath(entryPath), () =>
+				fs.realpath(entryPath),
+			);
+		}
+	}
+}
 
 const IGNORE_CONFIG_FILES = [".gitignore", ".ignore"];
 
@@ -346,7 +511,7 @@ async function readSymlinkInfo(
 	context: DiscoveryContext,
 ): Promise<WorkspaceSymlinkInfo> {
 	try {
-		const target = await fs.readlink(entryPath);
+		const target = await cachedReadlink(context, entryPath);
 		const resolvedTarget = path.resolve(path.dirname(entryPath), target);
 		return {
 			is_symlink: true,
@@ -387,7 +552,7 @@ async function rulesForDirectory(
 	let hasRules = false;
 	for (const fileName of IGNORE_CONFIG_FILES) {
 		try {
-			matcher.add(await fs.readFile(path.join(dir, fileName), "utf8"));
+			matcher.add(await cachedReadText(context, path.join(dir, fileName)));
 			hasRules = true;
 		} catch (error) {
 			if (isMissingPathError(error)) continue;
@@ -505,7 +670,7 @@ async function walkDirectory(
 
 	let realDir: string;
 	try {
-		realDir = await fs.realpath(dir);
+		realDir = await cachedRealpath(context, dir);
 	} catch (error) {
 		// The directory disappeared or is unreadable — skip this subtree, keep
 		// walking the rest of the workspace (R15).
@@ -527,7 +692,7 @@ async function walkDirectory(
 	if (options.pruneNestedRepos && dir !== context.workspaceRootPath) {
 		let isRepoBoundary = false;
 		try {
-			await fs.stat(path.join(dir, ".git"));
+			await cachedStat(context, path.join(dir, ".git"));
 			isRepoBoundary = true;
 		} catch {
 			isRepoBoundary = false;
@@ -553,8 +718,8 @@ async function walkDirectory(
 
 	let entries: Dirent[];
 	try {
-		entries = (await fs.readdir(dir, { withFileTypes: true })).sort(
-			(left, right) => left.name.localeCompare(right.name),
+		entries = (await cachedReaddir(context, dir)).sort((left, right) =>
+			left.name.localeCompare(right.name),
 		);
 	} catch (error) {
 		// Permission denied (or similar) reading this directory's listing —
@@ -563,18 +728,26 @@ async function walkDirectory(
 		return;
 	}
 
-	for (const entry of entries) {
-		throwIfTraversalStopped(options, context);
-		const entryPath = path.join(dir, entry.name);
-		// With ignore files disabled `rules` is empty, so only the always-
-		// ignored names and caller exclusions (Files-scope rules) apply.
-		const ignored = isIgnoredByRules(
-			entryPath,
+	// With ignore files disabled `rules` is empty, so only the always-
+	// ignored names and caller exclusions (Files-scope rules) apply. Pure in
+	// (path, rules), so evaluating it for the whole listing up front yields
+	// the same verdicts the loop used to compute one entry at a time.
+	const ignoredFlags = entries.map((entry) =>
+		isIgnoredByRules(
+			path.join(dir, entry.name),
 			rules,
 			context.workspaceRootPath,
 			context.alwaysIgnoredDirectoryNames,
 			context.excludedEntries,
-		);
+		),
+	);
+	prefetchEntries(dir, entries, ignoredFlags, options, context);
+
+	for (let index = 0; index < entries.length; index++) {
+		const entry = entries[index];
+		throwIfTraversalStopped(options, context);
+		const entryPath = path.join(dir, entry.name);
+		const ignored = ignoredFlags[index];
 		if (ignored) {
 			if (entry.isDirectory()) context.stats.ignoredDirectoryCount += 1;
 			else context.stats.ignoredFileCount += 1;
@@ -584,7 +757,7 @@ async function walkDirectory(
 		if (entry.isSymbolicLink()) {
 			let linkStat: Awaited<ReturnType<typeof fs.lstat>>;
 			try {
-				linkStat = await fs.lstat(entryPath);
+				linkStat = await cachedLstat(context, entryPath);
 			} catch (error) {
 				recordError(context, entryPath, error);
 				continue;
@@ -594,8 +767,8 @@ async function walkDirectory(
 			let targetRealPath: string | null = null;
 			if (symlinkInfo.symlink_target_exists) {
 				try {
-					targetStat = await fs.stat(entryPath);
-					targetRealPath = await fs.realpath(entryPath);
+					targetStat = await cachedStat(context, entryPath);
+					targetRealPath = await cachedRealpath(context, entryPath);
 					Object.assign(
 						symlinkInfo,
 						symlinkTargetInfo(
@@ -672,7 +845,7 @@ async function walkDirectory(
 				continue;
 			let stat: Awaited<ReturnType<typeof fs.stat>>;
 			try {
-				stat = await fs.stat(entryPath);
+				stat = await cachedStat(context, entryPath);
 			} catch (error) {
 				recordError(context, entryPath, error);
 				continue;
@@ -688,14 +861,14 @@ async function walkDirectory(
 		if (!entry.isFile() || !options.isSupportedFile(entryPath)) continue;
 		let stat: Awaited<ReturnType<typeof fs.stat>>;
 		try {
-			stat = await fs.stat(entryPath);
+			stat = await cachedStat(context, entryPath);
 		} catch (error) {
 			recordError(context, entryPath, error);
 			continue;
 		}
 		try {
 			context.canonicalPathByRealPath.set(
-				await fs.realpath(entryPath),
+				await cachedRealpath(context, entryPath),
 				entryPath,
 			);
 		} catch (error) {
@@ -736,10 +909,16 @@ export async function discoverWorkspaceFiles(
 			prunedNestedRepoCount: 0,
 		},
 		errors: [],
+		prefetch: new IoPrefetcher(),
 	};
 	const files: WorkspaceFileEntry[] = [];
 	const folders: WorkspaceFolderEntry[] = [];
-	await walkDirectory(workspaceRoot, options, files, folders, [], context);
+	try {
+		await walkDirectory(workspaceRoot, options, files, folders, [], context);
+	} finally {
+		// Drop unconsumed read-ahead (ignored-by-limit/abort/pruned subtrees).
+		context.prefetch.close();
+	}
 
 	for (const pending of context.pendingSymlinkMetadata) {
 		Object.assign(
