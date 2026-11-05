@@ -5,6 +5,7 @@ import type {
 	ScannedFileStats,
 	ScannedFrontMatterProperty,
 } from "../src/desktopApi/types";
+import { firstHeadingOf } from "../src/documentTable/properties/firstHeading";
 import { toScannedProperties } from "../src/documentTable/properties/scannedProperties";
 import { countWords, readFileHeadAndStats } from "./fileWordCount";
 import { readFileHead, scanFiles } from "./frontMatterTags";
@@ -119,11 +120,14 @@ export async function scanFrontMatterProperties(
 	const propertiesByPath: FrontMatterPropertyScan["propertiesByPath"] = {};
 	const statsByPath: Record<string, ScannedFileStats> = {};
 	const invalidPaths: string[] = [];
+	const headingsByPath: Record<string, string> = {};
 	await scanFiles(
 		paths,
 		(path) => readScannedFile(path, includeStats),
 		(path, file) => {
 			if (file.stats) statsByPath[path] = file.stats;
+			const heading = firstHeadingOf(file.head);
+			if (heading) headingsByPath[path] = heading;
 			const result = extractHeadProperties(file.head);
 			if (result.kind === "properties") {
 				propertiesByPath[path] = result.properties;
@@ -133,6 +137,6 @@ export async function scanFrontMatterProperties(
 		},
 	);
 	return includeStats
-		? { propertiesByPath, invalidPaths, statsByPath }
-		: { propertiesByPath, invalidPaths };
+		? { propertiesByPath, invalidPaths, headingsByPath, statsByPath }
+		: { propertiesByPath, invalidPaths, headingsByPath };
 }

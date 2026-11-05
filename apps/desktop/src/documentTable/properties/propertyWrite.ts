@@ -67,7 +67,12 @@ function updateScanForPath(path: string, text: string) {
 		const propertiesByPath = { ...state.propertiesByPath };
 		if (Object.keys(properties).length > 0) propertiesByPath[path] = properties;
 		else delete propertiesByPath[path];
-		return { ...state, propertiesByPath };
+		// A front-matter edit can turn a note's properties from unreadable to readable.
+		const invalidPaths =
+			parsed.type === "invalid"
+				? state.invalidPaths
+				: state.invalidPaths.filter((candidate) => candidate !== path);
+		return { ...state, propertiesByPath, invalidPaths };
 	});
 }
 

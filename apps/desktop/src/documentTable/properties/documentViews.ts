@@ -56,6 +56,46 @@ export const DOCUMENT_VIEW_TYPES: readonly DocumentViewType[] = [
 	"calendar",
 ];
 
+/** Column colours a board offers (Notion's palette names). */
+export const BOARD_COLUMN_COLORS = [
+	"gray",
+	"brown",
+	"orange",
+	"yellow",
+	"green",
+	"blue",
+	"purple",
+	"pink",
+	"red",
+] as const;
+
+export type BoardColumnColor = (typeof BOARD_COLUMN_COLORS)[number];
+
+/**
+ * A board's own arrangement, saved with the view. Columns are named by their
+ * board column key (`boardColumnKey`), so a value that disappears and comes
+ * back keeps its place and colour.
+ */
+export type BoardViewSettings = {
+	/** Columns placed first, in this order; unlisted columns follow naturally. */
+	columnOrder: string[];
+	/** Columns folded into the hidden rail. */
+	hiddenColumns: string[];
+	columnColors: Record<string, BoardColumnColor>;
+	/** Properties shown on cards, in order; null = the view's property columns. */
+	cardProperties: PropertyFieldId[] | null;
+	/** Drop columns with no cards (instead of showing them empty). */
+	hideEmptyColumns: boolean;
+};
+
+export const DEFAULT_BOARD_VIEW_SETTINGS: BoardViewSettings = {
+	columnOrder: [],
+	hiddenColumns: [],
+	columnColors: {},
+	cardProperties: null,
+	hideEmptyColumns: false,
+};
+
 /** The layout half of a view: its type and the field each layout reads. */
 export type DocumentViewLayout = {
 	viewType: DocumentViewType;
@@ -63,12 +103,15 @@ export type DocumentViewLayout = {
 	boardField: PropertyFieldId | null;
 	/** Calendar days come from this date field; null = the default (due). */
 	calendarField: PropertyFieldId | null;
+	/** Board arrangement; views saved before it existed get the defaults. */
+	board: BoardViewSettings;
 };
 
 export const DEFAULT_DOCUMENT_VIEW_LAYOUT: DocumentViewLayout = {
 	viewType: "table",
 	boardField: null,
 	calendarField: null,
+	board: DEFAULT_BOARD_VIEW_SETTINGS,
 };
 
 export type SavedDocumentView = DocumentViewLayout & {
@@ -256,8 +299,44 @@ export function isDocumentViewType(value: unknown): value is DocumentViewType {
 	return DOCUMENT_VIEW_TYPES.includes(value as DocumentViewType);
 }
 
+const MAX_BOARD_KEYS = 200;
+
+function sanitizeKeyList(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return [
+		...new Set(
+			value.filter(
+				(key): key is string => typeof key === "string" && key.length > 0,
+			),
+		),
+	].slice(0, MAX_BOARD_KEYS);
+}
+
+export function sanitizeBoardSettings(value: unknown): BoardViewSettings {
+	if (!isRecord(value)) return DEFAULT_BOARD_VIEW_SETTINGS;
+	const columnColors: Record<string, BoardColumnColor> = {};
+	if (isRecord(value.columnColors)) {
+		for (const [key, color] of Object.entries(value.columnColors)) {
+			if (key === "__proto__") continue;
+			if (BOARD_COLUMN_COLORS.includes(color as BoardColumnColor)) {
+				columnColors[key] = color as BoardColumnColor;
+			}
+		}
+	}
+	return {
+		columnOrder: sanitizeKeyList(value.columnOrder),
+		hiddenColumns: sanitizeKeyList(value.hiddenColumns),
+		columnColors,
+		cardProperties: Array.isArray(value.cardProperties)
+			? sanitizeColumns(value.cardProperties)
+			: null,
+		hideEmptyColumns: value.hideEmptyColumns === true,
+	};
+}
+
 function sanitizeLayout(value: Record<string, unknown>): DocumentViewLayout {
 	return {
+		board: sanitizeBoardSettings(value.board),
 		viewType: isDocumentViewType(value.viewType) ? value.viewType : "table",
 		boardField: isPropertyFieldId(value.boardField) ? value.boardField : null,
 		calendarField: isPropertyFieldId(value.calendarField)

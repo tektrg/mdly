@@ -182,11 +182,9 @@ export function DocumentBoard({
 	const model = useMemo(
 		() =>
 			field
-				? buildBoardModel(
-						rows,
-						field,
-						(key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
-					)
+				? buildBoardModel(rows, field, {
+						limitFor: (key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
+					})
 				: null,
 		[rows, field, limits],
 	);

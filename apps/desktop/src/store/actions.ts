@@ -342,11 +342,11 @@ export function touchFile(path: string) {
 	});
 }
 
-function uniqueMarkdownPath(parent: string): string {
+export function uniqueMarkdownPath(parent: string, stem = "new-file"): string {
 	const files = workspaceStore.get().files;
 	const existing = new Set(files.map((file) => file.path.toLocaleLowerCase()));
 	for (let index = 1; ; index++) {
-		const name = index === 1 ? "new-file.md" : `new-file-${index}.md`;
+		const name = index === 1 ? `${stem}.md` : `${stem}-${index}.md`;
 		const candidate = joinPath(parent, name);
 		if (!existing.has(candidate.toLocaleLowerCase())) return candidate;
 	}
@@ -970,10 +970,13 @@ export async function moveMarkdownFileToFolder(
 	}
 }
 
-export async function createMarkdownFileInFolder(parentPath: string) {
-	const path = uniqueMarkdownPath(parentPath);
+export async function createMarkdownFileInFolder(
+	parentPath: string,
+	options: { stem?: string; content?: string } = {},
+) {
+	const path = uniqueMarkdownPath(parentPath, options.stem);
 	try {
-		await desktopApi.writeFileText(path, "");
+		await desktopApi.writeFileText(path, options.content ?? "");
 		const modified_at = Math.floor(Date.now() / 1000);
 		workspaceStore.set((state) => ({
 			...state,

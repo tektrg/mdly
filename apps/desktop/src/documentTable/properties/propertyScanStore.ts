@@ -29,6 +29,8 @@ export type PropertyScanState = {
 	mtimeByPath: Readonly<Record<string, number>>;
 	/** Files whose front matter could not be parsed — surfaced, never hidden. */
 	invalidPaths: readonly string[];
+	/** First `# H1` per path, from the same head read (board card titles). */
+	headingByPath: Readonly<Record<string, string>>;
 	/**
 	 * Size + body word count per path, read only once a view used a built-in
 	 * that needs them (`includeStats`). Same mtime cache as the properties.
@@ -50,6 +52,7 @@ const EMPTY_STATE: PropertyScanState = {
 	propertiesByPath: {},
 	mtimeByPath: {},
 	invalidPaths: [],
+	headingByPath: {},
 	statsByPath: {},
 	includeStats: false,
 	statsUnreadableMtimeByPath: {},
@@ -117,7 +120,16 @@ export function mergePropertyBatch(
 		? { ...state.statsUnreadableMtimeByPath }
 		: (state.statsUnreadableMtimeByPath as Record<string, number>);
 	const invalid = new Set(state.invalidPaths);
+	const resultHeadings = result.headingsByPath;
+	const headingByPath: Record<string, string> = resultHeadings
+		? { ...state.headingByPath }
+		: (state.headingByPath as Record<string, string>);
 	for (const file of requested) {
+		if (resultHeadings) {
+			const heading = resultHeadings[file.path];
+			if (heading) headingByPath[file.path] = heading;
+			else delete headingByPath[file.path];
+		}
 		const properties = result.propertiesByPath[file.path];
 		if (properties) propertiesByPath[file.path] = properties;
 		else delete propertiesByPath[file.path];
@@ -139,6 +151,7 @@ export function mergePropertyBatch(
 		...state,
 		propertiesByPath,
 		mtimeByPath,
+		headingByPath,
 		statsByPath,
 		statsUnreadableMtimeByPath: statsUnreadable,
 		invalidPaths: [...invalid],
@@ -160,7 +173,9 @@ export function prunePropertyState(
 	const mtimeByPath = { ...state.mtimeByPath };
 	const statsByPath = { ...state.statsByPath };
 	const statsUnreadableMtimeByPath = { ...state.statsUnreadableMtimeByPath };
+	const headingByPath = { ...state.headingByPath };
 	for (const path of stalePaths) {
+		delete headingByPath[path];
 		delete propertiesByPath[path];
 		delete mtimeByPath[path];
 		delete statsByPath[path];
@@ -170,6 +185,7 @@ export function prunePropertyState(
 		...state,
 		propertiesByPath,
 		mtimeByPath,
+		headingByPath,
 		statsByPath,
 		statsUnreadableMtimeByPath,
 		invalidPaths: state.invalidPaths.filter((path) => live.has(path)),

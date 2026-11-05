@@ -23,6 +23,7 @@ import {
 } from "./navHiddenViews";
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
 import {
+	type BoardViewSettings,
 	type DocumentViewLayout,
 	type DocumentViewType,
 	EMPTY_WORKSPACE_DOCUMENT_VIEWS,
@@ -122,6 +123,7 @@ const LAYOUT_KEYS: readonly (keyof DocumentViewLayout)[] = [
 	"viewType",
 	"boardField",
 	"calendarField",
+	"board",
 ];
 
 function layoutEditOf(edit: ViewEdit): Partial<DocumentViewLayout> | null {
@@ -206,6 +208,7 @@ export function getCurrentViewLayout(): DocumentViewLayout {
 		viewType: saved.viewType,
 		boardField: saved.boardField,
 		calendarField: saved.calendarField,
+		board: saved.board,
 	};
 }
 
@@ -216,6 +219,13 @@ export function setDocumentViewType(viewType: DocumentViewType) {
 
 export function setBoardField(boardField: PropertyFieldId | null) {
 	editCurrentView({ boardField });
+}
+
+/** Board columns/cards arrangement: edits the current view (saved views persist it). */
+export function updateBoardSettings(
+	update: (settings: BoardViewSettings) => BoardViewSettings,
+) {
+	editCurrentView({ board: update(getCurrentViewLayout().board) });
 }
 
 export function setCalendarField(calendarField: PropertyFieldId | null) {

@@ -111,6 +111,7 @@ export function useCurrentDocumentView(): CurrentDocumentView {
 					viewType: savedView.viewType,
 					boardField: savedView.boardField,
 					calendarField: savedView.calendarField,
+					board: savedView.board,
 				}
 			: session.layout,
 		savedViews: views.saved,
