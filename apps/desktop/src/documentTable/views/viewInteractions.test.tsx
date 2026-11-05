@@ -81,6 +81,19 @@ async function openMenu(label: string) {
 	return [...document.querySelectorAll('[role="menuitem"]')] as HTMLElement[];
 }
 
+async function pressOnCard(
+	card: HTMLElement,
+	key: string,
+	init: KeyboardEventInit = {},
+) {
+	card.focus();
+	await act(async () => {
+		card.dispatchEvent(
+			new KeyboardEvent("keydown", { key, bubbles: true, ...init }),
+		);
+	});
+}
+
 describe("board interactions", () => {
 	const rows = [
 		row("a", { "prop:status": "Todo" }),
@@ -122,28 +135,57 @@ describe("board interactions", () => {
 		});
 		const card = container.querySelector("[data-note-card]") as HTMLElement;
 		expect(card.getAttribute("draggable")).toBe("false");
-		const items = await openMenu("Move a");
-		expect(items.map((item) => item.textContent)).toEqual([
-			"Can't move — this comes from the file",
-		]);
+		await pressOnCard(card, "ArrowRight", { altKey: true });
 		expect(writeDocumentProperty).not.toHaveBeenCalled();
 	});
 
-	it("moves a card from the keyboard menu, not offering its own column", async () => {
+	it("card menu lists the card actions", async () => {
 		renderBoard();
-		const items = await openMenu("Move a");
-		expect(items.map((item) => item.textContent)).toEqual([
-			"Done",
-			"No status",
-		]);
-		await act(async () => {
-			items[0]?.click();
-		});
+		const items = await openMenu("Actions for a");
+		expect(items.map((item) => item.textContent)).toEqual(
+			expect.arrayContaining([
+				"Open↵",
+				"PeekSpace",
+				"Duplicate",
+				"Rename…",
+				"Delete…",
+			]),
+		);
+	});
+
+	it("Opt+→ moves a card to the next column, optimistically, writing the board key", async () => {
+		renderBoard();
+		const card = container.querySelector(
+			'[data-board-card="/ws/a.md"]',
+		) as HTMLElement;
+		await pressOnCard(card, "ArrowRight", { altKey: true });
 		expect(writeDocumentProperty).toHaveBeenCalledWith(
 			rows[0],
 			"status",
 			"Done",
 		);
+	});
+
+	it("titles a card from front-matter title before the file name", () => {
+		act(() => {
+			root.render(
+				<DocumentBoard
+					rows={[
+						row("delivery", {
+							"prop:status": "Todo",
+							"prop:title": "Real title",
+						}),
+					]}
+					fields={[STATUS]}
+					boardField={null}
+					propertyColumns={[]}
+					onOpenDocument={() => {}}
+				/>,
+			);
+		});
+		expect(
+			container.querySelector("[data-board-card]")?.getAttribute("aria-label"),
+		).toBe("Real title");
 	});
 
 	it("says it is reading properties while the scan is pending", () => {

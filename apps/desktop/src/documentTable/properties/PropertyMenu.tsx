@@ -15,16 +15,24 @@ export function PropertyMenu({
 	triggerLabel,
 	children,
 	align = "end",
+	open,
+	onOpenChange,
 }: {
 	trigger: ReactNode;
 	triggerClassName: string;
 	triggerLabel: string;
 	children: ReactNode;
 	align?: "start" | "end";
+	/** Controlled open state (e.g. a card's right-click opens its menu). */
+	open?: boolean;
+	onOpenChange?: (open: boolean) => void;
 }) {
 	const portalContainer = usePortalContainer();
 	return (
-		<Menu.Root>
+		<Menu.Root
+			{...(open !== undefined ? { open } : {})}
+			{...(onOpenChange ? { onOpenChange: (next) => onOpenChange(next) } : {})}
+		>
 			<Menu.Trigger
 				render={
 					<button
@@ -102,4 +110,33 @@ export function PropertyMenuLabel({ children }: { children: ReactNode }) {
 
 export function PropertyMenuSeparator() {
 	return <Menu.Separator className="my-1 h-px bg-border" />;
+}
+
+const POPUP_CLASS =
+	"max-h-80 w-52 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden";
+
+/** A nested "Label ▸" menu inside a `PropertyMenu`. */
+export function PropertySubmenu({
+	label,
+	children,
+}: {
+	label: string;
+	children: ReactNode;
+}) {
+	const portalContainer = usePortalContainer();
+	return (
+		<Menu.SubmenuRoot>
+			<Menu.SubmenuTrigger className="flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 outline-hidden data-highlighted:bg-accent data-popup-open:bg-accent">
+				<span className="min-w-0 flex-1 truncate">{label}</span>
+				<span aria-hidden="true" className="text-muted-foreground/70">
+					▸
+				</span>
+			</Menu.SubmenuTrigger>
+			<Menu.Portal container={portalContainer}>
+				<Menu.Positioner className="z-50" sideOffset={2}>
+					<Menu.Popup className={POPUP_CLASS}>{children}</Menu.Popup>
+				</Menu.Positioner>
+			</Menu.Portal>
+		</Menu.SubmenuRoot>
+	);
 }
