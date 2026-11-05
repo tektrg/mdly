@@ -1,19 +1,15 @@
+import { createHash } from "node:crypto";
 import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
-	statSync,
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { assetsWalker, notesWalker, sidecarWalker } from "@mdly/workspace-scan";
-import {
-	contentHash,
-	type FileSystem,
-	type LocalAsset,
-	type LocalFile,
-} from "./fs.js";
+import type { FileSystem, LocalFile } from "./fs.js";
 import { isSyncedSidecarPath, VIEWS_FILE_PATH } from "./sidecarScope.js";
 
 export {
@@ -28,6 +24,108 @@ function isEnoent(error: unknown): boolean {
 		"code" in error &&
 		(error as { code?: unknown }).code === "ENOENT"
 	);
+}
+
+/** How many snapshot reads may be in flight at once. */
+const READ_CONCURRENCY = 32;
+
+/**
+ * SHA-256 lowercase hex via `node:crypto` — byte-identical to `contentHash`
+ * in fs.ts (Web Crypto, kept for browser/worker consumers). Strings hash as
+ * UTF-8, which is what `TextEncoder` produces too (lone surrogates → U+FFFD
+ * in both). Synchronous and far cheaper than a `subtle.digest` round-trip.
+ */
+export function nodeContentHash(content: string | Uint8Array): string {
+	const hash = createHash("sha256");
+	if (typeof content === "string") hash.update(content, "utf8");
+	else hash.update(content);
+	return hash.digest("hex");
+}
+
+/**
+ * Runs `read` for every path with at most READ_CONCURRENCY in flight and
+ * returns results in input order. Error semantics match the old serial
+ * loop: an ENOENT drops that path (walk-then-read race), and any other
+ * error is rethrown — the one from the EARLIEST failing path in input
+ * order, which is the one the serial loop would have hit first.
+ */
+async function readInOrder<T>(
+	paths: readonly string[],
+	read: (relativePath: string) => Promise<T>,
+): Promise<T[]> {
+	const settled: PromiseSettledResult<T>[] = new Array(paths.length);
+	let next = 0;
+	async function worker() {
+		while (next < paths.length) {
+			const index = next++;
+			try {
+				settled[index] = {
+					status: "fulfilled",
+					value: await read(paths[index]),
+				};
+			} catch (reason) {
+				settled[index] = { status: "rejected", reason };
+			}
+		}
+	}
+	await Promise.all(
+		Array.from({ length: Math.min(READ_CONCURRENCY, paths.length) }, worker),
+	);
+	const results: T[] = [];
+	for (const outcome of settled) {
+		if (outcome.status === "fulfilled") results.push(outcome.value);
+		else if (!isEnoent(outcome.reason)) throw outcome.reason;
+	}
+	return results;
+}
+
+/**
+ * Prefer the stat snapshot the walk already took (one syscall total, not
+ * two); fall back to a direct stat only when the walker predates it (e.g.
+ * mocked in tests). mtime is seconds here (walker's clock), not ms —
+ * consistent within a version. The stat is a hint only: a failure leaves
+ * the fields undefined (a vanished file already failed its read).
+ */
+async function statHint(
+	absolute: string,
+	mtime: number | undefined,
+	size: number | undefined,
+): Promise<{ mtime?: number; size?: number }> {
+	if (mtime !== undefined && size !== undefined) return { mtime, size };
+	try {
+		const st = await stat(absolute);
+		return { mtime: Math.floor(st.mtimeMs / 1000), size: st.size };
+	} catch {
+		return { mtime, size };
+	}
+}
+
+type WalkDetails =
+	| Record<string, { modifiedAt?: number; size?: number } | undefined>
+	| undefined;
+
+/** Reads + hashes text files (notes, sidecars) — content is kept because plan()/execute() push and merge it. */
+function readTextSnapshot(
+	dir: string,
+	files: readonly string[],
+	details: WalkDetails,
+): Promise<LocalFile[]> {
+	return readInOrder(files, async (relativePath) => {
+		const absolute = join(dir, relativePath);
+		const content = await readFile(absolute, "utf-8");
+		const hint = await statHint(
+			absolute,
+			details?.[relativePath]?.modifiedAt,
+			details?.[relativePath]?.size,
+		);
+		return {
+			relativePath,
+			content,
+			hash: nodeContentHash(content),
+			mtime: hint.mtime,
+			size: hint.size,
+		};
+	});
 }
 
 export interface CreateNodeFileSystemOptions {
@@ -78,46 +176,12 @@ export function createNodeFileSystem(
 				maxDirectories: options?.maxDirectories,
 				onVisit: options?.onScan,
 			});
-			const results: LocalFile[] = [];
-			for (const relativePath of files) {
-				// The walk above and this read are two separate passes, so a file
-				// (or its parent directory) deleted in between — a real race in a
-				// workspace with concurrently-churning content, e.g. active git
-				// worktrees — must not fail the whole sync run. Skipping it here
-				// is safe: sync reconciles it as removed on the next cycle.
-				let content: string;
-				// Prefer the stat snapshot the walk already took (one syscall
-				// total, not two); fall back to a direct stat only when the
-				// walker predates it (e.g. mocked in tests). mtime is seconds
-				// here (walker's clock), not ms — consistent within a version.
-				let mtime = details?.[relativePath]?.modifiedAt;
-				let size = details?.[relativePath]?.size;
-				try {
-					const absolute = join(dir, relativePath);
-					content = readFileSync(absolute, "utf-8");
-					if (mtime === undefined || size === undefined) {
-						try {
-							const st = statSync(absolute);
-							mtime = Math.floor(st.mtimeMs / 1000);
-							size = st.size;
-						} catch {
-							// Stat is a hint only — a file that vanishes here is
-							// still skipped via the ENOENT path on read.
-						}
-					}
-				} catch (error) {
-					if (isEnoent(error)) continue;
-					throw error;
-				}
-				results.push({
-					relativePath,
-					content,
-					hash: await contentHash(content),
-					mtime,
-					size,
-				});
-			}
-			return results;
+			// The walk above and this read are two separate passes, so a file
+			// (or its parent directory) deleted in between — a real race in a
+			// workspace with concurrently-churning content, e.g. active git
+			// worktrees — must not fail the whole sync run. Skipping it is
+			// safe: sync reconciles it as removed on the next cycle.
+			return readTextSnapshot(dir, files, details);
 		},
 		async readBinaryFile(path) {
 			return new Uint8Array(readFileSync(path));
@@ -142,36 +206,7 @@ export function createNodeFileSystem(
 			const files = existsSync(join(dir, VIEWS_FILE_PATH))
 				? [...walked.files, VIEWS_FILE_PATH]
 				: walked.files;
-			const results: LocalFile[] = [];
-			for (const relativePath of files) {
-				let content: string;
-				let mtime = details?.[relativePath]?.modifiedAt;
-				let size = details?.[relativePath]?.size;
-				try {
-					const absolute = join(dir, relativePath);
-					content = readFileSync(absolute, "utf-8");
-					if (mtime === undefined || size === undefined) {
-						try {
-							const st = statSync(absolute);
-							mtime = Math.floor(st.mtimeMs / 1000);
-							size = st.size;
-						} catch {
-							// Stat is a hint only — same as above.
-						}
-					}
-				} catch (error) {
-					if (isEnoent(error)) continue;
-					throw error;
-				}
-				results.push({
-					relativePath,
-					content,
-					hash: await contentHash(content),
-					mtime,
-					size,
-				});
-			}
-			return results;
+			return readTextSnapshot(dir, files, details);
 		},
 		// Same ignore rules as notes, except it still descends into
 		// `*.assets` folders — the sidebar hides those, sync cannot (R13).
@@ -183,37 +218,23 @@ export function createNodeFileSystem(
 				maxDirectories: options?.maxDirectories,
 				onVisit: options?.onScan,
 			});
-			const results: LocalAsset[] = [];
-			for (const relativePath of files) {
-				// Same walk-then-read race as listMarkdownFiles above — skip a file
-				// deleted between the two passes rather than failing the sync run.
-				let data: Buffer;
-				let mtime = details?.[relativePath]?.modifiedAt;
-				let size = details?.[relativePath]?.size;
-				try {
-					const absolute = join(dir, relativePath);
-					data = readFileSync(absolute);
-					if (mtime === undefined || size === undefined) {
-						try {
-							const st = statSync(absolute);
-							mtime = Math.floor(st.mtimeMs / 1000);
-							size = st.size;
-						} catch {
-							// Hint only — ignore.
-						}
-					}
-				} catch (error) {
-					if (isEnoent(error)) continue;
-					throw error;
-				}
-				results.push({
+			// Same walk-then-read race as listMarkdownFiles above — skip a file
+			// deleted between the two passes rather than failing the sync run.
+			return readInOrder(files, async (relativePath) => {
+				const absolute = join(dir, relativePath);
+				const data = await readFile(absolute);
+				const hint = await statHint(
+					absolute,
+					details?.[relativePath]?.modifiedAt,
+					details?.[relativePath]?.size,
+				);
+				return {
 					relativePath,
-					hash: await contentHash(new Uint8Array(data)),
-					mtime,
-					size,
-				});
-			}
-			return results;
+					hash: nodeContentHash(data),
+					mtime: hint.mtime,
+					size: hint.size,
+				};
+			});
 		},
 	};
 }

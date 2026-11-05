@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mergeJsonlUnion } from "./sidecarMerge.js";
 
-const ev = (id: string, body = "") =>
-	JSON.stringify({ id, body: body || id });
+const ev = (id: string, body = "") => JSON.stringify({ id, body: body || id });
 
 describe("mergeJsonlUnion (sidecar-union-plan)", () => {
 	it("is commutative: both directions converge to byte-identical output", () => {

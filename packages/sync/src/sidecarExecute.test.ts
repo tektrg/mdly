@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SyncBackend } from "./backend.js";
-import { readSyncState, writeCloudSyncConfig, writeSyncState } from "./config.js";
+import {
+	readSyncState,
+	writeCloudSyncConfig,
+	writeSyncState,
+} from "./config.js";
 import { contentHash } from "./fs.js";
 import { createNodeFileSystem } from "./fs-node.js";
 import { mergeJsonlUnion } from "./sidecarMerge.js";
@@ -227,9 +231,7 @@ describe("executeSidecars (Round 4)", () => {
 		expect(pushed.map((p) => p.path)).toEqual(["note.md", CANON]);
 		expect(result.sidecarsPushed).toBe(1);
 		// Both failures surface, distinctly marked as sidecars.
-		expect(
-			result.failedFiles.filter((f) => f.kind === "sidecar"),
-		).toEqual([
+		expect(result.failedFiles.filter((f) => f.kind === "sidecar")).toEqual([
 			{
 				path: ".mdly/comments/fail-transient.jsonl",
 				permanent: false,
@@ -245,8 +247,12 @@ describe("executeSidecars (Round 4)", () => {
 		]);
 		// Failed pushes record no baseline, so they retry next run.
 		const state = await readSyncState(createNodeFileSystem(), workspaceRoot);
-		expect(state.sidecars?.[".mdly/comments/fail-transient.jsonl"]).toBeUndefined();
-		expect(state.sidecars?.[".mdly/comments/fail-permanent.jsonl"]).toBeUndefined();
+		expect(
+			state.sidecars?.[".mdly/comments/fail-transient.jsonl"],
+		).toBeUndefined();
+		expect(
+			state.sidecars?.[".mdly/comments/fail-permanent.jsonl"],
+		).toBeUndefined();
 		expect(state.sidecars?.[CANON]?.hash).toBe(await contentHash(okContent));
 	});
 
