@@ -13,6 +13,9 @@ PNPM="${PNPM:-/Users/trungluong/.nvm/versions/node/v22.22.2/bin/pnpm}"
 if [[ ! -x "$PNPM" ]]; then
 	PNPM="$(command -v pnpm || true)"
 fi
+if [[ -z "$PNPM" && -x "$HOME/.local/node-v24.20.0/bin/pnpm" ]]; then
+	PNPM="$HOME/.local/node-v24.20.0/bin/pnpm" # Air toolchain
+fi
 
 if [[ -z "$PNPM" ]]; then
 	echo "[dev-app] pnpm not found. Set PNPM=/path/to/pnpm and try again." >&2
