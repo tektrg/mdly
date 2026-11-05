@@ -227,6 +227,34 @@ describe("board interactions", () => {
 		);
 	});
 
+	it("right-click opens the shared card menu for that card; its actions target it", async () => {
+		renderBoard();
+		expect(document.querySelectorAll('[role="menu"]').length).toBe(0);
+		const card = container.querySelector(
+			'[data-board-card="/ws/b.md"]',
+		) as HTMLElement;
+		await act(async () => {
+			card.dispatchEvent(
+				new MouseEvent("contextmenu", {
+					bubbles: true,
+					cancelable: true,
+					clientX: 40,
+					clientY: 50,
+				}),
+			);
+		});
+		const items = [
+			...document.querySelectorAll('[role="menuitem"]'),
+		] as HTMLElement[];
+		expect(document.querySelectorAll('[role="menu"]').length).toBe(1);
+		const peek = items.find((item) => item.textContent === "PeekSpace");
+		expect(peek).toBeDefined();
+		await act(async () => peek?.click());
+		expect(container.querySelector("[data-board-peek]")?.textContent).toContain(
+			"b",
+		);
+	});
+
 	it("Opt+→ moves a card to the next column, optimistically, writing the board key", async () => {
 		renderBoard();
 		const card = container.querySelector(

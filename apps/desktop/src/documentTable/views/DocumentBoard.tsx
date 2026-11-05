@@ -30,6 +30,8 @@ import {
 } from "../properties/documentViews";
 import { PROPERTY_HEADER_MENU_TRIGGER_CLASS } from "../properties/PropertyControls";
 import {
+	AnchoredPropertyMenu,
+	type MenuAnchor,
 	PropertyMenu,
 	PropertyMenuItem,
 	PropertyMenuLabel,
@@ -40,7 +42,7 @@ import type {
 	PropertyFieldId,
 } from "../properties/propertyFields";
 import { propertyScanStore } from "../properties/propertyScanStore";
-import { BoardCard, type BoardCardActions } from "./BoardCard";
+import { BoardCard, type BoardCardActions, CardMenuItems } from "./BoardCard";
 import { type BoardDialogState, BoardDialogs } from "./BoardDialogs";
 import { BoardPeek } from "./BoardPeek";
 import {
@@ -510,6 +512,13 @@ export function DocumentBoard({
 	const [pending, setPending] = useState<PendingValues>(new Map());
 	const [peekPath, setPeekPath] = useState<string | null>(null);
 	const [dialog, setDialog] = useState<BoardDialogState>(null);
+	// The one card menu, shared by every card (row kept while it animates out).
+	const [cardMenu, setCardMenu] = useState<{
+		row: DocumentTableRow;
+		anchor: MenuAnchor;
+		card: HTMLElement;
+		open: boolean;
+	} | null>(null);
 	const focusAfterMove = useRef<string | null>(null);
 	const boardRef = useRef<HTMLDivElement | null>(null);
 	const headingByPath = useStoreValue(
@@ -653,6 +662,8 @@ export function DocumentBoard({
 				setDialog({ kind: "rename", row, title: latest.current.titleOf(row) }),
 			onDelete: (row) =>
 				setDialog({ kind: "delete", row, title: latest.current.titleOf(row) }),
+			onOpenMenu: (row, anchor, card) =>
+				setCardMenu({ row, anchor, card, open: true }),
 		}),
 		[hasRowMenu, revealLabel, moveTo],
 	);
@@ -923,6 +934,23 @@ export function DocumentBoard({
 					/>
 				) : null}
 			</div>
+			<AnchoredPropertyMenu
+				anchor={cardMenu?.anchor ?? null}
+				open={cardMenu?.open ?? false}
+				returnFocus={cardMenu?.card ?? null}
+				label={
+					cardMenu ? `Actions for ${titleOf(cardMenu.row)}` : "Card actions"
+				}
+				onClose={() =>
+					setCardMenu((current) =>
+						current ? { ...current, open: false } : null,
+					)
+				}
+			>
+				{cardMenu ? (
+					<CardMenuItems row={cardMenu.row} actions={cardActions} />
+				) : null}
+			</AnchoredPropertyMenu>
 			<BoardDialogs
 				state={dialog}
 				onClose={() => setDialog(null)}
