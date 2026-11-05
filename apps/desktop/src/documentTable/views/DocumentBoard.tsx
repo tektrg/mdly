@@ -418,7 +418,7 @@ function CardPropertiesPicker({
 }
 
 /** Right-edge fade while more columns are scrolled out of view. */
-function useOverflowFade() {
+function useOverflowFade(columnCount: number) {
 	const ref = useRef<HTMLDivElement | null>(null);
 	const [fade, setFade] = useState(false);
 	const update = useCallback(() => {
@@ -435,6 +435,9 @@ function useOverflowFade() {
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [update]);
+	// Adding/removing columns changes scrollWidth without resizing the viewport.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: columnCount is the re-measure trigger.
+	useLayoutEffect(update, [update, columnCount]);
 	return { ref, fade, onScroll: update };
 }
 
@@ -691,7 +694,13 @@ export function DocumentBoard({
 		}
 	});
 
-	const { ref: scrollRef, fade, onScroll } = useOverflowFade();
+	const {
+		ref: scrollRef,
+		fade,
+		onScroll,
+	} = useOverflowFade(
+		(model?.columns.length ?? 0) + (model?.hiddenColumns.length ?? 0),
+	);
 
 	if (!field || !model) {
 		if (isReadingProperties) return <ReadingPropertiesNotice />;

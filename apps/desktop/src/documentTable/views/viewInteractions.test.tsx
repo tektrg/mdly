@@ -18,6 +18,10 @@ vi.mock("../properties/propertyWrite", () => ({
 	writeDocumentProperty: (...args: unknown[]) => writeDocumentProperty(...args),
 }));
 
+vi.mock("../../desktopApi", () => ({
+	desktopApi: { readFileText: async () => "body" },
+}));
+
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -137,6 +141,76 @@ describe("board interactions", () => {
 		expect(card.getAttribute("draggable")).toBe("false");
 		await pressOnCard(card, "ArrowRight", { altKey: true });
 		expect(writeDocumentProperty).not.toHaveBeenCalled();
+	});
+
+	it("Esc closes the peek panel even when focus is inside the panel", async () => {
+		renderBoard();
+		const card = container.querySelector(
+			'[data-board-card="/ws/a.md"]',
+		) as HTMLElement;
+		await pressOnCard(card, " ");
+		const close = container.querySelector(
+			'[aria-label="Close peek"]',
+		) as HTMLElement;
+		expect(close).not.toBeNull();
+		await pressOnCard(close, "Escape");
+		expect(container.querySelector("[data-board-peek]")).toBeNull();
+	});
+
+	it("right-edge fade recalculates when columns are added, not only on resize", () => {
+		let viewport = 10_000;
+		const columnWidth = 200;
+		const proto = HTMLElement.prototype;
+		const original = {
+			client: Object.getOwnPropertyDescriptor(proto, "clientWidth"),
+			scroll: Object.getOwnPropertyDescriptor(proto, "scrollWidth"),
+		};
+		Object.defineProperty(proto, "clientWidth", {
+			configurable: true,
+			get(this: HTMLElement) {
+				return this.getAttribute("role") === "application" ? viewport : 0;
+			},
+		});
+		Object.defineProperty(proto, "scrollWidth", {
+			configurable: true,
+			get(this: HTMLElement) {
+				return (
+					this.querySelectorAll("[data-board-column-index]").length *
+					columnWidth
+				);
+			},
+		});
+		try {
+			const render = (options: string[]) =>
+				act(() => {
+					root.render(
+						<DocumentBoard
+							rows={rows}
+							fields={[{ ...STATUS, options }]}
+							boardField={null}
+							propertyColumns={[]}
+							onOpenDocument={() => {}}
+						/>,
+					);
+				});
+			render(["Todo", "Done"]);
+			expect(container.querySelector("[data-board-overflow-fade]")).toBeNull();
+			viewport =
+				container.querySelectorAll("[data-board-column-index]").length *
+				columnWidth;
+			render(["Todo", "Done", "Later", "Someday"]);
+			expect(
+				container.querySelector("[data-board-overflow-fade]"),
+			).not.toBeNull();
+		} finally {
+			for (const [key, descriptor] of [
+				["clientWidth", original.client],
+				["scrollWidth", original.scroll],
+			] as const) {
+				if (descriptor) Object.defineProperty(proto, key, descriptor);
+				else delete (proto as unknown as Record<string, unknown>)[key];
+			}
+		}
 	});
 
 	it("card menu lists the card actions", async () => {

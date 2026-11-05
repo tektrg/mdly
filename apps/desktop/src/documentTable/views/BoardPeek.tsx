@@ -62,6 +62,12 @@ export function BoardPeek({
 		<aside
 			aria-label={`Peek: ${title}`}
 			data-board-peek={row.path}
+			// The panel sits outside the board's key handler, so Esc needs its own.
+			onKeyDown={(event) => {
+				if (event.key !== "Escape") return;
+				event.preventDefault();
+				onClose();
+			}}
 			className="flex h-full w-[22rem] shrink-0 flex-col border-s border-border bg-background"
 		>
 			<header className="flex shrink-0 items-start gap-2 px-3 py-2">
