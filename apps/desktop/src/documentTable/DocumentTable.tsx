@@ -419,7 +419,7 @@ export function DocumentTable({
 						visibleColumns={propertyColumns}
 						isScanning={propertyScan.status === "scanning"}
 					/>
-					{isCustomized ? (
+					{isCustomized && layout.viewType !== "board" ? (
 						<Button
 							size="sm"
 							variant="ghost"
@@ -447,7 +447,9 @@ export function DocumentTable({
 					rows={rows}
 					fields={propertyFields}
 					boardField={layout.boardField}
+					boardSettings={layout.board}
 					propertyColumns={propertyColumns}
+					rowMenu={rowMenu}
 					isReadingProperties={isReadingProperties}
 					onOpenDocument={onOpenDocument}
 				/>

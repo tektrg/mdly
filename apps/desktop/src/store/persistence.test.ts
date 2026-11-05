@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOARD_VIEW_SETTINGS } from "../documentTable/properties/documentViews";
 import { getInitialState, serialize } from "./persistence";
 import { STORAGE_KEY } from "./storage";
 
@@ -228,6 +229,7 @@ describe("desktop state persistence", () => {
 						viewType: "table",
 						boardField: null,
 						calendarField: null,
+						board: DEFAULT_BOARD_VIEW_SETTINGS,
 					},
 				],
 			},

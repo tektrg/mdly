@@ -91,7 +91,8 @@ describe("board model", () => {
 		const rows = Array.from({ length: 7 }, (_, index) =>
 			row(`n${index}`, { "prop:status": "Todo" }),
 		);
-		const todo = buildBoardModel(rows, STATUS, () => 5).columns[0];
+		const todo = buildBoardModel(rows, STATUS, { limitFor: () => 5 })
+			.columns[0];
 		expect(todo?.rows).toHaveLength(5);
 		expect(todo?.total).toBe(7);
 	});

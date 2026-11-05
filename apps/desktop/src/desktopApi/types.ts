@@ -71,6 +71,8 @@ export type FrontMatterPropertyScan = {
 	propertiesByPath: Record<string, Record<string, ScannedFrontMatterProperty>>;
 	/** Files whose front matter could not be parsed (malformed YAML, too long). */
 	invalidPaths: string[];
+	/** First `# H1` of the body per path (head read only); files without one are omitted. */
+	headingsByPath?: Record<string, string>;
 	/** Only when asked with `includeStats`: every readable path's size and body word count. */
 	statsByPath?: Record<string, ScannedFileStats>;
 };
