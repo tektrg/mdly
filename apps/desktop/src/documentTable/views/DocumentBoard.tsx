@@ -559,8 +559,29 @@ export function DocumentBoard({
 		(row: DocumentTableRow) => resolveCardTitle(row, headingByPath[row.path]),
 		[headingByPath],
 	);
-	const latest = useRef({ model, effectiveRows, titleOf, boardSettings });
-	latest.current = { model, effectiveRows, titleOf, boardSettings };
+	// Callbacks read props through this ref so a parent re-render with
+	// new-but-equal `onOpenDocument`/`rowMenu` keeps `cardActions` stable and
+	// leaves every memoized card alone.
+	const latest = useRef({
+		model,
+		effectiveRows,
+		titleOf,
+		boardSettings,
+		invalidPaths,
+		onOpenDocument,
+		rowMenu,
+	});
+	latest.current = {
+		model,
+		effectiveRows,
+		titleOf,
+		boardSettings,
+		invalidPaths,
+		onOpenDocument,
+		rowMenu,
+	};
+	const hasRowMenu = rowMenu !== undefined;
+	const revealLabel = rowMenu?.revealLabel;
 
 	const moveTo = useCallback((row: DocumentTableRow, target: BoardColumn) => {
 		const current = latest.current.model;
@@ -603,12 +624,12 @@ export function DocumentBoard({
 	const cardActions = useMemo<BoardCardActions>(
 		() => ({
 			onPeek: (row) => setPeekPath(row.path),
-			onOpen: (row) => onOpenDocument(row),
+			onOpen: (row) => latest.current.onOpenDocument(row),
 			moveTargets: (row) => {
 				const current = latest.current.model;
 				if (!current) return [];
 				if (current.field.readOnly) return [...READ_ONLY_MOVE_TARGETS];
-				if (invalidPaths.has(row.path)) return [];
+				if (latest.current.invalidPaths.has(row.path)) return [];
 				return moveTargetsFor(row, current).map((column) => ({
 					key: column.key,
 					label: column.label,
@@ -620,22 +641,26 @@ export function DocumentBoard({
 				);
 				if (target) moveTo(row, target);
 			},
-			onCopyPath: rowMenu ? (row) => rowMenu.onCopyPath(row.path) : undefined,
-			onReveal: rowMenu ? (row) => rowMenu.onRevealPath(row.path) : undefined,
-			revealLabel: rowMenu?.revealLabel,
+			onCopyPath: hasRowMenu
+				? (row) => latest.current.rowMenu?.onCopyPath(row.path)
+				: undefined,
+			onReveal: hasRowMenu
+				? (row) => latest.current.rowMenu?.onRevealPath(row.path)
+				: undefined,
+			revealLabel,
 			onDuplicate: (row) => void duplicateNote(row),
 			onRename: (row) =>
 				setDialog({ kind: "rename", row, title: latest.current.titleOf(row) }),
 			onDelete: (row) =>
 				setDialog({ kind: "delete", row, title: latest.current.titleOf(row) }),
 		}),
-		[onOpenDocument, rowMenu, moveTo, invalidPaths],
+		[hasRowMenu, revealLabel, moveTo],
 	);
 
 	const columnActions = useMemo<ColumnActions>(
 		() => ({
 			onDropCard: (path, column) => {
-				if (invalidPaths.has(path)) return;
+				if (latest.current.invalidPaths.has(path)) return;
 				const row = latest.current.effectiveRows.find(
 					(candidate) => candidate.path === path,
 				);
@@ -678,7 +703,7 @@ export function DocumentBoard({
 					columnColors: { ...settings.columnColors, [column.key]: color },
 				})),
 		}),
-		[moveTo, invalidPaths],
+		[moveTo],
 	);
 
 	// Keep keyboard focus on a card that Opt+arrow just moved to another column.

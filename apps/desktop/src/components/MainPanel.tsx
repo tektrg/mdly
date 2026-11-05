@@ -4,6 +4,7 @@ import {
 	type CSSProperties,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -19,6 +20,7 @@ import {
 	setDocumentTableFilter,
 	toggleDocumentTableSort,
 } from "../documentTable/documentTableStore";
+import type { DocumentTableRow } from "../documentTable/documentTableView";
 import { clampPeekListWidth, densityTier } from "../documentTable/navDensity";
 import { PeekListDivider } from "../documentTable/PeekListDivider";
 import {
@@ -140,24 +142,32 @@ export function MainPanel({
 	// Title-column menu: the sidebar file row's actions (minus Rename, which
 	// needs inline UI the table doesn't have yet), wired to the same store
 	// actions and the same failure toasts as the sidebar.
-	const rowMenu: DocumentRowListMenu = {
-		isPinned: (path) => pinnedNotes.includes(path),
-		revealLabel: revealFileLabel(desktopApi.platform),
-		onRevealPath: (path) => {
-			void desktopApi
-				.revealFile(path)
-				.catch(() => toast.error("Failed to reveal file"));
-		},
-		onCopyPath: (path) => {
-			void navigator.clipboard
-				.writeText(path)
-				.then(() => toast.success("File path copied"))
-				.catch(() => toast.error("Failed to copy file path"));
-		},
-		onMovePath: (path) => onMoveFile(path),
-		onTogglePin: (path) => void togglePinnedNote(path),
-		onDeletePath: (path) => void deleteMarkdownFile(path),
-	};
+	// Memoized so the table rows and board cards (memo'd on their props) don't
+	// all re-render whenever MainPanel does; `onMoveFile` is read via a ref
+	// because the parent may pass a fresh closure each render.
+	const onMoveFileRef = useRef(onMoveFile);
+	onMoveFileRef.current = onMoveFile;
+	const rowMenu = useMemo<DocumentRowListMenu>(
+		() => ({
+			isPinned: (path) => pinnedNotes.includes(path),
+			revealLabel: revealFileLabel(desktopApi.platform),
+			onRevealPath: (path) => {
+				void desktopApi
+					.revealFile(path)
+					.catch(() => toast.error("Failed to reveal file"));
+			},
+			onCopyPath: (path) => {
+				void navigator.clipboard
+					.writeText(path)
+					.then(() => toast.success("File path copied"))
+					.catch(() => toast.error("Failed to copy file path"));
+			},
+			onMovePath: (path) => onMoveFileRef.current(path),
+			onTogglePin: (path) => void togglePinnedNote(path),
+			onDeletePath: (path) => void deleteMarkdownFile(path),
+		}),
+		[pinnedNotes],
+	);
 
 	if (!hasWorkspace && requestedPath === null) {
 		return (
@@ -202,7 +212,7 @@ export function MainPanel({
 				rows={rows}
 				view={view}
 				listing={listing}
-				onOpenDocument={(row) => void loadPath(row.openPath)}
+				onOpenDocument={openDocumentRow}
 				onFilterChange={setDocumentTableFilter}
 				onToggleSort={toggleDocumentTableSort}
 				onRetryListing={() => void refreshFiles()}
@@ -234,7 +244,7 @@ export function MainPanel({
 				rows={rows}
 				view={view}
 				listing={listing}
-				onOpenDocument={(row) => void loadPath(row.openPath)}
+				onOpenDocument={openDocumentRow}
 				onFilterChange={setDocumentTableFilter}
 				onShowAllDocuments={() => void closeDocumentToTable()}
 				onRetryListing={() => void refreshFiles()}
@@ -436,4 +446,9 @@ function ReadyDocument({
 			/>
 		</div>
 	);
+}
+
+/** Module-level so the table/board receive one stable `onOpenDocument`. */
+function openDocumentRow(row: DocumentTableRow) {
+	void loadPath(row.openPath);
 }
