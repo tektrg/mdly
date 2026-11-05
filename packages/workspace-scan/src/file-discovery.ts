@@ -146,10 +146,13 @@ class IoPrefetcher {
 		const promise = new Promise<unknown>((resolve, reject) => {
 			this.queue.push(() => {
 				if (this.closed) {
+					// Not counted as active (see pump), so no release — releasing
+					// would re-enter pump once per queued task and overflow the
+					// stack on a large queue.
 					reject(new Error("prefetch closed"));
-					this.release();
 					return;
 				}
+				this.active += 1;
 				run()
 					.then(resolve, reject)
 					.finally(() => this.release());
@@ -185,7 +188,6 @@ class IoPrefetcher {
 			(this.closed || this.active < PREFETCH_CONCURRENCY)
 		) {
 			const next = this.queue.shift() as () => void;
-			this.active += 1;
 			next();
 		}
 	}
