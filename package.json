@@ -27,7 +27,8 @@
 		"build:dev-app": "node scripts/build-dev-app.mjs",
 		"install:dev-app": "bash scripts/install-dev-app.sh",
 		"install:prod-app": "bash scripts/install-prod-app.sh",
-		"hubble": "node packages/cli/dist/index.js"
+		"hubble": "node packages/cli/dist/index.js",
+		"bench:scan-sync": "node scripts/bench-scan-sync.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.4"
