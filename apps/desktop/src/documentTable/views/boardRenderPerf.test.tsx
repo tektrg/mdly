@@ -29,6 +29,7 @@ import {
 	propertyScanStore,
 	resetPropertyScan,
 } from "../properties/propertyScanStore";
+import { usePropertyModel } from "../properties/usePropertyModel";
 import { viewWith } from "../testFixtures";
 import { DocumentBoard } from "./DocumentBoard";
 
@@ -278,5 +279,32 @@ describe("DocumentTable board: scan ticks", () => {
 		} finally {
 			act(() => setDocumentViewType("table"));
 		}
+	});
+});
+
+describe("property model subscribers", () => {
+	it("usePropertyModel ignores scan progress ticks", async () => {
+		workspacePathStore.set("/ws");
+		propertyScanStore.set({
+			...propertyScanStore.get(),
+			scope: "/ws",
+			status: "scanning",
+		});
+		let renders = 0;
+		function Probe() {
+			usePropertyModel();
+			renders += 1;
+			return null;
+		}
+		act(() => root.render(<Probe />));
+		renders = 0;
+		await act(async () =>
+			propertyScanStore.set({
+				...propertyScanStore.get(),
+				scannedCount: propertyScanStore.get().scannedCount + 100,
+				pendingCount: 400,
+			}),
+		);
+		expect(renders).toBe(0);
 	});
 });
