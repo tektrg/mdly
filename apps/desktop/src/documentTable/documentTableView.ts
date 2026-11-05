@@ -269,6 +269,31 @@ export function workspaceFolderPaths(
 	return [...paths].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * "+ Folder" picker search. A query with `/` is matched per path segment, in
+ * order, each as a substring of a distinct later segment: `project/abc` finds
+ * `project/abc`, `myproject/x/abcd`. A plain query is a substring match on the
+ * whole path (so `sub` still finds `AptusFit/sub`). Case-insensitive; `\\` is
+ * treated as `/`; leading/trailing slashes are ignored.
+ */
+export function folderMatchesQuery(folder: string, query: string): boolean {
+	const needle = query.trim().toLowerCase().replace(/\\/g, "/");
+	if (!needle) return true;
+	const haystack = folder.toLowerCase();
+	if (haystack.includes(needle)) return true;
+	const wanted = needle.split("/").filter(Boolean);
+	if (wanted.length < 2)
+		return wanted.length === 0 || haystack.includes(wanted[0]);
+	const segments = haystack.split("/");
+	let at = 0;
+	for (const part of wanted) {
+		while (at < segments.length && !segments[at].includes(part)) at++;
+		if (at === segments.length) return false;
+		at++;
+	}
+	return true;
+}
+
 export function buildDocumentRows(
 	files: FileEntry[],
 	workspacePath: string | null,

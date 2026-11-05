@@ -14,7 +14,10 @@ import {
 	saveCurrentViewAs,
 	setPropertyGroupBy,
 } from "../documentTableStore";
-import type { DocumentTableView } from "../documentTableView";
+import {
+	type DocumentTableView,
+	folderMatchesQuery,
+} from "../documentTableView";
 import { validateSavedViewName } from "../documentViewsFileStore";
 import { SavedViewNameInput } from "../SavedViewControls";
 import {
@@ -185,9 +188,8 @@ function FolderPicker({
 }) {
 	const [open, setOpen] = useState(false);
 	const [query, setQuery] = useState("");
-	const needle = query.trim().toLowerCase();
-	const shown = needle
-		? folders.filter((folder) => folder.toLowerCase().includes(needle))
+	const shown = query.trim()
+		? folders.filter((folder) => folderMatchesQuery(folder, query))
 		: folders;
 	const pick = (folder: string) => {
 		setOpen(false);

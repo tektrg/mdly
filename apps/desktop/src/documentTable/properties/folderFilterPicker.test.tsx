@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { workspaceFolderPaths } from "../documentTableView";
+import { folderMatchesQuery, workspaceFolderPaths } from "../documentTableView";
 import { describePropertyFilter } from "./documentViews";
 
 const addPropertyFilter = vi.fn();
@@ -46,6 +46,24 @@ describe("workspaceFolderPaths", () => {
 				{ folderLabel: "AptusFit/sub/deep" },
 			] as never),
 		).toEqual(["AptusFit", "AptusFit/sub", "AptusFit/sub/deep", "Zeta"]);
+	});
+});
+
+describe("folderMatchesQuery", () => {
+	it("matches path-style queries per segment, in order", () => {
+		expect(folderMatchesQuery("project/abc", "project/abc")).toBe(true);
+		expect(folderMatchesQuery("project/abc/deep", "project/abc")).toBe(true);
+		expect(folderMatchesQuery("my-project/x/abcd", "project/abc")).toBe(true);
+		expect(folderMatchesQuery("Project/ABC", "project/abc")).toBe(true);
+		expect(folderMatchesQuery("project/abc", "/project/abc/")).toBe(true);
+		expect(folderMatchesQuery("a/project", "project/abc")).toBe(false);
+		expect(folderMatchesQuery("abc/project", "project/abc")).toBe(false);
+		expect(folderMatchesQuery("project", "project/abc")).toBe(false);
+	});
+	it("keeps plain substring behaviour", () => {
+		expect(folderMatchesQuery("AptusFit/sub", "sub")).toBe(true);
+		expect(folderMatchesQuery("AptusFit/sub", "")).toBe(true);
+		expect(folderMatchesQuery("Notes", "sub")).toBe(false);
 	});
 });
 
