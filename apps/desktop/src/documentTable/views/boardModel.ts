@@ -299,6 +299,48 @@ export function buildBoardModel(
 	};
 }
 
+function sameColumn(a: BoardColumn, b: BoardColumn): boolean {
+	if (
+		a.key !== b.key ||
+		a.kind !== b.kind ||
+		a.value !== b.value ||
+		a.label !== b.label ||
+		a.color !== b.color ||
+		a.total !== b.total ||
+		a.rows.length !== b.rows.length
+	) {
+		return false;
+	}
+	return a.rows.every((row, index) => row === b.rows[index]);
+}
+
+/**
+ * `next` with every column whose content is unchanged since `previous`
+ * swapped for the previous object, so memoized column views skip: a drop
+ * re-renders the two columns it touched, not the whole board.
+ */
+export function shareBoardColumns(
+	previous: BoardModel | null,
+	next: BoardModel,
+): BoardModel {
+	if (!previous) return next;
+	const byKey = new Map(
+		[...previous.columns, ...previous.hiddenColumns].map((column) => [
+			column.key,
+			column,
+		]),
+	);
+	const reuse = (column: BoardColumn) => {
+		const old = byKey.get(column.key);
+		return old && sameColumn(old, column) ? old : column;
+	};
+	return {
+		...next,
+		columns: next.columns.map(reuse),
+		hiddenColumns: next.hiddenColumns.map(reuse),
+	};
+}
+
 /** Saved order first (keys no longer present are skipped), the rest in natural order. */
 export function orderColumns<T extends { key: string }>(
 	columns: readonly T[],

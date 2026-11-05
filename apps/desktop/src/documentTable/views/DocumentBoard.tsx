@@ -64,6 +64,7 @@ import {
 	reorderColumnKeys,
 	resolveBoardField,
 	resolveCardTitle,
+	shareBoardColumns,
 } from "./boardModel";
 import { ReadingPropertiesNotice, ViewFieldPicker } from "./NoteCard";
 import { READ_ONLY_MOVE_TARGETS, useNoteDropTarget } from "./viewDrag";
@@ -542,17 +543,20 @@ export function DocumentBoard({
 		() => withPendingValues(rows, field?.id, pending),
 		[rows, field, pending],
 	);
-	const model = useMemo(
-		() =>
-			field
-				? buildBoardModel(effectiveRows, field, {
-						limitFor: (key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
-						invalidPaths,
-						settings: boardSettings,
-					})
-				: null,
-		[effectiveRows, field, limits, invalidPaths, boardSettings],
-	);
+	const previousModel = useRef<BoardModel | null>(null);
+	const model = useMemo(() => {
+		if (!field) return null;
+		const built = buildBoardModel(effectiveRows, field, {
+			limitFor: (key) => limits[key] ?? BOARD_COLUMN_CARD_LIMIT,
+			invalidPaths,
+			settings: boardSettings,
+		});
+		// Same field: reuse unchanged columns so only the touched ones re-render.
+		return previousModel.current?.field === field
+			? shareBoardColumns(previousModel.current, built)
+			: built;
+	}, [effectiveRows, field, limits, invalidPaths, boardSettings]);
+	previousModel.current = model;
 	const fieldById = useMemo(
 		() => new Map(fields.map((candidate) => [candidate.id, candidate])),
 		[fields],
