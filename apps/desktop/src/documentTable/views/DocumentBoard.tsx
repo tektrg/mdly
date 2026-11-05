@@ -44,7 +44,6 @@ import type {
 import { propertyScanStore } from "../properties/propertyScanStore";
 import { BoardCard, type BoardCardActions, CardMenuItems } from "./BoardCard";
 import { type BoardDialogState, BoardDialogs } from "./BoardDialogs";
-import { BoardPeek } from "./BoardPeek";
 import {
 	createNoteInColumn,
 	duplicateNote,
@@ -101,7 +100,7 @@ const BoardColumnView = memo(function BoardColumnView({
 	cardProperties,
 	fieldById,
 	canDragCards,
-	peekPath,
+	compact,
 	cardActions,
 	columnActions,
 }: {
@@ -111,7 +110,7 @@ const BoardColumnView = memo(function BoardColumnView({
 	cardProperties: readonly PropertyFieldId[];
 	fieldById: ReadonlyMap<PropertyFieldId, PropertyField>;
 	canDragCards: boolean;
-	peekPath: string | null;
+	compact: boolean;
 	cardActions: BoardCardActions;
 	columnActions: ColumnActions;
 }) {
@@ -147,7 +146,9 @@ const BoardColumnView = memo(function BoardColumnView({
 			data-board-column-index={columnIndex}
 			{...(acceptsCards ? dropHandlers : {})}
 			className={cn(
-				"flex h-full w-64 shrink-0 flex-col rounded-md bg-muted/40",
+				"flex h-full shrink-0 flex-col",
+				compact ? "w-44" : "w-64",
+				" rounded-md bg-muted/40",
 				isDropTarget && "ring-1 ring-ring",
 				isColumnDropTarget && "border-s-2 border-ring",
 				column.kind === "unreadable" && "opacity-70",
@@ -229,7 +230,7 @@ const BoardColumnView = memo(function BoardColumnView({
 						cardProperties={cardProperties}
 						fieldById={fieldById}
 						canDrag={cardsDraggable}
-						isPeeked={peekPath === row.path}
+						compact={compact}
 						actions={cardActions}
 					/>
 				))}
@@ -497,6 +498,7 @@ export function DocumentBoard({
 	isReadingProperties = false,
 	onOpenDocument,
 	rowMenu,
+	compact = false,
 }: {
 	rows: DocumentTableRow[];
 	fields: readonly PropertyField[];
@@ -508,10 +510,11 @@ export function DocumentBoard({
 	onOpenDocument: (row: DocumentTableRow) => void;
 	/** File actions shared with the table (copy path, reveal). */
 	rowMenu?: DocumentRowListMenu;
+	/** Collapsed beside an open note: no toolbar, narrow columns, title-only cards. */
+	compact?: boolean;
 }) {
 	const [limits, setLimits] = useState<Record<string, number>>({});
 	const [pending, setPending] = useState<PendingValues>(new Map());
-	const [peekPath, setPeekPath] = useState<string | null>(null);
 	const [dialog, setDialog] = useState<BoardDialogState>(null);
 	// The one card menu, shared by every card (row kept while it animates out).
 	const [cardMenu, setCardMenu] = useState<{
@@ -636,7 +639,6 @@ export function DocumentBoard({
 
 	const cardActions = useMemo<BoardCardActions>(
 		() => ({
-			onPeek: (row) => setPeekPath(row.path),
 			onOpen: (row) => latest.current.onOpenDocument(row),
 			moveTargets: (row) => {
 				const current = latest.current.model;
@@ -769,18 +771,9 @@ export function DocumentBoard({
 		const path = card.dataset.boardCard ?? "";
 		const row = effectiveRows.find((candidate) => candidate.path === path);
 		if (!row) return;
-		if (event.key === " ") {
-			event.preventDefault();
-			setPeekPath((current) => (current === path ? null : path));
-			return;
-		}
 		if (event.key === "Enter") {
 			event.preventDefault();
 			onOpenDocument(row);
-			return;
-		}
-		if (event.key === "Escape" && peekPath) {
-			setPeekPath(null);
 			return;
 		}
 		const horizontal =
@@ -820,61 +813,66 @@ export function DocumentBoard({
 		}
 	};
 
-	const peekRow = peekPath
-		? effectiveRows.find((row) => row.path === peekPath)
-		: undefined;
 	const pickerFields = fields.filter((candidate) => candidate.id !== field.id);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">
-			<div className="flex shrink-0 items-center gap-2 px-1">
-				<ViewFieldPicker
-					label="Columns by"
-					fields={candidates}
-					value={field.id}
-					onChange={setBoardField}
-				/>
-				<CardPropertiesPicker
-					fields={pickerFields}
-					selected={cardProperties}
-					onChange={(next) =>
-						updateBoardSettings((settings) => ({
-							...settings,
-							cardProperties: next,
-						}))
-					}
-				/>
-				<PropertyMenu
-					trigger={
-						<span className="inline-flex items-center gap-1 px-1.5 text-[11px]">
-							<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
-						</span>
-					}
-					triggerClassName="inline-flex h-7 items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-					triggerLabel="Board settings"
-					align="start"
-				>
-					<PropertyMenuItem
-						checked={boardSettings.hideEmptyColumns}
-						onClick={() =>
+		<div
+			data-board-compact={compact ? "" : undefined}
+			className={cn(
+				"flex min-h-0 flex-1 flex-col gap-2 pb-2",
+				compact ? "px-1" : "px-2",
+			)}
+		>
+			{compact ? null : (
+				<div className="flex shrink-0 items-center gap-2 px-1">
+					<ViewFieldPicker
+						label="Columns by"
+						fields={candidates}
+						value={field.id}
+						onChange={setBoardField}
+					/>
+					<CardPropertiesPicker
+						fields={pickerFields}
+						selected={cardProperties}
+						onChange={(next) =>
 							updateBoardSettings((settings) => ({
 								...settings,
-								hideEmptyColumns: !settings.hideEmptyColumns,
+								cardProperties: next,
 							}))
 						}
-					>
-						Hide empty groups
-					</PropertyMenuItem>
-					<PropertyMenuSeparator />
-					<PropertyMenuItem
-						onClick={() =>
-							updateBoardSettings(() => DEFAULT_BOARD_VIEW_SETTINGS)
+					/>
+					<PropertyMenu
+						trigger={
+							<span className="inline-flex items-center gap-1 px-1.5 text-[11px]">
+								<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
+							</span>
 						}
+						triggerClassName="inline-flex h-7 items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+						triggerLabel="Board settings"
+						align="start"
 					>
-						Reset columns
-					</PropertyMenuItem>
-				</PropertyMenu>
-			</div>
+						<PropertyMenuItem
+							checked={boardSettings.hideEmptyColumns}
+							onClick={() =>
+								updateBoardSettings((settings) => ({
+									...settings,
+									hideEmptyColumns: !settings.hideEmptyColumns,
+								}))
+							}
+						>
+							Hide empty groups
+						</PropertyMenuItem>
+						<PropertyMenuSeparator />
+						<PropertyMenuItem
+							onClick={() =>
+								updateBoardSettings(() => DEFAULT_BOARD_VIEW_SETTINGS)
+							}
+						>
+							Reset columns
+						</PropertyMenuItem>
+					</PropertyMenu>
+				</div>
+			)}
 			<div className="flex min-h-0 flex-1">
 				<div className="relative flex min-h-0 min-w-0 flex-1">
 					<div
@@ -897,7 +895,7 @@ export function DocumentBoard({
 								cardProperties={cardProperties}
 								fieldById={fieldById}
 								canDragCards={!field.readOnly}
-								peekPath={peekPath}
+								compact={compact}
 								cardActions={cardActions}
 								columnActions={columnActions}
 							/>
@@ -928,15 +926,6 @@ export function DocumentBoard({
 						/>
 					) : null}
 				</div>
-				{peekRow ? (
-					<BoardPeek
-						row={peekRow}
-						title={titleOf(peekRow)}
-						fields={fields}
-						onOpen={onOpenDocument}
-						onClose={() => setPeekPath(null)}
-					/>
-				) : null}
 			</div>
 			<AnchoredPropertyMenu
 				anchor={cardMenu?.anchor ?? null}
@@ -959,10 +948,7 @@ export function DocumentBoard({
 				state={dialog}
 				onClose={() => setDialog(null)}
 				onRename={(row, name) => void renameMarkdownFile(row.openPath, name)}
-				onDelete={(row) => {
-					if (peekPath === row.path) setPeekPath(null);
-					void deleteMarkdownFile(row.openPath);
-				}}
+				onDelete={(row) => void deleteMarkdownFile(row.openPath)}
 			/>
 		</div>
 	);

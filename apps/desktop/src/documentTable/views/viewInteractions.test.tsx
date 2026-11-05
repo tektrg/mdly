@@ -104,16 +104,25 @@ describe("board interactions", () => {
 		row("b", { "prop:status": "Done" }),
 	];
 
-	function renderBoard(fields: PropertyField[] = [STATUS], reading = false) {
+	const onOpenDocument = vi.fn();
+	beforeEach(() => onOpenDocument.mockClear());
+
+	function renderBoard(
+		fields: PropertyField[] = [STATUS],
+		reading = false,
+		compact = false,
+		boardRows = rows,
+	) {
 		act(() => {
 			root.render(
 				<DocumentBoard
-					rows={fields.length ? rows : []}
+					rows={fields.length ? boardRows : []}
 					fields={fields}
 					boardField={null}
 					propertyColumns={[]}
 					isReadingProperties={reading}
-					onOpenDocument={() => {}}
+					onOpenDocument={onOpenDocument}
+					compact={compact}
 				/>,
 			);
 		});
@@ -143,18 +152,48 @@ describe("board interactions", () => {
 		expect(writeDocumentProperty).not.toHaveBeenCalled();
 	});
 
-	it("Esc closes the peek panel even when focus is inside the panel", async () => {
+	it("clicking a card opens the note, like a table row (no peek panel)", async () => {
 		renderBoard();
 		const card = container.querySelector(
 			'[data-board-card="/ws/a.md"]',
 		) as HTMLElement;
-		await pressOnCard(card, " ");
-		const close = container.querySelector(
-			'[aria-label="Close peek"]',
-		) as HTMLElement;
-		expect(close).not.toBeNull();
-		await pressOnCard(close, "Escape");
+		await act(async () => card.click());
+		expect(onOpenDocument).toHaveBeenCalledWith(rows[0]);
 		expect(container.querySelector("[data-board-peek]")).toBeNull();
+	});
+
+	it("Enter on a focused card opens it; Space no longer peeks", async () => {
+		renderBoard();
+		const card = container.querySelector(
+			'[data-board-card="/ws/b.md"]',
+		) as HTMLElement;
+		await pressOnCard(card, " ");
+		expect(onOpenDocument).not.toHaveBeenCalled();
+		expect(container.querySelector("[data-board-peek]")).toBeNull();
+		await pressOnCard(card, "Enter");
+		expect(onOpenDocument).toHaveBeenCalledWith(rows[1]);
+	});
+
+	it("compact (file open) still renders columns + cards and highlights the open note", () => {
+		renderBoard([STATUS], false, true, [
+			{ ...rows[0], isActive: true } as DocumentTableRow,
+			rows[1] as DocumentTableRow,
+		]);
+		expect(container.querySelector("[data-board-compact]")).not.toBeNull();
+		expect(
+			container.querySelectorAll("[data-board-column-index]").length,
+		).toBeGreaterThanOrEqual(2);
+		const active = container.querySelector(
+			'[data-board-card="/ws/a.md"]',
+		) as HTMLElement;
+		expect(active.getAttribute("aria-current")).toBe("page");
+		expect(
+			container
+				.querySelector('[data-board-card="/ws/b.md"]')
+				?.hasAttribute("aria-current"),
+		).toBe(false);
+		// Toolbar (Columns by / card properties) collapses away.
+		expect(container.querySelector('[aria-label="Board settings"]')).toBeNull();
 	});
 
 	it("right-edge fade recalculates when columns are added, not only on resize", () => {
@@ -216,14 +255,9 @@ describe("board interactions", () => {
 	it("card menu lists the card actions", async () => {
 		renderBoard();
 		const items = await openMenu("Actions for a");
+		expect(items.map((item) => item.textContent)).not.toContain("PeekSpace");
 		expect(items.map((item) => item.textContent)).toEqual(
-			expect.arrayContaining([
-				"Open↵",
-				"PeekSpace",
-				"Duplicate",
-				"Rename…",
-				"Delete…",
-			]),
+			expect.arrayContaining(["Open↵", "Duplicate", "Rename…", "Delete…"]),
 		);
 	});
 
@@ -247,12 +281,10 @@ describe("board interactions", () => {
 			...document.querySelectorAll('[role="menuitem"]'),
 		] as HTMLElement[];
 		expect(document.querySelectorAll('[role="menu"]').length).toBe(1);
-		const peek = items.find((item) => item.textContent === "PeekSpace");
-		expect(peek).toBeDefined();
-		await act(async () => peek?.click());
-		expect(container.querySelector("[data-board-peek]")?.textContent).toContain(
-			"b",
-		);
+		const open = items.find((item) => item.textContent === "Open↵");
+		expect(open).toBeDefined();
+		await act(async () => open?.click());
+		expect(onOpenDocument).toHaveBeenCalledWith(rows[1]);
 	});
 
 	it("Opt+→ moves a card to the next column, optimistically, writing the board key", async () => {

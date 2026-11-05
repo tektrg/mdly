@@ -1,4 +1,4 @@
-import { type MouseEvent, memo } from "react";
+import { memo } from "react";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import { cn } from "../../lib/utils";
 import type { DocumentTableRow } from "../documentTableView";
@@ -24,7 +24,6 @@ import { startNoteDrag } from "./viewDrag";
 const MAX_TAG_PILLS = 3;
 
 export type BoardCardActions = {
-	onPeek: (row: DocumentTableRow) => void;
 	onOpen: (row: DocumentTableRow) => void;
 	moveTargets: (row: DocumentTableRow) => NoteMoveTarget[];
 	onMove: (row: DocumentTableRow, columnKey: string) => void;
@@ -120,8 +119,8 @@ function Chip({
 }
 
 /**
- * A board card: title (2 lines) + property chips. Click peeks, Cmd-click or
- * double-click opens, drag moves it, "⋯"/right-click offers every action.
+ * A board card: title (2 lines) + property chips. Click (or Enter) opens the
+ * note, like a table row; drag moves it, "⋯"/right-click offers every action.
  */
 export const BoardCard = memo(function BoardCard({
 	row,
@@ -129,7 +128,7 @@ export const BoardCard = memo(function BoardCard({
 	cardProperties,
 	fieldById,
 	canDrag,
-	isPeeked,
+	compact = false,
 	actions,
 }: {
 	row: DocumentTableRow;
@@ -137,15 +136,12 @@ export const BoardCard = memo(function BoardCard({
 	cardProperties: readonly PropertyFieldId[];
 	fieldById: ReadonlyMap<PropertyFieldId, PropertyField>;
 	canDrag: boolean;
-	isPeeked: boolean;
+	/** Narrow board beside an open note: title only, one line. */
+	compact?: boolean;
 	actions: BoardCardActions;
 }) {
-	const onClick = (event: MouseEvent) => {
-		if (event.metaKey || event.ctrlKey) actions.onOpen(row);
-		else actions.onPeek(row);
-	};
 	return (
-		// biome-ignore lint/a11y/useKeyWithClickEvents: Space/Enter/arrows are handled by the board container.
+		// biome-ignore lint/a11y/useKeyWithClickEvents: Enter/arrows are handled by the board container.
 		<div
 			role="button"
 			tabIndex={0}
@@ -154,8 +150,8 @@ export const BoardCard = memo(function BoardCard({
 			data-note-card={row.path}
 			data-board-card={row.path}
 			onDragStart={canDrag ? (event) => startNoteDrag(event, row) : undefined}
-			onClick={onClick}
-			onDoubleClick={() => actions.onOpen(row)}
+			aria-current={row.isActive ? "page" : undefined}
+			onClick={() => actions.onOpen(row)}
 			onContextMenu={(event) => {
 				event.preventDefault();
 				actions.onOpenMenu(
@@ -167,14 +163,21 @@ export const BoardCard = memo(function BoardCard({
 			className={cn(
 				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background px-2 py-1.5 text-sm outline-hidden transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring",
 				canDrag && "cursor-grab",
-				(row.isActive || isPeeked) && "border-ring",
+				compact && "py-1 text-xs",
+				row.isActive && "border-ring bg-accent",
 			)}
 		>
 			<div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-				<span className="line-clamp-2 w-full break-words" title={title}>
+				<span
+					className={cn(
+						"w-full break-words",
+						compact ? "line-clamp-1" : "line-clamp-2",
+					)}
+					title={title}
+				>
 					{title}
 				</span>
-				{cardProperties.map((fieldId) => (
+				{(compact ? [] : cardProperties).map((fieldId) => (
 					<Chip
 						key={fieldId}
 						fieldId={fieldId}
@@ -224,9 +227,6 @@ export function CardMenuItems({
 		<>
 			<PropertyMenuItem onClick={() => actions.onOpen(row)} hint="↵">
 				Open
-			</PropertyMenuItem>
-			<PropertyMenuItem onClick={() => actions.onPeek(row)} hint="Space">
-				Peek
 			</PropertyMenuItem>
 			{targets.length > 0 ? (
 				<PropertySubmenu label="Move to">

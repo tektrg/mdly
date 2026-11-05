@@ -21,6 +21,9 @@ import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
 import { columnsForTier, type NavDensityTier } from "./navDensity";
 import { PEEK_LIST_DEFAULT_WIDTH } from "./peekListWidth";
+import { usePropertyScanStatus } from "./properties/usePropertyModel";
+import { useCurrentDocumentView } from "./useDocumentTableRows";
+import { DocumentBoard } from "./views/DocumentBoard";
 import { WINDOW_CHROME_INSET_CLASS } from "./windowChromeInset";
 
 export type DocumentNarrowListProps = {
@@ -183,10 +186,14 @@ export function DocumentNarrowList({
 	// Every R9 tier crossing (rail <-> list <-> card <-> table) re-renders the
 	// rows anyway; FLIP across it in the same motion as the grid switch.
 	useFlipOnChange(ownRef, navTier);
+	// A board view stays a board when it collapses beside the open note.
+	const { propertyFields, layout, propertyColumns } = useCurrentDocumentView();
+	const scanStatus = usePropertyScanStatus();
+	const isBoard = layout.viewType === "board";
 	return (
 		<div
 			ref={setListElement}
-			data-row-layout={isGrid ? "grid" : "stacked"}
+			data-row-layout={isBoard ? "board" : isGrid ? "grid" : "stacked"}
 			data-nav-tier={navTier}
 			className="flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar"
 			style={{ inlineSize: listInlineSize }}
@@ -204,35 +211,51 @@ export function DocumentNarrowList({
 				</button>
 				<DocumentFilterInput value={view.filter} onChange={onFilterChange} />
 			</header>
-			<div
-				role="grid"
-				aria-label="Documents"
-				aria-rowcount={isGrid ? rows.length + 1 : rows.length}
-				className="flex min-h-0 flex-1 flex-col px-1 pb-2"
-			>
-				<NavListHeader navTier={navTier} />
-				{isGrid ? <NarrowGridHeader /> : null}
-				<DocumentRowList
+			{isBoard ? (
+				<DocumentBoard
+					compact
 					rows={rows}
-					density="list"
-					gridCells={isGrid}
-					hideSecondary={!showSecondary}
-					navTier={navTier}
-					view={view}
-					onOpenDocument={onOpenDocument}
-					menu={rowMenu}
-					emptyState={
-						<div className="p-2">
-							<NarrowListEmptyState
-								listing={listing}
-								filter={view.filter}
-								onRetryListing={onRetryListing}
-							/>
-						</div>
+					fields={propertyFields}
+					boardField={layout.boardField}
+					boardSettings={layout.board}
+					propertyColumns={propertyColumns}
+					rowMenu={rowMenu}
+					isReadingProperties={
+						scanStatus === "scanning" || scanStatus === "idle"
 					}
+					onOpenDocument={onOpenDocument}
 				/>
-				<NavFooterStrip />
-			</div>
+			) : (
+				<div
+					role="grid"
+					aria-label="Documents"
+					aria-rowcount={isGrid ? rows.length + 1 : rows.length}
+					className="flex min-h-0 flex-1 flex-col px-1 pb-2"
+				>
+					<NavListHeader navTier={navTier} />
+					{isGrid ? <NarrowGridHeader /> : null}
+					<DocumentRowList
+						rows={rows}
+						density="list"
+						gridCells={isGrid}
+						hideSecondary={!showSecondary}
+						navTier={navTier}
+						view={view}
+						onOpenDocument={onOpenDocument}
+						menu={rowMenu}
+						emptyState={
+							<div className="p-2">
+								<NarrowListEmptyState
+									listing={listing}
+									filter={view.filter}
+									onRetryListing={onRetryListing}
+								/>
+							</div>
+						}
+					/>
+					<NavFooterStrip />
+				</div>
+			)}
 		</div>
 	);
 }
