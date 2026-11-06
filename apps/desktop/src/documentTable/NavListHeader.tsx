@@ -171,10 +171,10 @@ export function NavListHeader({
 								className={cn(
 									isTabs
 										? cn(
-												"relative -mb-px flex h-8 min-w-0 shrink-0 items-center gap-1 border-b-2 px-2.5 text-[12px] outline-hidden transition-colors duration-150 ease-snappy focus-visible:ring-1 focus-visible:ring-mdly-accent motion-reduce:transition-none",
+												"relative -mb-px flex h-8 min-w-0 shrink-0 items-center gap-1 border-b-2 px-2.5 text-[12px] outline-hidden transition-colors duration-150 ease-snappy focus-visible:ring-1 focus-visible:ring-mdly-ink motion-reduce:transition-none",
 												entry.kind === "saved" && "max-w-44",
 												isActive
-													? "border-mdly-accent font-semibold text-mdly-strong"
+													? "border-mdly-ink font-semibold text-mdly-strong"
 													: "border-transparent text-muted-foreground hover:text-foreground",
 												isHidden && !isActive && "opacity-50",
 											)
@@ -210,7 +210,7 @@ export function NavListHeader({
 										role="img"
 										aria-label="Unsaved changes"
 										title="Unsaved changes"
-										className="size-1.5 shrink-0 rounded-full bg-mdly-accent"
+										className="size-1.5 shrink-0 rounded-full bg-mdly-ink"
 									/>
 								) : null}
 							</button>

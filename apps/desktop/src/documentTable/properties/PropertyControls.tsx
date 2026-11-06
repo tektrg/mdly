@@ -176,7 +176,7 @@ export function AddPropertyColumnMenu({
 	visibleColumns,
 	isScanning,
 	trigger = <MingcuteAddLine aria-hidden="true" className="size-3.5" />,
-	triggerClassName = "inline-flex size-6 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent aria-expanded:bg-mdly-control",
+	triggerClassName = "inline-flex size-6 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink aria-expanded:bg-mdly-control",
 }: {
 	fields: readonly PropertyField[];
 	visibleColumns: readonly PropertyFieldId[];

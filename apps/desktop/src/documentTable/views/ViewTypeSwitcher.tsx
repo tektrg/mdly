@@ -33,9 +33,9 @@ export function ViewTypeSwitcher({ value }: { value: DocumentViewType }) {
 					title={label}
 					onClick={() => setDocumentViewType(type)}
 					className={cn(
-						"flex h-6 items-center gap-1 rounded-[5px] px-2 text-xs text-muted-foreground outline-hidden transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent",
+						"flex h-6 items-center gap-1 rounded-[11px] px-2.5 text-xs text-muted-foreground outline-hidden transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink",
 						value === type &&
-							"bg-background font-medium text-mdly-strong shadow-sm",
+							"mdly-ink-button text-mdly-ink-foreground hover:text-mdly-ink-foreground",
 					)}
 				>
 					<Icon aria-hidden="true" className="size-3.5" />

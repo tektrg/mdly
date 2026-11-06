@@ -87,10 +87,13 @@ function ariaSortFor(
 	return view.sort.direction === "asc" ? "ascending" : "descending";
 }
 
+/** Fixed trailing gutter: the header's "+" cell, mirrored by the body. */
+const TRAILING_CELL_CLASS = "w-7 shrink-0";
+
 const SORT_ARROW_CLASS =
 	"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none";
 const HEADER_BUTTON_CLASS =
-	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] font-medium text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent motion-reduce:transition-none";
+	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] font-medium text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink motion-reduce:transition-none";
 
 /** A front-matter property column header: sort on click (unless multi-value), menu, resize. */
 function PropertyColumnHeader({
@@ -131,7 +134,7 @@ function PropertyColumnHeader({
 						className={cn(
 							SORT_ARROW_CLASS,
 							isSorted
-								? "text-mdly-accent opacity-100"
+								? "text-mdly-ink opacity-100"
 								: "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
 							(isSorted ? view.sort.direction : "asc") === "desc" &&
 								"rotate-180",
@@ -191,7 +194,7 @@ function DocumentTableHeader({
 	);
 
 	return (
-		<div role="rowgroup" className="relative shrink-0 border-b border-mdly-line">
+		<div role="rowgroup" className="flex shrink-0 border-b border-mdly-line">
 			<div
 				role="row"
 				aria-rowindex={1}
@@ -199,7 +202,7 @@ function DocumentTableHeader({
 				style={gridStyle}
 				className={cn(
 					DOCUMENT_TABLE_GRID_TEMPLATE,
-					"mx-1 [padding-inline:var(--row-pad-inline)]",
+					"mx-1 min-w-0 flex-1 [padding-inline:var(--row-pad-inline)]",
 				)}
 			>
 				{columns.map((column, index) => {
@@ -299,7 +302,7 @@ function DocumentTableHeader({
 									className={cn(
 										"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none",
 										isSorted
-											? "text-mdly-accent opacity-100"
+											? "text-mdly-ink opacity-100"
 											: "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
 										(isSorted ? view.sort.direction : "asc") === "desc" &&
 											"rotate-180",
@@ -321,11 +324,16 @@ function DocumentTableHeader({
 					/>
 				))}
 			</div>
-			{trailing ? (
-				<div className="absolute end-1 top-1/2 -translate-y-1/2">
-					{trailing}
-				</div>
-			) : null}
+			{/* Its own fixed cell, never over a column; the body reserves the same gutter. */}
+			<div
+				data-header-add-cell
+				className={cn(
+					TRAILING_CELL_CLASS,
+					"flex items-center justify-center",
+				)}
+			>
+				{trailing}
+			</div>
 		</div>
 	);
 }
@@ -452,7 +460,7 @@ export function DocumentTable({
 		propertyColumns,
 	);
 	return (
-		<section className="flex h-full min-h-0 flex-col bg-mdly-surface">
+		<section className="flex h-full min-h-0 flex-col bg-background">
 			<header
 				data-document-table-header
 				className={cn(
@@ -484,7 +492,7 @@ export function DocumentTable({
 						/>
 						<PropertyMenu
 							trigger={<span aria-hidden="true">⋯</span>}
-							triggerClassName="inline-flex size-7 shrink-0 items-center justify-center rounded-mdly-control text-sm text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent aria-expanded:bg-mdly-control"
+							triggerClassName="inline-flex size-7 shrink-0 items-center justify-center rounded-mdly-control text-sm text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink aria-expanded:bg-mdly-control"
 							triggerLabel="More view options"
 						>
 							<PropertySubmenu label="Add property">
@@ -544,6 +552,8 @@ export function DocumentTable({
 							/>
 						}
 					/>
+					<div className="flex min-h-0 flex-1">
+						<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 					<DocumentRowList
 						rows={rows}
 						density="table"
@@ -562,6 +572,9 @@ export function DocumentTable({
 							/>
 						}
 					/>
+						</div>
+						<div aria-hidden="true" className={TRAILING_CELL_CLASS} />
+					</div>
 					<NavFooterStrip />
 				</div>
 			)}

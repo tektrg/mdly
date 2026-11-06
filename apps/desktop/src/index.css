@@ -23,26 +23,22 @@
 	--sidebar-primary: var(--primary);
 	--sidebar-primary-foreground: var(--primary-foreground);
 	--sidebar-ring: var(--ring);
-	/* Document-table toolbar tokens (SpeechToDo desktop design system):
-	   gold accent + warm-paper neutrals. Scoped to the table surface, toolbar,
-	   header and their controls — not the app-wide shadcn neutrals. */
-	--mdly-accent: #b9821f;
-	--mdly-accent-soft: #d69b3a;
-	--mdly-accent-foreground: #ffffff;
-	--mdly-surface: #f7f5ef;
+	/* Document-table toolbar tokens (SpeechToDo desktop design system): dark
+	   ink primary controls (the Record button) on neutral control fills.
+	   Scoped to the toolbar, table header and their controls. */
+	--mdly-ink: #0a0a0a;
+	--mdly-ink-foreground: #f9f9f7;
 	--mdly-control: #f0ece2;
 	--mdly-line: #e3dccb;
-	--mdly-selected: #efe3c6;
+	--mdly-selected: #ebe9e4;
 	--mdly-strong: var(--foreground);
-	--mdly-radius-control: 6px;
+	--mdly-radius-control: 14px;
 	--mdly-radius-panel: 8px;
 }
 
 @theme inline {
-	--color-mdly-accent: var(--mdly-accent);
-	--color-mdly-accent-soft: var(--mdly-accent-soft);
-	--color-mdly-accent-foreground: var(--mdly-accent-foreground);
-	--color-mdly-surface: var(--mdly-surface);
+	--color-mdly-ink: var(--mdly-ink);
+	--color-mdly-ink-foreground: var(--mdly-ink-foreground);
 	--color-mdly-control: var(--mdly-control);
 	--color-mdly-line: var(--mdly-line);
 	--color-mdly-selected: var(--mdly-selected);
@@ -73,14 +69,44 @@
 	--sidebar-primary: var(--primary);
 	--sidebar-primary-foreground: var(--primary-foreground);
 	--sidebar-ring: var(--ring);
-	--mdly-accent: #d69b3a;
-	--mdly-accent-soft: #f0c16d;
-	--mdly-accent-foreground: #101412;
-	--mdly-surface: #101412;
+	--mdly-ink: #f4f4f2;
+	--mdly-ink-foreground: #1b1b19;
 	--mdly-control: #1d211d;
 	--mdly-line: #2c3029;
-	--mdly-selected: #2a2419;
-	--mdly-strong: #f1d8a6;
+	--mdly-selected: #262a25;
+	--mdly-strong: var(--foreground);
+}
+
+/* Primary toolbar control: SpeechToDo's Record button in dark ink. */
+.mdly-ink-button {
+	border: 0;
+	border-radius: var(--mdly-radius-control);
+	background: var(--mdly-ink);
+	color: var(--mdly-ink-foreground);
+	font-size: 12px;
+	font-weight: 600;
+	box-shadow:
+		0 1px 0 rgba(0, 0, 0, 0.08),
+		0 1px 2px rgba(0, 0, 0, 0.04),
+		0 4px 12px -4px rgba(0, 0, 0, 0.18),
+		inset 0 0.5px 0 rgba(255, 255, 255, 0.15);
+	outline: none;
+	transition:
+		transform 120ms var(--ease-snappy),
+		box-shadow 150ms var(--ease-snappy);
+}
+.mdly-ink-button:active {
+	transform: scale(0.96);
+}
+.mdly-ink-button:focus-visible {
+	box-shadow:
+		0 0 0 3px color-mix(in srgb, var(--mdly-ink) 22%, transparent),
+		0 4px 12px -4px rgba(0, 0, 0, 0.18);
+}
+@media (prefers-reduced-motion: reduce) {
+	.mdly-ink-button:active {
+		transform: none;
+	}
 }
 
 @layer base {

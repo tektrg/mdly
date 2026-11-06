@@ -109,6 +109,17 @@ describe("DocumentTable with property columns", () => {
 		expect(
 			container.querySelector('button[aria-label="More view options"]'),
 		).not.toBeNull();
+		// The header "+" has its own cell beside the column row, never inside it.
+		const addCell = container.querySelector("[data-header-add-cell]");
+		expect(
+			addCell?.querySelector('button[aria-label="Add property"]'),
+		).not.toBeNull();
+		expect(addCell?.closest('[role="row"]')).toBeNull();
+		expect(
+			container
+				.querySelector("[data-document-table-header]")
+				?.closest("section")?.className,
+		).toContain("bg-background");
 	});
 
 	it("groups rows under property value headers, the empty group last", () => {
