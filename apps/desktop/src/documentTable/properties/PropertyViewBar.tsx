@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
+import MingcuteAddLine from "~icons/mingcute/add-line";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import {
 	Popover,
@@ -29,18 +30,26 @@ import {
 import type { PropertyField } from "./propertyFields";
 import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
-const CHIP_CLASS = "mdly-chip max-w-64";
+/** Pill chip, toolbar tokens (SpeechToDo design system: chips are pills). */
+const CHIP_CLASS =
+	"inline-flex h-6 max-w-64 min-w-0 items-center gap-1 rounded-full border border-mdly-accent/40 bg-mdly-selected ps-2.5 pe-1 text-[11px] text-mdly-strong";
 const CHIP_REMOVE_CLASS =
 	"inline-flex size-4 shrink-0 items-center justify-center rounded-full text-current outline-hidden opacity-70 hover:bg-chip-foreground/15 hover:opacity-100 focus-visible:ring-1 focus-visible:ring-ring";
-const TAB_CLASS =
-	"inline-flex h-7 max-w-48 items-center rounded-md px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring";
+const GHOST_CHIP_CLASS =
+	"inline-flex h-6 shrink-0 items-center rounded-full border border-dashed border-mdly-line px-2.5 text-[11px] text-muted-foreground outline-hidden hover:border-mdly-accent/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent";
 
 /**
- * Saved views R6: the property bar's only saved-view control. Snapshots the
- * current view under a name; the new view appears (selected) as an icon in
- * the view switcher row.
+ * Saved views R6, in the tab row: "+" always snapshots the current view under
+ * a new name; "Save" (gold) is the same action, shown only while the built-in
+ * view carries unsaved changes. The new view becomes the selected tab.
  */
-export function SaveViewButton({ canSave }: { canSave: boolean }) {
+export function SaveViewButton({
+	variant,
+	visible = true,
+}: {
+	variant: "add" | "save";
+	visible?: boolean;
+}) {
 	const [naming, setNaming] = useState(false);
 	if (naming) {
 		return (
@@ -61,14 +70,30 @@ export function SaveViewButton({ canSave }: { canSave: boolean }) {
 			/>
 		);
 	}
-	if (!canSave) return null;
+	if (!visible) return null;
+	if (variant === "add") {
+		return (
+			<button
+				type="button"
+				data-save-view="add"
+				aria-label="Save as new view"
+				title="Save as new view"
+				className="inline-flex size-6 shrink-0 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent"
+				onClick={() => setNaming(true)}
+			>
+				<MingcuteAddLine aria-hidden="true" className="size-3.5" />
+			</button>
+		);
+	}
 	return (
 		<button
 			type="button"
-			className={cn(TAB_CLASS, "text-xs text-muted-foreground hover:bg-accent")}
+			data-save-view="save"
+			title="Save these changes as a view"
+			className="inline-flex h-6 shrink-0 items-center rounded-mdly-control bg-mdly-accent px-2.5 text-xs font-semibold text-mdly-accent-foreground outline-hidden hover:opacity-90 focus-visible:ring-2 focus-visible:ring-mdly-accent-soft"
 			onClick={() => setNaming(true)}
 		>
-			Save view…
+			Save
 		</button>
 	);
 }
@@ -82,16 +107,34 @@ export function PropertyViewBar({
 	fields,
 	scan,
 	folders = [],
+	leading,
+	trailing,
 }: {
 	view: DocumentTableView;
 	fields: readonly PropertyField[];
 	scan: PropertyScanState;
-	/** Workspace folders for the "+ Folder" picker (PO 2026-11-02). */
+	/** Workspace folders for the "+ Filter" picker (PO 2026-11-02). */
 	folders?: readonly string[];
+	/** Toolbar row content before the chips (the layout switcher). */
+	leading?: ReactNode;
+	/** Toolbar row content at the far end (search, overflow menu). */
+	trailing?: ReactNode;
 }) {
 	const status = scanStatusText(scan);
+	const invalidCount = scan.invalidPaths.length;
+	// Only the settled "N files have unreadable front matter" state collapses
+	// to a badge; progress and failure keep their full sentence.
+	const asBadge =
+		status !== null &&
+		scan.status !== "scanning" &&
+		scan.status !== "failed" &&
+		invalidCount > 0;
 	return (
-		<div className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 [padding-block-end:0.5rem]">
+		<div
+			data-document-toolbar
+			className="flex shrink-0 flex-wrap items-center gap-1.5 px-3 [padding-block:0.375rem]"
+		>
+			{leading}
 			{view.propertyFilters.map((filter) => {
 				const label = describePropertyFilter(filter, fields);
 				return (
@@ -140,14 +183,23 @@ export function PropertyViewBar({
 			<FolderPicker
 				folders={folders}
 				current={null}
-				triggerClassName={cn(
-					TAB_CLASS,
-					"h-6 text-[11px] text-muted-foreground hover:bg-accent",
-				)}
-				triggerLabel="+ Folder"
+				triggerClassName={GHOST_CHIP_CLASS}
+				triggerLabel="+ Filter"
+				triggerTitle="Filter by folder"
 				onPick={(path) => addPropertyFilter({ kind: "folder", path })}
 			/>
-			{status ? (
+			<span aria-hidden="true" className="min-w-2 flex-1" />
+			{status && asBadge ? (
+				<span
+					role="status"
+					data-scan-badge
+					className="inline-flex h-6 shrink-0 cursor-default items-center gap-1 rounded-full border border-mdly-accent/40 bg-mdly-selected px-2 text-[11px] font-medium tabular-nums text-mdly-strong"
+					title={[status, ...scan.invalidPaths.slice(0, 10)].join("\n")}
+				>
+					<span aria-hidden="true">⚠ {invalidCount.toLocaleString()}</span>
+					<span className="sr-only">{status}</span>
+				</span>
+			) : status ? (
 				<span
 					role="status"
 					className={cn(
@@ -157,7 +209,7 @@ export function PropertyViewBar({
 							: "text-muted-foreground/70",
 					)}
 					title={
-						scan.invalidPaths.length > 0
+						invalidCount > 0
 							? scan.invalidPaths.slice(0, 10).join("\n")
 							: undefined
 					}
@@ -165,6 +217,7 @@ export function PropertyViewBar({
 					{status}
 				</span>
 			) : null}
+			{trailing}
 		</div>
 	);
 }
@@ -178,12 +231,14 @@ function FolderPicker({
 	current,
 	triggerClassName,
 	triggerLabel,
+	triggerTitle,
 	onPick,
 }: {
 	folders: readonly string[];
 	current: FolderFilter["path"] | null;
 	triggerClassName: string;
 	triggerLabel: string;
+	triggerTitle?: string;
 	onPick: (path: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
@@ -204,20 +259,24 @@ function FolderPicker({
 				setOpen(next);
 			}}
 		>
-			<PopoverTrigger className={triggerClassName} aria-haspopup="listbox">
+			<PopoverTrigger
+				className={triggerClassName}
+				aria-haspopup="listbox"
+				title={triggerTitle}
+			>
 				{triggerLabel}
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"
 				aria-label="Choose a folder"
-				className="w-64 gap-1 p-1.5"
+				className="w-64 gap-1 rounded-mdly-panel p-1.5"
 			>
 				<input
 					// biome-ignore lint/a11y/noAutofocus: picker opened by an explicit click
 					autoFocus
 					aria-label="Search folders"
 					placeholder="Search folders…"
-					className="h-6 rounded border border-border bg-transparent px-1.5 outline-hidden"
+					className="h-6 rounded-mdly-control border border-border bg-transparent px-1.5 outline-hidden focus-visible:border-mdly-accent focus-visible:ring-1 focus-visible:ring-mdly-accent/40"
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
 				/>

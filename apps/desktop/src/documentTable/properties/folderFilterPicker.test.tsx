@@ -75,7 +75,7 @@ describe("folder chip label", () => {
 	});
 });
 
-describe("+ Folder picker", () => {
+describe("+ Filter (folder) picker", () => {
 	let container: HTMLDivElement;
 	let root: Root;
 	beforeEach(() => {
@@ -111,7 +111,7 @@ describe("+ Folder picker", () => {
 				/>,
 			),
 		);
-		act(() => button("+ Folder")?.click());
+		act(() => button("+ Filter")?.click());
 		expect(options()).toEqual(folders);
 		const sub =
 			document.body.querySelectorAll<HTMLElement>('[role="option"]')[1];
@@ -134,7 +134,7 @@ describe("+ Folder picker", () => {
 				/>,
 			),
 		);
-		act(() => button("+ Folder")?.click());
+		act(() => button("+ Filter")?.click());
 		const input = document.body.querySelector<HTMLInputElement>(
 			'input[aria-label="Search folders"]',
 		);

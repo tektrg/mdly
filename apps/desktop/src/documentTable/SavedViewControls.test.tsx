@@ -96,7 +96,7 @@ describe("saved view name box", () => {
 
 	it("Save view with no workspace shows a generic error, not 'can't be empty'", async () => {
 		workspacePathStore.set(undefined);
-		act(() => root.render(<SaveViewButton canSave />));
+		act(() => root.render(<SaveViewButton variant="add" />));
 		await act(async () => {
 			container.querySelector("button")?.click();
 		});

@@ -22,7 +22,7 @@ export function ViewTypeSwitcher({ value }: { value: DocumentViewType }) {
 		<div
 			role="radiogroup"
 			aria-label="Layout"
-			className="flex items-center rounded-[var(--radius-row)] border border-border p-0.5"
+			className="flex shrink-0 items-center gap-0.5 rounded-mdly-control bg-mdly-control p-0.5"
 		>
 			{VIEW_TYPE_OPTIONS.map(({ type, label, Icon }) => (
 				<button
@@ -33,8 +33,9 @@ export function ViewTypeSwitcher({ value }: { value: DocumentViewType }) {
 					title={label}
 					onClick={() => setDocumentViewType(type)}
 					className={cn(
-						"flex h-6 items-center gap-1 rounded-sm px-1.5 text-xs text-muted-foreground outline-hidden transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
-						value === type && "bg-accent text-foreground",
+						"flex h-6 items-center gap-1 rounded-[5px] px-2 text-xs text-muted-foreground outline-hidden transition-colors hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent",
+						value === type &&
+							"bg-background font-medium text-mdly-strong shadow-sm",
 					)}
 				>
 					<Icon aria-hidden="true" className="size-3.5" />

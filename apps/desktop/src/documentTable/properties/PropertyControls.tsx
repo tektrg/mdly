@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import MingcuteAddLine from "~icons/mingcute/add-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
 import {
@@ -131,7 +132,8 @@ export function PropertyColumnMenu({
 }
 
 /** "+ Property": the add-a-column menu, every discovered property with its count. */
-export function AddPropertyColumnMenu({
+/** The property list behind "Add property": one checkable item per field. */
+export function AddPropertyColumnItems({
 	fields,
 	visibleColumns,
 	isScanning,
@@ -140,38 +142,59 @@ export function AddPropertyColumnMenu({
 	visibleColumns: readonly PropertyFieldId[];
 	isScanning: boolean;
 }) {
+	if (fields.length === 0) {
+		return (
+			<PropertyMenuLabel>
+				{isScanning
+					? "Reading front matter…"
+					: "No properties yet. Add a line like `status: todo` between `---` lines at the top of a note."}
+			</PropertyMenuLabel>
+		);
+	}
+	return (
+		<>
+			{fields.map((field) => (
+				<PropertyMenuItem
+					key={field.id}
+					checked={visibleColumns.includes(field.id)}
+					hint={field.documentCount.toLocaleString()}
+					onClick={() => togglePropertyColumn(field.id)}
+				>
+					{field.label}
+					<span className="ms-1.5 text-muted-foreground/70">
+						{field.readOnly ? "File" : TYPE_LABELS[field.type]}
+					</span>
+				</PropertyMenuItem>
+			))}
+		</>
+	);
+}
+
+/** "Add property" dropdown; the table header's trailing "+" by default. */
+export function AddPropertyColumnMenu({
+	fields,
+	visibleColumns,
+	isScanning,
+	trigger = <MingcuteAddLine aria-hidden="true" className="size-3.5" />,
+	triggerClassName = "inline-flex size-6 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent aria-expanded:bg-mdly-control",
+}: {
+	fields: readonly PropertyField[];
+	visibleColumns: readonly PropertyFieldId[];
+	isScanning: boolean;
+	trigger?: ReactNode;
+	triggerClassName?: string;
+}) {
 	return (
 		<PropertyMenu
-			trigger={
-				<>
-					<MingcuteAddLine aria-hidden="true" className="size-3.5" />
-					<span>Property</span>
-				</>
-			}
-			triggerClassName="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground outline-hidden hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring aria-expanded:bg-accent"
-			triggerLabel="Show a front-matter property as a column"
+			trigger={trigger}
+			triggerClassName={triggerClassName}
+			triggerLabel="Add property"
 		>
-			{fields.length === 0 ? (
-				<PropertyMenuLabel>
-					{isScanning
-						? "Reading front matter…"
-						: "No properties yet. Add a line like `status: todo` between `---` lines at the top of a note."}
-				</PropertyMenuLabel>
-			) : (
-				fields.map((field) => (
-					<PropertyMenuItem
-						key={field.id}
-						checked={visibleColumns.includes(field.id)}
-						hint={field.documentCount.toLocaleString()}
-						onClick={() => togglePropertyColumn(field.id)}
-					>
-						{field.label}
-						<span className="ms-1.5 text-muted-foreground/70">
-							{field.readOnly ? "File" : TYPE_LABELS[field.type]}
-						</span>
-					</PropertyMenuItem>
-				))
-			)}
+			<AddPropertyColumnItems
+				fields={fields}
+				visibleColumns={visibleColumns}
+				isScanning={isScanning}
+			/>
 		</PropertyMenu>
 	);
 }

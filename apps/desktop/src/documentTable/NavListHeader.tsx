@@ -1,6 +1,6 @@
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
@@ -34,9 +34,23 @@ import { useNavViewSwitcher } from "./useNavViewSwitcher";
  */
 export function NavListHeader({
 	navTier = "table",
+	variant = "strip",
+	hasUnsavedChanges = false,
+	trailing,
+	end,
 }: {
 	navTier?: NavDensityTier;
+	/**
+	 * `tabs`: the wide table's top toolbar row — underlined tabs, a gold dot on
+	 * the active tab while it has unsaved changes, and `trailing` (save controls).
+	 */
+	variant?: "strip" | "tabs";
+	hasUnsavedChanges?: boolean;
+	trailing?: ReactNode;
+	/** Tabs variant: pushed to the row's far end, before the sort button. */
+	end?: ReactNode;
 }) {
+	const isTabs = variant === "tabs";
 	const workspacePath = useStoreValue(workspacePathStore) ?? null;
 	const {
 		activeView,
@@ -95,7 +109,11 @@ export function NavListHeader({
 	return (
 		<div
 			data-nav-list-header
-			className="flex shrink-0 items-center justify-between gap-1"
+			data-variant={variant}
+			className={cn(
+				"flex shrink-0 items-center gap-1",
+				isTabs ? "border-b border-mdly-line" : "justify-between",
+			)}
 		>
 			{renamingId && renamingName ? (
 				<SavedViewNameInput
@@ -121,7 +139,10 @@ export function NavListHeader({
 			) : !isRail ? (
 				<div
 					data-nav-view-switcher
-					className="flex min-w-0 items-center gap-1 overflow-x-auto"
+					className={cn(
+						"flex min-w-0 items-center overflow-x-auto",
+						isTabs ? "gap-0.5" : "gap-1",
+					)}
 					onWheel={onWheel}
 				>
 					{inlineEntries.map((entry) => {
@@ -148,12 +169,24 @@ export function NavListHeader({
 												: `${label} view — right-click to hide`
 								}
 								className={cn(
-									"flex h-7 min-w-0 items-center gap-1 rounded-[var(--radius-row)] text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
-									entry.kind === "saved" && "max-w-40",
-									isActive
-										? "bg-selected font-medium text-selected-foreground"
-										: "text-muted-foreground hover:text-foreground",
-									isHidden && !isActive && "opacity-50",
+									isTabs
+										? cn(
+												"relative -mb-px flex h-8 min-w-0 shrink-0 items-center gap-1 border-b-2 px-2.5 text-[12px] outline-hidden transition-colors duration-150 ease-snappy focus-visible:ring-1 focus-visible:ring-mdly-accent motion-reduce:transition-none",
+												entry.kind === "saved" && "max-w-44",
+												isActive
+													? "border-mdly-accent font-semibold text-mdly-strong"
+													: "border-transparent text-muted-foreground hover:text-foreground",
+												isHidden && !isActive && "opacity-50",
+											)
+										: "",
+									!isTabs &&
+										"flex h-7 min-w-0 items-center gap-1 rounded-[var(--radius-row)] text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
+									!isTabs && entry.kind === "saved" && "max-w-40",
+									!isTabs &&
+										(isActive
+											? "bg-selected font-medium text-selected-foreground"
+											: "text-muted-foreground hover:text-foreground"),
+									!isTabs && isHidden && !isActive && "opacity-50",
 								)}
 								onClick={() =>
 									entry.kind === "builtin"
@@ -171,10 +204,26 @@ export function NavListHeader({
 							>
 								<NavEntryIcon entry={entry} />
 								<span className="min-w-0 truncate">{label}</span>
+								{isTabs && isActive && hasUnsavedChanges ? (
+									<span
+										data-unsaved-dot
+										role="img"
+										aria-label="Unsaved changes"
+										title="Unsaved changes"
+										className="size-1.5 shrink-0 rounded-full bg-mdly-accent"
+									/>
+								) : null}
 							</button>
 						);
 					})}
 				</div>
+			) : null}
+			{isTabs ? (
+				<>
+					{trailing}
+					<span aria-hidden="true" className="min-w-2 flex-1" />
+					{end}
+				</>
 			) : null}
 			<SavedViewContextMenu
 				anchor={menu?.anchor ?? null}

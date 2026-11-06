@@ -23,9 +23,32 @@
 	--sidebar-primary: var(--primary);
 	--sidebar-primary-foreground: var(--primary-foreground);
 	--sidebar-ring: var(--ring);
+	/* Document-table toolbar tokens (SpeechToDo desktop design system):
+	   gold accent + warm-paper neutrals. Scoped to the table surface, toolbar,
+	   header and their controls — not the app-wide shadcn neutrals. */
+	--mdly-accent: #b9821f;
+	--mdly-accent-soft: #d69b3a;
+	--mdly-accent-foreground: #ffffff;
+	--mdly-surface: #f7f5ef;
+	--mdly-control: #f0ece2;
+	--mdly-line: #e3dccb;
+	--mdly-selected: #efe3c6;
+	--mdly-strong: var(--foreground);
+	--mdly-radius-control: 6px;
+	--mdly-radius-panel: 8px;
 }
 
 @theme inline {
+	--color-mdly-accent: var(--mdly-accent);
+	--color-mdly-accent-soft: var(--mdly-accent-soft);
+	--color-mdly-accent-foreground: var(--mdly-accent-foreground);
+	--color-mdly-surface: var(--mdly-surface);
+	--color-mdly-control: var(--mdly-control);
+	--color-mdly-line: var(--mdly-line);
+	--color-mdly-selected: var(--mdly-selected);
+	--color-mdly-strong: var(--mdly-strong);
+	--radius-mdly-control: var(--mdly-radius-control);
+	--radius-mdly-panel: var(--mdly-radius-panel);
 	--color-sidebar-ring: var(--sidebar-ring);
 	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
 	--color-sidebar-primary: var(--sidebar-primary);
@@ -50,6 +73,14 @@
 	--sidebar-primary: var(--primary);
 	--sidebar-primary-foreground: var(--primary-foreground);
 	--sidebar-ring: var(--ring);
+	--mdly-accent: #d69b3a;
+	--mdly-accent-soft: #f0c16d;
+	--mdly-accent-foreground: #101412;
+	--mdly-surface: #101412;
+	--mdly-control: #1d211d;
+	--mdly-line: #2c3029;
+	--mdly-selected: #2a2419;
+	--mdly-strong: #f1d8a6;
 }
 
 @layer base {

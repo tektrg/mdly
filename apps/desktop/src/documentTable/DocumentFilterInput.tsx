@@ -46,7 +46,7 @@ export function DocumentFilterInput({
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={onKeyDown}
-				className="h-7 w-full ps-7 pe-7 text-[length:var(--font-size-sidebar)]"
+				className="h-7 w-full rounded-mdly-control ps-7 pe-7 text-[length:var(--font-size-sidebar)] focus-visible:border-mdly-accent focus-visible:ring-2 focus-visible:ring-mdly-accent/30"
 			/>
 			{value.length > 0 ? (
 				<button

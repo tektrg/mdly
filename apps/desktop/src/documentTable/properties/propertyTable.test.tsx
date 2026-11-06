@@ -88,7 +88,9 @@ describe("DocumentTable with property columns", () => {
 		const headers = [
 			...container.querySelectorAll('[role="columnheader"]'),
 		].map((header) => header.textContent ?? "");
-		expect(headers.some((text) => text.includes("status"))).toBe(true);
+		// Title Case for display; the field id stays `prop:status`.
+		expect(headers.some((text) => text.includes("Status"))).toBe(true);
+		expect(headers.some((text) => text.includes("NAME"))).toBe(false);
 		const cells = [
 			...container.querySelectorAll("[data-property-cell='prop:status']"),
 		].map((cell) => cell.textContent);
@@ -97,7 +99,16 @@ describe("DocumentTable with property columns", () => {
 		expect(container.textContent).toContain(
 			"1 file has unreadable front matter",
 		);
-		expect(container.textContent).toContain("Save view…");
+		// The settled warning is a "⚠ 1" pill whose tooltip carries the sentence.
+		const badge = container.querySelector("[data-scan-badge]");
+		expect(badge?.textContent).toContain("⚠ 1");
+		expect(badge?.getAttribute("title")).toContain(
+			"1 file has unreadable front matter",
+		);
+		expect(container.querySelector('[data-save-view="save"]')).not.toBeNull();
+		expect(
+			container.querySelector('button[aria-label="More view options"]'),
+		).not.toBeNull();
 	});
 
 	it("groups rows under property value headers, the empty group last", () => {

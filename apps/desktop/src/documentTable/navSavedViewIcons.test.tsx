@@ -309,15 +309,64 @@ describe("saved views in the view switcher", () => {
 		);
 	});
 
-	it("R6: the table header has no saved-view tabs; 'Save view…' creates and selects a new icon", async () => {
+	it("toolbar: the view tabs sit at the top, above the toolbar row and the column headers", () => {
+		const { a } = saveTwo();
+		renderTable();
+		const tabs = container.querySelector(
+			'[data-nav-list-header][data-variant="tabs"]',
+		);
+		expect(tabs).not.toBeNull();
+		expect(tabs?.closest("[data-document-table-header]")).not.toBeNull();
+		expect(
+			tabs?.querySelector(`[data-nav-view-option="saved:${a}"]`),
+		).not.toBeNull();
+		const toolbar = container.querySelector("[data-document-toolbar]");
+		const firstHeader = container.querySelector('[role="columnheader"]');
+		const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+		expect(tabs?.compareDocumentPosition(toolbar as Node)).toBe(FOLLOWING);
+		expect(toolbar?.compareDocumentPosition(firstHeader as Node)).toBe(
+			FOLLOWING,
+		);
+		// No second switcher strip below the column headers.
+		expect(container.querySelectorAll("[data-nav-list-header]").length).toBe(
+			1,
+		);
+		expect(container.querySelector('[data-save-view="add"]')).not.toBeNull();
+	});
+
+	it("unsaved changes: gold dot on the active tab and a Save button, only while the built-in view is changed", async () => {
+		const { a } = saveTwo();
+		renderTable();
+		expect(container.querySelector("[data-unsaved-dot]")).toBeNull();
+		expect(container.querySelector('[data-save-view="save"]')).toBeNull();
+
+		renderTable(
+			viewWith({ propertyFilters: [{ fieldId: "prop:status", kind: "has" }] }),
+		);
+		const dot = container.querySelector("[data-unsaved-dot]");
+		expect(dot?.closest('[data-nav-view-option="recent"]')).not.toBeNull();
+		expect(container.querySelector('[data-save-view="save"]')).not.toBeNull();
+
+		// A saved view persists every edit, so it never shows the indicator.
+		await act(async () => {
+			selectSavedView(a);
+		});
+		renderTable(
+			viewWith({ propertyFilters: [{ fieldId: "prop:status", kind: "has" }] }),
+		);
+		expect(container.querySelector("[data-unsaved-dot]")).toBeNull();
+		expect(container.querySelector('[data-save-view="save"]')).toBeNull();
+	});
+
+	it("R6: 'Save' snapshots the changed view as a new, selected tab", async () => {
 		saveTwo();
 		renderTable(
 			viewWith({ propertyFilters: [{ fieldId: "prop:status", kind: "has" }] }),
 		);
 		expect(container.querySelector('nav[aria-label="Saved views"]')).toBeNull();
 		expect(container.textContent).not.toContain("All documents");
-		const save = [...container.querySelectorAll("button")].find(
-			(button) => button.textContent === "Save view…",
+		const save = container.querySelector<HTMLButtonElement>(
+			'[data-save-view="save"]',
 		);
 		expect(save).toBeDefined();
 		await act(async () => save?.click());

@@ -30,9 +30,16 @@ import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
 import { addColumnMenuFields } from "./properties/builtinFields";
 import {
+	AddPropertyColumnItems,
 	AddPropertyColumnMenu,
 	PropertyColumnMenu,
 } from "./properties/PropertyControls";
+import {
+	PropertyMenu,
+	PropertyMenuItem,
+	PropertyMenuSeparator,
+	PropertySubmenu,
+} from "./properties/PropertyMenu";
 import { PropertyViewBar, SaveViewButton } from "./properties/PropertyViewBar";
 import {
 	fallbackPropertyLabel,
@@ -60,6 +67,18 @@ export const COLUMN_LABELS: Record<DocumentTableColumn, string> = {
 	created: "Created",
 };
 
+/**
+ * Header display only: "tags" -> "Tags", "due_date" -> "Due_Date". The field id
+ * and stored label are untouched.
+ */
+export function titleCaseLabel(label: string): string {
+	return label.replace(
+		/(^|[\s_\-/])(\p{Ll})/gu,
+		(_match, separator: string, letter: string) =>
+			separator + letter.toUpperCase(),
+	);
+}
+
 function ariaSortFor(
 	view: DocumentTableView,
 	column: DocumentTableSortColumn,
@@ -71,7 +90,7 @@ function ariaSortFor(
 const SORT_ARROW_CLASS =
 	"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none";
 const HEADER_BUTTON_CLASS =
-	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] uppercase text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none";
+	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] font-medium text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent motion-reduce:transition-none";
 
 /** A front-matter property column header: sort on click (unless multi-value), menu, resize. */
 function PropertyColumnHeader({
@@ -87,7 +106,7 @@ function PropertyColumnHeader({
 	onToggleSort: (column: DocumentTableSortColumn) => void;
 	resizeHandle: ReactNode;
 }) {
-	const label = field?.label ?? fallbackPropertyLabel(fieldId);
+	const label = titleCaseLabel(field?.label ?? fallbackPropertyLabel(fieldId));
 	const sortable = field !== undefined && field.type !== "multiSelect";
 	const isSorted = view.sort.column === fieldId;
 	return (
@@ -99,7 +118,7 @@ function PropertyColumnHeader({
 		>
 			<button
 				type="button"
-				className={cn(HEADER_BUTTON_CLASS, "min-w-0 flex-1 normal-case")}
+				className={cn(HEADER_BUTTON_CLASS, "min-w-0 flex-1")}
 				onClick={() => (sortable ? onToggleSort(fieldId) : undefined)}
 				title={
 					sortable ? `Sort by ${label}.` : `${label} (tags cannot be sorted).`
@@ -112,7 +131,7 @@ function PropertyColumnHeader({
 						className={cn(
 							SORT_ARROW_CLASS,
 							isSorted
-								? "opacity-100"
+								? "text-mdly-accent opacity-100"
 								: "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
 							(isSorted ? view.sort.direction : "asc") === "desc" &&
 								"rotate-180",
@@ -135,10 +154,13 @@ function DocumentTableHeader({
 	view,
 	onToggleSort,
 	propertyFields,
+	trailing,
 }: {
 	view: DocumentTableView;
 	onToggleSort: (column: DocumentTableSortColumn) => void;
 	propertyFields: readonly PropertyField[];
+	/** The header row's trailing "+" (add a property column). */
+	trailing?: ReactNode;
 }) {
 	const { columns, gridStyle, propertyColumns } = useDocumentTableLayout();
 	const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
@@ -169,7 +191,7 @@ function DocumentTableHeader({
 	);
 
 	return (
-		<div role="rowgroup" className="shrink-0 border-b border-border">
+		<div role="rowgroup" className="relative shrink-0 border-b border-mdly-line">
 			<div
 				role="row"
 				aria-rowindex={1}
@@ -236,7 +258,7 @@ function DocumentTableHeader({
 						>
 							<button
 								type="button"
-								className="group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] uppercase text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+								className={HEADER_BUTTON_CLASS}
 								onClick={() => onToggleSort(column)}
 								onKeyDown={(event) => {
 									if (!event.altKey || !draggable) return;
@@ -255,7 +277,11 @@ function DocumentTableHeader({
 								}
 							>
 								{draggable ? (
-									<span aria-hidden="true" className="shrink-0 opacity-40">
+									<span
+										aria-hidden="true"
+										data-drag-handle
+										className="shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-40 group-focus-within:opacity-40 motion-reduce:transition-none"
+									>
 										⠿
 									</span>
 								) : null}
@@ -273,7 +299,7 @@ function DocumentTableHeader({
 									className={cn(
 										"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none",
 										isSorted
-											? "opacity-100"
+											? "text-mdly-accent opacity-100"
 											: "opacity-0 group-hover/sort:opacity-40 group-focus-visible/sort:opacity-40",
 										(isSorted ? view.sort.direction : "asc") === "desc" &&
 											"rotate-180",
@@ -295,6 +321,11 @@ function DocumentTableHeader({
 					/>
 				))}
 			</div>
+			{trailing ? (
+				<div className="absolute end-1 top-1/2 -translate-y-1/2">
+					{trailing}
+				</div>
+			) : null}
 		</div>
 	);
 }
@@ -406,56 +437,75 @@ export function DocumentTable({
 	const folders = useWorkspaceFolderPaths();
 	const isReadingProperties =
 		scanStatus === "scanning" || scanStatus === "idle";
-	const canSaveView =
-		layout.viewType !== "table" ||
-		view.propertyFilters.length > 0 ||
-		view.propertyGroupBy !== null ||
-		propertyColumns.length > 0;
+	// Saved views write every edit straight into the view (Notion-style), so
+	// only the built-in view can hold unsaved changes.
+	const hasUnsavedChanges =
+		savedView === null &&
+		(layout.viewType !== "table" ||
+			view.propertyFilters.length > 0 ||
+			view.propertyGroupBy !== null ||
+			propertyColumns.length > 0);
+	const canResetColumns = isCustomized && layout.viewType !== "board";
+	const addColumnFields = addColumnMenuFields(
+		propertyFields,
+		layout.viewType,
+		propertyColumns,
+	);
 	return (
-		<section className="flex h-full min-h-0 flex-col bg-background">
+		<section className="flex h-full min-h-0 flex-col bg-mdly-surface">
 			<header
+				data-document-table-header
 				className={cn(
-					"flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 [padding-block-end:0.5rem]",
+					"shrink-0 px-3",
 					// The reserved band reads as the window's title bar, so the
 					// header's own space above the title is already accounted for.
 					WINDOW_CHROME_INSET_CLASS,
 				)}
 			>
 				<h1 className="sr-only">{savedView?.name ?? "Documents"}</h1>
-				<SaveViewButton canSave={canSaveView && savedView === null} />
-				<div className="flex items-center gap-2">
-					<ViewTypeSwitcher value={layout.viewType} />
-					<AddPropertyColumnMenu
-						fields={addColumnMenuFields(
-							propertyFields,
-							layout.viewType,
-							propertyColumns,
-						)}
-						visibleColumns={propertyColumns}
-						isScanning={scanStatus === "scanning"}
-					/>
-					{isCustomized && layout.viewType !== "board" ? (
-						<Button
-							size="sm"
-							variant="ghost"
-							onClick={resetDocumentTableLayout}
-						>
-							Reset columns
-						</Button>
-					) : null}
-					<DocumentFilterInput
-						value={view.filter}
-						onChange={onFilterChange}
-						className="w-56"
-					/>
-				</div>
+				<NavListHeader
+					variant="tabs"
+					hasUnsavedChanges={hasUnsavedChanges}
+					trailing={<SaveViewButton variant="add" />}
+					end={<SaveViewButton variant="save" visible={hasUnsavedChanges} />}
+				/>
 			</header>
-			<SavedViewsBanner />
 			<ScanAwarePropertyViewBar
 				view={view}
 				fields={propertyFields}
 				folders={folders}
+				leading={<ViewTypeSwitcher value={layout.viewType} />}
+				trailing={
+					<>
+						<DocumentFilterInput
+							value={view.filter}
+							onChange={onFilterChange}
+							className="w-56"
+						/>
+						<PropertyMenu
+							trigger={<span aria-hidden="true">⋯</span>}
+							triggerClassName="inline-flex size-7 shrink-0 items-center justify-center rounded-mdly-control text-sm text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-accent aria-expanded:bg-mdly-control"
+							triggerLabel="More view options"
+						>
+							<PropertySubmenu label="Add property">
+								<AddPropertyColumnItems
+									fields={addColumnFields}
+									visibleColumns={propertyColumns}
+									isScanning={scanStatus === "scanning"}
+								/>
+							</PropertySubmenu>
+							<PropertyMenuSeparator />
+							<PropertyMenuItem
+								disabled={!canResetColumns}
+								onClick={resetDocumentTableLayout}
+							>
+								Reset columns
+							</PropertyMenuItem>
+						</PropertyMenu>
+					</>
+				}
 			/>
+			<SavedViewsBanner />
 			{layout.viewType === "board" ? (
 				<DocumentBoard
 					rows={rows}
@@ -486,8 +536,14 @@ export function DocumentTable({
 						view={view}
 						onToggleSort={onToggleSort}
 						propertyFields={propertyFields}
+						trailing={
+							<AddPropertyColumnMenu
+								fields={addColumnFields}
+								visibleColumns={propertyColumns}
+								isScanning={scanStatus === "scanning"}
+							/>
+						}
 					/>
-					<NavListHeader />
 					<DocumentRowList
 						rows={rows}
 						density="table"
