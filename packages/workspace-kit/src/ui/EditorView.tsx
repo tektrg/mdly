@@ -182,6 +182,11 @@ export type EditorViewProps = {
 	 */
 	onOpenRevisionHistory?: (path: string) => void;
 	/**
+	 * Opt-in file-name chip menu: `ActionItem`s rendered in a dropdown when the
+	 * top-left chip is clicked. Omitted, the chip stays a plain label.
+	 */
+	fileMenu?: React.ReactNode;
+	/**
 	 * Called with the live editor instance once it is created (and with null on
 	 * teardown). Lets a host attach editor-level observers (e.g. diagnostics)
 	 * without EditorView needing to depend on host-specific modules.
@@ -229,6 +234,7 @@ export function EditorView({
 	onMessage,
 	onEditorReady,
 	onOpenRevisionHistory,
+	fileMenu,
 	commentOptions,
 	tableInteractivity = false,
 }: EditorViewProps) {
@@ -860,14 +866,15 @@ export function EditorView({
 				editor={editor}
 				path={path}
 				onOpenRevisionHistory={onOpenRevisionHistory}
+				fileMenu={fileMenu}
 			/>
 			{commentOptions ? (
 				<ThreadPanel
 					threads={resolvedThreads}
 					currentAuthor={commentOptions.currentAuthor}
 					focusedThreadId={focusedThreadId}
-				open={commentOptions.panelOpen}
-				onOpenChange={handlePanelOpenChange}
+					open={commentOptions.panelOpen}
+					onOpenChange={handlePanelOpenChange}
 					onReply={handleReplyToThread}
 					onResolve={handleResolveThread}
 					onReopen={handleReopenThread}

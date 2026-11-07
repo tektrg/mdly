@@ -2051,12 +2051,18 @@ export function ActionsMenu({
 	onOpenChange,
 	children,
 	triggerClassName = sidebarRowActionButtonClass,
+	triggerContent,
+	align = "end",
 }: {
 	label: string;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	children: React.ReactNode;
 	triggerClassName?: string;
+	/** Replaces the default "..." glyph (the editor's file-name chip uses its label). */
+	triggerContent?: React.ReactNode;
+	/** Popup alignment to the trigger; the chip sits at the start edge. */
+	align?: "start" | "end";
 }) {
 	const portalContainer = usePortalContainer();
 	return (
@@ -2075,12 +2081,12 @@ export function ActionsMenu({
 					/>
 				}
 			>
-				<MingcuteMore2Line className="size-3.5" />
+				{triggerContent ?? <MingcuteMore2Line className="size-3.5" />}
 			</Menu.Trigger>
 			<Menu.Portal container={portalContainer}>
 				<Menu.Positioner
 					className="z-50"
-					align="end"
+					align={align}
 					side="bottom"
 					sideOffset={4}
 				>

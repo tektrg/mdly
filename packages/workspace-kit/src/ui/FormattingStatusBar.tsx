@@ -1,12 +1,14 @@
 import type { Editor } from "@tiptap/core";
 import { useEffect, useState } from "react";
 import MingcuteBoldLine from "~icons/mingcute/bold-line";
+import MingcuteDownSmallLine from "~icons/mingcute/down-small-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteItalicLine from "~icons/mingcute/italic-line";
 import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteStrikethroughLine from "~icons/mingcute/strikethrough-line";
 import { getCaretFormattingState } from "../engine/index.js";
 import { fileNameFromPath } from "../lib/filePath";
+import { ActionsMenu } from "../nav/Sidebar";
 import { Button } from "../primitives/button";
 
 type CountMode = "words" | "chars";
@@ -26,12 +28,16 @@ export function FormattingStatusBar({
 	editor,
 	path,
 	onOpenRevisionHistory,
+	fileMenu,
 }: {
 	editor: Editor | null;
 	path: string;
+	/** Opt-in: `ActionItem`s shown when the file-name chip is clicked; omit for a plain chip. */
+	fileMenu?: React.ReactNode;
 	/** Opt-in (see `EditorViewProps.onOpenRevisionHistory`); omit to render no history affordance. */
 	onOpenRevisionHistory?: (path: string) => void;
 }) {
+	const [fileMenuOpen, setFileMenuOpen] = useState(false);
 	const [countMode, setCountMode] = useState<CountMode>("words");
 	const [paletteState, setPaletteState] = useState<PaletteState>({
 		wordCount: 0,
@@ -123,12 +129,30 @@ export function FormattingStatusBar({
 	return (
 		<div className="pointer-events-none absolute inset-0 z-[4] text-[12px]">
 			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
-				<span
-					className={`${floatingChipClass} max-w-[min(34rem,100%)] truncate rounded-full px-3 py-1`}
-					title={fileName}
-				>
-					{fileName}
-				</span>
+				{fileMenu ? (
+					<ActionsMenu
+						label={fileName}
+						open={fileMenuOpen}
+						onOpenChange={setFileMenuOpen}
+						align="start"
+						triggerClassName={`${floatingChipClass} pointer-events-auto inline-flex max-w-[min(34rem,100%)] cursor-pointer items-center gap-1 rounded-full py-1 ps-3 pe-2 outline-hidden hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:ring-1 focus-visible:ring-ring`}
+						triggerContent={
+							<>
+								<span className="min-w-0 truncate">{fileName}</span>
+								<MingcuteDownSmallLine className="size-3.5 shrink-0" />
+							</>
+						}
+					>
+						{fileMenu}
+					</ActionsMenu>
+				) : (
+					<span
+						className={`${floatingChipClass} max-w-[min(34rem,100%)] truncate rounded-full px-3 py-1`}
+						title={fileName}
+					>
+						{fileName}
+					</span>
+				)}
 				{onOpenRevisionHistory && (
 					<Button
 						variant="ghost"

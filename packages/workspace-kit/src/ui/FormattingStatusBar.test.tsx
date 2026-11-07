@@ -4,6 +4,7 @@ import { act } from "react";
 // @ts-expect-error The UI package does not ship react-dom/client types for tests.
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ActionItem } from "../nav/Sidebar";
 import { FormattingStatusBar } from "./FormattingStatusBar";
 
 (
@@ -100,6 +101,43 @@ describe("FormattingStatusBar scroll/resize hang (R-hang-1)", () => {
 		} finally {
 			vi.useRealTimers();
 		}
+	});
+
+	it("renders the file-name chip as a plain label without a fileMenu", () => {
+		const { editor } = createFakeEditor();
+		act(() => {
+			root.render(
+				<FormattingStatusBar editor={editor} path="/workspace/note.md" />,
+			);
+		});
+		expect(
+			container.querySelector("button[aria-label^='Actions for']"),
+		).toBeNull();
+		expect(container.textContent).toContain("note.md");
+	});
+
+	it("turns the file-name chip into a menu trigger when fileMenu is given", () => {
+		const { editor } = createFakeEditor();
+		act(() => {
+			root.render(
+				<FormattingStatusBar
+					editor={editor}
+					path="/workspace/note.md"
+					fileMenu={
+						<ActionItem icon={<span />} onClick={() => {}}>
+							Copy file path
+						</ActionItem>
+					}
+				/>,
+			);
+		});
+		const trigger = container.querySelector<HTMLButtonElement>(
+			"button[aria-label='Actions for note.md']",
+		);
+		expect(trigger).not.toBeNull();
+		expect(trigger?.textContent).toContain("note.md");
+		act(() => trigger?.click());
+		expect(document.body.textContent).toContain("Copy file path");
 	});
 
 	it("does not recount the document on cursor-only selection updates", () => {

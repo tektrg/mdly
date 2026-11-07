@@ -43,6 +43,7 @@ export function DocumentViewer({
 	commentsOpen,
 	onCommentsOpenChange,
 	isSingleFile = false,
+	fileMenu,
 }: {
 	path: string;
 	content: string;
@@ -56,6 +57,8 @@ export function DocumentViewer({
 	 * History/comments UI is hidden by the shell in this mode.
 	 */
 	isSingleFile?: boolean;
+	/** Items for the editor's file-name chip dropdown (see `EditorViewProps.fileMenu`). */
+	fileMenu?: React.ReactNode;
 }) {
 	if (hasHtmlExtension(path)) {
 		return (
@@ -89,6 +92,7 @@ export function DocumentViewer({
 			commentsOpen={commentsOpen}
 			onCommentsOpenChange={onCommentsOpenChange}
 			isSingleFile={isSingleFile}
+			fileMenu={fileMenu}
 		/>
 	);
 }
@@ -132,6 +136,7 @@ function MarkdownEditor({
 	commentsOpen,
 	onCommentsOpenChange,
 	isSingleFile,
+	fileMenu,
 }: {
 	path: string;
 	initialMarkdown: string;
@@ -139,6 +144,7 @@ function MarkdownEditor({
 	commentsOpen: boolean;
 	onCommentsOpenChange: (open: boolean) => void;
 	isSingleFile: boolean;
+	fileMenu?: React.ReactNode;
 }) {
 	const workspace = useStoreValue(workspaceStore);
 	const notionAccount =
@@ -359,6 +365,7 @@ function MarkdownEditor({
 			onMessage={showEditorMessage}
 			onEditorReady={handleEditorReady}
 			commentOptions={commentOptions}
+			fileMenu={fileMenu}
 			tableInteractivity
 		/>
 	);

@@ -59,39 +59,80 @@ export function DocumentRowMenu({
 			onOpenChange={onOpenChange}
 			triggerClassName={DOCUMENT_ROW_MENU_TRIGGER_CLASS}
 		>
+			<DocumentFileMenuItems
+				path={row.path}
+				pinned={pinned}
+				revealLabel={revealLabel}
+				handlers={handlers}
+			/>
+		</ActionsMenu>
+	);
+}
+
+/**
+ * The menu items alone, shared by the table row menu and the editor's
+ * file-name chip so both surfaces offer the same actions. Move/Pin/Delete
+ * render only when their handler is given: a single-file window has no
+ * workspace to move within, pin in, or delete from.
+ */
+export function DocumentFileMenuItems({
+	path,
+	pinned,
+	revealLabel,
+	handlers,
+}: {
+	path: string;
+	pinned: boolean;
+	revealLabel: string;
+	handlers: Pick<DocumentRowMenuHandlers, "onRevealPath" | "onCopyPath"> &
+		Partial<
+			Pick<
+				DocumentRowMenuHandlers,
+				"onMovePath" | "onTogglePin" | "onDeletePath"
+			>
+		>;
+}) {
+	return (
+		<>
 			<ActionItem
 				icon={<MingcuteFolderOpenLine />}
-				onClick={() => handlers.onRevealPath(row.path)}
+				onClick={() => handlers.onRevealPath(path)}
 				shortcut="⌘⌥R"
 			>
 				{revealLabel}
 			</ActionItem>
 			<ActionItem
 				icon={<MingcuteCopy2Line />}
-				onClick={() => handlers.onCopyPath(row.path)}
+				onClick={() => handlers.onCopyPath(path)}
 				shortcut="⌘⇧C"
 			>
 				Copy file path
 			</ActionItem>
-			<ActionItem
-				icon={<MingcuteFolderOpenLine />}
-				onClick={() => handlers.onMovePath(row.path)}
-			>
-				Move to...
-			</ActionItem>
-			<ActionItem
-				icon={<MingcutePinLine />}
-				onClick={() => handlers.onTogglePin(row.path)}
-			>
-				{pinned ? "Unpin" : "Pin"}
-			</ActionItem>
-			<ActionItem
-				destructive
-				icon={<MingcuteDeleteLine />}
-				onClick={() => handlers.onDeletePath(row.path)}
-			>
-				Delete
-			</ActionItem>
-		</ActionsMenu>
+			{handlers.onMovePath ? (
+				<ActionItem
+					icon={<MingcuteFolderOpenLine />}
+					onClick={() => handlers.onMovePath?.(path)}
+				>
+					Move to...
+				</ActionItem>
+			) : null}
+			{handlers.onTogglePin ? (
+				<ActionItem
+					icon={<MingcutePinLine />}
+					onClick={() => handlers.onTogglePin?.(path)}
+				>
+					{pinned ? "Unpin" : "Pin"}
+				</ActionItem>
+			) : null}
+			{handlers.onDeletePath ? (
+				<ActionItem
+					destructive
+					icon={<MingcuteDeleteLine />}
+					onClick={() => handlers.onDeletePath?.(path)}
+				>
+					Delete
+				</ActionItem>
+			) : null}
+		</>
 	);
 }
