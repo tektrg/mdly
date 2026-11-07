@@ -8,6 +8,7 @@ import {
 	BOARD_COLUMN_COLORS,
 	type BoardColumnColor,
 	type BoardViewSettings,
+	coerceViewFilterValue,
 	DEFAULT_BOARD_VIEW_SETTINGS,
 	DEFAULT_SAVED_VIEW_LAYOUT,
 	type FilterCondition,
@@ -148,7 +149,8 @@ function toCondition(
 		kind: "condition",
 		fieldId: filter.fieldId,
 		operator: type === "multiSelect" ? "contains" : "equals",
-		value: filter.value,
+		// CLI/MCP views store text ("true", "3"); match typed front matter too.
+		value: type ? coerceViewFilterValue(filter.value, type) : filter.value,
 	};
 }
 

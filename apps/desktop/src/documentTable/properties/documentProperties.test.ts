@@ -182,6 +182,35 @@ describe("property columns in the document table engine", () => {
 	});
 });
 
+describe("CLI/MCP text filter values on typed front matter (QA3 #1)", () => {
+	const b = (value: boolean): ScannedFrontMatterProperty => ({
+		type: "checkbox",
+		value,
+	});
+	const TYPED: Record<string, Props> = {
+		"/ws/a.md": { done: b(true), priority: n(3) },
+		"/ws/b.md": { done: b(false), priority: n(1) },
+		"/ws/c.md": { done: b(true), priority: n(3) },
+		"/ws/d.md": {},
+	};
+	const is = (key: string, value: string | number | boolean): PropertyFilter => ({
+		fieldId: `prop:${key}`,
+		kind: "is",
+		value,
+	});
+
+	it("done=true / priority=3 from the CLI match the same rows as the app's typed chips", () => {
+		const { rows, fields } = setup(TYPED);
+		const match = (filter: PropertyFilter) =>
+			names(rows, view({ propertyFilters: [filter] }), fields).sort();
+		expect(match(is("done", true))).toEqual(["a", "c"]);
+		expect(match(is("done", "true"))).toEqual(match(is("done", true)));
+		expect(match(is("done", "false"))).toEqual(["b"]);
+		expect(match(is("priority", 3))).toEqual(["a", "c"]);
+		expect(match(is("priority", "3"))).toEqual(match(is("priority", 3)));
+	});
+});
+
 describe("group by property (table-core groupBy)", () => {
 	it("groups a select in value order, the empty group last", () => {
 		const { rows, fields } = setup();

@@ -12,7 +12,7 @@ import {
 } from "@tektrg/table-core";
 import { createWorkspaceViewStore } from "@tektrg/table-core/node";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runViewsCli } from "./views.js";
+import { formatView, runViewsCli } from "./views.js";
 
 let ws: string;
 let outside: string;
@@ -323,6 +323,22 @@ describe("hubble views", () => {
 		await store.write({ ...emptyViewsFile(), views: [appRecord] }, null);
 		const listed = JSON.parse((await cli("list", "--json")).out);
 		expect(listed).toEqual([appRecord]);
+	});
+
+	it("QA3 #4: a view with an empty name lists with a placeholder", async () => {
+		await fs.mkdir(path.join(ws, ".hubble"));
+		await fs.writeFile(
+			viewsJson(),
+			JSON.stringify({ version: 1, views: [{ id: "only-id", name: "  " }] }),
+		);
+		const text = (await cli("list")).out;
+		expect(text).toContain("(unnamed)  (id: only-id)");
+	});
+
+	it("QA3 #4: formatView never prints 'undefined' for a record lacking name or id", () => {
+		const lines = formatView({} as never).join("\n");
+		expect(lines).not.toContain("undefined");
+		expect(lines).toContain("(unnamed)  (id: (no id))");
 	});
 
 	it("--workspace works like --cwd; both together refused", async () => {

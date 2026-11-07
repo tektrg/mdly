@@ -1,6 +1,7 @@
 /**
  * `hubble views list|create|rename|delete`: manage mdly saved views (the named
- * sidebar views) from the terminal. Records, checks and the file writer all
+ * views in the view-switcher row at the top of the document table, next to
+ * Recent/Folder/Tags) from the terminal. Records, checks and the file writer all
  * come from `@tektrg/table-core` — the same code the mdly app and its MCP
  * tools use — so a view made here looks exactly like one made in the app.
  *
@@ -44,7 +45,7 @@ export const VIEWS_USAGE = [
 	"  --filter k=v       Property k is v (the value may contain '='); a bare k means 'has property k'; repeatable",
 	"  --json             Machine-readable output",
 	"",
-	"Views are stored in <workspace>/.hubble/views.json and appear in mdly when its window is focused.",
+	"Views are stored in <workspace>/.hubble/views.json and appear in mdly's view-switcher row at the top of the document table (next to Recent/Folder/Tags) when its window is focused.",
 ];
 
 /** True when argv's first positional (after global options) is `views`. */
@@ -75,9 +76,15 @@ function describeFilter(filter: Record<string, unknown>): string {
 		: `${field} is ${String(filter.value)}`;
 }
 
-function formatView(record: SavedViewRecord): string[] {
+const textOr = (value: unknown, placeholder: string) =>
+	typeof value === "string" && value.trim() !== "" ? value : placeholder;
+
+/** Human-readable lines for one record; placeholders for a missing name/id. */
+export function formatView(record: SavedViewRecord): string[] {
 	const view = sanitizeSavedView(record);
-	const lines = [`${record.name}  (id: ${record.id})`];
+	const lines = [
+		`${textOr(record?.name, "(unnamed)")}  (id: ${textOr(record?.id, "(no id)")})`,
+	];
 	if (!view) {
 		lines.push("  (not usable by mdly; kept as-is)");
 		return lines;
