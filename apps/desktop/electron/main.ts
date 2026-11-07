@@ -798,6 +798,9 @@ function agentToolContext(): AgentToolContext {
 		// rather than on the next incidental reload.
 		notifyCommentsChanged: (absoluteFilePath: string) =>
 			broadcastToRenderers("desktop:comments-changed", absoluteFilePath),
+		// An agent-made saved view appears in the open app at once.
+		notifyViewsChanged: (workspaceRoot: string) =>
+			broadcastToRenderers("desktop:workspace-views-changed", workspaceRoot),
 	};
 }
 

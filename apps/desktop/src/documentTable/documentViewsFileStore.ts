@@ -3,7 +3,9 @@
  * `ViewStore` (desktop: `<workspace>/.hubble/views.json` via the main process;
  * elsewhere: localStorage). Saved views R11-R21.
  *
- * - Read on workspace open/switch; nothing is watched live (R21).
+ * - Read on workspace open/switch and re-read when the window regains focus
+ *   or an MCP tool changed the file (views made outside the app, e.g. by
+ *   `hubble views create`); nothing is watched live (R21).
  * - Edits apply in memory at once and save after a short delay, to the
  *   workspace they were made in — a switch or quit flushes first (R20).
  * - Corrupt / unreadable file: built-ins only + a notice; never overwritten,
@@ -15,6 +17,7 @@
  */
 import { store } from "@simplestack/store";
 import {
+	BUILT_IN_VIEW_NAMES,
 	type ExistingViewsState,
 	emptyViewsFile,
 	planLegacyMigration,
@@ -39,13 +42,7 @@ import {
 } from "./viewStores";
 
 /** Names a saved view can never take (R2/R4): the built-in views. */
-export const BUILT_IN_VIEW_NAMES: readonly string[] = [
-	"Recent",
-	"Folder",
-	"Tag",
-	"Tags",
-	"All documents",
-];
+export { BUILT_IN_VIEW_NAMES };
 
 export const SAVED_VIEWS_SAVE_DELAY_MS = 400;
 
@@ -536,6 +533,58 @@ export function validateSavedViewName(
 	});
 }
 
+/** True when a fresh read says exactly what this window already holds. */
+function sameAsLoaded(
+	workspacePath: string,
+	internal: Internal,
+	read: ViewStoreReadResult,
+): boolean {
+	const { status } = getWorkspaceSavedViews(workspacePath);
+	if (read.status === "missing") {
+		return status === "missing" && internal.snapshot === null;
+	}
+	if (read.status === "unreadable") return status === "unreadable";
+	return read.status === status && read.snapshot === internal.snapshot;
+}
+
+/**
+ * Picks up changes made outside this window (CLI, MCP tool, hand edit, another
+ * window) — called on window focus and after an MCP write, never by a watcher.
+ * A pending own edit is saved first, so it is never silently replaced: if the
+ * file changed meanwhile that save is refused (compare-and-swap) and the
+ * conflict path re-reads and says so. An unchanged file changes nothing: no
+ * status flip, no flicker, no reload loop after the app's own saves.
+ */
+export async function refreshWorkspaceSavedViews(
+	workspacePath: string,
+): Promise<void> {
+	const internal = internals.get(workspacePath);
+	// Never loaded here, or a failed save holds the only copy of an edit (R19).
+	if (!internal || internal.unsavedAfterError) return;
+	await flushSavedViews(workspacePath);
+	if (internal.loading) await internal.loading.catch(() => undefined);
+	if (internal.dirty || internal.timer) return;
+	const generation = internal.generation;
+	let read: ViewStoreReadResult;
+	try {
+		read = await internal.viewStore.read();
+	} catch {
+		return;
+	}
+	// A load, edit or save started while reading: it owns the state now.
+	if (
+		generation !== internal.generation ||
+		internal.dirty ||
+		internal.timer ||
+		internal.loading
+	) {
+		return;
+	}
+	if (sameAsLoaded(workspacePath, internal, read)) return;
+	internal.generation += 1;
+	applyRead(workspacePath, internal, read);
+}
+
 // --- workspace lifecycle --------------------------------------------------
 
 let currentWorkspace: string | null = null;
@@ -561,4 +610,17 @@ if (
 	});
 	// R20: the reliable path — main holds the close until this resolves.
 	window.desktopApi?.onFlushPendingSaves?.(flushAllSavedViews);
+	// Views made outside the app show up when the user comes back to it.
+	const refreshCurrent = () => {
+		if (currentWorkspace) void refreshWorkspaceSavedViews(currentWorkspace);
+	};
+	if (typeof window.desktopApi?.onWindowFocus === "function") {
+		window.desktopApi.onWindowFocus(refreshCurrent);
+	} else {
+		window.addEventListener("focus", refreshCurrent);
+	}
+	// An MCP tool wrote the file through the main process: show it at once.
+	window.desktopApi?.onWorkspaceViewsChanged?.((workspacePath) => {
+		void refreshWorkspaceSavedViews(workspacePath);
+	});
 }

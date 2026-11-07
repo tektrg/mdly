@@ -96,16 +96,18 @@ describe("Slice 4 Plug A end-to-end", () => {
 		expect(res.status).toBe(401);
 	});
 
-	it("publishes all nine tools (seven comment + two diagram) with their safety annotations intact", async () => {
+	it("publishes all eleven tools (seven comment + two saved-view + two diagram) with their safety annotations intact", async () => {
 		const { body } = await rpc("tools/list", {});
 		const tools = (body as { result: { tools: { name: string }[] } }).result
 			.tools;
 		expect(tools.map((t) => t.name).sort()).toEqual(
 			[
 				"create_thread",
+				"create_view",
 				"listDiagramTypes",
 				"list_documents",
 				"list_threads",
+				"list_views",
 				"read_thread",
 				"reopen",
 				"reply",

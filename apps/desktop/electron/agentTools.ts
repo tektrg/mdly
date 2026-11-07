@@ -1,5 +1,6 @@
 /**
- * The seven agent-facing comment tools (plus diagram-kit's diagram tools from
+ * The seven agent-facing comment tools (plus the saved-view tools from
+ * `agentViewTools.ts` and diagram-kit's diagram tools from
  * `diagramAgentTools.ts`), published to every transport
  * (`mcpServer.ts`'s loopback MCP server, `../src/webmcp.ts`'s WebMCP bridge)
  * from this one table — see `agentToolContract.ts`'s module doc for why
@@ -28,6 +29,7 @@ import {
 	toDescriptor,
 	untrustedBlock,
 } from "./agentToolContract";
+import { CREATE_VIEW_TOOL, LIST_VIEWS_TOOL } from "./agentViewTools";
 import { DIAGRAM_AGENT_TOOLS } from "./diagramAgentTools";
 
 const SCOPES: readonly AgentThreadScope[] = ["workspace", "open"];
@@ -328,6 +330,8 @@ export const AGENT_TOOLS: AgentTool[] = [
 	replyTool,
 	resolveTool,
 	reopenTool,
+	LIST_VIEWS_TOOL,
+	CREATE_VIEW_TOOL,
 	...DIAGRAM_AGENT_TOOLS,
 ];
 

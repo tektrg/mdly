@@ -11,7 +11,7 @@
  * - Size and Word count need a whole-file read; the scan only does that while
  *   the current view uses one of them (`viewUsesFileStats`).
  */
-import type { RowValue } from "@tektrg/table-core";
+import { BUILTIN_VIEW_FIELD_IDS, type RowValue } from "@tektrg/table-core";
 import type { ScannedFileStats } from "../../desktopApi/types";
 import type { DocumentTableRow } from "../documentTableView";
 import type {
@@ -22,13 +22,8 @@ import type {
 
 export const BUILTIN_FIELD_PREFIX = "file:";
 
-export const BUILTIN_FIELD_IDS = {
-	modified: "file:modified",
-	created: "file:created",
-	folder: "file:folder",
-	wordCount: "file:words",
-	size: "file:size",
-} as const;
+/** The ids are part of the saved-view format, so they live in table-core. */
+export const BUILTIN_FIELD_IDS = BUILTIN_VIEW_FIELD_IDS;
 
 export type BuiltinFieldId =
 	(typeof BUILTIN_FIELD_IDS)[keyof typeof BUILTIN_FIELD_IDS];

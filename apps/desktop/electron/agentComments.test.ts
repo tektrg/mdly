@@ -633,6 +633,7 @@ describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
 				"listDiagramTypes",
 				"list_documents",
 				"list_threads",
+				"list_views",
 				"read_thread",
 				"validateDiagram",
 			].sort(),

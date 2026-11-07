@@ -7,28 +7,35 @@
  * decisions A/F/H) is phase 4 and deliberately absent: a field's type here is
  * only ever a reading of what the files say right now.
  */
-import type { FieldDefinition, FieldType, RowValue } from "@tektrg/table-core";
+import {
+	type FieldDefinition,
+	type FieldType,
+	isViewFieldId,
+	PROPERTY_FIELD_PREFIX,
+	propertyFieldId,
+	type RowValue,
+	type ViewFieldId,
+} from "@tektrg/table-core";
 import type {
 	ScannedFileStats,
 	ScannedFrontMatterProperty,
 } from "../../desktopApi/types";
 import type { DocumentTableRow } from "../documentTableView";
 import {
-	type BuiltinFieldId,
 	builtinFieldLabel,
 	builtinFields,
 	formatBuiltinValue,
 	isBuiltinFieldId,
 } from "./builtinFields";
 
-export const PROPERTY_FIELD_PREFIX = "prop:";
+export { PROPERTY_FIELD_PREFIX, propertyFieldId };
 
 /**
  * A property column/field id: a front-matter key (`prop:`, lowercased, so
  * `Status` and `status` are one field) or a built-in file property (`file:`,
  * see `builtinFields.ts`). The prefixes keep the two from ever colliding.
  */
-export type PropertyFieldId = `prop:${string}` | BuiltinFieldId;
+export type PropertyFieldId = ViewFieldId;
 
 export type PropertyField = FieldDefinition & {
 	id: PropertyFieldId;
@@ -54,19 +61,8 @@ const SELECT_MAX_OPTION_LENGTH = 40;
 /** Options kept per field for filter menus, most frequent first. */
 const MAX_LISTED_OPTIONS = 50;
 
-export function propertyFieldId(key: string): `prop:${string}` {
-	return `${PROPERTY_FIELD_PREFIX}${key.trim().toLowerCase()}`;
-}
-
 /** A front-matter id or a known built-in id (unknown `file:` ids are rejected). */
-export function isPropertyFieldId(value: unknown): value is PropertyFieldId {
-	return (
-		isBuiltinFieldId(value) ||
-		(typeof value === "string" &&
-			value.startsWith(PROPERTY_FIELD_PREFIX) &&
-			value.length > PROPERTY_FIELD_PREFIX.length)
-	);
-}
+export const isPropertyFieldId = isViewFieldId;
 
 /** Display label for an id whose field is not (or no longer) in the workspace. */
 export function fallbackPropertyLabel(fieldId: PropertyFieldId): string {

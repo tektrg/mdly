@@ -72,6 +72,8 @@ export interface AgentToolContext {
 	 * This is what makes an agent's comment appear live instead of on next load.
 	 */
 	notifyCommentsChanged: (absoluteFilePath: string) => void;
+	/** Called after a tool changed a workspace's saved views, so the open app re-reads them now. */
+	notifyViewsChanged?: (workspaceRoot: string) => void;
 }
 
 /** A descriptor plus its implementation. */

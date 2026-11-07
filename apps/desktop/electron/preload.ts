@@ -288,6 +288,10 @@ const desktopApi = {
 		),
 	onCommentsChanged: (callback) =>
 		subscribe("desktop:comments-changed", (path: string) => callback(path)),
+	onWorkspaceViewsChanged: (callback) =>
+		subscribe("desktop:workspace-views-changed", (workspacePath: string) =>
+			callback(workspacePath),
+		),
 	onMainProcessError: (callback) =>
 		subscribe(
 			"desktop:main-process-error",

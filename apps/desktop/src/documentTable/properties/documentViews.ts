@@ -5,37 +5,63 @@
  * compile it without importing React or the stores.
  */
 import {
+	BOARD_COLUMN_COLORS,
+	type BoardColumnColor,
+	type BoardViewSettings,
+	DEFAULT_BOARD_VIEW_SETTINGS,
+	DEFAULT_SAVED_VIEW_LAYOUT,
 	type FilterCondition,
 	type FilterGroup,
+	isSavedViewSortColumn,
+	isSavedViewType,
+	MAX_SAVED_VIEW_NAME_LENGTH,
 	matchesFolder,
-	type ScalarValue,
+	SAVED_VIEW_TYPES,
+	type SavedView,
+	type SavedViewFilter,
+	type SavedViewFolderFilter,
+	type SavedViewLayout,
+	type SavedViewType,
+	type SavedViewValueFilter,
+	sanitizeBoardSettings,
+	sanitizeSavedView,
+	sanitizeSavedViewSort,
+	sanitizeViewFieldIds,
 } from "@tektrg/table-core";
-import type { DocumentTableSort } from "../documentTableView";
 import {
 	fallbackPropertyLabel,
-	isPropertyFieldId,
 	type PropertyField,
 	type PropertyFieldId,
 } from "./propertyFields";
 
 /**
- * One visible, deletable filter chip (decision E: never filter silently).
- * `has` = carries a non-empty value; `is` = equals a value (has the tag, for a
- * multi-value field).
+ * The saved-view record format (types, defaults, sanitizer) lives in
+ * `@tektrg/table-core` (shared with the `hubble views` CLI and the MCP tools,
+ * saved views outside the app R9). The aliases below keep mdly's names.
+ *
+ * Filter chips: `has` = carries a non-empty value; `is` = equals a value (has
+ * the tag, for a multi-value field); `folder:<path>` = documents in that
+ * workspace-relative folder or any subfolder (`matchesFolder`).
  */
-export type PropertyFilter = PropertyValueFilter | FolderFilter;
-
-/** A `has`/`is` chip on one property field. */
-export type PropertyValueFilter =
-	| { fieldId: PropertyFieldId; kind: "has" }
-	| { fieldId: PropertyFieldId; kind: "is"; value: ScalarValue };
-
-/**
- * Built-in read-only `folder:<path>` chip (saved views R7-R10): documents in
- * that workspace-relative folder or any subfolder, matched by table-core's
- * `matchesFolder` (case/NFC-insensitive; empty or escaping paths match none).
- */
-export type FolderFilter = { kind: "folder"; path: string };
+export type PropertyFilter = SavedViewFilter;
+export type PropertyValueFilter = SavedViewValueFilter;
+export type FolderFilter = SavedViewFolderFilter;
+export type DocumentViewType = SavedViewType;
+export type DocumentViewLayout = SavedViewLayout;
+export type SavedDocumentView = SavedView;
+export type { BoardColumnColor, BoardViewSettings };
+export {
+	BOARD_COLUMN_COLORS,
+	DEFAULT_BOARD_VIEW_SETTINGS,
+	MAX_SAVED_VIEW_NAME_LENGTH,
+	sanitizeBoardSettings,
+	sanitizeSavedView,
+};
+export const DOCUMENT_VIEW_TYPES = SAVED_VIEW_TYPES;
+export const DEFAULT_DOCUMENT_VIEW_LAYOUT = DEFAULT_SAVED_VIEW_LAYOUT;
+export const isDocumentTableSortColumn = isSavedViewSortColumn;
+export const sanitizeDocumentTableSort = sanitizeSavedViewSort;
+export const isDocumentViewType = isSavedViewType;
 
 export function isFolderFilter(filter: PropertyFilter): filter is FolderFilter {
 	return filter.kind === "folder";
@@ -46,82 +72,6 @@ export function isPropertyValueFilter(
 ): filter is PropertyValueFilter {
 	return filter.kind !== "folder";
 }
-
-/** How a view lays its documents out. Views saved before step 5 are tables. */
-export type DocumentViewType = "table" | "board" | "calendar";
-
-export const DOCUMENT_VIEW_TYPES: readonly DocumentViewType[] = [
-	"table",
-	"board",
-	"calendar",
-];
-
-/** Column colours a board offers (Notion's palette names). */
-export const BOARD_COLUMN_COLORS = [
-	"gray",
-	"brown",
-	"orange",
-	"yellow",
-	"green",
-	"blue",
-	"purple",
-	"pink",
-	"red",
-] as const;
-
-export type BoardColumnColor = (typeof BOARD_COLUMN_COLORS)[number];
-
-/**
- * A board's own arrangement, saved with the view. Columns are named by their
- * board column key (`boardColumnKey`), so a value that disappears and comes
- * back keeps its place and colour.
- */
-export type BoardViewSettings = {
-	/** Columns placed first, in this order; unlisted columns follow naturally. */
-	columnOrder: string[];
-	/** Columns folded into the hidden rail. */
-	hiddenColumns: string[];
-	columnColors: Record<string, BoardColumnColor>;
-	/** Properties shown on cards, in order; null = the view's property columns. */
-	cardProperties: PropertyFieldId[] | null;
-	/** Drop columns with no cards (instead of showing them empty). */
-	hideEmptyColumns: boolean;
-};
-
-export const DEFAULT_BOARD_VIEW_SETTINGS: BoardViewSettings = {
-	columnOrder: [],
-	hiddenColumns: [],
-	columnColors: {},
-	cardProperties: null,
-	hideEmptyColumns: false,
-};
-
-/** The layout half of a view: its type and the field each layout reads. */
-export type DocumentViewLayout = {
-	viewType: DocumentViewType;
-	/** Board columns come from this select field; null = the default (status). */
-	boardField: PropertyFieldId | null;
-	/** Calendar days come from this date field; null = the default (due). */
-	calendarField: PropertyFieldId | null;
-	/** Board arrangement; views saved before it existed get the defaults. */
-	board: BoardViewSettings;
-};
-
-export const DEFAULT_DOCUMENT_VIEW_LAYOUT: DocumentViewLayout = {
-	viewType: "table",
-	boardField: null,
-	calendarField: null,
-	board: DEFAULT_BOARD_VIEW_SETTINGS,
-};
-
-export type SavedDocumentView = DocumentViewLayout & {
-	id: string;
-	name: string;
-	sort: DocumentTableSort;
-	filters: PropertyFilter[];
-	groupBy: PropertyFieldId | null;
-	propertyColumns: PropertyFieldId[];
-};
 
 /** Per-workspace persisted views state. */
 export type WorkspaceDocumentViews = {
@@ -134,8 +84,6 @@ export const EMPTY_WORKSPACE_DOCUMENT_VIEWS: WorkspaceDocumentViews = {
 	propertyColumns: [],
 	saved: [],
 };
-
-export const MAX_SAVED_VIEW_NAME_LENGTH = 60;
 
 export function sameFilter(a: PropertyFilter, b: PropertyFilter): boolean {
 	if (a.kind === "folder" || b.kind === "folder") {
@@ -244,133 +192,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function sanitizeFilter(value: unknown): PropertyFilter | null {
-	if (!isRecord(value)) return null;
-	if (value.kind === "folder") {
-		// Kept even when the folder is gone or the path is unsafe: it then
-		// matches nothing (R8), and the view is never dropped for it.
-		return typeof value.path === "string"
-			? { kind: "folder", path: value.path }
-			: null;
-	}
-	if (!isPropertyFieldId(value.fieldId)) return null;
-	if (value.kind === "has") return { fieldId: value.fieldId, kind: "has" };
-	const scalar = value.value;
-	if (
-		value.kind === "is" &&
-		(typeof scalar === "string" ||
-			typeof scalar === "boolean" ||
-			(typeof scalar === "number" && Number.isFinite(scalar)))
-	) {
-		return { fieldId: value.fieldId, kind: "is", value: scalar };
-	}
-	return null;
-}
-
-function sanitizeColumns(value: unknown): PropertyFieldId[] {
-	return Array.isArray(value)
-		? [...new Set(value.filter(isPropertyFieldId))]
-		: [];
-}
-
-export function isDocumentTableSortColumn(
-	value: unknown,
-): value is DocumentTableSort["column"] {
-	return (
-		value === "name" ||
-		value === "folder" ||
-		value === "modified" ||
-		value === "created" ||
-		isPropertyFieldId(value)
-	);
-}
-
-export function sanitizeDocumentTableSort(
-	value: unknown,
-): DocumentTableSort | null {
-	if (!isRecord(value)) return null;
-	const { column, direction } = value;
-	if (!isDocumentTableSortColumn(column)) return null;
-	if (direction !== "asc" && direction !== "desc") return null;
-	return { column, direction };
-}
-
-export function isDocumentViewType(value: unknown): value is DocumentViewType {
-	return DOCUMENT_VIEW_TYPES.includes(value as DocumentViewType);
-}
-
-const MAX_BOARD_KEYS = 200;
-
-function sanitizeKeyList(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return [
-		...new Set(
-			value.filter(
-				(key): key is string => typeof key === "string" && key.length > 0,
-			),
-		),
-	].slice(0, MAX_BOARD_KEYS);
-}
-
-export function sanitizeBoardSettings(value: unknown): BoardViewSettings {
-	if (!isRecord(value)) return DEFAULT_BOARD_VIEW_SETTINGS;
-	const columnColors: Record<string, BoardColumnColor> = {};
-	if (isRecord(value.columnColors)) {
-		for (const [key, color] of Object.entries(value.columnColors)) {
-			if (key === "__proto__") continue;
-			if (BOARD_COLUMN_COLORS.includes(color as BoardColumnColor)) {
-				columnColors[key] = color as BoardColumnColor;
-			}
-		}
-	}
-	return {
-		columnOrder: sanitizeKeyList(value.columnOrder),
-		hiddenColumns: sanitizeKeyList(value.hiddenColumns),
-		columnColors,
-		cardProperties: Array.isArray(value.cardProperties)
-			? sanitizeColumns(value.cardProperties)
-			: null,
-		hideEmptyColumns: value.hideEmptyColumns === true,
-	};
-}
-
-function sanitizeLayout(value: Record<string, unknown>): DocumentViewLayout {
-	return {
-		board: sanitizeBoardSettings(value.board),
-		viewType: isDocumentViewType(value.viewType) ? value.viewType : "table",
-		boardField: isPropertyFieldId(value.boardField) ? value.boardField : null,
-		calendarField: isPropertyFieldId(value.calendarField)
-			? value.calendarField
-			: null,
-	};
-}
-
-export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
-	if (!isRecord(value)) return null;
-	if (typeof value.id !== "string" || value.id.length === 0) return null;
-	if (typeof value.name !== "string") return null;
-	const name = value.name.trim().slice(0, MAX_SAVED_VIEW_NAME_LENGTH);
-	if (name.length === 0) return null;
-	const sort = sanitizeDocumentTableSort(value.sort) ?? {
-		column: "modified",
-		direction: "desc",
-	};
-	const filters = Array.isArray(value.filters)
-		? value.filters
-				.map(sanitizeFilter)
-				.filter((filter): filter is PropertyFilter => filter !== null)
-		: [];
-	return {
-		...sanitizeLayout(value),
-		id: value.id,
-		name,
-		sort,
-		filters,
-		groupBy: isPropertyFieldId(value.groupBy) ? value.groupBy : null,
-		propertyColumns: sanitizeColumns(value.propertyColumns),
-	};
-}
-
 /** Drops malformed entries; a workspace with nothing left is omitted. */
 export function sanitizeDocumentViews(
 	value: unknown,
@@ -387,7 +208,7 @@ export function sanitizeDocumentViews(
 				seenIds.add(view.id);
 				return true;
 			});
-		const propertyColumns = sanitizeColumns(entry.propertyColumns);
+		const propertyColumns = sanitizeViewFieldIds(entry.propertyColumns);
 		if (saved.length === 0 && propertyColumns.length === 0) continue;
 		byWorkspace[workspacePath] = { propertyColumns, saved };
 	}

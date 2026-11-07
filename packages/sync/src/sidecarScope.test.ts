@@ -84,4 +84,16 @@ describe("sidecarScope fence", () => {
 		expect(isPushableSidecarPath(".mdly/config.json")).toBe(false);
 		expect(isPushableSidecarPath("note.md")).toBe(false);
 	});
+
+	it("saved-view writer temp, lock and corrupt-backup files are never synced (QA2-c)", () => {
+		expect(isSyncedSidecarPath(".hubble/views.json")).toBe(true);
+		for (const artifact of [
+			".hubble/.views.json.a1b2c3.mdly-tmp",
+			".hubble/views.json.lock",
+			".hubble/views.json.corrupt-2026-11-07T10-00-00-000Z",
+		]) {
+			expect(isSyncedSidecarPath(artifact)).toBe(false);
+			expect(isSidecarPath(artifact)).toBe(false);
+		}
+	});
 });

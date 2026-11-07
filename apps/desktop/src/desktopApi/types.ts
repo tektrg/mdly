@@ -700,6 +700,10 @@ export type DesktopApi = {
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
 	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */
 	onCommentsChanged(callback: (path: string) => void): Unsubscribe;
+	/** An MCP tool changed `<workspace>/.hubble/views.json`; re-read that workspace's saved views. */
+	onWorkspaceViewsChanged?(
+		callback: (workspacePath: string) => void,
+	): Unsubscribe;
 	/**
 	 * F3: an unexpected main-process fault was logged to crash-trace and the
 	 * app kept running. The payload carries only a short line for the UI —
