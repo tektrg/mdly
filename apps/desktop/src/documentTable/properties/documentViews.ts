@@ -16,7 +16,7 @@ import {
 	isSavedViewSortColumn,
 	isSavedViewType,
 	MAX_SAVED_VIEW_NAME_LENGTH,
-	matchesFolder,
+	matchesFolderFilters as matchesFolderGroup,
 	SAVED_VIEW_TYPES,
 	type SavedView,
 	type SavedViewFilter,
@@ -157,7 +157,7 @@ function toCondition(
 /**
  * All property (`has`/`is`) chips AND-ed into one engine filter; undefined
  * when there are none. `folder:` chips are not engine conditions — callers
- * AND them in with `matchesFolderFilters` on every evaluation path.
+ * AND the folder group (chips OR-ed together) in with `matchesFolderFilters` on every evaluation path.
  */
 export function propertyFiltersToFilterGroup(
 	filters: readonly PropertyFilter[],
@@ -173,19 +173,15 @@ export function propertyFiltersToFilterGroup(
 }
 
 /**
- * True when the workspace-relative `docPath` satisfies every `folder:` chip
- * (AND). No folder chips → true.
+ * True when the workspace-relative `docPath` is in ANY `folder:` chip (OR,
+ * subfolders included; PO 2026-11-07). No folder chips → true. The shared
+ * rule lives in table-core so the CLI/MCP and the app agree.
  */
 export function matchesFolderFilters(
 	docPath: string,
 	filters: readonly PropertyFilter[],
 ): boolean {
-	for (const filter of filters) {
-		if (filter.kind === "folder" && !matchesFolder(docPath, filter.path)) {
-			return false;
-		}
-	}
-	return true;
+	return matchesFolderGroup(docPath, filters);
 }
 
 // --- sanitizing persisted JSON -------------------------------------------

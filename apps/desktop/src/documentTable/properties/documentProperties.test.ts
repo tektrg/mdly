@@ -324,6 +324,38 @@ describe("folder:<path> filter (saved views R7-R10)", () => {
 		).toEqual(["b"]);
 	});
 
+	it("several folder chips combine with OR: two sibling folders show docs from both (PO 2026-11-07)", () => {
+		const { rows, fields } = setup(FOLDER_PROPS);
+		expect(
+			both(
+				rows,
+				view({ propertyFilters: [folder("AptusFit"), folder("other")] }),
+				fields,
+			),
+		).toEqual(["a", "b", "d"]);
+	});
+
+	it("the folder OR-group is still AND-ed with property chips", () => {
+		const { rows, fields } = setup(FOLDER_PROPS);
+		const has: PropertyFilter = { fieldId: "prop:status", kind: "has" };
+		expect(
+			both(
+				rows,
+				view({
+					propertyFilters: [folder("AptusFit"), folder("AptusFitOld"), has],
+				}),
+				fields,
+			),
+		).toEqual(["a", "c"]);
+		expect(
+			both(
+				rows,
+				view({ propertyFilters: [folder("other"), folder("Café"), has] }),
+				fields,
+			),
+		).toEqual([]);
+	});
+
 	it("updates live when a file moves into or out of the folder (new listing)", () => {
 		const v = view({ propertyFilters: [folder("AptusFit")] });
 		const before = setup(FOLDER_PROPS);

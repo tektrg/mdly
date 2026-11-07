@@ -174,7 +174,7 @@ export const LIST_VIEWS_TOOL: AgentTool = {
 export const CREATE_VIEW_TOOL: AgentTool = {
 	name: "create_view",
 	description:
-		'Creates a saved view in the open mdly workspace; it appears immediately in the app\'s view-switcher row at the top of the document table (next to Recent/Folder/Tags). `folders`: workspace-relative folders that must exist (subfolders included; every folder must match, as in the app). `group_by`: a front-matter property name (e.g. "status"). `filters`: "key=value" means property key is value; a bare "key" means the document has that property. Names follow the app\'s rules (not empty, at most 60 characters, unique ignoring case, not a built-in view name).',
+		'Creates a saved view in the open mdly workspace; it appears immediately in the app\'s view-switcher row at the top of the document table (next to Recent/Folder/Tags). `folders`: workspace-relative folders that must exist (subfolders included; a document in ANY of them matches, as in the app; other filters still all apply). `group_by`: a front-matter property name (e.g. "status"). `filters`: "key=value" means property key is value; a bare "key" means the document has that property. Names follow the app\'s rules (not empty, at most 60 characters, unique ignoring case, not a built-in view name).',
 	inputSchema: {
 		type: "object",
 		properties: {

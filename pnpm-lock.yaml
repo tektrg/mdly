@@ -57,8 +57,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0(react@19.2.4)
       '@tektrg/table-core':
-        specifier: ^1.4.1
-        version: 1.4.1(esbuild@0.28.1)
+        specifier: ^1.4.2
+        version: 1.4.2(esbuild@0.28.1)
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)
@@ -390,8 +390,8 @@ importers:
         specifier: workspace:*
         version: link:../workspace-scan
       '@tektrg/table-core':
-        specifier: ^1.4.1
-        version: 1.4.1(esbuild@0.28.1)
+        specifier: ^1.4.2
+        version: 1.4.2(esbuild@0.28.1)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -533,8 +533,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0(react@19.2.4)
       '@tektrg/table-core':
-        specifier: ^1.4.1
-        version: 1.4.1(esbuild@0.28.1)
+        specifier: ^1.4.2
+        version: 1.4.2(esbuild@0.28.1)
       '@tiptap/core':
         specifier: ^3.4.3
         version: 3.20.0(@tiptap/pm@3.20.0)
@@ -2808,8 +2808,8 @@ packages:
       react:
         optional: true
 
-  '@tektrg/table-core@1.4.1':
-    resolution: {integrity: sha512-fv0YTT1RWMfczllpemDfbpjwvIM3MQZ2YAvXWoXeSWzg6JnxSW3x/DLNILvJ30SSWD3Acn52mDxXqpc9gmrziw==, tarball: https://npm.pkg.github.com/download/@tektrg/table-core/1.4.1/9a16e5663703967eec66e5cd7a7077b45be34adc}
+  '@tektrg/table-core@1.4.2':
+    resolution: {integrity: sha512-J8mswyI5/+ikTJkBWfVWJPSWaQGCzhemDMdsPA/lanSWza0QNZCdRk2D3tZIipHiNFw+lRTrAm1DW9zd2Vtmpg==, tarball: https://npm.pkg.github.com/download/@tektrg/table-core/1.4.2/f4f8034656f9ff31527cda93d11937975a338b60}
     peerDependencies:
       esbuild: '>=0.21'
 
@@ -8330,7 +8330,7 @@ snapshots:
     optionalDependencies:
       react: 19.2.4
 
-  '@tektrg/table-core@1.4.1(esbuild@0.28.1)':
+  '@tektrg/table-core@1.4.2(esbuild@0.28.1)':
     dependencies:
       esbuild: 0.28.1
 

@@ -40,7 +40,7 @@ export const VIEWS_USAGE = [
 	"",
 	"Options:",
 	"  --cwd path, --workspace path  Workspace folder (default: current folder)",
-	"  --folder dir       Only documents in this workspace folder (subfolders included; must exist; repeatable — every folder must match)",
+	"  --folder dir       Only documents in this workspace folder (subfolders included; must exist; repeatable — a document in any of them matches)",
 	"  --group-by prop    Group rows by this front-matter property",
 	"  --filter k=v       Property k is v (the value may contain '='); a bare k means 'has property k'; repeatable",
 	"  --json             Machine-readable output",

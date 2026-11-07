@@ -173,7 +173,7 @@ function rowFolderPath(row: DocumentTableRow): string {
 	return row.folderLabel === ROOT_FOLDER_LABEL ? "_" : `${row.folderLabel}/_`;
 }
 
-/** `folder:` chips AND-ed over the rows; the same predicate on both paths. */
+/** Rows in ANY `folder:` chip (OR); the same predicate on both paths. */
 function applyFolderFilters(
 	rows: DocumentTableRow[],
 	filters: readonly PropertyFilter[],
