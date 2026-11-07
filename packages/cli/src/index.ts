@@ -23,6 +23,7 @@ import {
 } from "@mdly/workspace-scan";
 import chokidar from "chokidar";
 import { runDryRunCommand } from "./dryRun.js";
+import { isViewsInvocation, runViewsCli, VIEWS_USAGE } from "./views.js";
 
 const fs = createNodeFileSystem();
 
@@ -65,7 +66,17 @@ type CliArgs = {
 };
 
 async function main() {
-	const parsed = parseCliArgs(process.argv.slice(2));
+	const argv = process.argv.slice(2);
+	// `views` has its own options (--folder, --filter, ...), so it parses separately.
+	if (isViewsInvocation(argv)) {
+		if (argv.includes("--help") || argv.includes("-h")) {
+			for (const line of VIEWS_USAGE) console.log(line);
+			return;
+		}
+		process.exitCode = await runViewsCli(argv);
+		return;
+	}
+	const parsed = parseCliArgs(argv);
 	if ("error" in parsed) {
 		console.error(parsed.error);
 		printUsage();
@@ -455,9 +466,11 @@ function printHelp(args: CliArgs) {
 function printRootHelp() {
 	console.log("Usage:");
 	console.log("  hubble [--cwd path] cloud <command>");
+	console.log("  hubble [--cwd path] views <list|create|rename|delete>");
 	console.log("");
 	console.log("Commands:");
 	console.log("  cloud    Manage Cloud Sync");
+	console.log("  views    List, create, rename or delete mdly saved views");
 }
 
 function printCloudHelp() {
@@ -546,6 +559,7 @@ function printUsage() {
 	console.error("  hubble [--cwd path] cloud watch");
 	console.error("  hubble [--cwd path] cloud disconnect");
 	console.error("  hubble [--cwd path] cloud dry-run");
+	console.error("  hubble [--cwd path] views <list|create|rename|delete>");
 }
 
 void main();

@@ -29,6 +29,7 @@
 		"@hubble.md/sync": "workspace:*",
 		"@mdly/cloudflare-client": "workspace:*",
 		"@mdly/workspace-scan": "workspace:*",
+		"@tektrg/table-core": "^1.4.0",
 		"chokidar": "^4.0.3"
 	},
 	"devDependencies": {
