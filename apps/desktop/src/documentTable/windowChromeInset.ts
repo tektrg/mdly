@@ -7,7 +7,7 @@
  * traffic lights sit there too. `Toolbar` renders only fixed content, so the
  * first in-flow child of `<main>` starts at y=0 — underneath all of them.
  *
- * Any header that puts controls up there loses them: the pills paint over it,
+ * Any header that puts controls up there loses them: the pill paints over it,
  * and Chromium resolves `-webkit-app-region` by paint order, so a `no-drag`
  * control below the strip is not reliably clickable at all. Reserving the band
  * is the fix the rest of the app already uses (`Sidebar.tsx`), and it needs no

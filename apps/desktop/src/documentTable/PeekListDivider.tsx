@@ -139,11 +139,6 @@ export function PeekListDivider({
 			className="relative z-10 flex shrink-0 cursor-ew-resize touch-none items-stretch justify-center outline-hidden [inline-size:0.75rem] [margin-inline:-0.375rem] focus-visible:ring-1 focus-visible:ring-ring"
 			onMouseDown={beginDrag}
 			onKeyDown={onKeyDown}
-		>
-			<span
-				aria-hidden="true"
-				className="self-stretch bg-border [inline-size:1px]"
-			/>
-		</div>
+		></div>
 	);
 }

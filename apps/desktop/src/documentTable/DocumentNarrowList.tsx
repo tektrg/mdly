@@ -195,7 +195,7 @@ export function DocumentNarrowList({
 			ref={setListElement}
 			data-row-layout={isBoard ? "board" : isGrid ? "grid" : "stacked"}
 			data-nav-tier={navTier}
-			className="flex shrink-0 flex-col border-e border-sidebar-border bg-sidebar"
+			className="flex shrink-0 flex-col bg-sidebar"
 			style={{ inlineSize: listInlineSize }}
 		>
 			<header
