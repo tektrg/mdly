@@ -220,7 +220,7 @@ export function ScopeOptionPopover({
 	onSelect: (scope: CommandScopeKind) => void;
 }) {
 	return (
-		<div className="absolute left-8 top-full z-10 mt-1 w-64 rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-popover-foreground shadow-overlay">
+		<div className="absolute left-8 top-full z-10 mt-1 w-64 rounded-[18px] bg-popover p-1 text-popover-foreground shadow-overlay">
 			{options.map((option, index) => (
 				<button
 					key={option.kind}

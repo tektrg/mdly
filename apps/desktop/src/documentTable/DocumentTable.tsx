@@ -93,7 +93,7 @@ const TRAILING_CELL_CLASS = "w-7 shrink-0";
 const SORT_ARROW_CLASS =
 	"size-3 shrink-0 transition-[transform,opacity] duration-180 ease-snappy motion-reduce:transition-none";
 const HEADER_BUTTON_CLASS =
-	"group/sort flex h-8 w-full items-center gap-1 rounded-[var(--radius-row)] text-start text-[11px] font-medium text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink motion-reduce:transition-none";
+	"group/sort flex h-8 w-full items-center gap-1 rounded-mdly-control text-start text-[11px] font-medium text-muted-foreground outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none";
 
 /** A front-matter property column header: sort on click (unless multi-value), menu, resize. */
 function PropertyColumnHeader({
@@ -492,7 +492,7 @@ export function DocumentTable({
 						/>
 						<PropertyMenu
 							trigger={<span aria-hidden="true">⋯</span>}
-							triggerClassName="inline-flex size-7 shrink-0 items-center justify-center rounded-mdly-control text-sm text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink aria-expanded:bg-mdly-control"
+							triggerClassName="inline-flex size-7 shrink-0 items-center justify-center rounded-mdly-control text-sm text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 aria-expanded:bg-mdly-control"
 							triggerLabel="More view options"
 						>
 							<PropertySubmenu label="Add property">

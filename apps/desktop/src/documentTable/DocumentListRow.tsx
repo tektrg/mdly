@@ -444,7 +444,7 @@ export function DocumentListRow({
 					hasMenu &&
 					"[padding-inline-end:calc(var(--row-pad-inline)+1.375rem)]",
 				"transition-[transform,background-color,color] duration-180 ease-snappy motion-reduce:transition-none [[data-resizing]_&]:transition-none",
-				"focus-visible:ring-1 focus-visible:ring-ring",
+				"focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 				// `--selected`, not `--sidebar-accent`. `--sidebar-accent` only
 				// escalates to the real selection colour inside
 				// `[data-sidebar-root]:focus-within`, and this list is deliberately

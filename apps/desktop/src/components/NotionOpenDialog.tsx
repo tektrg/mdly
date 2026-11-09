@@ -136,7 +136,7 @@ export function NotionOpenDialog({
 
 	return (
 		<div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 pt-[12vh]">
-			<div className="w-full max-w-xl rounded-sm border border-border bg-popover p-3 text-popover-foreground shadow-xl">
+			<div className="w-full max-w-xl rounded-[18px] bg-popover p-3 text-popover-foreground shadow-xl">
 				<div className="mb-3 flex items-center justify-between gap-3">
 					<h2 className="m-0 text-sm font-medium">Open Notion</h2>
 					<Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
@@ -166,7 +166,7 @@ export function NotionOpenDialog({
 					{results.map((result) => (
 						<button
 							key={`${result.object}:${result.id}`}
-							className="flex w-full items-center justify-between gap-3 rounded-sm px-2 py-2 text-start text-sm outline-hidden hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+							className="flex w-full items-center justify-between gap-3 rounded-mdly-control px-2 py-2 text-start text-sm outline-hidden hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
 							disabled={status !== "idle" || !notionReady}
 							type="button"
 							onClick={() => void importResult(result)}

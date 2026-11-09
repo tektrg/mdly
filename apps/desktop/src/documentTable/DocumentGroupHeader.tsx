@@ -67,7 +67,7 @@ export function DocumentGroupHeader({
 					: { transform: `translateY(${index * rowHeight}px)` }),
 			}}
 			className={cn(
-				"flex items-center rounded-[var(--radius-row)] outline-hidden focus-visible:ring-1 focus-visible:ring-ring",
+				"flex items-center rounded-mdly-control outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 				// Mirror DocumentListRow's virtual positioning: the row list's
 				// inner container is `relative` with a fixed block size and every
 				// row is absolutely placed at `index * rowHeight`. Without this
@@ -82,7 +82,7 @@ export function DocumentGroupHeader({
 				onClick={onToggle}
 				title={label}
 				tabIndex={-1}
-				className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
+				className="flex min-w-0 flex-1 items-center gap-1.5 rounded-mdly-control text-start text-sidebar-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
 			>
 				<span
 					aria-hidden="true"

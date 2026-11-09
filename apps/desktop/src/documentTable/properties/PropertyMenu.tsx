@@ -5,7 +5,7 @@ import MingcuteCheckLine from "~icons/mingcute/check-line";
 import { cn } from "../../lib/utils";
 
 const MENU_POPUP_CLASS =
-	"max-h-80 w-60 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
+	"max-h-80 w-60 origin-(--transform-origin) overflow-y-auto rounded-[18px] bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95";
 
 /** What an anchored menu opens against: an element, or a point (right-click). */
 export type MenuAnchor =
@@ -151,7 +151,7 @@ export function PropertyMenuItem({
 		<Menu.Item
 			disabled={disabled}
 			className={cn(
-				"flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 outline-hidden data-highlighted:bg-accent",
+				"flex h-7 cursor-pointer items-center gap-2 rounded-mdly-control px-2 outline-hidden data-highlighted:bg-accent",
 				disabled && "cursor-default opacity-50",
 			)}
 			onClick={onClick}
@@ -180,11 +180,11 @@ export function PropertyMenuLabel({ children }: { children: ReactNode }) {
 }
 
 export function PropertyMenuSeparator() {
-	return <Menu.Separator className="my-1 h-px bg-border" />;
+	return <Menu.Separator className="my-1 h-px bg-transparent" />;
 }
 
 const POPUP_CLASS =
-	"max-h-80 w-52 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden";
+	"max-h-80 w-52 origin-(--transform-origin) overflow-y-auto rounded-[18px] bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden";
 
 /** A nested "Label ▸" menu inside a `PropertyMenu`. */
 export function PropertySubmenu({
@@ -197,7 +197,7 @@ export function PropertySubmenu({
 	const portalContainer = usePortalContainer();
 	return (
 		<Menu.SubmenuRoot>
-			<Menu.SubmenuTrigger className="flex h-7 cursor-pointer items-center gap-2 rounded-sm px-2 outline-hidden data-highlighted:bg-accent data-popup-open:bg-accent">
+			<Menu.SubmenuTrigger className="flex h-7 cursor-pointer items-center gap-2 rounded-mdly-control px-2 outline-hidden data-highlighted:bg-accent data-popup-open:bg-accent">
 				<span className="min-w-0 flex-1 truncate">{label}</span>
 				<span aria-hidden="true" className="text-muted-foreground/70">
 					▸

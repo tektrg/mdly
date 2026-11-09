@@ -241,7 +241,7 @@ describe("DocumentTable", () => {
 		const rows = bodyRowElements();
 		expect(rows[0]?.tabIndex).toBe(0);
 		expect(rows[1]?.tabIndex).toBe(-1);
-		expect(rows[0]?.className).toContain("focus-visible:ring-1");
+		expect(rows[0]?.className).toContain("focus-visible:ring-[3px]");
 
 		act(() => {
 			rows[0]?.focus();

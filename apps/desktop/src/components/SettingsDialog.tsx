@@ -245,7 +245,7 @@ export function AppearanceSettings() {
 						) : null}
 					</span>
 					<select
-						className="h-8 w-64 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40"
+						className="h-8 w-64 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 						onChange={(event) =>
 							setEditorFontPreference(event.currentTarget.value)
 						}

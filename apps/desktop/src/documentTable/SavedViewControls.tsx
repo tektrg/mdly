@@ -74,7 +74,7 @@ export function SavedViewNameInput({
 						onCancel();
 					}
 				}}
-				className={`h-7 ${fill ? "w-full" : "w-40"} min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive`}
+				className={`h-7 ${fill ? "w-full" : "w-40"} min-w-0 rounded-full bg-mdly-control px-3 text-sm outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 aria-invalid:ring-[3px] aria-invalid:ring-destructive/30`}
 			/>
 			{error ? (
 				<span role="alert" className="text-[11px] text-destructive">
@@ -123,16 +123,16 @@ export function SavedViewContextMenu({
 						// handing focus back to the icon would blur (cancel) it.
 						finalFocus={false}
 						aria-label={`${name} options`}
-						className="w-44 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden"
+						className="w-44 origin-(--transform-origin) rounded-[18px] bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden"
 					>
 						<Menu.Item
-							className="flex h-7 cursor-pointer items-center rounded-sm px-2 outline-hidden data-highlighted:bg-accent"
+							className="flex h-7 cursor-pointer items-center rounded-mdly-control px-2 outline-hidden data-highlighted:bg-accent"
 							onClick={onRename}
 						>
 							Rename view
 						</Menu.Item>
 						<Menu.Item
-							className="flex h-7 cursor-pointer items-center rounded-sm px-2 text-destructive outline-hidden data-highlighted:bg-accent"
+							className="flex h-7 cursor-pointer items-center rounded-mdly-control px-2 text-destructive outline-hidden data-highlighted:bg-accent"
 							onClick={onDelete}
 						>
 							Delete view

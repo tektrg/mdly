@@ -28,7 +28,7 @@ export type DocumentRowListMenu = DocumentRowMenuHandlers & {
  * see in the source text.
  */
 export const DOCUMENT_ROW_MENU_TRIGGER_CLASS =
-	"inline-flex size-5 shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-muted-foreground/70 opacity-0 outline-hidden transition-[opacity,color] hover:text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 group-hover/document-row:opacity-100 aria-expanded:text-foreground aria-expanded:opacity-100";
+	"inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-transparent text-muted-foreground/70 opacity-0 outline-hidden transition-[opacity,color] hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 group-hover/document-row:opacity-100 aria-expanded:text-foreground aria-expanded:opacity-100";
 
 /**
  * The title column's menu: the sidebar file row's items in the same order with

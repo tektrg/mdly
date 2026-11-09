@@ -112,7 +112,7 @@ export function NavListHeader({
 			data-variant={variant}
 			className={cn(
 				"flex shrink-0 items-center gap-1",
-				isTabs ? "border-b border-mdly-line" : "justify-between",
+				isTabs ? "pb-1" : "justify-between",
 			)}
 		>
 			{renamingId && renamingName ? (
@@ -171,16 +171,16 @@ export function NavListHeader({
 								className={cn(
 									isTabs
 										? cn(
-												"relative -mb-px flex h-8 min-w-0 shrink-0 items-center gap-1 border-b-2 px-2.5 text-[12px] outline-hidden transition-colors duration-150 ease-snappy focus-visible:ring-1 focus-visible:ring-mdly-ink motion-reduce:transition-none",
+												"relative flex h-8 min-w-0 shrink-0 items-center gap-1 rounded-mdly-control px-3 text-[12px] outline-hidden transition-colors duration-150 ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
 												entry.kind === "saved" && "max-w-44",
 												isActive
-													? "border-mdly-ink font-semibold text-mdly-strong"
-													: "border-transparent text-muted-foreground hover:text-foreground",
+													? "bg-mdly-control font-semibold text-mdly-strong after:absolute after:inset-x-3.5 after:bottom-0.5 after:h-0.5 after:rounded-full after:bg-mdly-ink after:content-['']"
+													: "text-muted-foreground hover:bg-mdly-control/60 hover:text-foreground",
 												isHidden && !isActive && "opacity-50",
 											)
 										: "",
 									!isTabs &&
-										"flex h-7 min-w-0 items-center gap-1 rounded-[var(--radius-row)] text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none",
+										"flex h-7 min-w-0 items-center gap-1 rounded-mdly-control text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
 									!isTabs && entry.kind === "saved" && "max-w-40",
 									!isTabs &&
 										(isActive

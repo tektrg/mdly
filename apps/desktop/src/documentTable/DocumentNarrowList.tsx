@@ -203,7 +203,7 @@ export function DocumentNarrowList({
 			>
 				<button
 					type="button"
-					className="flex h-8 w-full items-center gap-1.5 rounded-[var(--radius-row)] [padding-inline:var(--row-pad-inline)] text-start text-[length:var(--font-size-sidebar)] text-muted-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+					className="flex h-8 w-full items-center gap-1.5 rounded-mdly-control [padding-inline:var(--row-pad-inline)] text-start text-[length:var(--font-size-sidebar)] text-muted-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none"
 					onClick={onShowAllDocuments}
 				>
 					<MingcuteArrowLeftLine aria-hidden="true" className="size-3.5" />

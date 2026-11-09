@@ -191,12 +191,12 @@ function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
 							side="bottom"
 							sideOffset={8}
 						>
-							<Select.Popup className="w-40 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+							<Select.Popup className="w-40 origin-(--transform-origin) rounded-[18px] bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 								{codeBlockLanguages.map((option) => (
 									<Select.Item
 										key={option.value}
 										value={option.value}
-										className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-start text-[11px] text-foreground outline-hidden select-none data-highlighted:bg-accent"
+										className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control px-2 py-1 text-start text-[11px] text-foreground outline-hidden select-none data-highlighted:bg-accent"
 									>
 										<Select.ItemIndicator className="inline-flex" keepMounted>
 											<MingcuteCheckLine className="size-3 [[data-selected]_&]:opacity-100 opacity-0" />

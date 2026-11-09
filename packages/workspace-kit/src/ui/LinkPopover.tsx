@@ -1303,7 +1303,7 @@ export function LinkPopover({
 			}}
 		>
 			{machineState.mode === "creating" ? (
-				<div className="w-full overflow-hidden rounded-[var(--radius-popover)] border border-border bg-popover shadow-overlay">
+				<div className="w-full overflow-hidden rounded-[18px] bg-popover shadow-overlay">
 					{suggestionList}
 					<div className="p-1">
 						<Input
@@ -1396,7 +1396,7 @@ export function LinkPopover({
 					</div>
 				</div>
 			) : (
-				<div className="w-full overflow-hidden rounded-[var(--radius-popover)] border border-border bg-popover shadow-overlay">
+				<div className="w-full overflow-hidden rounded-[18px] bg-popover shadow-overlay">
 					{suggestionList}
 					<div className="p-1">
 						<Input

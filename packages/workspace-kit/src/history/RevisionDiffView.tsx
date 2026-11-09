@@ -104,7 +104,7 @@ export function RevisionDiffView({
 			    the same dead zone that twice needed this exact fix for other
 			    controls in that pane (see App.tsx / Toolbar.tsx history). Harmless
 			    padding for consumers without a native drag strip. */}
-			<div className="flex shrink-0 items-center justify-between gap-3 border-border border-b px-4 pt-11 pb-2">
+			<div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-11 pb-2">
 				<div className="flex min-w-0 items-center gap-2">
 					<span className="truncate font-medium text-sm">
 						{CAUSE_LABELS[revision.cause] ?? revision.cause}

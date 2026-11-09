@@ -164,7 +164,7 @@ export const SearchList = forwardRef<
 							type="button"
 							aria-label="Clear search"
 							onClick={clearQuery}
-							className="pointer-events-auto inline-flex size-4 items-center justify-center rounded-sm text-muted-foreground/70 hover:text-foreground"
+							className="pointer-events-auto inline-flex size-4 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground"
 						>
 							<MingcuteCloseLine className="size-3" />
 						</button>

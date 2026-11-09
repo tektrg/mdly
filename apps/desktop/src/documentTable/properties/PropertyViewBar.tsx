@@ -32,11 +32,11 @@ import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
 
 /** Pill chip, toolbar tokens (SpeechToDo design system: chips are pills). */
 const CHIP_CLASS =
-	"inline-flex h-6 max-w-64 min-w-0 items-center gap-1 rounded-full border border-mdly-ink/25 bg-mdly-control ps-2.5 pe-1 text-[11px] text-mdly-strong";
+	"inline-flex h-6 max-w-64 min-w-0 items-center gap-1 rounded-full bg-mdly-control ps-2.5 pe-1 text-[11px] text-mdly-strong";
 const CHIP_REMOVE_CLASS =
-	"inline-flex size-4 shrink-0 items-center justify-center rounded-full text-current outline-hidden opacity-70 hover:bg-chip-foreground/15 hover:opacity-100 focus-visible:ring-1 focus-visible:ring-ring";
+	"inline-flex size-4 shrink-0 items-center justify-center rounded-full text-current outline-hidden opacity-70 hover:bg-chip-foreground/15 hover:opacity-100 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20";
 const GHOST_CHIP_CLASS =
-	"inline-flex h-6 shrink-0 items-center rounded-full border border-dashed border-mdly-line px-2.5 text-[11px] text-muted-foreground outline-hidden hover:border-mdly-ink/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink";
+	"inline-flex h-6 shrink-0 items-center rounded-full bg-mdly-control/60 px-2.5 text-[11px] text-muted-foreground outline-hidden transition-colors hover:bg-mdly-control hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20";
 
 /**
  * Saved views R6, in the tab row: "+" always snapshots the current view under
@@ -193,7 +193,7 @@ export function PropertyViewBar({
 				<span
 					role="status"
 					data-scan-badge
-					className="inline-flex h-6 shrink-0 cursor-default items-center gap-1 rounded-full border border-mdly-line bg-mdly-control px-2 text-[11px] font-medium tabular-nums text-mdly-strong"
+					className="inline-flex h-6 shrink-0 cursor-default items-center gap-1 rounded-full bg-mdly-control px-2 text-[11px] font-medium tabular-nums text-mdly-strong"
 					title={[status, ...scan.invalidPaths.slice(0, 10)].join("\n")}
 				>
 					<span aria-hidden="true">⚠ {invalidCount.toLocaleString()}</span>
@@ -276,7 +276,7 @@ function FolderPicker({
 					autoFocus
 					aria-label="Search folders"
 					placeholder="Search folders…"
-					className="h-6 rounded-mdly-control border border-border bg-transparent px-1.5 outline-hidden focus-visible:border-mdly-ink/40 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
+					className="h-6 rounded-full bg-mdly-control px-2.5 outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
 					value={query}
 					onChange={(event) => setQuery(event.target.value)}
 				/>

@@ -60,7 +60,7 @@ function MoreNotesMenu({
 	return (
 		<PropertyMenu
 			trigger={<>+{hidden} more</>}
-			triggerClassName="self-start rounded-sm px-0.5 text-[11px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+			triggerClassName="self-start rounded-sm px-0.5 text-[11px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 			triggerLabel={`All ${day.total} notes on ${day.date}`}
 			align="start"
 		>

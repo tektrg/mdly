@@ -21,11 +21,10 @@ import { ExternalChangeReviewDialog } from "./ExternalChangeReviewDialog";
 
 type NotionSyncMode = "none" | "page" | "database";
 
-// Shared segment style for the title-bar pill: flat until hovered, no radius
-// or border of its own -- the pill's outer rounded-full + overflow-hidden
-// clips every segment (including the "..." trigger) to one continuous shape.
+// Shared segment style for the title-bar pill: flat until hovered, no border;
+// text segments take the 14px control radius, icon segments are circles.
 const PILL_SEGMENT_CLASS =
-	"pointer-events-auto rounded-none text-muted-foreground hover:bg-accent hover:text-foreground";
+	"pointer-events-auto text-muted-foreground hover:bg-accent hover:text-foreground";
 
 export function Toolbar({
 	isSingleFile,
@@ -122,7 +121,7 @@ export function Toolbar({
 	return (
 		<>
 			<div className="desktop-window-no-drag pointer-events-none fixed end-3 top-3 z-30">
-				<div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-border/50 bg-background/78 shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md">
+				<div className="pointer-events-auto flex items-center gap-0.5 rounded-full bg-background/78 p-0.5 shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md">
 					{hasAppliedChange && (
 						<>
 							<Button
@@ -139,7 +138,7 @@ export function Toolbar({
 					{pendingSyncCount > 0 && (
 						<>
 							<span
-								className={`${PILL_SEGMENT_CLASS} cursor-default [padding-inline:0.625rem] [padding-block:0.375rem] text-[11px]`}
+								className={`${PILL_SEGMENT_CLASS} cursor-default rounded-mdly-control [padding-inline:0.625rem] [padding-block:0.375rem] text-[11px]`}
 								title={`${pendingSyncCount} folder${pendingSyncCount === 1 ? "" : "s"} waiting for sync approval — see Settings → Cloud Sync`}
 							>
 								Sync: {pendingSyncCount} pending
@@ -178,7 +177,7 @@ export function Toolbar({
 }
 
 function PillDivider() {
-	return <div aria-hidden="true" className="h-4 w-px shrink-0 bg-border/60" />;
+	return <div aria-hidden="true" className="w-0.5 shrink-0" />;
 }
 
 function NoteActionsMenu({
@@ -257,9 +256,9 @@ function NoteActionsMenu({
 					side="bottom"
 					sideOffset={4}
 				>
-					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[18px] bg-popover shadow-overlay p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						<Menu.Item
-							className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+							className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 							onClick={onOpenNotionPage}
 						>
 							<MingcuteLinkLine className="size-3 shrink-0" />
@@ -267,9 +266,9 @@ function NoteActionsMenu({
 						</Menu.Item>
 						{notionSyncMode !== "none" ? (
 							<>
-								<Menu.Separator className="my-1 h-px bg-border" />
+								<Menu.Separator className="my-1 h-px bg-transparent" />
 								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={onOpenNotionInBrowser}
 								>
 									<MingcuteLinkLine className="size-3 shrink-0" />
@@ -277,7 +276,7 @@ function NoteActionsMenu({
 								</Menu.Item>
 								{notionSyncMode === "page" ? (
 									<Menu.Item
-										className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+										className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 										onClick={onPushNotionPage}
 									>
 										<MingcuteLinkLine className="size-3 shrink-0" />
@@ -285,7 +284,7 @@ function NoteActionsMenu({
 									</Menu.Item>
 								) : null}
 								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={onRefreshNotionPage}
 								>
 									<MingcuteLinkLine className="size-3 shrink-0" />
@@ -295,9 +294,9 @@ function NoteActionsMenu({
 						) : null}
 						{docImported ? (
 							<>
-								<Menu.Separator className="my-1 h-px bg-border" />
+								<Menu.Separator className="my-1 h-px bg-transparent" />
 								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={onReimportDoc}
 								>
 									<MingcuteLinkLine className="size-3 shrink-0" />
@@ -305,11 +304,13 @@ function NoteActionsMenu({
 								</Menu.Item>
 							</>
 						) : null}
-						{path ? <Menu.Separator className="my-1 h-px bg-border" /> : null}
+						{path ? (
+							<Menu.Separator className="my-1 h-px bg-transparent" />
+						) : null}
 						{path ? (
 							<>
 								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={() => void revealFile()}
 								>
 									<MingcuteFolderOpenLine className="size-3 shrink-0" />
@@ -320,7 +321,7 @@ function NoteActionsMenu({
 								</Menu.Item>
 								{canMoveFile ? (
 									<Menu.Item
-										className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+										className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 										onClick={onMoveFile}
 									>
 										<MingcuteFolderOpenLine className="size-3 shrink-0" />
@@ -328,7 +329,7 @@ function NoteActionsMenu({
 									</Menu.Item>
 								) : null}
 								<Menu.Item
-									className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={() => void copyFilePath()}
 								>
 									<MingcuteCopy2Line className="size-3 shrink-0" />
@@ -338,7 +339,7 @@ function NoteActionsMenu({
 								{hideHistoryItems ? null : (
 									<>
 										<Menu.Item
-											className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+											className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 											onClick={onOpenRevisionHistory}
 										>
 											<MingcuteHistoryLine className="size-3 shrink-0" />
@@ -347,7 +348,7 @@ function NoteActionsMenu({
 											</span>
 										</Menu.Item>
 										<Menu.Item
-											className="flex w-full cursor-pointer items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+											className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 											onClick={onOpenComments}
 										>
 											<MingcuteMessage3Line className="size-3 shrink-0" />

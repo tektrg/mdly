@@ -16,7 +16,7 @@ function Item({
 		<Menu.Item
 			{...props}
 			className={cn(
-				"flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-start text-[11px] text-sidebar-foreground outline-hidden select-none data-highlighted:bg-accent",
+				"flex w-full cursor-pointer items-center gap-2 rounded-mdly-control px-2 py-1.5 text-start text-[11px] text-sidebar-foreground outline-hidden select-none data-highlighted:bg-accent",
 				className,
 			)}
 		>
@@ -33,7 +33,7 @@ function Item({
 }
 
 function Separator() {
-	return <Menu.Separator className="my-1 h-px bg-border" />;
+	return <Menu.Separator className="my-1 h-px bg-transparent" />;
 }
 
 export function WorkspaceSwitcherMenu({
@@ -68,7 +68,7 @@ export function WorkspaceSwitcherMenu({
 					side="bottom"
 					sideOffset={4}
 				>
-					<Menu.Popup className="w-56 origin-(--transform-origin) rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+					<Menu.Popup className="w-56 origin-(--transform-origin) rounded-[18px] bg-popover p-1 text-[11px] text-popover-foreground shadow-overlay outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
 						{children}
 					</Menu.Popup>
 				</Menu.Positioner>

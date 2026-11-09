@@ -18,7 +18,7 @@
 	justify-content: center;
 	inline-size: 1.6rem;
 	block-size: 1.6rem;
-	border: 1px solid var(--mdly-line, var(--border));
+	border: 0;
 	border-radius: 999px;
 	background: var(--mdly-control, var(--popover));
 	color: var(--popover-foreground);
@@ -41,7 +41,6 @@
  * copy-link trigger stays a neutral pill. Falls back to the plain popover
  * look in hosts that don't define the mdly tokens. */
 .comment-composer-trigger[data-comment-composer-trigger] {
-	border-color: transparent;
 	background: var(--mdly-ink, var(--popover));
 	color: var(--mdly-ink-foreground, var(--popover-foreground));
 	box-shadow:

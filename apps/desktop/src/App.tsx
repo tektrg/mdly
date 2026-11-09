@@ -948,7 +948,7 @@ function NotionLoadingIndicator({ label }: { label: string | null }) {
 			aria-busy="true"
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-background/40 backdrop-blur-[2px] animate-in fade-in-0 duration-150"
 		>
-			<div className="flex items-center gap-3 rounded-[var(--radius-popover)] border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-overlay">
+			<div className="flex items-center gap-3 rounded-[18px] bg-popover px-4 py-3 text-sm text-popover-foreground shadow-overlay">
 				<MingcuteLoading3Line
 					aria-hidden="true"
 					className="size-4 animate-spin text-muted-foreground"

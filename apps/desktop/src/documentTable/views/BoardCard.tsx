@@ -161,7 +161,7 @@ export const BoardCard = memo(function BoardCard({
 				);
 			}}
 			className={cn(
-				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background px-2 py-1.5 text-sm outline-hidden transition-colors hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring",
+				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background px-2 py-1.5 text-sm outline-hidden transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 				canDrag && "cursor-grab",
 				compact && "py-1 text-xs",
 				row.isActive && "border-ring bg-accent",

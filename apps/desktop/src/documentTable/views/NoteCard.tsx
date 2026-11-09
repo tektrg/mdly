@@ -77,7 +77,7 @@ export const NoteCard = memo(function NoteCard({
 				type="button"
 				onClick={() => onOpenDocument(row)}
 				title={row.name}
-				className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-start outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+				className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-start outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 			>
 				<span className="w-full truncate">{row.name}</span>
 				{shown.map(({ fieldId, text }) => (
@@ -149,7 +149,7 @@ export function ViewFieldPicker({
 		<label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
 			{label}
 			<select
-				className="h-7 rounded-[var(--radius-row)] border border-border bg-background px-1.5 text-xs text-foreground"
+				className="h-7 rounded-full bg-mdly-control px-2.5 text-xs text-foreground"
 				value={value ?? ""}
 				onChange={(event) => onChange(event.target.value as PropertyFieldId)}
 			>

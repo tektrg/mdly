@@ -49,7 +49,7 @@ function BottomSheet({
 				<Dialog.Popup
 					data-snap={expanded ? "full" : "half"}
 					className={cn(
-						"fixed inset-inline-0 bottom-0 z-50 flex flex-col rounded-t-[var(--radius-popover)] border-t border-border bg-popover text-popover-foreground shadow-overlay outline-hidden transition-[translate,opacity] duration-300 ease-snappy data-[ending-style]:translate-y-full data-[ending-style]:opacity-0 data-[starting-style]:translate-y-full data-[starting-style]:opacity-0",
+						"fixed inset-inline-0 bottom-0 z-50 flex flex-col rounded-t-[18px] bg-popover text-popover-foreground shadow-overlay outline-hidden transition-[translate,opacity] duration-300 ease-snappy data-[ending-style]:translate-y-full data-[ending-style]:opacity-0 data-[starting-style]:translate-y-full data-[starting-style]:opacity-0",
 						className,
 					)}
 					style={{

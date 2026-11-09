@@ -245,7 +245,7 @@ export function FormatCommandMenu({
 	return (
 		<div
 			ref={menuRef}
-			className="absolute z-[5] w-[250px] overflow-hidden rounded-[var(--radius-popover)] border border-border bg-popover text-popover-foreground shadow-overlay"
+			className="absolute z-[5] w-[250px] overflow-hidden rounded-[18px] bg-popover text-popover-foreground shadow-overlay"
 			style={{
 				insetInlineStart: `${position?.x ?? 0}px`,
 				insetBlockStart: `${position?.y ?? 0}px`,

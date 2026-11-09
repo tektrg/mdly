@@ -31,7 +31,7 @@ export function BoardDialogs({
 		>
 			<AlertDialog.Portal container={portalContainer}>
 				<AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/20" />
-				<AlertDialog.Popup className="fixed start-1/2 top-1/3 z-50 flex w-80 -translate-x-1/2 flex-col gap-3 rounded-[var(--radius-popover)] border border-border bg-popover p-4 text-sm text-popover-foreground shadow-overlay outline-hidden">
+				<AlertDialog.Popup className="fixed start-1/2 top-1/3 z-50 flex w-80 -translate-x-1/2 flex-col gap-3 rounded-[18px] bg-popover p-4 text-sm text-popover-foreground shadow-overlay outline-hidden">
 					{state?.kind === "rename" ? (
 						<RenameForm
 							key={state.row.path}
@@ -101,7 +101,7 @@ function RenameForm({
 				value={name}
 				onChange={(event) => setName(event.target.value)}
 				onFocus={(event) => event.target.select()}
-				className="h-8 rounded-[var(--radius-row)] border border-border bg-background px-2 text-sm"
+				className="h-8 rounded-full bg-mdly-control px-3 text-sm"
 			/>
 			<div className="flex justify-end gap-2">
 				<Button type="button" size="sm" variant="ghost" onClick={onCancel}>

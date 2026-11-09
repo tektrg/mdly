@@ -74,7 +74,7 @@ export function RevisionList({
 	if (revisions.length === 0) {
 		return (
 			<p
-				className="m-0 rounded-mdly-control border border-mdly-line border-dashed px-3 py-6 text-center text-muted-foreground text-xs"
+				className="m-0 rounded-mdly-control bg-mdly-control px-3 py-6 text-center text-muted-foreground text-xs"
 				data-timeline-empty
 			>
 				No history yet.

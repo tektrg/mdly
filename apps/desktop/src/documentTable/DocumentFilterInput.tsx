@@ -46,13 +46,13 @@ export function DocumentFilterInput({
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={onKeyDown}
-				className="h-7 w-full rounded-full ps-7 pe-7 text-[length:var(--font-size-sidebar)] bg-mdly-control focus-visible:border-mdly-ink/40 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
+				className="h-7 w-full rounded-full ps-7 pe-7 text-[length:var(--font-size-sidebar)] bg-mdly-control focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
 			/>
 			{value.length > 0 ? (
 				<button
 					type="button"
 					aria-label="Clear filter"
-					className="absolute end-1.5 top-1/2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground/70 outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring motion-reduce:transition-none"
+					className="absolute end-1.5 top-1/2 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground/70 outline-hidden transition-colors duration-150 ease-snappy hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none"
 					onClick={() => {
 						onChange("");
 						inputRef.current?.focus();

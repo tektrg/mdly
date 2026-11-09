@@ -136,7 +136,7 @@ export function PeekListDivider({
 			tabIndex={0}
 			data-peek-list-divider
 			data-dragging={dragging ? "" : undefined}
-			className="relative z-10 flex shrink-0 cursor-ew-resize touch-none items-stretch justify-center outline-hidden [inline-size:0.75rem] [margin-inline:-0.375rem] focus-visible:ring-1 focus-visible:ring-ring"
+			className="relative z-10 flex shrink-0 cursor-ew-resize touch-none items-stretch justify-center outline-hidden [inline-size:0.75rem] [margin-inline:-0.375rem] focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 			onMouseDown={beginDrag}
 			onKeyDown={onKeyDown}
 		></div>

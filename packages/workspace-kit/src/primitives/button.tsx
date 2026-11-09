@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/utils";
 
 const buttonVariants = cva(
-	"group/button inline-flex shrink-0 items-center justify-center rounded-sm border border-transparent text-[11px] font-medium whitespace-nowrap transition-[color,background-color,border-color,box-shadow,transform,opacity] duration-[var(--default-transition-duration)] ease-snappy outline-hidden select-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+	"group/button inline-flex shrink-0 items-center justify-center rounded-mdly-control text-[11px] font-medium whitespace-nowrap transition-[color,background-color,box-shadow,transform,opacity] duration-[var(--default-transition-duration)] ease-snappy outline-hidden select-none focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 active:scale-[0.96] motion-reduce:active:scale-100 disabled:pointer-events-none disabled:opacity-50 aria-invalid:ring-[3px] aria-invalid:ring-destructive/25 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
 	{
 		variants: {
 			variant: {
@@ -15,15 +15,15 @@ const buttonVariants = cva(
 				// back to the plain primary fill.
 				ink: "mdly-ink-button bg-primary text-primary-foreground",
 				// Secondary action: neutral control fill at the 14px control radius.
-				soft: "rounded-mdly-control bg-mdly-control text-foreground hover:bg-mdly-selected aria-expanded:bg-mdly-selected focus-visible:ring-2 focus-visible:ring-mdly-ink/20",
+				soft: "bg-mdly-control text-foreground hover:bg-mdly-selected aria-expanded:bg-mdly-selected",
 				outline:
-					"border-border bg-transparent text-foreground hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground",
+					"bg-mdly-control text-foreground hover:bg-mdly-selected aria-expanded:bg-mdly-selected aria-expanded:text-foreground",
 				secondary:
-					"border-border bg-secondary text-foreground hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground",
+					"bg-secondary text-foreground hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground",
 				ghost:
 					"text-muted-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
 				destructive:
-					"border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+					"bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/25 dark:bg-destructive/20 dark:hover:bg-destructive/30",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
@@ -32,10 +32,10 @@ const buttonVariants = cva(
 				xs: "h-6 gap-1 px-2 text-[10px] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-7 gap-1 px-2.5 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
 				lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-3 has-data-[icon=inline-start]:pl-3",
-				icon: "size-8",
-				"icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
-				"icon-sm": "size-7",
-				"icon-lg": "size-9",
+				icon: "size-8 rounded-full",
+				"icon-xs": "size-6 rounded-full [&_svg:not([class*='size-'])]:size-3",
+				"icon-sm": "size-7 rounded-full",
+				"icon-lg": "size-9 rounded-full",
 			},
 		},
 		defaultVariants: {

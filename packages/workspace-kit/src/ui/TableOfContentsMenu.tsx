@@ -117,11 +117,11 @@ export function TableOfContentsMenu({
 					side="bottom"
 					sideOffset={4}
 				>
-					<Menu.Popup className="max-h-96 w-64 origin-(--transform-origin) overflow-y-auto rounded-[var(--radius-popover)] border border-border bg-popover p-1 text-popover-foreground shadow-overlay outline-hidden">
+					<Menu.Popup className="max-h-96 w-64 origin-(--transform-origin) overflow-y-auto rounded-[18px] bg-popover p-1 text-popover-foreground shadow-overlay outline-hidden">
 						{headings.map((heading) => (
 							<Menu.Item
 								key={heading.id}
-								className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-start text-xs outline-hidden select-none data-highlighted:bg-accent"
+								className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control px-2 py-1.5 text-start text-xs outline-hidden select-none data-highlighted:bg-accent"
 								data-active={heading.id === activeHeadingId}
 								onClick={() => select(heading)}
 							>

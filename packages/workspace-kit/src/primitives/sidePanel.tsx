@@ -46,7 +46,7 @@ function SidePanel({ open, onOpenChange, title, className, children }: Props) {
 				<Dialog.Backdrop className="pointer-events-none fixed inset-0 z-40 bg-transparent" />
 				<Dialog.Popup
 					className={cn(
-						"fixed inset-y-0 end-0 z-50 flex w-80 max-w-[calc(100vw-2rem)] translate-x-0 flex-col border-s border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-overlay outline-hidden transition-[translate,opacity] duration-300 ease-snappy data-[ending-style]:translate-x-full data-[ending-style]:opacity-0 data-[starting-style]:translate-x-full data-[starting-style]:opacity-0",
+						"fixed inset-y-0 end-0 z-50 flex w-80 max-w-[calc(100vw-2rem)] translate-x-0 flex-col bg-popover p-4 text-popover-foreground opacity-100 shadow-overlay outline-hidden transition-[translate,opacity] duration-300 ease-snappy data-[ending-style]:translate-x-full data-[ending-style]:opacity-0 data-[starting-style]:translate-x-full data-[starting-style]:opacity-0",
 						className,
 					)}
 				>

@@ -30,7 +30,7 @@ const TYPE_LABELS: Record<PropertyField["type"], string> = {
 };
 
 export const PROPERTY_HEADER_MENU_TRIGGER_CLASS =
-	"inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 outline-hidden transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100 aria-expanded:opacity-100";
+	"inline-flex size-5 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 opacity-0 outline-hidden transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 group-hover:opacity-100 aria-expanded:opacity-100";
 
 function valueFilters(field: PropertyField): PropertyFilter[] {
 	if (field.type === "boolean") {
@@ -176,7 +176,7 @@ export function AddPropertyColumnMenu({
 	visibleColumns,
 	isScanning,
 	trigger = <MingcuteAddLine aria-hidden="true" className="size-3.5" />,
-	triggerClassName = "inline-flex size-6 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-1 focus-visible:ring-mdly-ink aria-expanded:bg-mdly-control",
+	triggerClassName = "inline-flex size-6 items-center justify-center rounded-mdly-control text-muted-foreground outline-hidden hover:bg-mdly-control hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 aria-expanded:bg-mdly-control",
 }: {
 	fields: readonly PropertyField[];
 	visibleColumns: readonly PropertyFieldId[];

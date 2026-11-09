@@ -109,7 +109,7 @@ function SidebarPagerTabs({
 						aria-label={page.label}
 						title={page.label}
 						className={cn(
-							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 							isActive
 								? "bg-sidebar-accent text-sidebar-accent-foreground"
 								: "text-muted-foreground/60 hover:text-foreground",

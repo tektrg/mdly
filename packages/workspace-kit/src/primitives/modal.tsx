@@ -29,7 +29,7 @@ function Modal({
 				<Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] opacity-100 transition-opacity duration-200 ease-snappy data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
 				<Dialog.Popup
 					className={cn(
-						"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-4rem)] w-full max-w-md -translate-x-1/2 -translate-y-1/2 scale-100 flex-col rounded-sm border border-border bg-popover p-4 text-popover-foreground opacity-100 shadow-overlay outline-hidden transition-[translate,scale,opacity] duration-300 ease-snappy data-[ending-style]:-translate-y-[calc(50%-8px)] data-[ending-style]:scale-90 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-[calc(50%-8px)] data-[starting-style]:scale-90 data-[starting-style]:opacity-0",
+						"fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-4rem)] w-full max-w-md -translate-x-1/2 -translate-y-1/2 scale-100 flex-col rounded-[18px] bg-popover p-4 text-popover-foreground opacity-100 shadow-overlay outline-hidden transition-[translate,scale,opacity] duration-300 ease-snappy data-[ending-style]:-translate-y-[calc(50%-8px)] data-[ending-style]:scale-90 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-[calc(50%-8px)] data-[starting-style]:scale-90 data-[starting-style]:opacity-0",
 						className,
 					)}
 				>

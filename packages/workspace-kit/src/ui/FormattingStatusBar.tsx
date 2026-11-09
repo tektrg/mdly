@@ -138,7 +138,7 @@ export function FormattingStatusBar({
 						onOpenChange={setFileMenuOpen}
 						align="start"
 						triggerTitle={path}
-						triggerClassName={`${floatingChipClass} pointer-events-auto inline-flex max-w-[min(34rem,100%)] cursor-pointer items-center gap-1 rounded-full py-1 ps-3 pe-2 outline-hidden hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:ring-1 focus-visible:ring-ring`}
+						triggerClassName={`${floatingChipClass} pointer-events-auto inline-flex max-w-[min(34rem,100%)] cursor-pointer items-center gap-1 rounded-full py-1 ps-3 pe-2 outline-hidden hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20`}
 						triggerContent={
 							<>
 								<span className="min-w-0 truncate">{fileName}</span>

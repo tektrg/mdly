@@ -292,7 +292,7 @@ function PropertyRow({
 				type="button"
 				aria-label={`Delete ${property.key || "property"}`}
 				title="Delete property"
-				className="inline-flex size-7 items-center justify-center rounded-sm bg-muted/0 text-muted-foreground/45 opacity-0 outline-none transition-[background-color,color,opacity] duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 group-focus-within/property:opacity-100 group-hover/property:opacity-100"
+				className="inline-flex size-7 items-center justify-center rounded-full bg-muted/0 text-muted-foreground/45 opacity-0 outline-none transition-[background-color,color,opacity] duration-150 ease-out hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground focus-visible:opacity-100 group-focus-within/property:opacity-100 group-hover/property:opacity-100"
 				onClick={() => onDelete()}
 			>
 				<MingcuteCloseLine className="size-3.5" />
@@ -310,7 +310,7 @@ function UnsupportedPropertyRow({
 		<div className="grid grid-cols-[minmax(7rem,0.75fr)_2fr_auto] items-start gap-2">
 			<div className="flex min-w-0 items-center gap-1">
 				<span
-					className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground"
+					className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground"
 					title="Unsupported property"
 				>
 					<TypeIcon type="unsupported" />
@@ -690,12 +690,12 @@ function PropertyTypeSelect({
 			</Select.Trigger>
 			<Select.Portal container={portalContainer}>
 				<Select.Positioner className="z-50" align="start" side="bottom" sideOffset={4}>
-					<Select.Popup className="w-36 origin-(--transform-origin) rounded-sm border border-border bg-popover p-1 text-[11px] text-popover-foreground outline-hidden">
+					<Select.Popup className="w-36 origin-(--transform-origin) rounded-[18px] bg-popover shadow-overlay p-1 text-[11px] text-popover-foreground outline-hidden">
 						{propertyTypes.map((type) => (
 							<Select.Item
 								key={type}
 								value={type}
-								className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1 outline-hidden data-highlighted:bg-accent"
+								className="flex cursor-pointer items-center gap-2 rounded-mdly-control px-2 py-1 outline-hidden data-highlighted:bg-accent"
 							>
 								<Select.ItemIndicator className="inline-flex" keepMounted>
 									<MingcuteCheckLine className="size-3 [[data-selected]_&]:opacity-100 opacity-0" />
@@ -704,7 +704,7 @@ function PropertyTypeSelect({
 								<Select.ItemText>{typeLabel(type)}</Select.ItemText>
 							</Select.Item>
 						))}
-						<div className="my-1 h-px bg-border" />
+						<div className="my-1 h-px bg-transparent" />
 						<button
 							type="button"
 							className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 outline-hidden hover:bg-accent"
