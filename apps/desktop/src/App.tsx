@@ -60,7 +60,7 @@ import { parseNotionDatabaseMetadata } from "./notion/notionDatabase";
 import { EDITABLE_FOCUS_SELECTOR, SIDEBAR_NAV_SELECTOR } from "./selectors";
 import {
 	autoCollapseSidebarForDocument,
-	createWorkspaceWithSidebar,
+	createFolderAndOpenWorkspace,
 	getPendingRenameTarget,
 	goBackDocument,
 	goForwardDocument,
@@ -70,7 +70,7 @@ import {
 	moveMarkdownFileToFolder,
 	openSingleFile,
 	openWorkspace,
-	openWorkspaceWithSidebar,
+	pickAndOpenWorkspace,
 	refreshFiles,
 	refreshFilesDebounced,
 	restorePersistedWorkspace,
@@ -563,16 +563,11 @@ function App() {
 	}, []);
 
 	const openCommandBarFile = useCallback((path: string) => {
-		setSidebarOpen(true);
 		void loadPath(path);
 	}, []);
 
 	const openCommandBarWorkspace = useCallback(async (path?: string) => {
-		const switched = await openWorkspace(path);
-		if (switched && workspaceStore.get().workspacePath !== null) {
-			setSidebarOpen(true);
-		}
-		return switched;
+		return await openWorkspace(path);
 	}, []);
 
 	const openMoveFileCommandBar = useCallback((path: string | null) => {
@@ -686,7 +681,7 @@ function App() {
 				setWorkspaceSwitcherOpen(true);
 			} else if (keymatch(event, "CmdOrCtrl+Shift+A")) {
 				event.preventDefault();
-				await openWorkspaceWithSidebar();
+				await pickAndOpenWorkspace();
 			} else if (keymatch(event, "CmdOrCtrl+Shift+N")) {
 				event.preventDefault();
 				await desktopApi.openNewWindow();
@@ -782,7 +777,7 @@ function App() {
 		const disposers = [
 			desktopApi.onMenuCreateMarkdownFile(() => void createMarkdownFile()),
 			desktopApi.onMenuOpenFile(() => void openFilePicker()),
-			desktopApi.onMenuOpenFolder(() => void openWorkspaceWithSidebar()),
+			desktopApi.onMenuOpenFolder(() => void pickAndOpenWorkspace()),
 			desktopApi.onMenuOpenSettings(() => openSettings()),
 			desktopApi.onMenuShowWorkspaceSwitcher(() =>
 				setWorkspaceSwitcherOpen(true),
@@ -824,7 +819,6 @@ function App() {
 				launchWorkspacePath.length > 0
 			) {
 				await openWorkspace(launchWorkspacePath);
-				setSidebarOpen(true);
 				return;
 			}
 			// R1: no auto-reopen of the last document. The remembered document is
@@ -901,8 +895,8 @@ function App() {
 				<section className="flex min-h-0 flex-1 flex-col overflow-hidden">
 					<MainPanel
 						hasWorkspace={hasWorkspace}
-						onCreateFolder={() => void createWorkspaceWithSidebar()}
-						onOpenFolder={() => void openWorkspaceWithSidebar()}
+						onCreateFolder={() => void createFolderAndOpenWorkspace()}
+						onOpenFolder={() => void pickAndOpenWorkspace()}
 						onMoveFile={openMoveFileCommandBar}
 						notionDatabaseRefreshToken={notionDatabaseRefreshToken}
 						onScrollContainerChange={setScrollContainerEl}

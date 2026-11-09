@@ -440,22 +440,16 @@ export function clearViewer() {
 	viewerStore.set((state) => emptyDoc(state.lastOpenedPath));
 }
 
-/** Opens a workspace and reveals the sidebar. */
-export async function openWorkspaceWithSidebar() {
+/** Picks a folder and opens it as a workspace (the document table is the landing view). */
+export async function pickAndOpenWorkspace() {
 	await openWorkspace();
-	if (workspaceStore.get().workspacePath !== null) {
-		setSidebarOpen(true);
-	}
 }
 
-/** Creates a new folder, opens it as a workspace, and reveals the sidebar. */
-export async function createWorkspaceWithSidebar() {
+/** Creates a new folder and opens it as a workspace. */
+export async function createFolderAndOpenWorkspace() {
 	const created = await desktopApi.createFolderPicker();
 	if (typeof created !== "string") return;
 	await openWorkspace(created);
-	if (workspaceStore.get().workspacePath !== null) {
-		setSidebarOpen(true);
-	}
 }
 
 /**
@@ -951,7 +945,6 @@ export async function moveMarkdownFileToFolder(
 		if (isCurrentFile && !sameWorkspace) {
 			await openWorkspace(targetWorkspacePath);
 			await loadPath(nextPath, { historyAction: "replace" });
-			setSidebarOpen(true);
 			return true;
 		}
 

@@ -125,6 +125,7 @@ type UiState = {
 	 * never persist its emptied workspace over the remembered one.
 	 */
 	singleFileWindow: boolean;
+	/** Runtime-only: always starts hidden, never serialized. */
 	sidebarOpen: boolean;
 	/**
 	 * R3: runtime-only "the sidebar was auto-collapsed to make room for a document
@@ -162,7 +163,6 @@ type Persisted = {
 	};
 	document?: { lastOpenedPath?: string | null };
 	ui?: {
-		sidebarOpen?: boolean;
 		themePreference?: unknown;
 		contrastPreference?: unknown;
 		editorFontPreference?: unknown;
@@ -319,7 +319,9 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 
 	return {
 		singleFileWindow: false,
-		sidebarOpen: ui?.sidebarOpen ?? false,
+		// The document table is the main navigation; the sidebar is opt-in per
+		// session (pill / Cmd+Shift+E), so a saved `sidebarOpen` is never restored.
+		sidebarOpen: false,
 		sidebarAutoCollapsed: false,
 		isSwitcherOpen: false,
 		themePreference: isThemePreference(ui?.themePreference)
@@ -374,7 +376,6 @@ export function getEmptyWorkspaceState(): WorkspaceState {
 
 function serializeUi(ui: UiState): NonNullable<Persisted["ui"]> {
 	return {
-		sidebarOpen: ui.sidebarOpen,
 		themePreference: ui.themePreference,
 		contrastPreference: ui.contrastPreference,
 		editorFontPreference: ui.editorFontPreference,

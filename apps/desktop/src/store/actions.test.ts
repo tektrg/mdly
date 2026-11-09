@@ -1943,7 +1943,7 @@ describe("desktop document-table seam", () => {
 		expect(viewerStore.get().requestedPath).toBeNull();
 	});
 
-	it("auto-collapses the sidebar without rewriting the saved preference", async () => {
+	it("auto-collapses the sidebar without rewriting the session preference", async () => {
 		const api = createDesktopApi();
 		const {
 			appStore,
@@ -1951,7 +1951,11 @@ describe("desktop document-table seam", () => {
 			setSidebarOpen,
 			toggleSidebar,
 			uiStore,
-		} = await loadStoreActions(api, { ui: { sidebarOpen: true } });
+		} = await loadStoreActions(api);
+
+		// The sidebar always starts hidden; the user opens it for the session.
+		expect(uiStore.get().sidebarOpen).toBe(false);
+		setSidebarOpen(true);
 
 		autoCollapseSidebarForDocument();
 		expect(uiStore.get().sidebarAutoCollapsed).toBe(true);

@@ -49,7 +49,7 @@ describe("desktop state persistence", () => {
 		expect(snapshot).not.toContain("filter");
 	});
 
-	it("hydrates a fresh session onto the document table with the sidebar preference intact", () => {
+	it("hydrates a fresh session onto the document table with the sidebar hidden", () => {
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) =>
 				key === STORAGE_KEY
@@ -65,7 +65,8 @@ describe("desktop state persistence", () => {
 		expect(state.document.requestedPath).toBeNull();
 		expect(state.document.currentPath).toBeNull();
 		expect(state.document.lastOpenedPath).toBe("/ws/a.md");
-		expect(state.ui.sidebarOpen).toBe(true);
+		// A previously saved open sidebar is deliberately not restored.
+		expect(state.ui.sidebarOpen).toBe(false);
 		expect(state.ui.sidebarAutoCollapsed).toBe(false);
 		expect(state.workspace.hasListedOnce).toBe(false);
 		expect(state.workspace.listingError).toBeNull();
