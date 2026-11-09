@@ -14,7 +14,7 @@ const COUNT_DEBOUNCE_MS = 300;
 const checkboxClassName =
 	"size-4 shrink-0 cursor-pointer [accent-color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-40";
 const buttonClassName =
-	"h-7 shrink-0 rounded-sm border border-input bg-card px-2.5 text-[11px] text-foreground outline-hidden disabled:opacity-50";
+	"h-7 shrink-0 rounded-full bg-mdly-control px-2.5 text-[11px] text-foreground outline-hidden disabled:opacity-50";
 
 function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
@@ -160,7 +160,7 @@ export function FilesScopeSettings({
 
 	return (
 		<div className="flex flex-col gap-3">
-			<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+			<label className="flex items-start justify-between gap-4 rounded-mdly-control bg-foreground/[0.04] [padding-block:0.625rem] [padding-inline:0.75rem]">
 				<span className="flex min-w-0 flex-col gap-1">
 					<span className="text-[11px] font-medium text-foreground">
 						Respect .gitignore
@@ -183,8 +183,8 @@ export function FilesScopeSettings({
 				/>
 			</label>
 
-			<div className="flex flex-col rounded-sm border border-border bg-card">
-				<div className="grid grid-cols-[1fr_3.5rem_3.5rem_1.5rem] items-center gap-2 border-b border-border text-[11px] font-medium text-muted-foreground [padding-block:0.375rem] [padding-inline:0.75rem]">
+			<div className="flex flex-col rounded-mdly-control bg-foreground/[0.04]">
+				<div className="grid grid-cols-[1fr_3.5rem_3.5rem_1.5rem] items-center gap-2 text-[11px] font-medium text-muted-foreground [padding-block:0.375rem] [padding-inline:0.75rem]">
 					<span>Pattern</span>
 					<span className="text-center">In app</span>
 					<span className="text-center">Synced</span>
@@ -261,7 +261,7 @@ export function FilesScopeSettings({
 					</div>
 				))}
 				<form
-					className="flex items-center gap-2 border-t border-border [padding-block:0.375rem] [padding-inline:0.75rem]"
+					className="flex items-center gap-2 [padding-block:0.375rem] [padding-inline:0.75rem]"
 					onSubmit={(event) => {
 						event.preventDefault();
 						addRule();
@@ -269,7 +269,7 @@ export function FilesScopeSettings({
 				>
 					<input
 						aria-label="New pattern"
-						className="h-7 min-w-0 flex-1 rounded-sm border border-input bg-background px-2 text-[11px] text-foreground outline-hidden"
+						className="h-7 min-w-0 flex-1 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden"
 						onChange={(event) => setNewPattern(event.currentTarget.value)}
 						placeholder="Folder name, path (fe/docs) or glob (*.log)"
 						spellCheck={false}

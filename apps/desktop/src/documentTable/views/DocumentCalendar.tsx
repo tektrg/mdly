@@ -60,7 +60,7 @@ function MoreNotesMenu({
 	return (
 		<PropertyMenu
 			trigger={<>+{hidden} more</>}
-			triggerClassName="self-start rounded-sm px-0.5 text-[11px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
+			triggerClassName="self-start rounded-mdly-control px-0.5 text-[11px] text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 			triggerLabel={`All ${day.total} notes on ${day.date}`}
 			align="start"
 		>
@@ -95,9 +95,9 @@ const CalendarDayCell = memo(function CalendarDayCell({
 			data-calendar-day={day.date}
 			{...dropHandlers}
 			className={cn(
-				"flex min-h-0 min-w-0 flex-col gap-0.5 overflow-hidden border-border border-t p-1",
-				!day.inMonth && "bg-muted/30 text-muted-foreground",
-				isDropTarget && "ring-1 ring-ring ring-inset",
+				"flex min-h-0 min-w-0 flex-col gap-0.5 overflow-hidden rounded-mdly-control bg-foreground/[0.04] p-1",
+				!day.inMonth && "bg-foreground/[0.02] text-muted-foreground",
+				isDropTarget && "ring-[3px] ring-mdly-ink/20 ring-inset",
 			)}
 		>
 			<span className="shrink-0 text-[11px] tabular-nums">
@@ -251,7 +251,7 @@ export function DocumentCalendar({
 			<div
 				role="grid"
 				aria-label={`Notes by ${field.label}`}
-				className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border"
+				className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-mdly-control"
 			>
 				<div role="row" tabIndex={-1} className="grid shrink-0 grid-cols-7">
 					{WEEKDAY_LABELS.map((label) => (
@@ -265,7 +265,7 @@ export function DocumentCalendar({
 						</div>
 					))}
 				</div>
-				<div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-7">
+				<div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-7 gap-1 p-1">
 					{model.weeks.flat().map((day) => (
 						<CalendarDayCell
 							key={day.date}

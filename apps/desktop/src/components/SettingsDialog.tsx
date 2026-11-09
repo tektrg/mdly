@@ -88,7 +88,7 @@ const contrastPreferenceLabels: Record<ContrastPreference, string> = {
 };
 
 const segmentedControlItemClassName =
-	"inline-flex h-7 min-w-14 items-center justify-center rounded-sm px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy select-none peer-checked:bg-card peer-checked:text-foreground peer-focus-visible:ring-1 peer-focus-visible:ring-ring/40 peer-focus-visible:outline-hidden";
+	"inline-flex h-7 min-w-14 items-center justify-center rounded-mdly-control px-2 text-[11px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy select-none peer-checked:bg-card peer-checked:text-foreground peer-focus-visible:ring-1 peer-focus-visible:ring-ring/40 peer-focus-visible:outline-hidden";
 
 const fallbackEditorFontFamilies = [
 	"Avenir Next",
@@ -184,7 +184,7 @@ export function AppearanceSettings() {
 	return (
 		<SettingsSection title="Appearance">
 			<div className="flex flex-wrap items-end gap-4">
-				<fieldset className="inline-grid grid-cols-3 rounded-sm border border-border bg-muted/50 p-0.5">
+				<fieldset className="inline-grid grid-cols-3 rounded-mdly-control bg-muted/50 p-0.5">
 					<legend className="sr-only">Theme</legend>
 					{THEME_PREFERENCES.map((preference) => {
 						return (
@@ -245,7 +245,7 @@ export function AppearanceSettings() {
 						) : null}
 					</span>
 					<select
-						className="h-8 w-64 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
+						className="h-8 w-64 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
 						onChange={(event) =>
 							setEditorFontPreference(event.currentTarget.value)
 						}
@@ -297,7 +297,7 @@ export function ImportSettings() {
 			title="Import"
 			description="How imported documents remember their original file."
 		>
-			<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+			<label className="flex items-start justify-between gap-4 rounded-mdly-control bg-foreground/[0.04] [padding-block:0.625rem] [padding-inline:0.75rem]">
 				<span className="flex min-w-0 flex-col gap-1">
 					<span className="text-[11px] font-medium text-foreground">
 						Keep source document
@@ -308,7 +308,7 @@ export function ImportSettings() {
 					</span>
 				</span>
 				<select
-					className="h-8 w-40 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden"
+					className="h-8 w-40 shrink-0 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden"
 					value={sourceRetentionPreference}
 					onChange={(event) =>
 						setSourceRetentionPreference(
@@ -504,7 +504,7 @@ export function CloudSyncSettings({
 			title="Cloud Sync"
 			description="Read this workspace from any browser at your shared Cloud Sync password. Off by default per workspace."
 		>
-			<div className="flex flex-col gap-3 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+			<div className="flex flex-col gap-3 rounded-mdly-control bg-foreground/[0.04] [padding-block:0.625rem] [padding-inline:0.75rem]">
 				<div className="flex items-start justify-between gap-4">
 					<span className="flex min-w-0 flex-col gap-1">
 						<span className="text-[11px] font-medium text-foreground">
@@ -519,7 +519,7 @@ export function CloudSyncSettings({
 						)}
 					</span>
 					<button
-						className="h-8 shrink-0 rounded-sm border border-input bg-card px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
+						className="h-8 shrink-0 rounded-full bg-mdly-control px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
 						disabled={busy}
 						onClick={() =>
 							void (state.backgroundSync
@@ -538,7 +538,7 @@ export function CloudSyncSettings({
 								Deployment URL
 							</span>
 							<input
-								className="h-8 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden"
+								className="h-8 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden"
 								disabled={busy || state.backgroundSync}
 								onChange={(event) =>
 									setDeploymentUrl(event.currentTarget.value)
@@ -554,7 +554,7 @@ export function CloudSyncSettings({
 									: "Cloud Sync password (leave blank to reuse the one already in Keychain)"}
 							</span>
 							<input
-								className="h-8 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden"
+								className="h-8 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden"
 								disabled={busy}
 								onChange={(event) => setPassword(event.currentTarget.value)}
 								type="password"
@@ -563,7 +563,7 @@ export function CloudSyncSettings({
 						</label>
 						{state.status === "needs-reauth" && (
 							<button
-								className="h-8 w-fit shrink-0 rounded-sm border border-input bg-card px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
+								className="h-8 w-fit shrink-0 rounded-full bg-mdly-control px-3 text-[11px] text-foreground outline-hidden disabled:opacity-50"
 								disabled={busy || password.length === 0}
 								onClick={() => void handleEnable()}
 								type="button"
@@ -589,7 +589,7 @@ export function CloudSyncSettings({
 							{pendingFolders.map((pending) => (
 								<li
 									key={pending.path}
-									className="flex items-center gap-2 rounded-sm border border-border [padding-block:0.375rem] [padding-inline:0.5rem]"
+									className="flex items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem]"
 								>
 									<span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
 										{pending.path} — {pending.fileCountAtLeast.toLocaleString()}
@@ -600,7 +600,7 @@ export function CloudSyncSettings({
 											: ""}
 									</span>
 									<button
-										className="h-7 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-foreground outline-hidden disabled:opacity-50"
+										className="h-7 shrink-0 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden disabled:opacity-50"
 										disabled={pendingBusy !== null}
 										onClick={() => void handleApprovePending(pending.path)}
 										type="button"
@@ -608,7 +608,7 @@ export function CloudSyncSettings({
 										Approve
 									</button>
 									<button
-										className="h-7 shrink-0 rounded-sm border border-input bg-card px-2 text-[11px] text-muted-foreground outline-hidden disabled:opacity-50"
+										className="h-7 shrink-0 rounded-full bg-mdly-control px-2 text-[11px] text-muted-foreground outline-hidden disabled:opacity-50"
 										disabled={pendingBusy !== null}
 										onClick={() => void handleExcludePending(pending.path)}
 										type="button"

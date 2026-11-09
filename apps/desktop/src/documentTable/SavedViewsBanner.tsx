@@ -39,7 +39,7 @@ export function SavedViewsBanner() {
 	return (
 		<div
 			role="alert"
-			className="mx-3 my-1 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs"
+			className="mx-3 my-1 flex items-center gap-2 rounded-mdly-control bg-amber-500/15 px-3 py-1.5 text-xs"
 			data-testid="saved-views-banner"
 			data-notice={notice.kind}
 		>

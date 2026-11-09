@@ -21,7 +21,7 @@ type PaletteState = {
 };
 
 const floatingChipClass =
-	"border border-border/50 bg-background/78 text-muted-foreground shadow-[var(--shadow-chip)] backdrop-blur-md";
+	"bg-background/78 text-muted-foreground shadow-[var(--shadow-chip)] backdrop-blur-md";
 const CONTENT_COUNT_DEBOUNCE_MS = 2_000;
 
 export function FormattingStatusBar({

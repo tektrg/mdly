@@ -173,9 +173,7 @@ function SidebarComponent({
 						Open folder
 					</Button>
 				</div>
-				{footer ? (
-					<div className="border-t border-sidebar-border p-2">{footer}</div>
-				) : null}
+				{footer ? <div className="p-2">{footer}</div> : null}
 			</SidebarFrame>
 		);
 	}

@@ -42,7 +42,7 @@ export type RecentTagAppearance = {
 const DEFAULT_TAG_APPEARANCE: Required<RecentTagAppearance> = {
 	background: "var(--chip)",
 	color: "var(--chip-foreground)",
-	border: "0.5px solid var(--chip-border)",
+	border: "0",
 };
 
 /**
@@ -201,7 +201,7 @@ export const RecentFilesList = forwardRef<
 							data-sidebar-index={index}
 							aria-selected={isActive}
 							className={cn(
-								"flex w-full min-w-0 flex-col gap-1 rounded-[var(--radius-row)] px-2.5 py-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
+								"flex w-full min-w-0 flex-col gap-1 rounded-mdly-control px-2.5 py-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
 								isActive &&
 									"bg-sidebar-accent text-sidebar-accent-foreground font-medium",

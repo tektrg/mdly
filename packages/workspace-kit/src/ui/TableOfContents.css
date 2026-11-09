@@ -70,8 +70,8 @@
 	overflow: auto;
 	padding-block: 1rem;
 	padding-inline: 1.15rem;
-	border: 1px solid var(--border);
-	border-radius: var(--radius-popover);
+	border: 0;
+	border-radius: 18px;
 	background: color-mix(in oklab, var(--popover) 96%, transparent);
 	box-shadow: var(--shadow-overlay);
 	opacity: 0;
@@ -118,7 +118,7 @@
 	gap: 0.35rem;
 	inline-size: 100%;
 	border: 0;
-	border-radius: var(--radius-inner);
+	border-radius: 14px;
 	background: transparent;
 	color: var(--muted-foreground);
 	font: inherit;

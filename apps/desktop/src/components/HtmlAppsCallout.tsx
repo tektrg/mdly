@@ -41,7 +41,7 @@ export function SidebarHtmlAppsCallout({
 	onDismiss: () => void;
 }) {
 	return (
-		<div className="rounded-md border border-primary/20 bg-primary/8 p-3">
+		<div className="rounded-mdly-control bg-primary/8 p-3">
 			<div className="flex flex-col gap-3">
 				<div className="flex flex-col gap-1">
 					<p className="text-[11px] text-foreground">
@@ -101,7 +101,7 @@ export function HtmlAppsDialog({
 						Install the skills, then tell your coding agent what app you want to
 						build. You can view the app directly in mdly with live reloading.
 					</p>
-					<div className="flex items-start gap-2 rounded-sm border border-border bg-muted/40 p-2">
+					<div className="flex items-start gap-2 rounded-mdly-control bg-muted/40 p-2">
 						<code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs text-foreground">
 							{command}
 						</code>

@@ -150,21 +150,15 @@ function InvalidFrontMatter({
 		if (searchActive) detailsRef.current?.setAttribute("open", "");
 	}, [searchActive]);
 	return (
-		<div
-			className="editorPropertiesPanel border-b border-border/70"
-			data-find-active={searchActive}
-		>
+		<div className="editorPropertiesPanel " data-find-active={searchActive}>
 			<div className="flex flex-col gap-2 text-[12px]">
 				<p className="m-0 text-muted-foreground">Properties unavailable</p>
-				<details
-					ref={detailsRef}
-					className="rounded-sm border border-border bg-muted/30"
-				>
+				<details ref={detailsRef} className="rounded-mdly-control bg-muted/30">
 					<summary className="cursor-pointer px-2 py-1 text-[11px] text-muted-foreground">
 						Raw front matter
 					</summary>
 					<textarea
-						className="block min-h-28 w-full resize-y border-t border-border bg-transparent p-2 font-mono text-[11px] outline-none"
+						className="block min-h-28 w-full resize-y bg-transparent p-2 font-mono text-[11px] outline-none"
 						value={raw}
 						onChange={(event) => {
 							const nextRaw = event.target.value;
@@ -319,12 +313,12 @@ function UnsupportedPropertyRow({
 					{property.key}
 				</span>
 			</div>
-			<details className={cn("rounded-sm", ghostBoxClass)}>
+			<details className={cn("rounded-mdly-control", ghostBoxClass)}>
 				<summary className="flex min-h-7 cursor-pointer items-center gap-2 px-2 py-1 text-[11px] text-muted-foreground">
 					<span className="min-w-0 flex-1 truncate">{property.preview}</span>
 					<span className="shrink-0 text-[10px] uppercase">YAML</span>
 				</summary>
-				<pre className="m-0 overflow-auto border-t border-border p-2 font-mono text-[11px]">
+				<pre className="m-0 overflow-auto p-2 font-mono text-[11px]">
 					{property.raw}
 				</pre>
 			</details>
@@ -549,7 +543,7 @@ function DateValue({
 	return (
 		<div
 			className={cn(
-				"flex h-7 w-fit items-center rounded-sm px-2 text-[12px]",
+				"flex h-7 w-fit items-center rounded-mdly-control px-2 text-[12px]",
 				ghostBoxClass,
 			)}
 		>
@@ -624,14 +618,14 @@ function TagsValue({
 	return (
 		<div
 			className={cn(
-				"flex min-h-7 flex-wrap items-center gap-1 rounded-sm px-1.5 py-1",
+				"flex min-h-7 flex-wrap items-center gap-1 rounded-mdly-control px-1.5 py-1",
 				ghostBoxClass,
 			)}
 		>
 			{values.map((value) => (
 				<span
 					key={value}
-					className="inline-flex items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 text-[11px]"
+					className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[11px]"
 				>
 					{value}
 					<button
@@ -689,7 +683,12 @@ function PropertyTypeSelect({
 				<TypeIcon type={value} />
 			</Select.Trigger>
 			<Select.Portal container={portalContainer}>
-				<Select.Positioner className="z-50" align="start" side="bottom" sideOffset={4}>
+				<Select.Positioner
+					className="z-50"
+					align="start"
+					side="bottom"
+					sideOffset={4}
+				>
 					<Select.Popup className="w-36 origin-(--transform-origin) rounded-[18px] bg-popover shadow-overlay p-1 text-[11px] text-popover-foreground outline-hidden">
 						{propertyTypes.map((type) => (
 							<Select.Item
@@ -707,7 +706,7 @@ function PropertyTypeSelect({
 						<div className="my-1 h-px bg-transparent" />
 						<button
 							type="button"
-							className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1 outline-hidden hover:bg-accent"
+							className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control px-2 py-1 outline-hidden hover:bg-accent"
 							onClick={onDelete}
 						>
 							<span className="inline-flex w-3 justify-center">

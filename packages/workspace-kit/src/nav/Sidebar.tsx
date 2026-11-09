@@ -1073,7 +1073,7 @@ export const Sidebar = forwardRef<SidebarHandle, SidebarProps>(function Sidebar(
 				style={{ pointerEvents: "none", width: "max-content" }}
 			>
 				{activeDragLabel ? (
-					<div className="inline-flex w-max max-w-48 truncate rounded-sm border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground shadow-overlay">
+					<div className="inline-flex w-max max-w-48 truncate rounded-full bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground shadow-overlay">
 						{fileNameFromPath(activeDragLabel)}
 					</div>
 				) : null}
@@ -1643,7 +1643,7 @@ function FolderSegment({
 			<span
 				ref={setRefs}
 				className={cn(
-					"min-w-0 truncate rounded-sm",
+					"min-w-0 truncate rounded-mdly-control",
 					active && "bg-sidebar-accent/70",
 				)}
 				{...attributes}
@@ -2178,7 +2178,7 @@ function FileRenameInput({
 				}}
 			/>
 			{error && (
-				<span className="absolute top-full start-0 z-20 mt-1 w-max max-w-[calc(var(--sidebar-width)-2rem)] rounded-sm bg-[var(--destructive-surface)] px-2 py-1.5 text-[11px] font-normal leading-4 text-[var(--destructive-surface-foreground)] shadow-overlay">
+				<span className="absolute top-full start-0 z-20 mt-1 w-max max-w-[calc(var(--sidebar-width)-2rem)] rounded-mdly-control bg-[var(--destructive-surface)] px-2 py-1.5 text-[11px] font-normal leading-4 text-[var(--destructive-surface-foreground)] shadow-overlay">
 					{error}
 				</span>
 			)}

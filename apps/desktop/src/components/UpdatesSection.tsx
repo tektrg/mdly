@@ -10,7 +10,7 @@ export function SidebarUpdateCallout({
 	onDismiss: () => void;
 }) {
 	return (
-		<div className="rounded-md border border-primary/20 bg-primary/8 p-3">
+		<div className="rounded-mdly-control bg-primary/8 p-3">
 			<div className="flex flex-col gap-3">
 				<div className="flex flex-col gap-1">
 					<p className="text-[11px] text-foreground">

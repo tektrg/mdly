@@ -345,7 +345,7 @@ export function NotionDatabaseViewer({
 
 	return (
 		<div className="flex h-full min-h-0 flex-col bg-background">
-			<header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
+			<header className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 py-2">
 				<h1 className="m-0 min-w-0 truncate text-sm font-medium">
 					{metadata.title}
 				</h1>
@@ -422,7 +422,7 @@ export function NotionDatabaseViewer({
 						) : null}
 						<thead>
 							<tr>
-								<th className="group sticky top-0 z-10 border-b border-border bg-background px-3 py-2 text-start font-medium">
+								<th className="group sticky top-0 z-10 bg-background px-3 py-2 text-start font-medium">
 									Row
 									<ColumnResizeHandle
 										onResizeStart={(clientX, startWidth) =>
@@ -483,7 +483,7 @@ export function NotionDatabaseViewer({
 												moveColumn(index, index + 1);
 											}
 										}}
-										className={`group sticky top-0 z-10 cursor-grab border-b border-border bg-background px-3 py-2 text-start font-medium select-none ${
+										className={`group sticky top-0 z-10 cursor-grab bg-background px-3 py-2 text-start font-medium select-none ${
 											dragSourceIndex === index ? "opacity-40" : ""
 										} ${dropTargetIndex === index ? "bg-muted" : ""}`}
 									>
@@ -506,7 +506,7 @@ export function NotionDatabaseViewer({
 						<tbody>
 							{query.rows.map((row) => (
 								<tr key={row.pageId} className="hover:bg-muted/40">
-									<td className="max-w-80 border-b border-border px-3 py-2 align-top">
+									<td className="max-w-80 px-3 py-2 align-top">
 										<button
 											className="max-w-full truncate text-start text-primary outline-hidden hover:underline focus-visible:underline"
 											type="button"
@@ -518,7 +518,7 @@ export function NotionDatabaseViewer({
 									{columns.map((column) => (
 										<td
 											key={`${row.pageId}:${column}`}
-											className="max-w-80 border-b border-border px-3 py-2 align-top text-muted-foreground"
+											className="max-w-80 px-3 py-2 align-top text-muted-foreground"
 										>
 											<span className="line-clamp-3 whitespace-pre-wrap">
 												{row.properties[column] ?? ""}

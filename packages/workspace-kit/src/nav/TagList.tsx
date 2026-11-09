@@ -151,7 +151,7 @@ const FlatTagListView = ({
 							aria-selected={isActive}
 							title={label}
 							className={cn(
-								"flex w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-row)] px-2 [padding-block:var(--row-pad-block)] text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
+								"flex w-full min-w-0 items-center gap-1.5 rounded-mdly-control px-2 [padding-block:var(--row-pad-block)] text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
 								isActive &&
 									"bg-sidebar-accent text-sidebar-accent-foreground font-medium",

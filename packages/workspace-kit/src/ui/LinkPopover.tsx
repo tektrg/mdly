@@ -1260,10 +1260,7 @@ export function LinkPopover({
 		"h-auto flex-1 justify-center gap-1.5 rounded-none border-0 px-2 text-foreground shadow-none inset-shadow-none hover:bg-muted [&_svg]:size-3";
 	const suggestionList =
 		wikiSuggestions.length > 0 ? (
-			<div
-				role="listbox"
-				className="max-h-40 overflow-y-auto border-b border-border/90 p-1"
-			>
+			<div role="listbox" className="max-h-40 overflow-y-auto p-1">
 				{wikiSuggestions.map((suggestion, index) => {
 					const isActive = index === activeSuggestionIndex;
 					return (
@@ -1315,7 +1312,7 @@ export function LinkPopover({
 								setCreationHref(event.target.value);
 								setActiveSuggestionIndex(0);
 							}}
-							className="h-7 rounded-sm border-border bg-background px-2 py-[5px] text-[11px] leading-[16px]"
+							className="h-7 rounded-full border-0 bg-mdly-control px-3 py-[5px] text-[11px] leading-[16px]"
 						/>
 					</div>
 					<div className="flex h-6 items-center px-2 text-[9px] leading-[14px] tracking-[0.12em] text-muted-foreground/85">
@@ -1327,7 +1324,7 @@ export function LinkPopover({
 					<div
 						ref={previewButtonRef}
 						className={cn(
-							"group flex h-7 min-w-0 overflow-hidden rounded-[var(--radius-popover)] border border-border bg-card shadow-xs",
+							"group flex h-7 min-w-0 overflow-hidden rounded-[var(--radius-popover)] bg-card shadow-xs",
 							styles.previewButton,
 						)}
 					>
@@ -1408,7 +1405,7 @@ export function LinkPopover({
 								handleExistingLinkInput(event.target.value);
 								setActiveSuggestionIndex(0);
 							}}
-							className="h-7 rounded-sm border-border bg-background px-2 py-[5px] text-[11px] leading-[16px]"
+							className="h-7 rounded-full border-0 bg-mdly-control px-3 py-[5px] text-[11px] leading-[16px]"
 						/>
 					</div>
 					<Separator className="bg-border/90" />

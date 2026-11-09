@@ -67,10 +67,10 @@ export const NoteCard = memo(function NoteCard({
 			data-note-card={row.path}
 			onDragStart={canDrag ? (event) => startNoteDrag(event, row) : undefined}
 			className={cn(
-				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background transition-colors hover:bg-accent",
+				"group flex w-full min-w-0 items-start gap-1 rounded-mdly-control bg-foreground/[0.04] transition-colors hover:bg-accent",
 				compact ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-1.5 text-sm",
 				canDrag && "cursor-grab",
-				row.isActive && "border-ring",
+				row.isActive && "bg-mdly-selected",
 			)}
 		>
 			<button

@@ -64,7 +64,7 @@ export function NavViewDots({
 									: `${label} view — right-click to hide`
 						}
 						className={cn(
-							"group relative flex size-5 items-center justify-center rounded-[var(--radius-row)] outline-hidden transition-all duration-200 ease-out focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
+							"group relative flex size-5 items-center justify-center rounded-mdly-control outline-hidden transition-all duration-200 ease-out focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
 							isActive
 								? "bg-selected text-selected-foreground"
 								: "text-muted-foreground/60 hover:text-foreground",

@@ -53,7 +53,7 @@ export function WorkspaceSwitcherMenu({
 	return (
 		<Menu.Root open={open} onOpenChange={onOpenChange}>
 			<Menu.Trigger
-				className="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 rounded-sm py-1 ps-2 pe-1 hover:bg-muted"
+				className="inline-flex max-w-full min-w-0 cursor-pointer items-center gap-0.5 rounded-mdly-control py-1 ps-2 pe-1 hover:bg-muted"
 				title={title}
 			>
 				<span className="truncate text-xs font-semibold text-sidebar-foreground">

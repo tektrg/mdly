@@ -247,7 +247,7 @@ export function TagTreeView({
 								aria-selected={isActive}
 								title={displayPath}
 								className={cn(
-									"flex w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-row)] pe-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden [padding-block:var(--row-pad-block)] hover:bg-accent",
+									"flex w-full min-w-0 items-center gap-1.5 rounded-mdly-control pe-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden [padding-block:var(--row-pad-block)] hover:bg-accent",
 									!isActive && isFocused && "bg-accent",
 									isActive &&
 										"bg-sidebar-accent text-sidebar-accent-foreground font-medium",
@@ -291,7 +291,7 @@ export function TagTreeView({
 							aria-expanded={row.expanded}
 							title={label}
 							className={cn(
-								"flex w-full min-w-0 items-center gap-1.5 rounded-[var(--radius-row)] pe-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden [padding-block:var(--row-pad-block)] hover:bg-accent",
+								"flex w-full min-w-0 items-center gap-1.5 rounded-mdly-control pe-2 text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden [padding-block:var(--row-pad-block)] hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
 								isActive &&
 									"bg-sidebar-accent text-sidebar-accent-foreground font-medium",

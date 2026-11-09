@@ -106,7 +106,7 @@ export function AgentAccessSettings() {
 			description="Lets an AI agent read and comment on your notes. Agents can never edit a note's text."
 		>
 			<div className="flex flex-col gap-2">
-				<label className="flex items-start justify-between gap-4 rounded-sm border border-border bg-card [padding-block:0.625rem] [padding-inline:0.75rem]">
+				<label className="flex items-start justify-between gap-4 rounded-mdly-control bg-foreground/[0.04] [padding-block:0.625rem] [padding-inline:0.75rem]">
 					<span className="flex min-w-0 flex-col gap-1">
 						<span className="text-[11px] font-medium text-foreground">
 							Allow AI agents to read and comment on this workspace
@@ -122,7 +122,7 @@ export function AgentAccessSettings() {
 				</label>
 				{state?.enabled && state.connectCommand ? (
 					<div className="flex flex-col gap-1">
-						<div className="flex items-start gap-2 rounded-sm border border-border bg-muted/40 p-2">
+						<div className="flex items-start gap-2 rounded-mdly-control bg-muted/40 p-2">
 							<input
 								aria-label="Connect command"
 								className="min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-hidden"

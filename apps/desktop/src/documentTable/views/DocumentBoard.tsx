@@ -148,9 +148,9 @@ const BoardColumnView = memo(function BoardColumnView({
 			className={cn(
 				"flex h-full shrink-0 flex-col",
 				compact ? "w-44" : "w-64",
-				" rounded-md bg-muted/40",
-				isDropTarget && "ring-1 ring-ring",
-				isColumnDropTarget && "border-s-2 border-ring",
+				" rounded-mdly-control bg-foreground/[0.04]",
+				isDropTarget && "ring-[3px] ring-mdly-ink/20",
+				isColumnDropTarget && "bg-mdly-selected",
 				column.kind === "unreadable" && "opacity-70",
 			)}
 		>
@@ -278,8 +278,8 @@ function HiddenColumnsRail({
 				}
 			}}
 			className={cn(
-				"flex h-full w-40 shrink-0 flex-col gap-1 rounded-md px-1.5 py-1.5 text-xs",
-				isTarget && "ring-1 ring-ring",
+				"flex h-full w-40 shrink-0 flex-col gap-1 rounded-mdly-control px-1.5 py-1.5 text-xs",
+				isTarget && "ring-[3px] ring-mdly-ink/20",
 			)}
 		>
 			<span className="px-1 text-[11px] text-muted-foreground">
@@ -301,7 +301,7 @@ function HiddenColumnsRail({
 					}}
 					onClick={() => onUnhide(column)}
 					title={`Show ${column.label}`}
-					className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 text-start hover:bg-accent"
+					className="flex items-center gap-1.5 rounded-mdly-control px-1 py-0.5 text-start hover:bg-accent"
 				>
 					<span
 						aria-hidden="true"
@@ -376,7 +376,7 @@ function CardPropertiesPicker({
 								) as PropertyFieldId;
 								if (dragged && dragged !== id) dropBefore(dragged, id);
 							}}
-							className="flex h-7 cursor-grab items-center gap-2 rounded-sm px-1 hover:bg-accent"
+							className="flex h-7 cursor-grab items-center gap-2 rounded-mdly-control px-1 hover:bg-accent"
 						>
 							<span aria-hidden="true" className="text-muted-foreground/70">
 								⋮⋮
@@ -403,7 +403,7 @@ function CardPropertiesPicker({
 					{rest.map((field) => (
 						<li
 							key={field.id}
-							className="flex h-7 items-center rounded-sm px-1 ps-5 hover:bg-accent"
+							className="flex h-7 items-center rounded-mdly-control px-1 ps-5 hover:bg-accent"
 						>
 							<label className="flex min-w-0 flex-1 items-center gap-2">
 								<input
@@ -847,7 +847,7 @@ export function DocumentBoard({
 								<MingcuteMore2Line aria-hidden="true" className="size-3.5" />
 							</span>
 						}
-						triggerClassName="inline-flex h-7 items-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+						triggerClassName="inline-flex h-7 items-center rounded-mdly-control text-muted-foreground hover:bg-accent hover:text-foreground"
 						triggerLabel="Board settings"
 						align="start"
 					>

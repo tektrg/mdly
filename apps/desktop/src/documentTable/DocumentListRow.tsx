@@ -437,7 +437,7 @@ export function DocumentListRow({
 					: null),
 			}}
 			className={cn(
-				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-[var(--radius-row)] text-start text-sidebar-foreground outline-hidden",
+				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-mdly-control text-start text-sidebar-foreground outline-hidden",
 				"[padding-inline:var(--row-pad-inline)]",
 				isCard && "[padding-block:8px]",
 				isCard &&

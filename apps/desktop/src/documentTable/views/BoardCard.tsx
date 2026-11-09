@@ -68,7 +68,7 @@ function Chip({
 					<span
 						key={item}
 						className={cn(
-							"max-w-28 truncate rounded-sm px-1.5 text-[10px] leading-4",
+							"max-w-28 truncate rounded-full px-2 text-[10px] leading-4",
 							BOARD_COLOR_CLASSES.gray.pill,
 						)}
 					>
@@ -99,7 +99,7 @@ function Chip({
 		return (
 			<span
 				className={cn(
-					"max-w-full truncate rounded-sm px-1.5 text-[10px] leading-4",
+					"max-w-full truncate rounded-full px-2 text-[10px] leading-4",
 					BOARD_COLOR_CLASSES.blue.pill,
 				)}
 				title={`${label}: ${text}`}
@@ -161,10 +161,10 @@ export const BoardCard = memo(function BoardCard({
 				);
 			}}
 			className={cn(
-				"group flex w-full min-w-0 items-start gap-1 rounded-[var(--radius-row)] border border-border bg-background px-2 py-1.5 text-sm outline-hidden transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
+				"group flex w-full min-w-0 items-start gap-1 rounded-mdly-control bg-background px-2 py-1.5 text-sm shadow-[var(--shadow-chip)] outline-hidden transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 				canDrag && "cursor-grab",
 				compact && "py-1 text-xs",
-				row.isActive && "border-ring bg-accent",
+				row.isActive && "bg-mdly-selected",
 			)}
 		>
 			<div className="flex min-w-0 flex-1 flex-col items-start gap-1">

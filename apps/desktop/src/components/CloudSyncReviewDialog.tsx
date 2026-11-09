@@ -206,7 +206,7 @@ function FolderRow({
 }) {
 	return (
 		<li
-			className={`flex items-center gap-2 rounded-sm [padding-block:0.375rem] [padding-inline:0.5rem] ${
+			className={`flex items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] ${
 				excluded ? "opacity-55" : ""
 			}`}
 		>

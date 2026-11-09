@@ -264,7 +264,7 @@ export function FormatCommandMenu({
 					value={query}
 					onValueChange={setQuery}
 					placeholder="Format..."
-					className="h-8 w-full border-0 border-b border-border bg-background px-2 text-[11px] leading-[16px] text-foreground outline-hidden placeholder:text-muted-foreground"
+					className="h-8 w-full border-0 bg-background px-2 text-[11px] leading-[16px] text-foreground outline-hidden placeholder:text-muted-foreground"
 					onKeyDown={(event) => {
 						if (event.key === "Escape") {
 							event.preventDefault();

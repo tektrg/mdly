@@ -13,7 +13,9 @@ export function ImportDocDialog({
 }) {
 	const [status, setStatus] = useState<"idle" | "importing">("idle");
 	const [converter, setConverter] = useState<ConverterStatus | null>(null);
-	const [converterStatus, setConverterStatus] = useState<"idle" | "checking">("idle");
+	const [converterStatus, setConverterStatus] = useState<"idle" | "checking">(
+		"idle",
+	);
 	const [url, setUrl] = useState("");
 	const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +115,7 @@ export function ImportDocDialog({
 					</label>
 					<div className="flex gap-2">
 						<input
-							className="h-8 w-full rounded-sm border border-input bg-card px-2 text-xs text-foreground outline-hidden placeholder:text-muted-foreground disabled:opacity-50"
+							className="h-8 w-full rounded-full bg-mdly-control px-2 text-xs text-foreground outline-hidden placeholder:text-muted-foreground disabled:opacity-50"
 							disabled={!ready || busy}
 							placeholder="https://…/shared-document.docx"
 							type="url"
@@ -139,16 +141,10 @@ export function ImportDocDialog({
 					</p>
 				</div>
 
-				{error ? (
-					<p className="m-0 text-sm text-destructive">{error}</p>
-				) : null}
+				{error ? <p className="m-0 text-sm text-destructive">{error}</p> : null}
 
 				<div className="flex items-center justify-end gap-2">
-					<Button
-						size="sm"
-						variant="ghost"
-						onClick={() => onOpenChange(false)}
-					>
+					<Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
 						Cancel
 					</Button>
 					<Button
@@ -176,7 +172,7 @@ function ConverterStatusPanel({
 	const available = converter?.available === true;
 
 	return (
-		<div className="rounded-sm border border-border bg-muted/30 px-2 py-2 text-xs">
+		<div className="rounded-mdly-control bg-muted/30 px-2 py-2 text-xs">
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="min-w-0">
 					<p className="m-0 font-medium">

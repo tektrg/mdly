@@ -230,7 +230,7 @@ export function ScopeOptionPopover({
 						onSelect(option.kind);
 					}}
 					className={cn(
-						"flex w-full items-start gap-2 rounded-[var(--radius-row)] px-2 py-1.5 text-left outline-hidden",
+						"flex w-full items-start gap-2 rounded-mdly-control px-2 py-1.5 text-left outline-hidden",
 						index === selectedIndex && "bg-accent text-accent-foreground",
 					)}
 				>
@@ -282,7 +282,7 @@ export function CommandFooter({
 	const action =
 		commandMode === "move-file" ? "move" : showingWorkspace ? "switch" : "open";
 	return (
-		<div className="flex items-center justify-between border-t border-border px-3 py-2 text-[10px] text-muted-foreground">
+		<div className="flex items-center justify-between px-3 py-2 text-[10px] text-muted-foreground">
 			<span className="truncate">{label}</span>
 			<span className="flex items-center gap-1">
 				<kbd className="rounded-[var(--radius-inner)] bg-muted px-1.5 py-0.5 leading-4">
@@ -564,7 +564,7 @@ const groupClassName =
 	"[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:leading-4 [&_[cmdk-group-heading]]:text-muted-foreground";
 
 const itemClassName = cn(
-	"flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-row)] px-2 text-start outline-hidden transition-[background-color,color] duration-150 ease-snappy",
+	"flex min-h-11 w-full items-center gap-2 rounded-mdly-control px-2 text-start outline-hidden transition-[background-color,color] duration-150 ease-snappy",
 	"data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
 );
 

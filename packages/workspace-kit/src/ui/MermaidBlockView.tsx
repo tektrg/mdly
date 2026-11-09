@@ -92,7 +92,7 @@ function MermaidBlockView({ node, updateAttributes }: NodeViewProps) {
 			>
 				<div className="flex flex-col gap-3">
 					<textarea
-						className="min-h-48 w-full resize-y rounded-sm border border-border bg-background p-2 font-mono text-xs text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+						className="min-h-48 w-full resize-y rounded-mdly-control bg-background p-2 font-mono text-xs text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
 						value={draft}
 						spellCheck={false}
 						// biome-ignore lint/a11y/noAutofocus: focus the editor when the modal opens

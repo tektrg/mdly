@@ -295,7 +295,7 @@ export function FindReplaceBar({
 						: `${totalMatches === 0 ? 0 : clampIndex(activeIndex, totalMatches) + 1}/${totalMatches}`}
 				</span>
 				{activeMatch?.scope === "frontMatter" ? (
-					<span className="rounded-sm bg-muted px-1.5 py-1 text-[10px] text-muted-foreground">
+					<span className="rounded-full bg-muted px-1.5 py-1 text-[10px] text-muted-foreground">
 						properties
 					</span>
 				) : null}

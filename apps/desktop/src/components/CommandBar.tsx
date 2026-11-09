@@ -653,7 +653,7 @@ function CommandBarComponent({
 						loop
 						className="flex min-h-0 flex-1 flex-col overflow-hidden"
 					>
-						<div className="relative flex min-h-11 items-center gap-2 border-b border-border px-3">
+						<div className="relative flex min-h-11 items-center gap-2 px-3">
 							<MingcuteSearchLine className="size-4 shrink-0 text-muted-foreground" />
 							<Command.Input
 								ref={inputRef}

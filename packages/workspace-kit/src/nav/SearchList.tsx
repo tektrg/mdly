@@ -214,7 +214,7 @@ export const SearchList = forwardRef<
 							tabIndex={-1}
 							title={result.displayPath}
 							className={cn(
-								"flex w-full min-w-0 items-center rounded-[var(--radius-row)] px-2 [padding-block:var(--row-pad-block)] text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
+								"flex w-full min-w-0 items-center rounded-mdly-control px-2 [padding-block:var(--row-pad-block)] text-start text-[length:var(--font-size-sidebar)] text-sidebar-foreground outline-hidden hover:bg-accent",
 								!isActive && isFocused && "bg-accent",
 								isActive &&
 									"bg-sidebar-accent text-sidebar-accent-foreground font-medium",

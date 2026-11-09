@@ -341,19 +341,19 @@ describe("board interactions", () => {
 		act(() => {
 			column.dispatchEvent(over);
 		});
-		expect(column.className).toContain("ring-1");
+		expect(column.className).toContain("ring-[3px]");
 		const leave = new Event("dragleave", { bubbles: true });
 		Object.assign(leave, { relatedTarget: card });
 		act(() => {
 			column.dispatchEvent(leave);
 		});
-		expect(column.className).toContain("ring-1");
+		expect(column.className).toContain("ring-[3px]");
 		const out = new Event("dragleave", { bubbles: true });
 		Object.assign(out, { relatedTarget: document.body });
 		act(() => {
 			column.dispatchEvent(out);
 		});
-		expect(column.className).not.toContain("ring-1");
+		expect(column.className).not.toContain("ring-[3px]");
 	});
 
 	it("skips the write when a card is dropped on its own column", () => {

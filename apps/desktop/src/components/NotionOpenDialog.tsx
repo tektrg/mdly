@@ -210,7 +210,7 @@ function NotionConnectionPanel({
 				? "API key"
 				: "No token";
 	return (
-		<div className="mb-3 rounded-sm border border-border bg-muted/30 px-2 py-2 text-xs">
+		<div className="mb-3 rounded-mdly-control bg-muted/30 px-2 py-2 text-xs">
 			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="min-w-0">
 					<p className="m-0 font-medium">
@@ -226,7 +226,7 @@ function NotionConnectionPanel({
 					{connection && connection.availableAccounts.length > 0 ? (
 						<select
 							aria-label="Notion account"
-							className="h-8 rounded-sm border border-input bg-background px-2 text-xs outline-hidden disabled:opacity-50"
+							className="h-8 rounded-full bg-mdly-control px-2 text-xs outline-hidden disabled:opacity-50"
 							disabled={status === "checking"}
 							value={connection.account}
 							onChange={(event) => onSelectAccount(event.currentTarget.value)}
