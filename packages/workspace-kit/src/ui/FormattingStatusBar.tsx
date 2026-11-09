@@ -126,8 +126,10 @@ export function FormattingStatusBar({
 			: `${paletteState.charCount} characters`;
 	const hasActiveFormatting = paletteState.activeMarkNames.length > 0;
 
+	// z-20 sits above the desktop window drag strip (z-10, fixed, 2.75rem tall):
+	// beneath it the top-left file chip renders but every click lands on the strip.
 	return (
-		<div className="pointer-events-none absolute inset-0 z-[4] text-[12px]">
+		<div className="pointer-events-none absolute inset-0 z-[20] text-[12px]">
 			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
 				{fileMenu ? (
 					<ActionsMenu
