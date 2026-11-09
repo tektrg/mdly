@@ -11,7 +11,6 @@ import {
 	useState,
 } from "react";
 import { toast } from "sonner";
-import MingcuteLayoutLeftLine from "~icons/mingcute/layout-left-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { AgentAccessSettings } from "./components/AgentAccessSettings";
 import {
@@ -857,33 +856,6 @@ function App() {
 				notionSyncMode={notionSyncMode}
 				docImported={docImported}
 			/>
-			{!sidebarVisible && hasWorkspace && (
-				<div
-					className="desktop-window-no-drag pointer-events-none fixed top-3 z-30"
-					style={{
-						insetInlineStart:
-							desktopApi.platform === "darwin"
-								? "var(--hubble-traffic-light-inset, 70px)"
-								: "0.75rem",
-					}}
-				>
-					<div className="pointer-events-auto flex items-center overflow-hidden rounded-full border border-border/50 bg-background/78 shadow-[0_2px_8px_rgb(15_23_42/0.045)] backdrop-blur-md">
-						<Button
-							variant="ghost"
-							size="icon-sm"
-							className="rounded-none text-muted-foreground hover:bg-accent hover:text-foreground"
-							aria-label="Show sidebar"
-							title="Show sidebar (⌘⇧E)"
-							onClick={() => {
-								setSidebarOpen(true);
-								requestAnimationFrame(() => focusSidebarNav());
-							}}
-						>
-							<MingcuteLayoutLeftLine className="size-4" />
-						</Button>
-					</div>
-				</div>
-			)}
 			<div className="flex min-h-0 flex-1 overflow-hidden">
 				{isSingleFile ? null : (
 					<Sidebar

@@ -2,11 +2,10 @@
  * The top band of the window belongs to the window chrome, not to page content.
  *
  * `.desktop-window-drag-strip` (index.css) is a `position: fixed`, `z-10`,
- * `2.75rem`-tall `-webkit-app-region: drag` overlay, and both floating pills
- * live inside it: the note-actions pill (`Toolbar`, `fixed end-3 top-3`) and the
- * show-sidebar pill (`App`, same top, inline-start at the traffic-light inset).
- * `Toolbar` renders only fixed content, so the first in-flow child of `<main>`
- * starts at y=0 — underneath all three.
+ * `2.75rem`-tall `-webkit-app-region: drag` overlay, and the floating
+ * note-actions pill (`Toolbar`, `fixed end-3 top-3`) lives inside it. The
+ * traffic lights sit there too. `Toolbar` renders only fixed content, so the
+ * first in-flow child of `<main>` starts at y=0 — underneath all of them.
  *
  * Any header that puts controls up there loses them: the pills paint over it,
  * and Chromium resolves `-webkit-app-region` by paint order, so a `no-drag`
@@ -15,7 +14,7 @@
  * stacking-context tricks.
  *
  * `max()` of two independent constraints:
- * - `2.75rem` — the drag strip's own height, which is also where both pills end.
+ * - `2.75rem` — the drag strip's own height, which is also where the pill ends.
  * - the traffic-light inset — what `Sidebar.tsx` reserves, so a zoom level that
  *   pushes the macOS window buttons lower pushes this header down with them.
  *
