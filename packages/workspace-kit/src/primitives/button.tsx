@@ -9,6 +9,13 @@ const buttonVariants = cva(
 		variants: {
 			variant: {
 				default: "bg-primary text-primary-foreground hover:brightness-95",
+				// Primary action in the mdly design system: ink fill (the Record
+				// button look). `.mdly-ink-button` (apps/desktop index.css) supplies
+				// radius, shadow, press scale and focus ring; hosts without it fall
+				// back to the plain primary fill.
+				ink: "mdly-ink-button bg-primary text-primary-foreground",
+				// Secondary action: neutral control fill at the 14px control radius.
+				soft: "rounded-mdly-control bg-mdly-control text-foreground hover:bg-mdly-selected aria-expanded:bg-mdly-selected focus-visible:ring-2 focus-visible:ring-mdly-ink/20",
 				outline:
 					"border-border bg-transparent text-foreground hover:bg-muted aria-expanded:bg-muted aria-expanded:text-foreground",
 				secondary:

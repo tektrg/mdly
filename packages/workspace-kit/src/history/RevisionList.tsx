@@ -73,7 +73,10 @@ export function RevisionList({
 }: RevisionListProps) {
 	if (revisions.length === 0) {
 		return (
-			<p className="m-0 text-muted-foreground text-sm" data-timeline-empty>
+			<p
+				className="m-0 rounded-mdly-control border border-mdly-line border-dashed px-3 py-6 text-center text-muted-foreground text-xs"
+				data-timeline-empty
+			>
 				No history yet.
 			</p>
 		);
@@ -81,7 +84,7 @@ export function RevisionList({
 
 	return (
 		<ul
-			className="m-0 flex min-h-0 flex-1 list-none flex-col gap-0.5 overflow-y-auto p-0"
+			className="m-0 flex min-h-0 flex-1 list-none flex-col gap-1 overflow-y-auto p-0"
 			data-revision-list
 		>
 			{revisions.map((revision) => (
@@ -91,13 +94,17 @@ export function RevisionList({
 						data-revision-row
 						data-revision-id={revision.id}
 						aria-pressed={selectedRevisionId === revision.id}
-						className="flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-start text-[12px] outline-hidden hover:bg-accent aria-pressed:bg-selected"
+						className="group/row flex w-full items-center justify-between gap-2 rounded-mdly-control px-2.5 py-2 text-start text-[12px] outline-hidden transition-colors duration-150 ease-snappy hover:bg-mdly-control focus-visible:ring-2 focus-visible:ring-mdly-ink/20 aria-pressed:bg-mdly-selected aria-pressed:font-semibold aria-pressed:text-mdly-strong motion-reduce:transition-none"
 						onClick={() => onSelectRevision(revision.id)}
 					>
+						<i
+							aria-hidden="true"
+							className="size-1.5 shrink-0 rounded-full not-italic bg-mdly-ink opacity-0 group-aria-pressed/row:opacity-100"
+						/>
 						<span className="min-w-0 flex-1 truncate">
 							{CAUSE_LABELS[revision.cause] ?? revision.cause}
 						</span>
-						<span className="shrink-0 text-muted-foreground">
+						<span className="shrink-0 font-normal text-muted-foreground tabular-nums">
 							{formatRevisionTime(revision.at)}
 						</span>
 					</button>

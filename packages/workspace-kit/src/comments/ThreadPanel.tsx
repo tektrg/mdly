@@ -57,7 +57,10 @@ function ThreadLogLine({
 	return (
 		<li className="flex flex-col gap-0.5 text-[12px]" data-comment-log-line>
 			<span className="text-muted-foreground">
-				{authorLabel(by)} {verb}
+				<span className="font-semibold text-mdly-strong">
+					{authorLabel(by)}
+				</span>{" "}
+				{verb}
 			</span>
 			{text ? (
 				<div data-comment-log-text>
@@ -137,12 +140,12 @@ function NewThreadComposer({
 
 	return (
 		<div
-			className="flex flex-col gap-2 rounded-sm border border-border bg-card p-2"
+			className="flex flex-col gap-2 rounded-mdly-control border border-mdly-line bg-card p-2.5"
 			data-new-thread-composer
 		>
 			{quoteText ? (
 				<blockquote
-					className="m-0 border-border border-s-2 ps-2 text-[12px] text-muted-foreground italic"
+					className="m-0 border-mdly-line border-s-2 ps-2 text-[12px] text-muted-foreground italic"
 					data-new-thread-quote
 				>
 					{quoteText}
@@ -150,7 +153,7 @@ function NewThreadComposer({
 			) : null}
 			<textarea
 				ref={textareaRef}
-				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
+				className="min-h-14 w-full resize-none rounded-mdly-control border border-input bg-card px-3 py-2 text-[12px] outline-hidden placeholder:text-muted-foreground focus-visible:border-mdly-ink/40 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
 				data-new-thread-textarea
 				disabled={submitting}
 				placeholder="Add a comment..."
@@ -168,6 +171,7 @@ function NewThreadComposer({
 			<div className="flex items-center gap-2">
 				<Button
 					type="button"
+					variant="ink"
 					size="sm"
 					data-new-thread-submit
 					disabled={submitting || draft.trim().length === 0}
@@ -177,7 +181,7 @@ function NewThreadComposer({
 				</Button>
 				<Button
 					type="button"
-					variant="outline"
+					variant="soft"
 					size="sm"
 					data-new-thread-cancel
 					disabled={submitting}
@@ -271,14 +275,14 @@ export function ThreadItem({
 
 	return (
 		<li
-			className="flex flex-col gap-2 rounded-sm border border-border p-2"
+			className="flex flex-col gap-2 rounded-mdly-control border border-mdly-line p-2.5 transition-[background-color,border-color] duration-150 ease-snappy data-[thread-focused=true]:border-mdly-ink/40 data-[thread-focused=true]:bg-mdly-control/50 data-[thread-state=resolved]:opacity-80 motion-reduce:transition-none"
 			data-comment-thread
 			data-thread-id={thread.id}
 			data-thread-focused={focused}
 			data-thread-state={thread.state}
 		>
 			<div
-				className="flex cursor-pointer flex-col gap-2 rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring/40"
+				className="flex cursor-pointer flex-col gap-2 rounded-[10px] outline-hidden focus-visible:ring-2 focus-visible:ring-mdly-ink/20"
 				data-thread-jump-target
 				data-thread-id={thread.id}
 				role="button"
@@ -294,7 +298,7 @@ export function ThreadItem({
 				<div className="flex items-center gap-2">
 					{isOrphaned ? (
 						<span
-							className="rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+							className="rounded-full border border-mdly-line bg-mdly-control px-2 py-0.5 font-medium text-[10px] text-muted-foreground"
 							data-orphaned-badge
 						>
 							orphaned
@@ -303,7 +307,7 @@ export function ThreadItem({
 				</div>
 				{thread.opener.anchor.quote.trim() ? (
 					<blockquote
-						className="m-0 line-clamp-3 border-s-2 border-muted-foreground/30 ps-2 text-[11px] text-muted-foreground wrap-break-word"
+						className="m-0 line-clamp-3 border-s-2 border-mdly-ink/25 ps-2 text-[11px] text-muted-foreground wrap-break-word"
 						data-thread-quote
 						data-thread-id={thread.id}
 						title={thread.opener.anchor.quote.replace(/\s+/g, " ").trim()}
@@ -329,7 +333,7 @@ export function ThreadItem({
 			</div>
 
 			<textarea
-				className="min-h-14 w-full resize-none rounded-sm border border-input bg-card px-2 py-1.5 text-[12px] outline-hidden focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
+				className="min-h-14 w-full resize-none rounded-mdly-control border border-input bg-card px-3 py-2 text-[12px] outline-hidden placeholder:text-muted-foreground focus-visible:border-mdly-ink/40 focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15 disabled:cursor-not-allowed disabled:opacity-50 max-md:min-h-11 max-md:text-base"
 				data-reply-textarea
 				data-thread-id={thread.id}
 				disabled={isResolved}
@@ -351,7 +355,7 @@ export function ThreadItem({
 				{isResolved ? (
 					<Button
 						type="button"
-						variant="outline"
+						variant="soft"
 						size="sm"
 						data-reopen-button
 						data-thread-id={thread.id}
@@ -363,6 +367,7 @@ export function ThreadItem({
 					<>
 						<Button
 							type="button"
+							variant="ink"
 							size="sm"
 							data-reply-button
 							data-thread-id={thread.id}
@@ -372,7 +377,7 @@ export function ThreadItem({
 						</Button>
 						<Button
 							type="button"
-							variant="outline"
+							variant="soft"
 							size="sm"
 							data-resolve-button
 							data-thread-id={thread.id}
@@ -389,6 +394,7 @@ export function ThreadItem({
 								type="button"
 								variant="destructive"
 								size="sm"
+								className="rounded-mdly-control"
 								data-confirm-delete-button
 								data-thread-id={thread.id}
 								onClick={handleDeleteConfirm}
@@ -397,7 +403,7 @@ export function ThreadItem({
 							</Button>
 							<Button
 								type="button"
-								variant="outline"
+								variant="soft"
 								size="sm"
 								data-cancel-delete-button
 								data-thread-id={thread.id}
@@ -409,7 +415,7 @@ export function ThreadItem({
 					) : (
 						<Button
 							type="button"
-							variant="outline"
+							variant="soft"
 							size="sm"
 							data-delete-button
 							data-thread-id={thread.id}
@@ -540,7 +546,7 @@ export function ThreadPanel(props: {
 				</p>
 			) : threads.length === 0 ? (
 				<p
-					className="m-0 text-muted-foreground text-sm"
+					className="m-0 rounded-mdly-control border border-mdly-line border-dashed px-3 py-6 text-center text-muted-foreground text-xs"
 					data-comment-panel-empty
 				>
 					No comments yet

@@ -18,9 +18,9 @@
 	justify-content: center;
 	inline-size: 1.6rem;
 	block-size: 1.6rem;
-	border: 1px solid var(--border);
+	border: 1px solid var(--mdly-line, var(--border));
 	border-radius: 999px;
-	background: var(--popover);
+	background: var(--mdly-control, var(--popover));
 	color: var(--popover-foreground);
 	padding: 0;
 	box-shadow: 0 2px 8px color-mix(in oklab, var(--foreground) 12%, transparent);
@@ -34,7 +34,47 @@
 }
 
 .comment-composer-trigger:hover:not(:disabled) {
-	background: var(--muted);
+	background: var(--mdly-selected, var(--muted));
+}
+
+/* Comment (main action): ink fill, same family as the Record button. The
+ * copy-link trigger stays a neutral pill. Falls back to the plain popover
+ * look in hosts that don't define the mdly tokens. */
+.comment-composer-trigger[data-comment-composer-trigger] {
+	border-color: transparent;
+	background: var(--mdly-ink, var(--popover));
+	color: var(--mdly-ink-foreground, var(--popover-foreground));
+	box-shadow:
+		0 1px 0 rgba(0, 0, 0, 0.08),
+		0 4px 12px -4px rgba(0, 0, 0, 0.18),
+		inset 0 0.5px 0 rgba(255, 255, 255, 0.15);
+	transition:
+		transform 120ms var(--ease-snappy),
+		background-color 160ms var(--ease-snappy);
+}
+
+.comment-composer-trigger[data-comment-composer-trigger]:hover:not(:disabled) {
+	background: var(--mdly-ink, var(--muted));
+	transform: scale(1.06);
+}
+
+.comment-composer-trigger[data-comment-composer-trigger]:active:not(:disabled) {
+	transform: scale(0.96);
+}
+
+.comment-composer-trigger:focus-visible {
+	outline: none;
+	box-shadow: 0 0 0 3px
+		color-mix(in srgb, var(--mdly-ink, var(--ring)) 22%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.comment-composer-trigger[data-comment-composer-trigger]:hover:not(:disabled),
+	.comment-composer-trigger[data-comment-composer-trigger]:active:not(
+			:disabled
+		) {
+		transform: none;
+	}
 }
 
 .comment-composer-trigger:disabled {

@@ -51,7 +51,7 @@ function SidePanel({ open, onOpenChange, title, className, children }: Props) {
 					)}
 				>
 					<div className="mb-3 flex shrink-0 items-start justify-between gap-3">
-						<Dialog.Title className="m-0 text-sm font-semibold">
+						<Dialog.Title className="m-0 text-sm font-semibold text-mdly-strong">
 							{title}
 						</Dialog.Title>
 						<Dialog.Close
@@ -59,6 +59,7 @@ function SidePanel({ open, onOpenChange, title, className, children }: Props) {
 								<Button
 									variant="ghost"
 									size="icon-sm"
+									className="rounded-mdly-control hover:bg-mdly-control focus-visible:ring-mdly-ink/20"
 									aria-label="Close"
 									type="button"
 								>

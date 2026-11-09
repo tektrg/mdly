@@ -22,8 +22,12 @@
 	border: 0;
 	padding: 0.05rem 0.3rem;
 	border-radius: 999px;
-	background: color-mix(in oklab, var(--brand) 18%, transparent);
-	color: color-mix(in oklab, var(--brand) 68%, var(--foreground));
+	background: color-mix(
+		in oklab,
+		var(--mdly-ink, var(--foreground)) 12%,
+		transparent
+	);
+	color: var(--mdly-ink, var(--foreground));
 	opacity: 0.85;
 	cursor: pointer;
 	pointer-events: auto;
@@ -43,8 +47,8 @@
 }
 
 .commentParagraphMarker[data-resolved="true"] {
-	background: color-mix(in oklab, var(--muted-foreground) 16%, transparent);
-	color: color-mix(in oklab, var(--muted-foreground) 60%, var(--foreground));
+	background: var(--mdly-control, var(--muted));
+	color: var(--muted-foreground);
 }
 
 .commentParagraphMarkerCount {

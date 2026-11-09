@@ -113,7 +113,7 @@ export function RevisionDiffView({
 						{formatRevisionTime(revision.at)}
 					</span>
 				</div>
-				<Button variant="outline" size="sm" onClick={onBack}>
+				<Button variant="soft" size="sm" onClick={onBack}>
 					Back to editor
 				</Button>
 			</div>
