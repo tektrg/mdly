@@ -112,7 +112,7 @@ export function NavListHeader({
 			data-variant={variant}
 			className={cn(
 				"flex shrink-0 items-center gap-1",
-				isTabs ? "pb-1" : "justify-between",
+				isTabs ? "pb-1" : "justify-between pb-1.5",
 			)}
 		>
 			{renamingId && renamingName ? (
@@ -180,7 +180,7 @@ export function NavListHeader({
 											)
 										: "",
 									!isTabs &&
-										"flex h-7 min-w-0 items-center gap-1 rounded-mdly-control text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
+										"flex h-8 min-w-0 items-center gap-1.5 rounded-mdly-control text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
 									!isTabs && entry.kind === "saved" && "max-w-40",
 									!isTabs &&
 										(isActive
@@ -203,7 +203,16 @@ export function NavListHeader({
 								}}
 							>
 								<NavEntryIcon entry={entry} />
-								<span className="min-w-0 truncate">{label}</span>
+								<span
+									className={cn(
+										"min-w-0 truncate",
+										// Narrow list: only the active view keeps its label, the rest
+										// are icon-only (the aria-label and tooltip still name them).
+										!isTabs && !isActive && "sr-only",
+									)}
+								>
+									{label}
+								</span>
 								{isTabs && isActive && hasUnsavedChanges ? (
 									<span
 										data-unsaved-dot

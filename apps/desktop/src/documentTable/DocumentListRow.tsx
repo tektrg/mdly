@@ -439,7 +439,10 @@ export function DocumentListRow({
 			className={cn(
 				"absolute start-1 end-1 [inset-block-start:0] flex flex-col justify-center rounded-mdly-control text-start text-sidebar-foreground outline-hidden",
 				"[padding-inline:var(--row-pad-inline)]",
-				isCard && "[padding-block:8px]",
+				isCard && "[padding-block:6px]",
+				// 2px transparent edge, fill clipped to the padding box: a 4px gap
+				// between adjacent row fills without changing the fixed row height.
+				density !== "table" && "border-y-2 border-transparent bg-clip-padding",
 				isCard &&
 					hasMenu &&
 					"[padding-inline-end:calc(var(--row-pad-inline)+1.375rem)]",

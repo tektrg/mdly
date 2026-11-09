@@ -199,7 +199,7 @@ export function DocumentNarrowList({
 			style={{ inlineSize: listInlineSize }}
 		>
 			<header
-				className={`flex shrink-0 flex-col gap-1 px-2 [padding-block-end:0.25rem] ${WINDOW_CHROME_INSET_CLASS}`}
+				className={`flex shrink-0 flex-col gap-2 px-3 [padding-block-end:0.5rem] ${WINDOW_CHROME_INSET_CLASS}`}
 			>
 				<button
 					type="button"
@@ -230,9 +230,11 @@ export function DocumentNarrowList({
 					role="grid"
 					aria-label="Documents"
 					aria-rowcount={isGrid ? rows.length + 1 : rows.length}
-					className="flex min-h-0 flex-1 flex-col px-1 pb-2"
+					className="flex min-h-0 flex-1 flex-col px-2 pb-2"
 				>
-					<NavListHeader navTier={navTier} />
+					<div className="shrink-0 px-1">
+						<NavListHeader navTier={navTier} />
+					</div>
 					{isGrid ? <NarrowGridHeader /> : null}
 					<DocumentRowList
 						rows={rows}
