@@ -2052,6 +2052,7 @@ export function ActionsMenu({
 	children,
 	triggerClassName = sidebarRowActionButtonClass,
 	triggerContent,
+	triggerTitle,
 	align = "end",
 }: {
 	label: string;
@@ -2061,6 +2062,8 @@ export function ActionsMenu({
 	triggerClassName?: string;
 	/** Replaces the default "..." glyph (the editor's file-name chip uses its label). */
 	triggerContent?: React.ReactNode;
+	/** Hover tooltip; defaults to "Actions for <label>". */
+	triggerTitle?: string;
 	/** Popup alignment to the trigger; the chip sits at the start edge. */
 	align?: "start" | "end";
 }) {
@@ -2073,7 +2076,7 @@ export function ActionsMenu({
 						type="button"
 						className={triggerClassName}
 						aria-label={`Actions for ${label}`}
-						title={`Actions for ${label}`}
+						title={triggerTitle ?? `Actions for ${label}`}
 						onContextMenu={(event) => {
 							event.preventDefault();
 							onOpenChange(true);

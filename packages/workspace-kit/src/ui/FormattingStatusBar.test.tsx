@@ -136,6 +136,7 @@ describe("FormattingStatusBar scroll/resize hang (R-hang-1)", () => {
 		);
 		expect(trigger).not.toBeNull();
 		expect(trigger?.textContent).toContain("note.md");
+		expect(trigger?.title).toBe("/workspace/note.md");
 		act(() => trigger?.click());
 		expect(document.body.textContent).toContain("Copy file path");
 	});
