@@ -1,5 +1,10 @@
 import { Input } from "@mdly/workspace-kit";
-import { type KeyboardEvent as ReactKeyboardEvent, useRef } from "react";
+import { keymatch } from "keymatch";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	useEffect,
+	useRef,
+} from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
 import { cn } from "../lib/utils";
@@ -19,6 +24,22 @@ export function DocumentFilterInput({
 	className?: string;
 }) {
 	const inputRef = useRef<HTMLInputElement>(null);
+
+	// Cmd/Ctrl+L focuses the box from anywhere (editor, sidebar, rows), browser
+	// address-bar style. Mounted only while the table/list is on screen, so the
+	// shortcut is inert elsewhere.
+	useEffect(() => {
+		const onWindowKeyDown = (event: KeyboardEvent) => {
+			if (event.defaultPrevented || !keymatch(event, "CmdOrCtrl+L")) return;
+			const input = inputRef.current;
+			if (!input) return;
+			event.preventDefault();
+			input.focus();
+			input.select();
+		};
+		window.addEventListener("keydown", onWindowKeyDown);
+		return () => window.removeEventListener("keydown", onWindowKeyDown);
+	}, []);
 
 	function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
 		// Escape empties the box before anything upstream reads it as "leave this
