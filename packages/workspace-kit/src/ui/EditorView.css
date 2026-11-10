@@ -925,3 +925,55 @@
 		inset-inline-start: 100%;
 	}
 }
+
+/* Full-screen mermaid viewer (portalled, so not under [data-hubble-editor]).
+   Zoom 1 = fit: the stage is exactly the scroll box and the svg is contained;
+   other zooms resize the stage and the scroll box pans it. */
+.pm-mermaid-viewer-scroll {
+	background: var(--muted);
+	cursor: grab;
+	overscroll-behavior: contain;
+	touch-action: none;
+	user-select: none;
+}
+
+.pm-mermaid-viewer-scroll:active {
+	cursor: grabbing;
+}
+
+.pm-mermaid-viewer-stage {
+	display: grid;
+	place-items: center;
+	min-inline-size: 100%;
+	min-block-size: 100%;
+}
+
+.pm-mermaid-viewer-diagram,
+.pm-mermaid-viewer-diagram .diagram-kit-diagram {
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.pm-mermaid-viewer-diagram .diagram-kit-error {
+	padding: 1rem;
+	color: var(--destructive);
+}
+
+.pm-mermaid-viewer-diagram .pele {
+	--pele-bg: var(--muted);
+	--pele-fg: var(--foreground);
+	--pele-muted: var(--muted-foreground);
+	--pele-line: var(--muted-foreground);
+	--pele-surface: var(--background);
+	--pele-surface-alt: var(--accent);
+	--pele-border: var(--border);
+	--pele-accent: var(--primary);
+	--pele-critical: var(--destructive);
+	--pele-error: var(--destructive);
+}
+
+.pm-mermaid-viewer-diagram svg {
+	inline-size: 100% !important;
+	block-size: 100% !important;
+	max-inline-size: none !important;
+}
