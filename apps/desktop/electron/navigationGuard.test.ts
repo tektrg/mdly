@@ -3,7 +3,9 @@ import {
 	EMBED_LOAD_FAILED_CHANNEL,
 	installNavigationGuards,
 	isAppUrl,
+	isLocalFrameEscape,
 	isPermissionAllowed,
+	widenWildcardFrameAncestors,
 } from "./navigationGuard";
 
 const APP = "app://mdly/index.html";
@@ -128,5 +130,103 @@ describe("navigation guards", () => {
 		expect(
 			isPermissionAllowed("notifications", "hubble-asset://local/a", APP),
 		).toBe(false);
+	});
+});
+
+describe("local html embed cannot leave hubble-asset (window.name token leak)", () => {
+	it("blocks a hubble-asset frame navigating to a remote page", () => {
+		expect(
+			isLocalFrameEscape(
+				"hubble-asset://x/%2Fw/a.html",
+				"https://evil.example/",
+			),
+		).toBe(true);
+		expect(
+			isLocalFrameEscape(
+				"hubble-asset://x/%2Fw/a.html",
+				"hubble-asset://x/%2Fw/b.html",
+			),
+		).toBe(false);
+		expect(
+			isLocalFrameEscape(
+				"https://youtube.com/embed/1",
+				"https://evil.example/",
+			),
+		).toBe(false);
+		expect(isLocalFrameEscape("", "https://a.example/")).toBe(false);
+	});
+
+	it("wires will-frame-navigate: cancels and opens web links externally", () => {
+		const listeners: Record<string, (...a: unknown[]) => void> = {};
+		const contents = {
+			getURL: () => APP,
+			on: (e: string, l: (...a: unknown[]) => void) => {
+				listeners[e] = l;
+			},
+			setWindowOpenHandler: vi.fn(),
+			send: vi.fn(),
+			session: {
+				setPermissionRequestHandler: vi.fn(),
+				setPermissionCheckHandler: vi.fn(),
+				webRequest: { onHeadersReceived: vi.fn() },
+			},
+		};
+		const openExternal = vi.fn();
+		// biome-ignore lint/suspicious/noExplicitAny: structural fake
+		installNavigationGuards(contents as any, openExternal);
+		const event = {
+			url: "https://evil.example/",
+			isMainFrame: false,
+			frame: { url: "hubble-asset://x/%2Fw/a.html" },
+			preventDefault: vi.fn(),
+		};
+		listeners["will-frame-navigate"]?.(event);
+		expect(event.preventDefault).toHaveBeenCalled();
+		expect(openExternal).toHaveBeenCalledWith("https://evil.example/");
+	});
+});
+
+describe("frame-ancestors * widened to the app origin", () => {
+	const csp =
+		"default-src 'none'; img-src https: data:; form-action 'self'; base-uri 'none'; frame-ancestors *";
+	it("appends the app origin when frame-ancestors is a bare *", () => {
+		const out = widenWildcardFrameAncestors(
+			{ "Content-Security-Policy": [csp] },
+			"app://mdly",
+		);
+		expect(out?.["Content-Security-Policy"]).toEqual([
+			"default-src 'none'; img-src https: data:; form-action 'self'; base-uri 'none'; frame-ancestors * app://mdly",
+		]);
+	});
+	it("leaves restrictive frame-ancestors and missing CSP untouched", () => {
+		expect(
+			widenWildcardFrameAncestors(
+				{ "content-security-policy": ["frame-ancestors 'self' https://a.com"] },
+				"app://mdly",
+			),
+		).toBeNull();
+		expect(
+			widenWildcardFrameAncestors(
+				{ "x-frame-options": ["DENY"] },
+				"app://mdly",
+			),
+		).toBeNull();
+		expect(
+			widenWildcardFrameAncestors(
+				{
+					"content-security-policy": ["frame-ancestors *; script-src *"],
+					"x-frame-options": ["DENY"],
+				},
+				"app://mdly",
+			),
+		).toBeNull();
+	});
+	it("does not treat *.example.com as a bare wildcard", () => {
+		expect(
+			widenWildcardFrameAncestors(
+				{ "content-security-policy": ["frame-ancestors *.example.com"] },
+				"app://mdly",
+			),
+		).toBeNull();
 	});
 });

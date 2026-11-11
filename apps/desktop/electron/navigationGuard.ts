@@ -38,6 +38,59 @@ export function isPermissionAllowed(
 	return EMBED_PERMISSIONS.has(permission);
 }
 
+/**
+ * A local `.html` embed (hubble-asset:) gets a `name` token that unlocks the
+ * HTML-app file API. Browsing-context names survive cross-origin navigation,
+ * so a local page that navigates its own frame to a remote site would hand
+ * that site the token. Local frames may only navigate within hubble-asset:.
+ */
+export function isLocalFrameEscape(
+	frameUrl: string,
+	targetUrl: string,
+): boolean {
+	return /^hubble-asset:/i.test(frameUrl) && !/^hubble-asset:/i.test(targetUrl);
+}
+
+/**
+ * CSP `frame-ancestors *` only matches network schemes, so a site that allows
+ * ANY embedder still refuses `app://mdly`. For a bare `*` we append the app
+ * origin; restrictive lists and X-Frame-Options are left alone (those sites
+ * genuinely refuse embedding). Returns null when nothing changes.
+ */
+export function widenWildcardFrameAncestors(
+	headers: Record<string, string[] | string>,
+	appOrigin: string,
+): Record<string, string[]> | null {
+	const keys = Object.keys(headers);
+	if (keys.some((k) => k.toLowerCase() === "x-frame-options")) return null;
+	const cspKeys = keys.filter(
+		(k) => k.toLowerCase() === "content-security-policy",
+	);
+	if (cspKeys.length === 0) return null;
+	let changed = false;
+	const out: Record<string, string[]> = {};
+	for (const key of keys) {
+		const value = headers[key];
+		out[key] = Array.isArray(value) ? [...value] : [String(value)];
+	}
+	for (const key of cspKeys) {
+		out[key] = (out[key] ?? []).map((policy) =>
+			policy
+				.split(";")
+				.map((directive) => {
+					const tokens = directive.trim().split(/\s+/);
+					if (tokens[0]?.toLowerCase() !== "frame-ancestors") return directive;
+					if (!tokens.slice(1).includes("*")) return directive;
+					if (tokens.includes(appOrigin)) return directive;
+					changed = true;
+					return `${directive.replace(/\s+$/, "")} ${appOrigin}`;
+				})
+				.join(";"),
+		);
+	}
+	return changed ? out : null;
+}
+
 type GuardedContents = {
 	getURL(): string;
 	on(
@@ -54,11 +107,33 @@ type GuardedContents = {
 			isMainFrame: boolean,
 		) => void,
 	): unknown;
+	on(
+		event: "will-frame-navigate",
+		listener: (event: {
+			preventDefault(): void;
+			url: string;
+			isMainFrame: boolean;
+			frame?: { url: string } | null;
+		}) => void,
+	): unknown;
 	setWindowOpenHandler(
 		handler: (details: { url: string }) => { action: "deny" },
 	): void;
 	send(channel: string, ...args: unknown[]): void;
 	session: {
+		webRequest?: {
+			onHeadersReceived(
+				listener: (
+					details: {
+						resourceType: string;
+						responseHeaders?: Record<string, string[]>;
+					},
+					callback: (response: {
+						responseHeaders?: Record<string, string[]>;
+					}) => void,
+				) => void,
+			): void;
+		};
 		setPermissionRequestHandler(
 			handler: (
 				contents: unknown,
@@ -100,6 +175,27 @@ export function installNavigationGuards(
 		if (isAppUrl(event.url, appUrl())) return;
 		event.preventDefault();
 		if (isExternalWebUrl(event.url)) void openExternal(event.url);
+	});
+	contents.on("will-frame-navigate", (event) => {
+		if (event.isMainFrame) return;
+		if (!isLocalFrameEscape(event.frame?.url ?? "", event.url)) return;
+		event.preventDefault();
+		if (isExternalWebUrl(event.url)) void openExternal(event.url);
+	});
+	contents.session.webRequest?.onHeadersReceived((details, callback) => {
+		if (details.resourceType !== "subFrame" || !details.responseHeaders) {
+			callback({});
+			return;
+		}
+		let origin = "";
+		try {
+			const app = new URL(appUrl());
+			origin = `${app.protocol}//${app.host}`;
+		} catch {}
+		const widened = origin
+			? widenWildcardFrameAncestors(details.responseHeaders, origin)
+			: null;
+		callback(widened ? { responseHeaders: widened } : {});
 	});
 	contents.setWindowOpenHandler(({ url }) => {
 		if (isExternalWebUrl(url)) void openExternal(url);
