@@ -17,6 +17,7 @@ export {
 	ThreadPanel,
 	useCommentThreads,
 } from "./comments/index.js";
+export { MDLY_AUTHORING_NOTES } from "./engine/authoringNotes.js";
 // ---- Engine (Tiptap/ProseMirror Markdown core, zero UI deps) ----
 export {
 	ColumnExtension,

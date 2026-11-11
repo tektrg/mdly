@@ -22,6 +22,7 @@ import {
 	syncExcludedEntries,
 } from "@mdly/workspace-scan";
 import chokidar from "chokidar";
+import { MDLY_AUTHORING_NOTES } from "./authoringNotes.js";
 import { runDryRunCommand } from "./dryRun.js";
 import { isViewsInvocation, runViewsCli, VIEWS_USAGE } from "./views.js";
 
@@ -67,6 +68,10 @@ type CliArgs = {
 
 async function main() {
 	const argv = process.argv.slice(2);
+	if (argv[0] === "syntax") {
+		console.log(MDLY_AUTHORING_NOTES);
+		return;
+	}
 	// `views` has its own options (--folder, --filter, ...), so it parses separately.
 	if (isViewsInvocation(argv)) {
 		if (argv.includes("--help") || argv.includes("-h")) {
@@ -471,6 +476,9 @@ function printRootHelp() {
 	console.log("Commands:");
 	console.log("  cloud    Manage Cloud Sync");
 	console.log("  views    List, create, rename or delete mdly saved views");
+	console.log(
+		"  syntax   Markdown extras mdly renders (image size, columns, embeds, Mermaid)",
+	);
 }
 
 function printCloudHelp() {
@@ -560,6 +568,7 @@ function printUsage() {
 	console.error("  hubble [--cwd path] cloud disconnect");
 	console.error("  hubble [--cwd path] cloud dry-run");
 	console.error("  hubble [--cwd path] views <list|create|rename|delete>");
+	console.error("  hubble syntax");
 }
 
 void main();

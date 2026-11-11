@@ -1,3 +1,4 @@
+export { MDLY_AUTHORING_NOTES } from "./authoringNotes.js";
 export {
 	ColumnExtension,
 	ColumnsExtension,
