@@ -16,10 +16,13 @@ import MingcuteListCheck2Line from "~icons/mingcute/list-check-2-line";
 import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
 import MingcuteListOrderedLine from "~icons/mingcute/list-ordered-line";
 import MingcuteMindMapLine from "~icons/mingcute/mind-map-line";
+import MingcutePicLine from "~icons/mingcute/pic-line";
 import MingcuteQuoteLeftLine from "~icons/mingcute/quote-left-line";
 import MingcuteRightLine from "~icons/mingcute/right-line";
 import MingcuteStrikethroughLine from "~icons/mingcute/strikethrough-line";
 import MingcuteTextLine from "~icons/mingcute/text-line";
+import MingcuteWebLine from "~icons/mingcute/web-line";
+import { parseEmbedInput } from "../engine/embedInput.js";
 import { cn } from "../lib/utils";
 import { useCommandMenuPosition } from "./commandMenuPosition";
 import {
@@ -121,6 +124,20 @@ const SLASH_COMMANDS: SlashCommand[] = [
 		icon: MingcuteColumnsLine,
 	},
 	{
+		kind: "embed",
+		title: "Embed",
+		description: "Paste iframe code or an https URL",
+		aliases: ["embed", "iframe", "video", "youtube", "web", "url"],
+		icon: MingcuteWebLine,
+	},
+	{
+		kind: "image",
+		title: "Image",
+		description: "Insert images from your files",
+		aliases: ["image", "photo", "picture", "img", "pic"],
+		icon: MingcutePicLine,
+	},
+	{
 		kind: "divider",
 		title: "Divider",
 		description: "Separate sections",
@@ -139,20 +156,43 @@ const SLASH_COMMANDS: SlashCommand[] = [
 export function SlashCommandMenu({
 	editor,
 	viewportRef,
+	onInsertImage,
 }: {
 	editor: Editor | null;
 	viewportRef: RefObject<HTMLDivElement | null>;
+	/** Host image picker; `/image` is only offered when provided. */
+	onInsertImage?: (editor: Editor) => void;
 }) {
 	const [token, setToken] = useState<SlashToken | null>(null);
+	const [embedPrompt, setEmbedPrompt] = useState<{
+		token: SlashToken;
+		position: MenuPosition | null;
+	} | null>(null);
 	const [position, setPosition] = useState<MenuPosition | null>(null);
 	const [selectedKind, setSelectedKind] =
 		useState<SlashCommandKind>("paragraph");
 	const suppressedFromRef = useRef<number | null>(null);
 	const positionedFromRef = useRef<number | null>(null);
 	const menuRef = useRef<HTMLDivElement | null>(null);
-	const visibleCommands = SLASH_COMMANDS.filter((command) =>
-		matchesCommand(command, token?.query ?? ""),
+	const visibleCommands = SLASH_COMMANDS.filter(
+		(command) =>
+			(command.kind !== "embed" || Boolean(editor?.schema.nodes.embed)) &&
+			(command.kind !== "image" || Boolean(onInsertImage)) &&
+			matchesCommand(command, token?.query ?? ""),
 	);
+	const runCommand = (kind: SlashCommandKind, activeToken: SlashToken) => {
+		if (!editor) return;
+		if (kind === "embed") {
+			// The prompt takes focus, which blurs the editor and clears `token`;
+			// keep the token range so the embed replaces `/embed` on submit.
+			setEmbedPrompt({ token: activeToken, position });
+			return;
+		}
+		applySlashCommand(editor, activeToken, kind, { onInsertImage });
+	}; // Read through a ref so the keydown effect always sees the latest closure.
+	const runCommandRef = useRef(runCommand);
+	runCommandRef.current = runCommand;
+
 	// Keep selection visible even when the current query filters out the
 	// previously selected command.
 	const activeKind = visibleCommands.some(
@@ -267,7 +307,7 @@ export function SlashCommandMenu({
 				);
 				if (!selectedCommand) return;
 				event.preventDefault();
-				applySlashCommand(editor, token, selectedCommand.kind);
+				runCommandRef.current(selectedCommand.kind, token);
 				suppressedFromRef.current = null;
 				setToken(null);
 				setPosition(null);
@@ -278,6 +318,17 @@ export function SlashCommandMenu({
 		return () =>
 			editor.view.dom.removeEventListener("keydown", handleKeyDown, true);
 	}, [activeKind, editor, token, visibleCommands]);
+
+	if (editor && embedPrompt) {
+		return (
+			<EmbedPrompt
+				editor={editor}
+				token={embedPrompt.token}
+				position={embedPrompt.position}
+				onClose={() => setEmbedPrompt(null)}
+			/>
+		);
+	}
 
 	if (!editor || !token || visibleCommands.length === 0) {
 		return null;
@@ -321,7 +372,7 @@ export function SlashCommandMenu({
 									...command.aliases,
 								]}
 								onSelect={() => {
-									applySlashCommand(editor, token, command.kind);
+									runCommand(command.kind, token);
 									setToken(null);
 									setPosition(null);
 								}}
@@ -341,6 +392,103 @@ export function SlashCommandMenu({
 					})}
 				</Command.List>
 			</Command>
+		</div>
+	);
+}
+
+/**
+ * Inline `/embed` prompt: paste `<iframe …>` code or an https URL. Input goes
+ * through `parseEmbedInput` (the same rules as opening a file); invalid input
+ * shows an inline error instead of inserting anything.
+ */
+function EmbedPrompt({
+	editor,
+	token,
+	position,
+	onClose,
+}: {
+	editor: Editor;
+	token: SlashToken;
+	position: MenuPosition | null;
+	onClose: () => void;
+}) {
+	const [value, setValue] = useState("");
+	const [error, setError] = useState<string | null>(null);
+
+	const close = () => {
+		onClose();
+		editor.commands.focus();
+	};
+	const submit = () => {
+		const result = parseEmbedInput(value);
+		if (!result.ok) {
+			setError(result.error);
+			return;
+		}
+		// The document may have changed while the prompt was open; only replace
+		// the token range if it still holds the slash text.
+		const { doc, selection } = editor.state;
+		const stillToken =
+			token.to <= doc.content.size &&
+			doc.textBetween(token.from, token.to).startsWith("/");
+		const target = stillToken
+			? token
+			: { from: selection.from, to: selection.from, query: "" };
+		onClose();
+		applySlashCommand(editor, target, "embed", { embedAttrs: result.attrs });
+	};
+
+	return (
+		<div
+			className="absolute z-[4] flex w-[340px] flex-col gap-2 rounded-[18px] bg-popover p-3 text-popover-foreground shadow-overlay"
+			style={{
+				insetInlineStart: `${position?.x ?? 0}px`,
+				insetBlockStart: `${position?.y ?? 0}px`,
+			}}
+		>
+			<textarea
+				// biome-ignore lint/a11y/noAutofocus: the prompt opens from a keyboard command and must take input immediately
+				autoFocus
+				aria-label="Iframe code or https URL"
+				placeholder={'<iframe src="https://…"></iframe> or https://…'}
+				rows={3}
+				value={value}
+				onChange={(event) => {
+					setValue(event.target.value);
+					setError(null);
+				}}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") {
+						event.preventDefault();
+						close();
+					} else if (event.key === "Enter" && !event.shiftKey) {
+						event.preventDefault();
+						submit();
+					}
+				}}
+				className="w-full resize-none rounded-[var(--radius-inner)] bg-accent/40 px-2 py-1.5 font-mono text-[11px] leading-[15px] outline-hidden"
+			/>
+			{error ? (
+				<p role="alert" className="text-[11px] leading-[15px] text-destructive">
+					{error}
+				</p>
+			) : null}
+			<div className="flex justify-end gap-2 text-[11px]">
+				<button
+					type="button"
+					onClick={close}
+					className="rounded-[var(--radius-inner)] px-2 py-1 text-muted-foreground hover:bg-accent"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					onClick={submit}
+					className="rounded-[var(--radius-inner)] bg-accent px-2 py-1 text-foreground"
+				>
+					Embed
+				</button>
+			</div>
 		</div>
 	);
 }

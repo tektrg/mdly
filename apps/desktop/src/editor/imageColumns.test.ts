@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../desktopApi", () => ({ desktopApi: {} }));
 
-const { groupImagesForColumns } = await import("./handleImagePaste");
+const { groupImagesForColumns, pickAndInsertImages } = await import(
+	"./handleImagePaste"
+);
 const { columnGroupImages } = await import("./ImageNodeView");
 
 describe("groupImagesForColumns", () => {
@@ -53,5 +55,27 @@ describe("columnGroupImages", () => {
 			],
 			index: 1,
 		});
+	});
+});
+
+describe("pickAndInsertImages (/image)", () => {
+	const editor = { isDestroyed: false } as never;
+	const png = new File(["x"], "a.png", { type: "image/png" });
+	const txt = new File(["x"], "a.txt", { type: "text/plain" });
+
+	it("inserts only the picked image files, all at once", async () => {
+		const insert = vi.fn(async (_args: { files: File[] }) => {});
+		await pickAndInsertImages(editor, {
+			openPicker: async () => [png, txt, png],
+			insert,
+		});
+		expect(insert).toHaveBeenCalledTimes(1);
+		expect(insert.mock.calls[0]?.[0]).toMatchObject({ files: [png, png] });
+	});
+
+	it("does nothing when the picker is cancelled", async () => {
+		const insert = vi.fn(async () => {});
+		await pickAndInsertImages(editor, { openPicker: async () => [], insert });
+		expect(insert).not.toHaveBeenCalled();
 	});
 });

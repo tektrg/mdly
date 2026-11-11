@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 
-import { MermaidBlockExtension } from "../engine/index.js";
-import { Editor, type JSONContent } from "@tiptap/core";
+import { Editor, type JSONContent, Node } from "@tiptap/core";
 import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
 import { TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { afterEach, describe, expect, it } from "vitest";
+import { columnsExtensions, MermaidBlockExtension } from "../engine/index.js";
 import {
 	applySlashCommand,
 	findSlashToken,
@@ -159,6 +159,30 @@ describe("slash command document actions", () => {
 	});
 });
 
+const TestEmbed = Node.create({
+	name: "embed",
+	group: "block",
+	atom: true,
+	addAttributes() {
+		return {
+			kind: { default: "iframe" },
+			src: { default: "" },
+			raw: { default: null },
+			width: { default: null },
+			height: { default: null },
+		};
+	},
+	renderHTML: ({ node }) => ["iframe", { src: node.attrs.src }],
+});
+
+const EMBED_ATTRS = {
+	kind: "iframe",
+	src: "https://a.com/x",
+	raw: '<iframe src="https://a.com/x"></iframe>',
+	width: null,
+	height: null,
+};
+
 function createEditor(content: JSONContent) {
 	const editor = new Editor({
 		element: document.createElement("div"),
@@ -172,6 +196,8 @@ function createEditor(content: JSONContent) {
 			OrderedList,
 			CheckedListItem,
 			MermaidBlockExtension,
+			...columnsExtensions,
+			TestEmbed,
 		],
 		content,
 	});
@@ -184,6 +210,85 @@ function createEditor(content: JSONContent) {
 	);
 	return editor;
 }
+
+describe("/embed and /image slash commands", () => {
+	it("/embed in an empty paragraph replaces it with the embed + caret paragraph", () => {
+		const editor = createEditor(docWithParagraph("/embed"));
+		applySlashCommand(editor, expectSlashToken(editor), "embed", {
+			embedAttrs: EMBED_ATTRS,
+		});
+		expect(editor.getJSON().content).toMatchObject([
+			{ type: "embed", attrs: { src: "https://a.com/x" } },
+			{ type: "paragraph" },
+		]);
+	});
+
+	it("/embed after text inserts the embed below and removes the token", () => {
+		const editor = createEditor(docWithParagraph("hello /embed"));
+		applySlashCommand(editor, expectSlashToken(editor), "embed", {
+			embedAttrs: EMBED_ATTRS,
+		});
+		expect(editor.getJSON().content).toMatchObject([
+			{ type: "paragraph", content: [{ type: "text", text: "hello " }] },
+			{ type: "embed" },
+			{ type: "paragraph" },
+		]);
+	});
+
+	it("/embed inside a column stays inside that column", () => {
+		const editor = createEditor({
+			type: "doc",
+			content: [
+				{
+					type: "columns",
+					content: [
+						{
+							type: "column",
+							content: [
+								{
+									type: "paragraph",
+									content: [{ type: "text", text: "/embed" }],
+								},
+							],
+						},
+						{ type: "column", content: [{ type: "paragraph" }] },
+					],
+				},
+			],
+		});
+		editor.view.dispatch(
+			editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 9)),
+		);
+		applySlashCommand(editor, expectSlashToken(editor), "embed", {
+			embedAttrs: EMBED_ATTRS,
+		});
+		const doc: JSONContent = editor.getJSON();
+		// (the columns schema may append a trailing paragraph after the group)
+		expect(doc.content?.[0]?.type).toBe("columns");
+		expect(doc.content?.slice(1).some((n) => n.type === "embed")).toBe(false);
+		expect(doc.content?.[0]?.content?.[0]?.content).toMatchObject([
+			{ type: "embed" },
+			{ type: "paragraph" },
+		]);
+	});
+
+	it("/embed without attrs is a no-op", () => {
+		const editor = createEditor(docWithParagraph("/embed"));
+		applySlashCommand(editor, expectSlashToken(editor), "embed");
+		const doc: JSONContent = editor.getJSON();
+		expect(doc.content?.[0]?.content?.[0]?.text).toBe("/embed");
+	});
+
+	it("/image removes the token and hands the caret to the host", () => {
+		const editor = createEditor(docWithParagraph("/image"));
+		let called = 0;
+		applySlashCommand(editor, expectSlashToken(editor), "image", {
+			onInsertImage: () => called++,
+		});
+		expect(called).toBe(1);
+		expect(editor.getJSON().content).toEqual([{ type: "paragraph" }]);
+	});
+});
 
 function expectSlashToken(editor: Editor): SlashToken {
 	const token = findSlashToken(editor);

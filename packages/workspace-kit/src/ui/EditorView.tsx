@@ -129,6 +129,11 @@ export type EditorViewProps = {
 	editorProps?: EditorOptions["editorProps"];
 	onPaste?: (editor: Editor, event: ClipboardEvent) => boolean;
 	onDrop?: (editor: Editor, event: DragEvent) => boolean;
+	/**
+	 * Opt-in `/image` slash command: called (caret where the token was) to let
+	 * the host pick and insert images. Omitted, `/image` is not offered.
+	 */
+	onInsertImage?: (editor: Editor) => void;
 	saveDebounceMs?: number;
 	/**
 	 * Lets the host register a synchronous "flush draft" hook. Serialization is
@@ -220,6 +225,7 @@ export function EditorView({
 	editorProps,
 	onPaste,
 	onDrop,
+	onInsertImage,
 	saveDebounceMs = DEFAULT_SAVE_DEBOUNCE_MS,
 	registerDraftFlush,
 	onLocalChange,
@@ -824,7 +830,11 @@ export function EditorView({
 						) : null}
 					</>
 				) : null}
-				<SlashCommandMenu editor={editor} viewportRef={editorViewportRef} />
+				<SlashCommandMenu
+					editor={editor}
+					viewportRef={editorViewportRef}
+					onInsertImage={editable ? onInsertImage : undefined}
+				/>
 				<FormatCommandMenu editor={editor} viewportRef={editorViewportRef} />
 				<TableOfContents
 					editor={editor}

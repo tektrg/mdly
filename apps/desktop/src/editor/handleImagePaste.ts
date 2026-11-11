@@ -63,6 +63,43 @@ export function handleImageDrop({
 	return true;
 }
 
+/**
+ * `/image` slash command: opens the native file picker and inserts the chosen
+ * images at the caret through the same upload path as paste/drop (several
+ * images become a columns group, like a multi-drop).
+ */
+export async function pickAndInsertImages(
+	editor: Editor,
+	{
+		openPicker = openImageFilePicker,
+		insert = insertUploadImages,
+	}: {
+		openPicker?: () => Promise<File[]>;
+		insert?: (args: { editor: Editor; files: File[] }) => Promise<void>;
+	} = {},
+): Promise<void> {
+	const files = (await openPicker()).filter((file) =>
+		file.type.startsWith("image/"),
+	);
+	if (files.length === 0 || editor.isDestroyed) return;
+	await insert({ editor, files });
+}
+
+/** Native multi-select image picker (Electron shows the system dialog). */
+export function openImageFilePicker(): Promise<File[]> {
+	return new Promise((resolve) => {
+		const input = document.createElement("input");
+		input.type = "file";
+		input.accept = "image/*";
+		input.multiple = true;
+		input.addEventListener("change", () =>
+			resolve(Array.from(input.files ?? [])),
+		);
+		input.addEventListener("cancel", () => resolve([]));
+		input.click();
+	});
+}
+
 /** Most images placed side by side in one columns group. */
 export const MAX_IMAGES_PER_COLUMNS_GROUP = 4;
 
@@ -84,7 +121,7 @@ export function groupImagesForColumns<T>(
 	return groups;
 }
 
-async function insertUploadImages({
+export async function insertUploadImages({
 	editor,
 	files,
 	pos,

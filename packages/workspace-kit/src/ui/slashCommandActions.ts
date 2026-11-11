@@ -15,7 +15,16 @@ export type SlashCommandKind =
 	| "divider"
 	| "mermaid"
 	| "columns"
+	| "embed"
+	| "image"
 	| "strike";
+
+export type SlashCommandOptions = {
+	/** Attrs for `embed` (from `parseEmbedInput`); without them `embed` is a no-op. */
+	embedAttrs?: Record<string, unknown>;
+	/** Host hook for `image`: runs after the token is removed (opens a picker). */
+	onInsertImage?: (editor: Editor) => void;
+};
 
 // Starter source shown when a diagram is inserted so it renders immediately;
 // the user clicks the rendered block to edit.
@@ -51,12 +60,24 @@ export function applySlashCommand(
 	editor: Editor,
 	token: SlashToken,
 	kind: SlashCommandKind,
+	options: SlashCommandOptions = {},
 ) {
 	const { state, view } = editor;
 	const { schema } = state;
 	const $from = state.doc.resolve(token.from);
 	if ($from.depth === 0) return;
-	const topLevelDepth = Math.min(1, $from.depth);
+	if (kind === "image") {
+		view.dispatch(state.tr.delete(token.from, token.to));
+		view.focus();
+		options.onInsertImage?.(editor);
+		return;
+	}
+	if (kind === "embed" && (!options.embedAttrs || !schema.nodes.embed)) return;
+	// Inside a column the block to convert/insert after is the column's own
+	// child, so new blocks land in that column instead of after the group.
+	const topLevelDepth = isInsideColumn($from)
+		? $from.depth
+		: Math.min(1, $from.depth);
 	const blockStart = $from.before(topLevelDepth);
 	const blockEnd = $from.after(topLevelDepth);
 	const block = state.doc.nodeAt(blockStart);
@@ -90,7 +111,7 @@ export function applySlashCommand(
 		const mappedBlockStart = tr.mapping.map(blockStart);
 		const mappedBlockEnd = tr.mapping.map(blockEnd);
 		if (isLeafBlockKind(kind)) {
-			const inserted = createInsertedBlock(schema, kind);
+			const inserted = createInsertedBlock(schema, kind, options);
 			if (!inserted) return;
 			tr.replaceWith(mappedBlockStart, mappedBlockEnd, inserted.content);
 			tr.setSelection(
@@ -103,7 +124,7 @@ export function applySlashCommand(
 			view.focus();
 			return;
 		}
-		const node = createEmptyBlock(schema, kind);
+		const node = createEmptyBlock(schema, kind, options);
 		if (!node) return;
 		tr.replaceWith(mappedBlockStart, mappedBlockEnd, node);
 		const selectionPos = selectionPositionInsideNode(
@@ -117,7 +138,7 @@ export function applySlashCommand(
 	}
 
 	const insertAt = tr.mapping.map(blockEnd);
-	const inserted = createInsertedBlock(schema, kind);
+	const inserted = createInsertedBlock(schema, kind, options);
 	if (!inserted) return;
 	tr.insert(insertAt, inserted.content);
 	tr.setSelection(
@@ -137,8 +158,9 @@ function isInsideColumn($pos: ReturnType<PMNode["resolve"]>): boolean {
 function createInsertedBlock(
 	schema: Editor["state"]["schema"],
 	kind: SlashCommandKind,
+	options: SlashCommandOptions,
 ): { content: Fragment; selectionOffset: number } | null {
-	const node = createEmptyBlock(schema, kind);
+	const node = createEmptyBlock(schema, kind, options);
 	if (!node) return null;
 	// Leaf blocks (divider, mermaid diagram) can't hold a text selection, so
 	// append a trailing paragraph and place the caret there.
@@ -156,12 +178,13 @@ function createInsertedBlock(
 }
 
 function isLeafBlockKind(kind: SlashCommandKind): boolean {
-	return kind === "divider" || kind === "mermaid";
+	return kind === "divider" || kind === "mermaid" || kind === "embed";
 }
 
 function createEmptyBlock(
 	schema: Editor["state"]["schema"],
 	kind: SlashCommandKind,
+	options: SlashCommandOptions = {},
 ): PMNode | null {
 	const paragraph = schema.nodes.paragraph;
 	const heading = schema.nodes.heading;
@@ -216,6 +239,12 @@ function createEmptyBlock(
 				column.create(null, paragraph.create()),
 			]);
 		}
+		case "embed": {
+			const embed = schema.nodes.embed;
+			if (!embed || !options.embedAttrs) return null;
+			return embed.create(options.embedAttrs);
+		}
+		case "image":
 		case "strike":
 			return null;
 	}

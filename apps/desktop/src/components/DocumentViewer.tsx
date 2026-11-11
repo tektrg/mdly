@@ -10,7 +10,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { createEmbedExtension } from "../editor/EmbedExtension";
-import { handleImageDrop, handleImagePaste } from "../editor/handleImagePaste";
+import {
+	handleImageDrop,
+	handleImagePaste,
+	pickAndInsertImages,
+} from "../editor/handleImagePaste";
 import { IframeView, toAssetUrl } from "../editor/IframeView";
 import { createImageExtension } from "../editor/ImageExtension";
 import { openOrImportNotionMentionPage } from "../fileActions";
@@ -182,6 +186,9 @@ function MarkdownEditor({
 		(editor, event) => handleImageDrop({ editor, event }),
 		[],
 	);
+	const handleInsertImage = useCallback<
+		NonNullable<EditorViewProps["onInsertImage"]>
+	>((editor) => void pickAndInsertImages(editor), []);
 	const openNotionMentionLink = useCallback(
 		(href: string) =>
 			void openOrImportNotionMentionPage(href, {
@@ -354,6 +361,7 @@ function MarkdownEditor({
 			extensions={editorExtensions}
 			onPaste={handlePaste}
 			onDrop={handleDrop}
+			onInsertImage={handleInsertImage}
 			registerDraftFlush={registerEditorDraftFlush}
 			onLocalChange={updateEditorContent}
 			onSave={savePathContent}
