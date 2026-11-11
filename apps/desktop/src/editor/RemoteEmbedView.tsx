@@ -123,8 +123,8 @@ export function RemoteEmbedView({
 }: Pick<NodeViewProps, "node" | "selected" | "updateAttributes" | "editor">) {
 	const src = String(node.attrs.src ?? "");
 	const raw = typeof node.attrs.raw === "string" ? node.attrs.raw : "";
-	const title =
-		readIframeAttr(raw, "title") || `${hostOf(src)} embed` || "Embed";
+	const explicitTitle = readIframeAttr(raw, "title");
+	const title = explicitTitle || `${hostOf(src)} embed`;
 	const height = embedHeightPx(node.attrs.height);
 	const portalContainer = usePortalContainer();
 	const [dragHeight, setDragHeight] = useState<number | null>(null);
@@ -220,7 +220,9 @@ export function RemoteEmbedView({
 							aria-hidden="true"
 						/>
 						<span className="truncate">{title}</span>
-						<span className="hubble-remote-embed-host">{hostOf(src)}</span>
+						{explicitTitle ? (
+							<span className="hubble-remote-embed-host">{hostOf(src)}</span>
+						) : null}
 					</div>
 					{failure ? (
 						<div

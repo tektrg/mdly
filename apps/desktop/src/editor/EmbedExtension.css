@@ -72,7 +72,8 @@
 	display: block;
 	inline-size: 100%;
 	border: 0;
-	border-radius: 6px;
+	/* concentric with the chrome: outer 10px − 1px border − 6px inset */
+	border-radius: 3px;
 	background: var(--background);
 }
 
@@ -111,7 +112,7 @@
 	max-block-size: 240px;
 	padding-block: 1rem;
 	padding-inline: 1rem;
-	border-radius: 6px;
+	border-radius: 3px;
 	background: var(--background);
 	font-size: 0.875rem;
 }

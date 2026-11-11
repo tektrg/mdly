@@ -45,13 +45,13 @@ afterEach(() => {
 	document.body.innerHTML = "";
 });
 
-function render() {
+function render(raw = RAW) {
 	const updateAttributes = vi.fn();
 	const props = {
 		node: {
 			attrs: {
 				src: "https://www.youtube.com/embed/abc",
-				raw: RAW,
+				raw,
 				width: "560",
 				height: "315",
 			},
@@ -68,6 +68,12 @@ function render() {
 }
 
 describe("RemoteEmbedView", () => {
+	it("shows the host once when the iframe has no title", () => {
+		render('<iframe src="https://www.youtube.com/embed/abc"></iframe>');
+		const bar = container.querySelector(".hubble-remote-embed-bar");
+		expect(bar?.textContent?.split("www.youtube.com").length).toBe(2);
+	});
+
 	it("renders a lazy, sandboxed iframe without the html-app token", () => {
 		render();
 		const frame = container.querySelector("iframe");
