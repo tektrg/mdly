@@ -40,6 +40,13 @@ export {
 } from "./engine/frontMatter.js";
 export { HeadingExtension } from "./engine/Heading.js";
 export {
+	iframeEmbedToMarkdown,
+	isRemoteIframeSrc,
+	isValidIframeEmbedSrc,
+	readIframeAttr,
+	setIframeAttr,
+} from "./engine/IframeEmbed.js";
+export {
 	createLinkMark,
 	getActiveLinkRange,
 	getLinkHrefFromAttrs,

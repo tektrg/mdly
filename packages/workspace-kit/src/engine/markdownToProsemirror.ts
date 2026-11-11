@@ -22,6 +22,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
 import { visit } from "unist-util-visit";
+import { isValidIframeEmbedSrc, readIframeAttr } from "./IframeEmbed.js";
 import { wikiDisplayNameForTarget } from "./markdownPath.js";
 import { normalizeMarkdownTableBoundaries } from "./markdownTableBoundaries.js";
 import {
@@ -400,7 +401,7 @@ function blockToPM(node: Content): JSONContent[] {
 				if (notionTable) {
 					return notionTable;
 				}
-				const embed = hastToEmbed(hastTree);
+				const embed = hastToEmbed(hastTree, raw);
 				if (embed) {
 					return [embed];
 				}
@@ -548,7 +549,7 @@ function notionHtmlTableToPM(raw: string): JSONContent[] | null {
 	return markdownToTiptapDoc(markdownTable).content ?? [];
 }
 
-function hastToEmbed(root: HastRoot): JSONContent | null {
+function hastToEmbed(root: HastRoot, raw: string): JSONContent | null {
 	const children = root.children.filter(hasMeaningfulHtml);
 	if (children.length !== 1) return null;
 	const [node] = children;
@@ -565,6 +566,11 @@ function hastToEmbed(root: HastRoot): JSONContent | null {
 			attrs: {
 				kind: "iframe",
 				src,
+				// Original HTML, re-emitted byte-identical on save (only width/height
+				// are rewritten in place after a resize).
+				raw: raw.trim(),
+				width: readIframeAttr(raw, "width") || null,
+				height: readIframeAttr(raw, "height") || null,
 			},
 		};
 	}
@@ -716,24 +722,10 @@ function dedentNotionBlockMarkdown(markdown: string): string {
 		.join("\n");
 }
 
-const BLOCKED_IFRAME_SCHEME = /^(file:|data:|javascript:|hubble-asset:)/i;
-const LOCAL_IFRAME_SRC = /^(\.{1,2}\/|[^:/\\]+(?:\/|$)).*\.html(?:[?#].*)?$/i;
-
 function getStringProperty(value: unknown): string {
 	if (typeof value === "string") return value;
 	if (typeof value === "number") return String(value);
 	return "";
-}
-
-function isValidIframeEmbedSrc(src: string): boolean {
-	if (!src.trim()) return false;
-	if (BLOCKED_IFRAME_SCHEME.test(src)) {
-		return false;
-	}
-	if (src.startsWith("/") || src.startsWith("\\") || src.startsWith("//")) {
-		return false;
-	}
-	return LOCAL_IFRAME_SRC.test(src);
 }
 
 function isHastElement(node: RootContent): node is HastElement {
@@ -805,7 +797,7 @@ function imageToPM(imageNode: Image): JSONContent[] {
 function htmlToEmbed(raw: string | undefined): JSONContent | null {
 	if (!raw?.trim()) return null;
 	try {
-		return hastToEmbed(fromHtml(raw, { fragment: true }));
+		return hastToEmbed(fromHtml(raw, { fragment: true }), raw);
 	} catch {
 		return null;
 	}

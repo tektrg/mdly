@@ -1,5 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
 import type { Slice } from "@tiptap/pm/model";
+import { iframeEmbedToMarkdown } from "./IframeEmbed.js";
 import type { LinkAttrs } from "./Link.js";
 import { wikiDisplayNameForTarget } from "./markdownPath.js";
 
@@ -135,9 +136,7 @@ function blockToMarkdown(node: JSONContent): string {
 		}
 
 		case "embed": {
-			const src = String(node.attrs?.src ?? "");
-			if (!isValidIframeEmbedSrc(src)) return "";
-			return `<iframe src="${escapeHtmlAttr(src)}"></iframe>`;
+			return iframeEmbedToMarkdown(node.attrs ?? {});
 		}
 
 		case "notionCallout": {
@@ -342,20 +341,6 @@ function tableBlockToMarkdown(node: JSONContent): string {
 		return inlineToTableMarkdown(node.content ?? []);
 	}
 	return blockToMarkdown(node).split("|").join("\\|");
-}
-
-const BLOCKED_IFRAME_SCHEME = /^(file:|data:|javascript:|hubble-asset:)/i;
-const LOCAL_IFRAME_SRC = /^(\.{1,2}\/|[^:/\\]+(?:\/|$)).*\.html(?:[?#].*)?$/i;
-
-function isValidIframeEmbedSrc(src: string): boolean {
-	if (!src.trim()) return false;
-	if (BLOCKED_IFRAME_SCHEME.test(src)) {
-		return false;
-	}
-	if (src.startsWith("/") || src.startsWith("\\") || src.startsWith("//")) {
-		return false;
-	}
-	return LOCAL_IFRAME_SRC.test(src);
 }
 
 function escapeHtmlAttr(value: string) {

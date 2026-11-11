@@ -25,6 +25,13 @@ export {
 } from "./frontMatterEdit.js";
 export { HeadingExtension } from "./Heading.js";
 export {
+	iframeEmbedToMarkdown,
+	isRemoteIframeSrc,
+	isValidIframeEmbedSrc,
+	readIframeAttr,
+	setIframeAttr,
+} from "./IframeEmbed.js";
+export {
 	createLinkMark,
 	getActiveLinkRange,
 	getLinkHrefFromAttrs,
