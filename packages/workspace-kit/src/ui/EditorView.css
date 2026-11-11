@@ -930,6 +930,7 @@
    Zoom 1 = fit: the stage is exactly the scroll box and the svg is contained;
    other zooms resize the stage and the scroll box pans it. */
 .pm-mermaid-viewer-scroll {
+	display: flex;
 	background: var(--muted);
 	cursor: grab;
 	overscroll-behavior: contain;
@@ -941,11 +942,12 @@
 	cursor: grabbing;
 }
 
+/* Sized inline (zoom x 100% of the scroll box). margin:auto centres it when it
+   is smaller than the box (zoom < 1) and falls back to start-aligned scrolling
+   when larger, so no edge becomes unreachable. */
 .pm-mermaid-viewer-stage {
-	display: grid;
-	place-items: center;
-	min-inline-size: 100%;
-	min-block-size: 100%;
+	flex: none;
+	margin: auto;
 }
 
 .pm-mermaid-viewer-diagram,
@@ -973,6 +975,7 @@
 }
 
 .pm-mermaid-viewer-diagram svg {
+	display: block;
 	inline-size: 100% !important;
 	block-size: 100% !important;
 	max-inline-size: none !important;
