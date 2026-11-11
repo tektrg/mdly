@@ -132,4 +132,29 @@ describe("columns block", () => {
 		const doc = markdownToTiptapDoc("::: columns wide\na\n:::");
 		expect(JSON.stringify(doc)).not.toContain('"columns"');
 	});
+	it("keeps a literal +++ or ::: paragraph inside its column across saves", () => {
+		const doc = {
+			type: "doc",
+			content: [
+				{
+					type: "columns",
+					attrs: { ratio: null },
+					content: ["+++", ":::", "::: columns"].map((text) => ({
+						type: "column",
+						content: [
+							{ type: "paragraph", content: [{ type: "text", text: "x" }] },
+							{ type: "paragraph", content: [{ type: "text", text }] },
+						],
+					})),
+				},
+			],
+		};
+		const saved = tiptapDocToMarkdown(doc);
+		const reparsed = markdownToTiptapDoc(saved);
+		expect(reparsed.content).toHaveLength(1);
+		expect(reparsed.content?.[0]?.content).toHaveLength(3);
+		expect(tiptapDocToMarkdown(reparsed)).toBe(saved);
+		expect(JSON.stringify(reparsed)).toContain('"text":"+++"');
+		expect(JSON.stringify(reparsed)).toContain('"text":":::"');
+	});
 });

@@ -101,7 +101,7 @@ function splitColumnsSegments(markdown: string): ColumnsSegment[] {
 		const line = lines[index] ?? "";
 		const fenceMatch = line.match(FENCE_PATTERN);
 		if (fence) {
-			if (fenceMatch && fenceMatch[1]?.startsWith(fence)) fence = null;
+			if (fenceMatch?.[1]?.startsWith(fence)) fence = null;
 			plain.push(line);
 			continue;
 		}
@@ -123,8 +123,7 @@ function splitColumnsSegments(markdown: string): ColumnsSegment[] {
 			const innerLine = lines[inner] ?? "";
 			const innerFenceMatch = innerLine.match(FENCE_PATTERN);
 			if (innerFence) {
-				if (innerFenceMatch && innerFenceMatch[1]?.startsWith(innerFence))
-					innerFence = null;
+				if (innerFenceMatch?.[1]?.startsWith(innerFence)) innerFence = null;
 			} else if (innerFenceMatch) {
 				innerFence = innerFenceMatch[1] ?? null;
 			} else if (COLUMN_SEPARATOR_PATTERN.test(innerLine)) {
@@ -149,7 +148,7 @@ function findColumnsClose(lines: string[], from: number): number {
 		const line = lines[index] ?? "";
 		const fenceMatch = line.match(FENCE_PATTERN);
 		if (fence) {
-			if (fenceMatch && fenceMatch[1]?.startsWith(fence)) fence = null;
+			if (fenceMatch?.[1]?.startsWith(fence)) fence = null;
 			continue;
 		}
 		if (fenceMatch) {

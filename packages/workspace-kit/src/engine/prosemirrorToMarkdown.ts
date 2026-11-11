@@ -202,7 +202,33 @@ function columnsToMarkdown(node: JSONContent, nested = false): string {
 		COLUMNS_RATIO.test(node.attrs.ratio)
 			? ` ${node.attrs.ratio}`
 			: "";
-	return `::: columns${ratio}\n${bodies.join("\n+++\n")}\n:::`;
+	return `::: columns${ratio}\n${bodies.map(escapeColumnMarkers).join("\n+++\n")}\n:::`;
+}
+
+const FENCE_LINE = /^[ \t]{0,3}(`{3,}|~{3,})/;
+
+/**
+ * Backslash-escapes body lines (outside fenced code) that the columns parser
+ * would read as a `+++` separator or `:::` close, so literal text typed into a
+ * column stays in that column after save + reload.
+ */
+function escapeColumnMarkers(body: string): string {
+	let fence: string | null = null;
+	return body
+		.split("\n")
+		.map((line) => {
+			const fenceMatch = line.match(FENCE_LINE);
+			if (fence) {
+				if (fenceMatch?.[1]?.startsWith(fence)) fence = null;
+				return line;
+			}
+			if (fenceMatch) {
+				fence = fenceMatch[1] ?? null;
+				return line;
+			}
+			return /^(\+\+\+|:::)/.test(line) ? `\\${line}` : line;
+		})
+		.join("\n");
 }
 
 // Open/closed state is never persisted (see ToggleBlock.ts) so the `open`
