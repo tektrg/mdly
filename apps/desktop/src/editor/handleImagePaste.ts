@@ -32,13 +32,13 @@ export function handleImagePaste({
 	if (!editor) return false;
 	const items = event.clipboardData?.items;
 	if (!items) return false;
-	const imageItem = Array.from(items).find((item) =>
-		item.type.startsWith("image/"),
-	);
-	const imageFile = imageItem?.getAsFile();
-	if (!imageFile) return false;
+	const imageFiles = Array.from(items)
+		.filter((item) => item.type.startsWith("image/"))
+		.map((item) => item.getAsFile())
+		.filter((file): file is File => file !== null);
+	if (imageFiles.length === 0) return false;
 	event.preventDefault();
-	void insertUploadImage({ editor, file: imageFile });
+	void insertUploadImages({ editor, files: imageFiles });
 	return true;
 }
 
@@ -50,47 +50,93 @@ export function handleImageDrop({
 	event: DragEvent;
 }): boolean {
 	if (!editor) return false;
-	const imageFile = Array.from(event.dataTransfer?.files ?? []).find((file) =>
-		file.type.startsWith("image/"),
+	const imageFiles = Array.from(event.dataTransfer?.files ?? []).filter(
+		(file) => file.type.startsWith("image/"),
 	);
-	if (!imageFile) return false;
+	if (imageFiles.length === 0) return false;
 	event.preventDefault();
 	const pos = editor.view.posAtCoords({
 		left: event.clientX,
 		top: event.clientY,
 	})?.pos;
-	void insertUploadImage({ editor, file: imageFile, pos });
+	void insertUploadImages({ editor, files: imageFiles, pos });
 	return true;
 }
 
-async function insertUploadImage({
+/** Most images placed side by side in one columns group. */
+export const MAX_IMAGES_PER_COLUMNS_GROUP = 4;
+
+/**
+ * Splits dropped/pasted images into groups for side-by-side layout: one image
+ * stays a plain image; several become columns groups of at most `max` images.
+ * Inside an existing column (columns never nest) every image stays single.
+ */
+export function groupImagesForColumns<T>(
+	files: T[],
+	insideColumn: boolean,
+	max = MAX_IMAGES_PER_COLUMNS_GROUP,
+): T[][] {
+	if (files.length <= 1 || insideColumn) return files.map((file) => [file]);
+	const groups: T[][] = [];
+	for (let index = 0; index < files.length; index += max) {
+		groups.push(files.slice(index, index + max));
+	}
+	return groups;
+}
+
+async function insertUploadImages({
 	editor,
-	file,
+	files,
 	pos,
 }: {
 	editor: Editor;
-	file: File;
+	files: File[];
 	pos?: number;
 }) {
-	const size = placeholderSize(await decodeImageSize(file));
-	const imageNode = editor.schema.nodes.image?.create({
-		src: "",
-		alt: "",
-		uploadId: crypto.randomUUID(),
-		uploadStatus: "uploading",
-		uploadFile: file,
-		width: size.width,
-		height: size.height,
-	});
-	const paragraphNode = editor.schema.nodes.paragraph?.create();
-	if (!imageNode || !paragraphNode) return;
-
+	const { schema } = editor;
 	const insertPos = pos ?? editor.state.selection.from;
+	const $insert = editor.state.doc.resolve(
+		Math.min(insertPos, editor.state.doc.content.size),
+	);
+	let insideColumn = false;
+	for (let depth = $insert.depth; depth > 0; depth -= 1) {
+		if ($insert.node(depth).type.name === "column") insideColumn = true;
+	}
+	const imageNodes = await Promise.all(
+		files.map(async (file) => {
+			const size = placeholderSize(await decodeImageSize(file));
+			return schema.nodes.image?.create({
+				src: "",
+				alt: "",
+				uploadId: crypto.randomUUID(),
+				uploadStatus: "uploading",
+				uploadFile: file,
+				width: size.width,
+				height: size.height,
+			});
+		}),
+	);
+	if (imageNodes.some((node) => !node)) return;
+	const blocks = groupImagesForColumns(
+		imageNodes as NonNullable<(typeof imageNodes)[number]>[],
+		insideColumn || !schema.nodes.columns || !schema.nodes.column,
+	).map((group) =>
+		group.length === 1
+			? group[0]
+			: schema.nodes.columns.create(
+					null,
+					group.map((image) => schema.nodes.column.create(null, image)),
+				),
+	);
+	const paragraphNode = schema.nodes.paragraph?.create();
+	if (!paragraphNode || blocks.length === 0) return;
+
 	const transaction = editor.state.tr.insert(insertPos, [
-		imageNode,
+		...blocks,
 		paragraphNode,
 	]);
-	const cursorPos = insertPos + imageNode.nodeSize + 1;
+	const insertedSize = blocks.reduce((sum, node) => sum + node.nodeSize, 0);
+	const cursorPos = insertPos + insertedSize + 1;
 	editor.view.dispatch(
 		transaction.setSelection(
 			TextSelection.near(transaction.doc.resolve(cursorPos)),

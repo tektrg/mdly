@@ -667,8 +667,49 @@
 }
 
 [data-hubble-editor] .pm-image-frame {
+	position: relative;
 	display: block;
 	max-inline-size: min(100%, 900px);
+}
+
+/* Hug the image so the resize handle sits on its corner. */
+[data-hubble-editor] .pm-image-frame:has(> img) {
+	inline-size: fit-content;
+}
+
+[data-hubble-editor] .pm-image-frame > img {
+	cursor: zoom-in;
+}
+
+/* Explicit `|W` width (or a live resize drag): the frame owns the size. */
+[data-hubble-editor] .pm-image-frame-sized {
+	max-inline-size: 100%;
+}
+
+[data-hubble-editor] .pm-image-frame-sized > img {
+	inline-size: 100%;
+	max-inline-size: 100%;
+}
+
+[data-hubble-editor] .pm-image-resize-handle {
+	position: absolute;
+	inset-block-end: 4px;
+	inset-inline-end: 4px;
+	inline-size: 12px;
+	block-size: 12px;
+	border: 2px solid var(--background);
+	border-radius: 999px;
+	background: var(--primary);
+	cursor: ew-resize;
+	opacity: 0;
+	transition: opacity 120ms ease;
+	touch-action: none;
+}
+
+[data-hubble-editor] .pm-image-frame:hover > .pm-image-resize-handle,
+[data-hubble-editor] .ProseMirror-selectednode .pm-image-resize-handle,
+[data-hubble-editor] .pm-image-resize-handle:active {
+	opacity: 1;
 }
 
 [data-hubble-editor] .pm-image-frame-measured > img {
