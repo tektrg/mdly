@@ -110,7 +110,8 @@ export function iframeEmbedToMarkdown(attrs: Record<string, unknown>): string {
 	const width = optionalString(attrs.width);
 	const height = optionalString(attrs.height);
 	const raw = typeof attrs.raw === "string" ? attrs.raw : "";
-	if (raw && readIframeAttr(raw, "src") === src) {
+	const rawSrc = raw ? readIframeAttr(raw, "src") : null;
+	if (rawSrc !== null && decodeAttrEntities(rawSrc) === src) {
 		let out = raw;
 		if (width !== null && readIframeAttr(out, "width") !== width) {
 			out = setIframeAttr(out, "width", width);
@@ -125,6 +126,32 @@ export function iframeEmbedToMarkdown(attrs: Record<string, unknown>): string {
 		height !== null ? ` height="${escapeAttr(height)}"` : "",
 	].join("");
 	return `<iframe src="${escapeAttr(src)}"${sizes}></iframe>`;
+}
+
+/** Decodes the character references an HTML parser would in an attribute. */
+function decodeAttrEntities(value: string): string {
+	const named: Record<string, string> = {
+		amp: "&",
+		quot: '"',
+		apos: "'",
+		lt: "<",
+		gt: ">",
+	};
+	return value.replace(
+		/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
+		(entity, body: string) => {
+			if (body[0] === "#") {
+				const code =
+					body[1] === "x" || body[1] === "X"
+						? Number.parseInt(body.slice(2), 16)
+						: Number.parseInt(body.slice(1), 10);
+				return Number.isFinite(code) && code <= 0x10ffff
+					? String.fromCodePoint(code)
+					: entity;
+			}
+			return named[body.toLowerCase()] ?? entity;
+		},
+	);
 }
 
 function optionalString(value: unknown): string | null {

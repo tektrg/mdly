@@ -334,4 +334,9 @@ describe("embed markdown conversion", () => {
 		expect(doc.content?.some((node) => node.type === "embed")).toBe(false);
 		expect(tiptapDocToMarkdown(doc)).toBe(input);
 	});
+	it("keeps every attribute of an iframe whose src contains entities", () => {
+		const raw =
+			'<iframe src="https://a.com/x?a=1&amp;b=2&#38;c=3" width="500" allow="camera" title="T"></iframe>';
+		expect(tiptapDocToMarkdown(markdownToTiptapDoc(raw)).trim()).toBe(raw);
+	});
 });
