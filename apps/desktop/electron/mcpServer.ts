@@ -49,6 +49,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import http from "node:http";
+import { MDLY_AUTHORING_NOTES } from "@mdly/workspace-kit/engine";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -130,7 +131,7 @@ function createRequestScopedMcpServer(
 
 	const server = new Server(
 		{ name: SERVER_NAME, version: appVersion },
-		{ capabilities: { tools: {} } },
+		{ capabilities: { tools: {} }, instructions: MDLY_AUTHORING_NOTES },
 	);
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => {
