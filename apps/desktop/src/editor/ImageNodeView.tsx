@@ -215,13 +215,13 @@ export function ImageNodeView({
 					{uploadId && rawSrc.length === 0 ? (
 						<UploadPlaceholder />
 					) : resolvedSrc.length > 0 ? (
-						// biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users select the node and open via the context menu
+						// Click only selects the node (ProseMirror default); the full-screen
+						// viewer opens from the right-click menu.
 						<img
 							src={resolvedSrc}
 							alt={node.attrs.alt || ""}
-							title={node.attrs.title || "Click to view full screen"}
+							title={node.attrs.title || undefined}
 							className={selected ? "outline-2 outline-ring" : ""}
-							onClick={canView ? openViewer : undefined}
 						/>
 					) : (
 						<div className="pm-image-missing">Image unavailable</div>
