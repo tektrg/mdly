@@ -1,8 +1,10 @@
+import { isRemoteIframeSrc } from "@mdly/workspace-kit";
 import { Node } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import { useEffect, useState } from "react";
 import { desktopApi } from "../desktopApi";
 import { IframeView, MIN_IFRAME_HEIGHT, toAssetUrl } from "./IframeView";
+import { RemoteEmbedView } from "./RemoteEmbedView";
 import "./EmbedExtension.css";
 
 type EmbedAttrs = {
@@ -27,6 +29,11 @@ export function createEmbedExtension(options: EmbedExtensionOptions) {
 			return {
 				kind: { default: "iframe" },
 				src: { default: "" },
+				// Original `<iframe …>` HTML + its size attrs, so save is byte-identical
+				// (the kit only rewrites width/height in place after a resize).
+				raw: { default: null },
+				width: { default: null },
+				height: { default: null },
 			};
 		},
 
@@ -36,13 +43,22 @@ export function createEmbedExtension(options: EmbedExtensionOptions) {
 		},
 
 		addNodeView() {
-			return ReactNodeViewRenderer((props) => (
-				<IframeEmbedNodeView
-					attrs={props.node.attrs as EmbedAttrs}
-					filePath={options.filePath}
-					workspacePath={options.workspacePath}
-				/>
-			));
+			return ReactNodeViewRenderer((props) =>
+				isRemoteIframeSrc(String(props.node.attrs.src ?? "")) ? (
+					<RemoteEmbedView
+						node={props.node}
+						selected={props.selected}
+						updateAttributes={props.updateAttributes}
+						editor={props.editor}
+					/>
+				) : (
+					<IframeEmbedNodeView
+						attrs={props.node.attrs as EmbedAttrs}
+						filePath={options.filePath}
+						workspacePath={options.workspacePath}
+					/>
+				),
+			);
 		},
 	});
 }

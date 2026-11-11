@@ -25,3 +25,119 @@
 	padding-block: 0.75rem;
 	padding-inline: 0.75rem;
 }
+
+/* Remote (https) embeds: a slim chrome bar + border around the iframe is the
+   click/right-click target (iframe events never reach the editor). */
+.hubble-remote-embed {
+	max-inline-size: 100%;
+}
+
+.hubble-remote-embed.ProseMirror-selectednode {
+	outline: none;
+}
+
+.hubble-remote-embed-chrome {
+	position: relative;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--card);
+	padding-block-end: 6px;
+	padding-inline: 6px;
+	cursor: default;
+}
+
+.hubble-remote-embed-chrome.is-selected {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+
+.hubble-remote-embed-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.375rem;
+	min-block-size: 26px;
+	padding-inline: 2px;
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
+	user-select: none;
+}
+
+.hubble-remote-embed-host {
+	margin-inline-start: auto;
+	opacity: 0.7;
+	white-space: nowrap;
+}
+
+.hubble-remote-embed-frame {
+	display: block;
+	inline-size: 100%;
+	border: 0;
+	border-radius: 6px;
+	background: var(--background);
+}
+
+.hubble-remote-embed-chrome.is-resizing .hubble-remote-embed-frame {
+	pointer-events: none;
+}
+
+.hubble-remote-embed-resize {
+	position: absolute;
+	inset-block-end: -5px;
+	inset-inline-start: 50%;
+	inline-size: 40px;
+	block-size: 10px;
+	margin-inline-start: -20px;
+	border: 2px solid var(--background);
+	border-radius: 999px;
+	background: var(--primary);
+	cursor: ns-resize;
+	opacity: 0;
+	transition: opacity 120ms ease;
+	touch-action: none;
+}
+
+.hubble-remote-embed-chrome:hover > .hubble-remote-embed-resize,
+.hubble-remote-embed-chrome.is-selected > .hubble-remote-embed-resize,
+.hubble-remote-embed-chrome.is-resizing > .hubble-remote-embed-resize {
+	opacity: 1;
+}
+
+.hubble-remote-embed-fallback {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	justify-content: center;
+	gap: 0.375rem;
+	max-block-size: 240px;
+	padding-block: 1rem;
+	padding-inline: 1rem;
+	border-radius: 6px;
+	background: var(--background);
+	font-size: 0.875rem;
+}
+
+.hubble-remote-embed-url {
+	max-inline-size: 100%;
+	overflow-wrap: anywhere;
+	font-family: var(--font-mono, monospace);
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
+}
+
+.hubble-remote-embed-reason {
+	font-size: 0.75rem;
+	color: var(--muted-foreground);
+}
+
+.hubble-remote-embed-fallback button {
+	margin-block-start: 0.25rem;
+	padding-block: 0.25rem;
+	padding-inline: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	font-size: 0.75rem;
+}
+
+.hubble-remote-embed-viewer .hubble-remote-embed-frame {
+	border-radius: 0;
+}
