@@ -24,6 +24,11 @@ export {
 	columnsExtensions,
 	columnsGridTemplate,
 } from "./engine/Columns.js";
+export {
+	type EmbedInputResult,
+	extractIframeEmbedMarkdown,
+	parseEmbedInput,
+} from "./engine/embedInput.js";
 export { FakeSelectionExtension } from "./engine/FakeSelectionExtension.js";
 export {
 	combineMarkdownFrontMatter,

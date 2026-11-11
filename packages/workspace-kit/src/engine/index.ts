@@ -4,6 +4,11 @@ export {
 	columnsExtensions,
 	columnsGridTemplate,
 } from "./Columns.js";
+export {
+	type EmbedInputResult,
+	extractIframeEmbedMarkdown,
+	parseEmbedInput,
+} from "./embedInput.js";
 export { FakeSelectionExtension } from "./FakeSelectionExtension.js";
 export {
 	combineMarkdownFrontMatter,

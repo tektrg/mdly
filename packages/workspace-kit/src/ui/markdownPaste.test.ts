@@ -1,10 +1,14 @@
 // @vitest-environment happy-dom
 
-import { Editor, type JSONContent } from "@tiptap/core";
+import { Editor, type JSONContent, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import { afterEach, describe, expect, it } from "vitest";
-import { listExtensions, toggleBlockExtensions } from "../engine/index.js";
+import {
+	columnsExtensions,
+	listExtensions,
+	toggleBlockExtensions,
+} from "../engine/index.js";
 import {
 	handleMarkdownTextPaste,
 	hasMarkdownSyntax,
@@ -18,6 +22,23 @@ afterEach(() => {
 	editors.length = 0;
 });
 
+// Minimal stand-in for the desktop embed node (same name + attrs).
+const TestEmbed = Node.create({
+	name: "embed",
+	group: "block",
+	atom: true,
+	addAttributes() {
+		return {
+			kind: { default: "iframe" },
+			src: { default: "" },
+			raw: { default: null },
+			width: { default: null },
+			height: { default: null },
+		};
+	},
+	renderHTML: ({ node }) => ["iframe", { src: node.attrs.src }],
+});
+
 function createEditor(content: JSONContent) {
 	const editor = new Editor({
 		element: document.createElement("div"),
@@ -25,6 +46,8 @@ function createEditor(content: JSONContent) {
 			StarterKit.configure({ listItem: false }),
 			...listExtensions,
 			...toggleBlockExtensions,
+			...columnsExtensions,
+			TestEmbed,
 		],
 		content,
 	});
@@ -270,5 +293,75 @@ describe("markdown syntax and semantic HTML detectors", () => {
 			false,
 		);
 		expect(hasSemanticHtml("plain text")).toBe(false);
+	});
+});
+
+describe("smart-paste: iframe code becomes a live embed", () => {
+	const RAW =
+		'<iframe src="https://www.youtube.com/embed/abc" width="560" height="315" allowfullscreen></iframe>';
+
+	it("plain-text iframe code → embed node with the original HTML", () => {
+		const editor = createEditor(docWithParagraph(""));
+		expect(handleMarkdownTextPaste(editor, pasteEvent(RAW))).toBe(true);
+		const embed = editor.getJSON().content?.find((n) => n.type === "embed");
+		expect(embed?.attrs).toMatchObject({
+			src: "https://www.youtube.com/embed/abc",
+			raw: RAW,
+		});
+	});
+
+	it("plain-text iframe code wins over rich clipboard HTML (code editors)", () => {
+		const editor = createEditor(docWithParagraph(""));
+		const html = `<pre><code>${RAW.replace(/</g, "&lt;")}</code></pre>`;
+		expect(handleMarkdownTextPaste(editor, pasteEvent(RAW, html))).toBe(true);
+		expect(editor.getJSON().content?.some((n) => n.type === "embed")).toBe(
+			true,
+		);
+	});
+
+	it("clipboard HTML holding only an iframe element → embed", () => {
+		const editor = createEditor(docWithParagraph(""));
+		expect(handleMarkdownTextPaste(editor, pasteEvent("", RAW))).toBe(true);
+		expect(editor.getJSON().content?.some((n) => n.type === "embed")).toBe(
+			true,
+		);
+	});
+
+	it.each([
+		'<iframe src="http://example.com/x"></iframe>',
+		'<iframe src="javascript:alert(1)"></iframe>',
+		'<iframe src="data:text/html,hi"></iframe>',
+		'<iframe src="file:///tmp/a.html"></iframe>',
+	])("unsafe src %s stays text", (raw) => {
+		const editor = createEditor(docWithParagraph(""));
+		handleMarkdownTextPaste(editor, pasteEvent(raw));
+		expect(JSON.stringify(editor.getJSON())).not.toContain('"embed"');
+		expect(handleMarkdownTextPaste(editor, pasteEvent("", raw))).toBe(false);
+	});
+
+	it("pasting inside a column puts the embed in that column", () => {
+		const editor = createEditor({
+			type: "doc",
+			content: [
+				{
+					type: "columns",
+					content: [
+						{ type: "column", content: [{ type: "paragraph" }] },
+						{ type: "column", content: [{ type: "paragraph" }] },
+					],
+				},
+			],
+		});
+		// Caret in the first column's empty paragraph.
+		editor.view.dispatch(
+			editor.state.tr.setSelection(TextSelection.create(editor.state.doc, 3)),
+		);
+		expect(handleMarkdownTextPaste(editor, pasteEvent(RAW))).toBe(true);
+		const columns: JSONContent | undefined = editor.getJSON().content?.[0];
+		expect(columns?.type).toBe("columns");
+		expect(columns?.content).toHaveLength(2);
+		expect(
+			columns?.content?.[0]?.content?.some((n) => n.type === "embed"),
+		).toBe(true);
 	});
 });

@@ -1,6 +1,9 @@
 import type { Editor } from "@tiptap/core";
 import type { JSONContent } from "@tiptap/react";
-import { markdownToTiptapDoc } from "../engine/index.js";
+import {
+	extractIframeEmbedMarkdown,
+	markdownToTiptapDoc,
+} from "../engine/index.js";
 
 /**
  * Detects if a string contains CommonMark / GFM markdown syntax.
@@ -70,6 +73,23 @@ export function handleMarkdownTextPaste(
 	// Allow ProseMirror's default paste handler to insert the exact native slice.
 	if (html.includes("data-pm-slice")) {
 		return false;
+	}
+
+	// Iframe embed code: plain text that starts with `<iframe` is parsed as
+	// Markdown even when the clipboard also carries rich HTML (code editors
+	// wrap it in <pre>/<span>). Clipboard HTML that is only iframe elements is
+	// turned back into that Markdown. Both go through the file parse rules, so
+	// http/javascript/data/file srcs stay text.
+	const iframeMarkdown = /^\s*<iframe\b/i.test(text ?? "")
+		? (text ?? "")
+		: !text?.trim() && html
+			? extractIframeEmbedMarkdown(html)
+			: null;
+	if (iframeMarkdown) {
+		const blocks = markdownToTiptapDoc(iframeMarkdown).content ?? [];
+		if (blocks.length > 0) {
+			return editor.commands.insertContent(inlineIfSingleParagraph(blocks));
+		}
 	}
 
 	// External rich HTML copy (e.g. from web browsers, Google Docs):
