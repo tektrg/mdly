@@ -110,6 +110,7 @@ import {
 	type RunningAgentMcpServer,
 	startAgentMcpServer,
 } from "./mcpServer";
+import { installNavigationGuards } from "./navigationGuard";
 import {
 	getNotionConnectionStatus,
 	getNotionPageMarkdown,
@@ -1423,6 +1424,7 @@ async function createWindow(openFilePath?: string) {
 		});
 		window.webContents.reload();
 	});
+	installNavigationGuards(window.webContents, (url) => shell.openExternal(url));
 	window.webContents.on("unresponsive", () => {
 		console.error("Renderer became unresponsive");
 	});

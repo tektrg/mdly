@@ -697,6 +697,14 @@ export type DesktopApi = {
 	onMenuGoBack(callback: () => void): Unsubscribe;
 	onMenuGoForward(callback: () => void): Unsubscribe;
 	onWindowFocus(callback: () => void): Unsubscribe;
+	/** A sub-frame (iframe embed) failed to load, e.g. refused by X-Frame-Options. */
+	onEmbedLoadFailed?(
+		callback: (failure: {
+			url: string;
+			errorCode: number;
+			errorDescription: string;
+		}) => void,
+	): Unsubscribe;
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
 	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */
 	onCommentsChanged(callback: (path: string) => void): Unsubscribe;
