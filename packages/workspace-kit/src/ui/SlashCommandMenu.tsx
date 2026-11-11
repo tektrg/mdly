@@ -11,6 +11,7 @@ import MingcuteBorderHorizontalLine from "~icons/mingcute/border-horizontal-line
 import MingcuteHeading1Line from "~icons/mingcute/heading-1-line";
 import MingcuteHeading2Line from "~icons/mingcute/heading-2-line";
 import MingcuteHeading3Line from "~icons/mingcute/heading-3-line";
+import MingcuteColumnsLine from "~icons/mingcute/layout-6-line";
 import MingcuteListCheck2Line from "~icons/mingcute/list-check-2-line";
 import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
 import MingcuteListOrderedLine from "~icons/mingcute/list-ordered-line";
@@ -111,6 +112,13 @@ const SLASH_COMMANDS: SlashCommand[] = [
 		description: "Insert a diagram (flowchart, sequence…)",
 		aliases: ["mermaid", "diagram", "flowchart", "graph", "chart"],
 		icon: MingcuteMindMapLine,
+	},
+	{
+		kind: "columns",
+		title: "Columns",
+		description: "Two side-by-side columns",
+		aliases: ["columns", "column", "side", "grid", "layout", "compare"],
+		icon: MingcuteColumnsLine,
 	},
 	{
 		kind: "divider",

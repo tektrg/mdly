@@ -14,6 +14,7 @@ export type SlashCommandKind =
 	| "toggle"
 	| "divider"
 	| "mermaid"
+	| "columns"
 	| "strike";
 
 // Starter source shown when a diagram is inserted so it renders immediately;
@@ -74,6 +75,9 @@ export function applySlashCommand(
 		view.focus();
 		return;
 	}
+	// Columns never nest: `/columns` inside a column is a no-op.
+	if (kind === "columns" && isInsideColumn(state.doc.resolve(token.from)))
+		return;
 	const canConvertInPlace =
 		block?.type.name === "paragraph" &&
 		block.content.size === token.to - token.from;
@@ -121,6 +125,13 @@ export function applySlashCommand(
 	);
 	view.dispatch(tr.scrollIntoView());
 	view.focus();
+}
+
+function isInsideColumn($pos: ReturnType<PMNode["resolve"]>): boolean {
+	for (let depth = $pos.depth; depth > 0; depth -= 1) {
+		if ($pos.node(depth).type.name === "column") return true;
+	}
+	return false;
 }
 
 function createInsertedBlock(
@@ -196,6 +207,15 @@ function createEmptyBlock(
 			if (!mermaidBlock) return null;
 			return mermaidBlock.create({ raw: MERMAID_STARTER_SOURCE });
 		}
+		case "columns": {
+			const columns = schema.nodes.columns;
+			const column = schema.nodes.column;
+			if (!columns || !column) return null;
+			return columns.create(null, [
+				column.create(null, paragraph.create()),
+				column.create(null, paragraph.create()),
+			]);
+		}
 		case "strike":
 			return null;
 	}
@@ -206,6 +226,8 @@ function selectionOffsetInsideNode(node: PMNode) {
 	if (node.type.name === "blockquote" || node.type.name === "toggle") return 2;
 	if (node.type.name === "bulletList" || node.type.name === "orderedList")
 		return 3;
+	// columns > column > paragraph: caret in the first column.
+	if (node.type.name === "columns") return 3;
 	return 0;
 }
 

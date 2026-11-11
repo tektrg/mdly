@@ -123,7 +123,11 @@ function blockToMarkdown(node: JSONContent): string {
 			const alt = node.attrs?.alt ?? "";
 			if (!src || node.attrs?.uploadId) return "";
 
-			return `![${alt}](${src})`;
+			return `![${alt}${imageSizeSuffix(node.attrs)}](${src})`;
+		}
+
+		case "columns": {
+			return columnsToMarkdown(node);
 		}
 
 		case "table": {
@@ -160,6 +164,45 @@ function blockToMarkdown(node: JSONContent): string {
 		default:
 			return "";
 	}
+}
+
+/** Obsidian size suffix (`|400` or `|400x300`) for an image's alt text. */
+function imageSizeSuffix(attrs: Record<string, unknown> | undefined): string {
+	const width = positiveInt(attrs?.width);
+	if (!width) return "";
+	const height = positiveInt(attrs?.height);
+	return height ? `|${width}x${height}` : `|${width}`;
+}
+
+function positiveInt(value: unknown): number | null {
+	if (typeof value !== "number" || !Number.isFinite(value)) return null;
+	const rounded = Math.round(value);
+	return rounded > 0 ? rounded : null;
+}
+
+const COLUMNS_RATIO = /^\d+(?::\d+)+$/;
+
+// `::: columns [ratio]` … `+++` … `:::`. Nested columns are never emitted as
+// a group (the parser can't nest them), so they flatten to their contents.
+function columnsToMarkdown(node: JSONContent, nested = false): string {
+	const columns = (node.content ?? []).filter((c) => c.type === "column");
+	const bodies = columns.map((column) =>
+		(column.content ?? [])
+			.map((child) =>
+				child.type === "columns"
+					? columnsToMarkdown(child, true)
+					: blockToMarkdown(child),
+			)
+			.filter(Boolean)
+			.join("\n\n"),
+	);
+	if (nested) return bodies.filter(Boolean).join("\n\n");
+	const ratio =
+		typeof node.attrs?.ratio === "string" &&
+		COLUMNS_RATIO.test(node.attrs.ratio)
+			? ` ${node.attrs.ratio}`
+			: "";
+	return `::: columns${ratio}\n${bodies.join("\n+++\n")}\n:::`;
 }
 
 // Open/closed state is never persisted (see ToggleBlock.ts) so the `open`

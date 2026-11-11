@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import {
 	lazy,
+	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
 	Suspense,
 	useCallback,
@@ -13,7 +14,9 @@ import MingcuteAddLine from "~icons/mingcute/add-line";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteEdit2Line from "~icons/mingcute/edit-2-line";
 import MingcuteFullscreenLine from "~icons/mingcute/fullscreen-line";
+import MingcuteLeftLine from "~icons/mingcute/left-line";
 import MingcuteMinimizeLine from "~icons/mingcute/minimize-line";
+import MingcuteRightLine from "~icons/mingcute/right-line";
 import { usePortalContainer } from "../lib/portalContainer";
 import { Button } from "../primitives/button";
 
@@ -38,12 +41,57 @@ type Props = {
 	onEdit: () => void;
 };
 
-/**
- * Full-screen diagram viewer. Zoom 1 = "fit": the diagram is contained in the
- * viewport. Higher/lower zoom resizes the diagram box to a multiple of the
- * viewport and the scroll container pans it (drag, scrollbars, trackpad).
- */
+/** Full-screen Mermaid diagram viewer (zoom/pan via ZoomViewer). */
 export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
+	return (
+		<ZoomViewer
+			open={open}
+			onOpenChange={onOpenChange}
+			title="Diagram"
+			actions={
+				<Button type="button" variant="ghost" size="sm" onClick={onEdit}>
+					<MingcuteEdit2Line />
+					Edit code
+				</Button>
+			}
+		>
+			<Suspense fallback={null}>
+				<MermaidDiagram source={source} className="pm-mermaid-viewer-diagram" />
+			</Suspense>
+		</ZoomViewer>
+	);
+}
+
+export type ZoomViewerProps = {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	title: ReactNode;
+	/** Extra toolbar buttons, shown before Close. */
+	actions?: ReactNode;
+	/** Step to the previous/next item (Left/Right arrows + toolbar buttons). */
+	onPrevious?: () => void;
+	onNext?: () => void;
+	/** Changing it resets zoom to fit (e.g. when stepping between images). */
+	contentKey?: string;
+	children: ReactNode;
+};
+
+/**
+ * Full-screen zoom/pan viewer shared by diagrams and images. Zoom 1 = "fit":
+ * the content is contained in the viewport. Higher/lower zoom resizes the
+ * stage to a multiple of the viewport and the scroll container pans it
+ * (drag, scrollbars, trackpad).
+ */
+export function ZoomViewer({
+	open,
+	onOpenChange,
+	title,
+	actions,
+	onPrevious,
+	onNext,
+	contentKey,
+	children,
+}: ZoomViewerProps) {
 	const portalContainer = usePortalContainer();
 	const [zoom, setZoom] = useState(1);
 	const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -60,8 +108,9 @@ export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
 	} | null>(null);
 
 	useEffect(() => {
+		void contentKey;
 		if (open) setZoom(1);
-	}, [open]);
+	}, [open, contentKey]);
 
 	const zoomBy = useCallback(
 		(factor: number, at?: { x: number; y: number }) => {
@@ -121,6 +170,12 @@ export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
 		} else if (event.key === "0") {
 			event.preventDefault();
 			setZoom(1);
+		} else if (event.key === "ArrowLeft" && onPrevious) {
+			event.preventDefault();
+			onPrevious();
+		} else if (event.key === "ArrowRight" && onNext) {
+			event.preventDefault();
+			onNext();
 		}
 	};
 
@@ -157,9 +212,35 @@ export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
 					onKeyDown={onKeyDown}
 				>
 					<div className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2">
-						<Dialog.Title className="m-0 me-auto text-sm font-semibold">
-							Diagram
+						<Dialog.Title className="m-0 me-auto truncate text-sm font-semibold">
+							{title}
 						</Dialog.Title>
+						{onPrevious || onNext ? (
+							<>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Previous"
+									title="Previous (←)"
+									disabled={!onPrevious}
+									onClick={onPrevious}
+								>
+									<MingcuteLeftLine />
+								</Button>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Next"
+									title="Next (→)"
+									disabled={!onNext}
+									onClick={onNext}
+								>
+									<MingcuteRightLine />
+								</Button>
+							</>
+						) : null}
 						<Dialog.Description className="sr-only">
 							Zoom with the buttons, + and -, or pinch. Drag to pan. Press 0 to
 							fit.
@@ -203,10 +284,7 @@ export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
 						>
 							<MingcuteFullscreenLine />
 						</Button>
-						<Button type="button" variant="ghost" size="sm" onClick={onEdit}>
-							<MingcuteEdit2Line />
-							Edit code
-						</Button>
+						{actions}
 						<Dialog.Close
 							render={
 								<Button
@@ -237,12 +315,7 @@ export function MermaidViewer({ open, onOpenChange, source, onEdit }: Props) {
 								blockSize: `${zoom * 100}%`,
 							}}
 						>
-							<Suspense fallback={null}>
-								<MermaidDiagram
-									source={source}
-									className="pm-mermaid-viewer-diagram"
-								/>
-							</Suspense>
+							{children}
 						</div>
 					</div>
 				</Dialog.Popup>

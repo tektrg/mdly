@@ -1,3 +1,9 @@
+export {
+	ColumnExtension,
+	ColumnsExtension,
+	columnsExtensions,
+	columnsGridTemplate,
+} from "./Columns.js";
 export { FakeSelectionExtension } from "./FakeSelectionExtension.js";
 export {
 	combineMarkdownFrontMatter,
@@ -44,7 +50,10 @@ export {
 	withMarkdownExtension,
 } from "./markdownPath.js";
 export { markdownToPlainText } from "./markdownToPlainText.js";
-export { markdownToTiptapDoc } from "./markdownToProsemirror.js";
+export {
+	markdownToTiptapDoc,
+	parseImageAltSize,
+} from "./markdownToProsemirror.js";
 export {
 	NotionCalloutExtension,
 	NotionEmptyBlockExtension,

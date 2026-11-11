@@ -980,3 +980,42 @@
 	block-size: 100% !important;
 	max-inline-size: none !important;
 }
+
+/* `::: columns` block: side by side, stacked when the editor is narrow. */
+[data-hubble-editor] .pm-columns {
+	display: grid;
+	grid-template-columns: var(--pm-columns-template, repeat(2, minmax(0, 1fr)));
+	gap: 1rem;
+	margin-block: 0.5rem;
+}
+
+[data-hubble-editor] .pm-column {
+	min-inline-size: 0;
+	border-radius: 6px;
+	outline: 1px dashed transparent;
+	outline-offset: 2px;
+}
+
+[data-hubble-editor] .pm-columns:hover > .pm-column,
+[data-hubble-editor] .pm-columns:focus-within > .pm-column {
+	outline-color: var(--border);
+}
+
+[data-hubble-editor] .pm-column > :first-child {
+	margin-block-start: 0;
+}
+
+@media (max-width: 640px) {
+	[data-hubble-editor] .pm-columns {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+/* Full-screen image viewer stage (shares the zoom viewer with mermaid). */
+.pm-image-viewer-img {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: contain;
+	-webkit-user-drag: none;
+}

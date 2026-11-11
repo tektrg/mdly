@@ -27,6 +27,7 @@ import {
 	useCommentThreads,
 } from "../comments/index.js";
 import {
+	columnsExtensions,
 	combineMarkdownFrontMatter,
 	HeadingExtension,
 	hasLinkedNotionFrontMatter,
@@ -450,6 +451,7 @@ export function EditorView({
 			MermaidBlockViewExtension,
 			ToggleBlockViewExtension,
 			ToggleSummaryExtension,
+			...columnsExtensions,
 			...listExtensions,
 			...tableExtensions,
 			...extensions,

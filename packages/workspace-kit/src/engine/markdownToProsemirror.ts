@@ -32,6 +32,136 @@ import { createTableUid } from "./tableUid.js";
 
 // Convert Markdown (string) -> TipTap JSONContent (ProseMirror document)
 export function markdownToTiptapDoc(markdown: string): JSONContent {
+	return { type: "doc", content: markdownToBlocks(markdown, true) };
+}
+
+/**
+ * Parses Markdown into top-level block nodes. `::: columns` groups are cut out
+ * of the source before remark sees it (remark has no directive support) and
+ * each column body is parsed on its own with columns disabled, so a nested
+ * `::: columns` stays literal text instead of nesting.
+ */
+function markdownToBlocks(
+	markdown: string,
+	allowColumns: boolean,
+): JSONContent[] {
+	if (!allowColumns) return markdownSegmentToBlocks(markdown);
+	const segments = splitColumnsSegments(markdown);
+	if (segments.length === 1 && segments[0]?.type === "markdown") {
+		return markdownSegmentToBlocks(markdown);
+	}
+	return segments.flatMap((segment) => {
+		if (segment.type === "markdown") {
+			return segment.text.trim() === ""
+				? []
+				: markdownSegmentToBlocks(segment.text);
+		}
+		return [
+			{
+				type: "columns",
+				attrs: { ratio: segment.ratio },
+				content: segment.columns.map((column) => {
+					const blocks = markdownToBlocks(column, false);
+					return {
+						type: "column",
+						content: blocks.length > 0 ? blocks : [{ type: "paragraph" }],
+					};
+				}),
+			},
+		];
+	});
+}
+
+const COLUMNS_OPEN_PATTERN =
+	/^:::[ \t]*columns(?:[ \t]+(\d+(?::\d+)+))?[ \t]*$/;
+const COLUMNS_CLOSE_PATTERN = /^:::[ \t]*$/;
+const COLUMN_SEPARATOR_PATTERN = /^\+\+\+[ \t]*$/;
+const FENCE_PATTERN = /^[ \t]{0,3}(`{3,}|~{3,})/;
+
+type ColumnsSegment =
+	| { type: "markdown"; text: string }
+	| { type: "columns"; ratio: string | null; columns: string[] };
+
+/**
+ * Splits Markdown into plain runs and closed `::: columns` groups. Only
+ * column-0 lines outside fenced code count. An opener with no closing `:::`
+ * is left in the plain run untouched, so malformed input never loses text.
+ */
+function splitColumnsSegments(markdown: string): ColumnsSegment[] {
+	const lines = markdown.split("\n");
+	const segments: ColumnsSegment[] = [];
+	let plain: string[] = [];
+	let fence: string | null = null;
+	const flushPlain = () => {
+		if (plain.length > 0)
+			segments.push({ type: "markdown", text: plain.join("\n") });
+		plain = [];
+	};
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const fenceMatch = line.match(FENCE_PATTERN);
+		if (fence) {
+			if (fenceMatch && fenceMatch[1]?.startsWith(fence)) fence = null;
+			plain.push(line);
+			continue;
+		}
+		if (fenceMatch) {
+			fence = fenceMatch[1] ?? null;
+			plain.push(line);
+			continue;
+		}
+		const open = line.match(COLUMNS_OPEN_PATTERN);
+		const close = open ? findColumnsClose(lines, index + 1) : -1;
+		if (!open || close === -1) {
+			plain.push(line);
+			continue;
+		}
+		const columns: string[] = [];
+		let current: string[] = [];
+		let innerFence: string | null = null;
+		for (let inner = index + 1; inner < close; inner += 1) {
+			const innerLine = lines[inner] ?? "";
+			const innerFenceMatch = innerLine.match(FENCE_PATTERN);
+			if (innerFence) {
+				if (innerFenceMatch && innerFenceMatch[1]?.startsWith(innerFence))
+					innerFence = null;
+			} else if (innerFenceMatch) {
+				innerFence = innerFenceMatch[1] ?? null;
+			} else if (COLUMN_SEPARATOR_PATTERN.test(innerLine)) {
+				columns.push(current.join("\n"));
+				current = [];
+				continue;
+			}
+			current.push(innerLine);
+		}
+		columns.push(current.join("\n"));
+		flushPlain();
+		segments.push({ type: "columns", ratio: open[1] ?? null, columns });
+		index = close;
+	}
+	flushPlain();
+	return segments;
+}
+
+function findColumnsClose(lines: string[], from: number): number {
+	let fence: string | null = null;
+	for (let index = from; index < lines.length; index += 1) {
+		const line = lines[index] ?? "";
+		const fenceMatch = line.match(FENCE_PATTERN);
+		if (fence) {
+			if (fenceMatch && fenceMatch[1]?.startsWith(fence)) fence = null;
+			continue;
+		}
+		if (fenceMatch) {
+			fence = fenceMatch[1] ?? null;
+			continue;
+		}
+		if (COLUMNS_CLOSE_PATTERN.test(line)) return index;
+	}
+	return -1;
+}
+
+function markdownSegmentToBlocks(markdown: string): JSONContent[] {
 	const input = rawMarkdownAddEmptyMarkers(
 		separateHtmlBlocksFromFollowingMarkdown(
 			normalizeMarkdownTableBoundaries(normalizeNotionHtmlTables(markdown)),
@@ -43,12 +173,9 @@ export function markdownToTiptapDoc(markdown: string): JSONContent {
 		.use(remarkRemoveEmptyMarkers);
 	const parsed = processor.parse(input);
 	const tree = processor.runSync(parsed) as Root;
-	return {
-		type: "doc",
-		content: normalizeBlockContent(
-			stitchSplitDetailsBlocks(tree.children, input),
-		).flatMap(blockToPM),
-	} satisfies JSONContent;
+	return normalizeBlockContent(
+		stitchSplitDetailsBlocks(tree.children, input),
+	).flatMap(blockToPM);
 }
 
 function normalizeBlockContent(children: Content[]): Content[] {
@@ -641,15 +768,36 @@ function listItemToPM(li: ListItem, allowChecked: boolean): JSONContent[] {
 	];
 }
 
+// Obsidian image size suffix in the alt text: `![alt|400](p)` / `![alt|400x300](p)`.
+const IMAGE_SIZE_SUFFIX = /^([\s\S]*?)\|(\d+)(?:x(\d+))?$/;
+
+/** Splits an Obsidian `|W` / `|WxH` size suffix off an image alt text. */
+export function parseImageAltSize(rawAlt: string): {
+	alt: string;
+	width?: number;
+	height?: number;
+} {
+	const match = rawAlt.match(IMAGE_SIZE_SUFFIX);
+	const width = Number(match?.[2]);
+	if (!match || !(width > 0)) return { alt: rawAlt };
+	const height = Number(match[3]);
+	return height > 0
+		? { alt: match[1] ?? "", width, height }
+		: { alt: match[1] ?? "", width };
+}
+
 function imageToPM(imageNode: Image): JSONContent[] {
 	if (!imageNode.url) return [];
+	const { alt, width, height } = parseImageAltSize(imageNode.alt || "");
 	return [
 		{
 			type: "image",
 			attrs: {
 				src: imageNode.url || "",
-				alt: imageNode.alt || "",
+				alt,
 				title: imageNode.title || undefined,
+				...(width ? { width } : {}),
+				...(height ? { height } : {}),
 			},
 		},
 	];

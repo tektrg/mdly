@@ -23,6 +23,7 @@ const BLOCK_NODE_TYPES = new Set([
 	"notionCallout",
 	"toggle",
 	"toggleSummary",
+	"column",
 ]);
 
 /**

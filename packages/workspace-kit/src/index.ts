@@ -18,6 +18,12 @@ export {
 	useCommentThreads,
 } from "./comments/index.js";
 // ---- Engine (Tiptap/ProseMirror Markdown core, zero UI deps) ----
+export {
+	ColumnExtension,
+	ColumnsExtension,
+	columnsExtensions,
+	columnsGridTemplate,
+} from "./engine/Columns.js";
 export { FakeSelectionExtension } from "./engine/FakeSelectionExtension.js";
 export {
 	combineMarkdownFrontMatter,
@@ -59,7 +65,10 @@ export {
 	withMarkdownExtension,
 } from "./engine/markdownPath.js";
 export { markdownToPlainText } from "./engine/markdownToPlainText.js";
-export { markdownToTiptapDoc } from "./engine/markdownToProsemirror.js";
+export {
+	markdownToTiptapDoc,
+	parseImageAltSize,
+} from "./engine/markdownToProsemirror.js";
 export {
 	NotionCalloutExtension,
 	NotionEmptyBlockExtension,
@@ -211,6 +220,7 @@ export {
 } from "./ui/EditorView";
 export { FormattingStatusBar } from "./ui/FormattingStatusBar";
 export { LinkCreationGhostExtension } from "./ui/LinkCreationGhostExtension";
+export { ZoomViewer, type ZoomViewerProps } from "./ui/MermaidViewer";
 export { SmartLinkExtension } from "./ui/SmartLinkExtension";
 export { TableOfContentsMenu } from "./ui/TableOfContentsMenu";
 export {
