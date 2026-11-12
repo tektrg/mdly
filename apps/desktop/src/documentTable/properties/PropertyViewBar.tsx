@@ -6,6 +6,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "../../components/ui/popover";
+import { invalidPatternEntries } from "../../lib/patternHint";
 import { cn } from "../../lib/utils";
 import { workspacePathStore } from "../../store/state";
 import {
@@ -348,8 +349,11 @@ function PathPatternEditor({
 }) {
 	const [open, setOpen] = useState(false);
 	const [text, setText] = useState("");
+	const invalid = invalidPatternEntries(text);
 	const commit = () => {
 		const pattern = text.trim();
+		// A broken regex would silently match nothing: keep the editor open.
+		if (invalid.length > 0) return;
 		setOpen(false);
 		if (pattern && pattern !== current) onCommit(pattern);
 	};
@@ -373,6 +377,8 @@ function PathPatternEditor({
 					// biome-ignore lint/a11y/noAutofocus: editor opened by an explicit click
 					autoFocus
 					aria-label="Path pattern"
+					aria-invalid={invalid.length > 0 || undefined}
+					aria-describedby="path-pattern-hint"
 					placeholder="memory/*, *spec*.md, /regex/"
 					className="h-6 rounded-full bg-mdly-control px-2.5 outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
 					value={text}
@@ -381,8 +387,17 @@ function PathPatternEditor({
 						if (event.key === "Enter") commit();
 					}}
 				/>
-				<span className="px-1.5 text-[11px] text-muted-foreground">
-					Matches folder/file.md · * = anything · /…/ = regex · commas = or
+				<span
+					id="path-pattern-hint"
+					className={
+						invalid.length > 0
+							? "px-1.5 text-[11px] text-destructive"
+							: "px-1.5 text-[11px] text-muted-foreground"
+					}
+				>
+					{invalid.length > 0
+						? `Invalid pattern: ${invalid.join(", ")}`
+						: "Matches folder/file.md · * = anything · /…/ = regex · commas = or"}
 				</span>
 			</PopoverContent>
 		</Popover>
@@ -399,6 +414,10 @@ const GROUP_OPTIONS: { value: DocumentGroupBy | null; label: string }[] = [
 /** "Group": folder / top-level folder / tag (property grouping stays in the column menu). */
 function GroupPicker({ current }: { current: DocumentGroupBy | null }) {
 	const [open, setOpen] = useState(false);
+	// Shows the active path grouping; a property grouping is named elsewhere.
+	const currentLabel = GROUP_OPTIONS.find(
+		(option) => option.value !== null && option.value === current,
+	)?.label;
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger
@@ -406,7 +425,7 @@ function GroupPicker({ current }: { current: DocumentGroupBy | null }) {
 				aria-haspopup="listbox"
 				title="Group documents"
 			>
-				Group
+				{currentLabel ? `Group: ${currentLabel}` : "Group"}
 			</PopoverTrigger>
 			<PopoverContent
 				align="start"

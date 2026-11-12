@@ -7,6 +7,7 @@ import {
 } from "react";
 import MingcuteCloseLine from "~icons/mingcute/close-line";
 import MingcuteSearchLine from "~icons/mingcute/search-line";
+import { livePatternMode } from "../lib/patternHint";
 import { cn } from "../lib/utils";
 
 /**
@@ -24,6 +25,9 @@ export function DocumentFilterInput({
 	className?: string;
 }) {
 	const inputRef = useRef<HTMLInputElement>(null);
+	// `*` or `/…/` switches the box to path-pattern mode; say so, and flag a
+	// regex that does not compile instead of silently matching nothing.
+	const mode = livePatternMode(value);
 
 	// Cmd/Ctrl+L focuses the box from anywhere (editor, sidebar, rows), browser
 	// address-bar style. Mounted only while the table/list is on screen, so the
@@ -63,12 +67,35 @@ export function DocumentFilterInput({
 				// styled to match, so the button below does that job instead.
 				type="text"
 				aria-label="Filter documents"
+				aria-invalid={mode === "invalid" || undefined}
+				aria-describedby={mode === "plain" ? undefined : "document-filter-mode"}
+				title={
+					mode === "plain"
+						? undefined
+						: "Path pattern on folder/file.md · * = anything · /…/ = regex · commas = or"
+				}
 				placeholder="Filter documents"
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={onKeyDown}
-				className="h-8 w-full rounded-full ps-7 pe-7 text-[length:var(--font-size-sidebar)] bg-mdly-control focus-visible:ring-[3px] focus-visible:ring-mdly-ink/[0.07]"
+				className={cn(
+					"h-8 w-full rounded-full ps-7 text-[length:var(--font-size-sidebar)] bg-mdly-control focus-visible:ring-[3px] focus-visible:ring-mdly-ink/[0.07]",
+					mode === "plain" ? "pe-7" : "pe-[4.5rem]",
+				)}
 			/>
+			{mode !== "plain" ? (
+				<span
+					id="document-filter-mode"
+					className={cn(
+						"pointer-events-none absolute end-7 top-1/2 -translate-y-1/2 text-[10px]",
+						mode === "invalid"
+							? "text-destructive"
+							: "text-muted-foreground/80",
+					)}
+				>
+					{mode === "invalid" ? "invalid pattern" : "pattern"}
+				</span>
+			) : null}
 			{value.length > 0 ? (
 				<button
 					type="button"
