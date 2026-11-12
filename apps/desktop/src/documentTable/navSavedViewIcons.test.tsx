@@ -328,9 +328,7 @@ describe("saved views in the view switcher", () => {
 			FOLLOWING,
 		);
 		// No second switcher strip below the column headers.
-		expect(container.querySelectorAll("[data-nav-list-header]").length).toBe(
-			1,
-		);
+		expect(container.querySelectorAll("[data-nav-list-header]").length).toBe(1);
 		expect(container.querySelector('[data-save-view="add"]')).not.toBeNull();
 	});
 

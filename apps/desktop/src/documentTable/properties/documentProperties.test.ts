@@ -193,7 +193,10 @@ describe("CLI/MCP text filter values on typed front matter (QA3 #1)", () => {
 		"/ws/c.md": { done: b(true), priority: n(3) },
 		"/ws/d.md": {},
 	};
-	const is = (key: string, value: string | number | boolean): PropertyFilter => ({
+	const is = (
+		key: string,
+		value: string | number | boolean,
+	): PropertyFilter => ({
 		fieldId: `prop:${key}`,
 		kind: "is",
 		value,
