@@ -11,6 +11,7 @@ import {
 	useState,
 } from "react";
 import { desktopApi } from "../desktopApi";
+import { relativeWorkspacePath } from "../lib/filePath";
 import { loadPath } from "../store/actions";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
 import {
@@ -588,6 +589,29 @@ export function DocumentRowList({
 		[focusRowAt, navRows.length],
 	);
 
+	// "Linked from" labels are file names: two linkers sharing one (a/index,
+	// b/index) show their workspace-relative path instead, so they differ.
+	const linkedFromLabels = useMemo(() => {
+		if (!wantsLinks || !propertyTree) return null;
+		const counts = new Map<string, number>();
+		for (const child of propertyTree.children)
+			counts.set(child.label, (counts.get(child.label) ?? 0) + 1);
+		const labels = new Map<string, string>();
+		for (const child of propertyTree.children) {
+			const source = linkedFromGroupSource(child.id);
+			if (!source) continue;
+			const relative = relativeWorkspacePath(source, workspacePath ?? null);
+			labels.set(
+				child.id,
+				(counts.get(child.label) ?? 0) > 1
+					? relative.replace(/\.(md|markdown)$/i, "")
+					: child.label,
+			);
+			labels.set(`${child.id}\u0000title`, relative);
+		}
+		return labels;
+	}, [wantsLinks, propertyTree, workspacePath]);
+
 	// A "Linked from" group's title opens the linking document.
 	const openGroupSource = (groupId: string) => {
 		const source = wantsLinks ? linkedFromGroupSource(groupId) : null;
@@ -682,7 +706,10 @@ export function DocumentRowList({
 					navRow.kind === "group" ? (
 						<DocumentGroupHeader
 							key={navRow.id}
-							label={navRow.label}
+							label={linkedFromLabels?.get(navRow.groupId) ?? navRow.label}
+							sourceTitle={linkedFromLabels?.get(
+								`${navRow.groupId}\u0000title`,
+							)}
 							count={navRow.count}
 							depth={navRow.depth}
 							expanded={navRow.expanded}

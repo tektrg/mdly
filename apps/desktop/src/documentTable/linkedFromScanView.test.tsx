@@ -47,12 +47,12 @@ describe("saved view grouped by Linked from", () => {
 		resetLinkIndex();
 	});
 
-	async function render() {
+	async function render(files = WORKSPACE_FILES) {
 		const view = viewWith({ propertyGroupBy: "group:linkedFrom" });
 		await act(async () => {
 			root.render(
 				<DocumentRowList
-					rows={buildRows({ view })}
+					rows={buildRows({ view, files })}
 					density="table"
 					view={view}
 					onOpenDocument={vi.fn()}
@@ -101,5 +101,46 @@ describe("saved view grouped by Linked from", () => {
 				?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		});
 		expect(loadPath).toHaveBeenCalledWith("/ws/alpha.md");
+	});
+
+	it("same-named linkers show their folder; Open is keyboard reachable and never toggles", async () => {
+		const files = [
+			...WORKSPACE_FILES,
+			{ path: "/ws/a/index.md", modified_at: 1_700_000_050 },
+			{ path: "/ws/b/index.md", modified_at: 1_700_000_040 },
+		];
+		workspaceStore.set((state) => ({ ...state, files }));
+		readFileText.mockImplementation(async (path: string) =>
+			path.endsWith("index.md") ? "[g](../alpha.md)" : "",
+		);
+
+		await render(files);
+		await act(async () => {});
+
+		const a = container.querySelector(
+			'[data-group-id="group:linkedFrom::/ws/a/index.md"]',
+		) as HTMLElement;
+		const b = container.querySelector(
+			'[data-group-id="group:linkedFrom::/ws/b/index.md"]',
+		) as HTMLElement;
+		expect(a.textContent).toContain("a/index");
+		expect(b.textContent).toContain("b/index");
+		const open = a.querySelector("[data-open-group-source]") as HTMLElement;
+		expect(open.getAttribute("title")).toBe("Open a/index.md");
+
+		const expandedBefore = a
+			.querySelector("[aria-expanded]")
+			?.getAttribute("aria-expanded");
+		await act(async () => {
+			open.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+			);
+		});
+		expect(loadPath).toHaveBeenCalledWith("/ws/a/index.md");
+		expect(
+			a.querySelector("[aria-expanded]")?.getAttribute("aria-expanded"),
+		).toBe(expandedBefore);
+		// Reachable by Tab from the header row when that row is the tabbable one.
+		expect(open.tabIndex).toBe(a.tabIndex);
 	});
 });

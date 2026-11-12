@@ -13,6 +13,8 @@ export type DocumentGroupHeaderProps = {
 	onToggle: () => void;
 	/** When set, a trailing button opens the document the group stands for. */
 	onOpenSource?: () => void;
+	/** The opened document's name for the Open button's label (else `label`). */
+	sourceTitle?: string;
 	specId: string | null;
 	groupId: string;
 	/** Absolute virtualizer index — present when rendered inside a row list. */
@@ -37,6 +39,7 @@ export function DocumentGroupHeader({
 	expanded,
 	onToggle,
 	onOpenSource,
+	sourceTitle,
 	specId,
 	groupId,
 	index,
@@ -111,10 +114,20 @@ export function DocumentGroupHeader({
 					type="button"
 					data-open-group-source=""
 					onClick={onOpenSource}
-					aria-label={`Open ${label}`}
-					title={`Open ${label}`}
-					tabIndex={-1}
-					className="shrink-0 rounded-mdly-control text-[11px] text-muted-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
+					// The row's Enter/Space toggles collapse: keep this button's
+					// own activation from reaching it.
+					onKeyDown={(event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							event.preventDefault();
+							event.stopPropagation();
+							onOpenSource();
+						}
+					}}
+					aria-label={`Open ${sourceTitle ?? label}`}
+					title={`Open ${sourceTitle ?? label}`}
+					// Tab-reachable from the header when it is the roving stop.
+					tabIndex={tabIndex ?? -1}
+					className="shrink-0 rounded-mdly-control text-[11px] text-muted-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
 				>
 					Open
 				</button>
