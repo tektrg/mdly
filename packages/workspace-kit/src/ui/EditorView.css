@@ -493,7 +493,10 @@
 }
 
 [data-hubble-editor] .ProseMirror code {
-	background: var(--muted);
+	/* Slightly lifted chip so inline code reads apart from body text in both themes. */
+	background: color-mix(in oklch, var(--muted), var(--foreground) 9%);
+	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 12%);
+	color: var(--foreground);
 	padding: 0.12em 0.4em;
 	border-radius: 4px;
 	font-size: 0.9em;
@@ -565,6 +568,7 @@
 
 [data-hubble-editor] .ProseMirror pre code {
 	background: transparent;
+	box-shadow: none;
 	color: var(--syntax-foreground);
 	padding: 0;
 }
