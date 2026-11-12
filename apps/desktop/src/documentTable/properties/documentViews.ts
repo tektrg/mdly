@@ -67,13 +67,21 @@ export const PATH_GROUP_BY = {
 	folder: "group:folder",
 	topFolder: "group:topFolder",
 	tag: "group:tag",
+	/** Stored as `groupByKind: "linked-from"`; groups = docs that link here. */
+	linkedFrom: "group:linkedFrom",
 } as const;
 export type PathGroupBy = (typeof PATH_GROUP_BY)[keyof typeof PATH_GROUP_BY];
 export type DocumentGroupBy = PropertyFieldId | PathGroupBy;
 
-const PATH_GROUP_BY_KINDS = Object.keys(
-	PATH_GROUP_BY,
-) as (keyof typeof PATH_GROUP_BY)[];
+type PathGroupKey = keyof typeof PATH_GROUP_BY;
+/** `views.json` spelling of each grouping (`groupByKind`). */
+const GROUP_BY_KIND_VALUE: Record<PathGroupKey, string> = {
+	folder: "folder",
+	topFolder: "topFolder",
+	tag: "tag",
+	linkedFrom: "linked-from",
+};
+const PATH_GROUP_BY_KINDS = Object.keys(PATH_GROUP_BY) as PathGroupKey[];
 
 export function isPathGroupBy(value: unknown): value is PathGroupBy {
 	return Object.values(PATH_GROUP_BY).includes(value as PathGroupBy);
@@ -111,7 +119,9 @@ export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 				)
 				.map((pattern) => ({ kind: "path", pattern }))
 		: [];
-	const kind = PATH_GROUP_BY_KINDS.find((key) => key === raw.groupByKind);
+	const kind = PATH_GROUP_BY_KINDS.find(
+		(key) => GROUP_BY_KIND_VALUE[key] === raw.groupByKind,
+	);
 	return {
 		...view,
 		filters: [...view.filters, ...pathFilters],
@@ -138,7 +148,7 @@ export function savedViewToRecord(
 		filters: view.filters.filter((filter) => !isPathFilter(filter)),
 		groupBy: kind ? null : view.groupBy,
 		pathFilters: pathFilters.length > 0 ? pathFilters : undefined,
-		groupByKind: kind,
+		groupByKind: kind ? GROUP_BY_KIND_VALUE[kind] : undefined,
 	};
 }
 
@@ -221,6 +231,7 @@ const PATH_GROUP_LABELS: Record<PathGroupBy, string> = {
 	"group:folder": "Folder",
 	"group:topFolder": "Top-level folder",
 	"group:tag": "Tag",
+	"group:linkedFrom": "Linked from",
 };
 
 export function describeGroupBy(

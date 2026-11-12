@@ -207,6 +207,24 @@ describe("create_view path patterns + path grouping", () => {
 		expect(view?.group).toBe("top-folder");
 	});
 
+	it("group linked-from round-trips as groupByKind linked-from", async () => {
+		const created = await tool("create_view").execute(
+			{ name: "Hubs", group: "linked-from" },
+			ctx(),
+		);
+		expect(created.isError).toBeFalsy();
+		const file = JSON.parse(await fs.readFile(viewsFilePath(ws), "utf8"));
+		expect(file.views[0]).toMatchObject({
+			groupBy: null,
+			groupByKind: "linked-from",
+		});
+		const listed = await tool("list_views").execute({}, ctx());
+		const view = (
+			listed.structuredContent as { views: { group: string | null }[] }
+		).views[0];
+		expect(view?.group).toBe("linked-from");
+	});
+
 	it("old calls write no extra keys (backward compatible)", async () => {
 		await tool("create_view").execute({ name: "Plain" }, ctx());
 		const file = JSON.parse(await fs.readFile(viewsFilePath(ws), "utf8"));

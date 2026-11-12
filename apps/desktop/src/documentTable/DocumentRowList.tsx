@@ -11,8 +11,15 @@ import {
 	useState,
 } from "react";
 import { desktopApi } from "../desktopApi";
+import { loadPath } from "../store/actions";
 import { registerDocumentCloseFocus } from "../store/closeDocument";
+import {
+	currentLinkIndex,
+	linkIndexStore,
+	resetLinkIndex,
+} from "../store/linkIndexStore";
 import { workspacePathStore, workspaceStore } from "../store/state";
+import { useLinkIndexSync } from "../store/useLinkIndexSync";
 import { DocumentGroupHeader } from "./DocumentGroupHeader";
 import {
 	DocumentListRow,
@@ -44,7 +51,10 @@ import {
 	resolveNavViewSpec,
 } from "./navGroupTree";
 import { isPathGroupBy, PATH_GROUP_BY } from "./properties/documentViews";
-import { buildPathGroupTree } from "./properties/pathGroupTree";
+import {
+	buildPathGroupTree,
+	linkedFromGroupSource,
+} from "./properties/pathGroupTree";
 import { buildPropertyGroupTree } from "./properties/propertyGroupTree";
 import { useLocalDayKey } from "./properties/useLocalDayKey";
 import { usePropertyModel } from "./properties/usePropertyModel";
@@ -286,10 +296,26 @@ export function DocumentRowList({
 	const groupedDocs = propertyGroupBy ? deferredNavDocs : navDocs;
 	// Date-range groups are relative to today: rebuilt when the day rolls over.
 	const dayKey = useLocalDayKey();
+	// "Linked from" reads the workspace link index (the Backlinks panel's),
+	// starting it here when nothing has yet.
+	const wantsLinks = propertyGroupBy === PATH_GROUP_BY.linkedFrom;
+	useLinkIndexSync(wantsLinks);
+	const linkIndexState = useStoreValue(linkIndexStore);
+	const linksReady =
+		linkIndexState.scope === (workspacePath ?? null) &&
+		linkIndexState.status === "ready";
+	const linkVersion = wantsLinks ? linkIndexState.version : 0;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `linkVersion` is the change signal for the mutable link index.
 	const propertyTree = useMemo(
 		() =>
 			propertyGroupBy && isPathGroupBy(propertyGroupBy)
-				? buildPathGroupTree(groupedDocs, propertyGroupBy)
+				? buildPathGroupTree(
+						groupedDocs,
+						propertyGroupBy,
+						propertyGroupBy === PATH_GROUP_BY.linkedFrom
+							? currentLinkIndex()
+							: undefined,
+					)
 				: propertyGroupBy
 					? buildPropertyGroupTree(
 							groupedDocs,
@@ -299,7 +325,7 @@ export function DocumentRowList({
 							new Date(`${dayKey}T12:00:00`),
 						)
 					: null,
-		[groupedDocs, propertyGroupBy, propertyFields, dayKey],
+		[groupedDocs, propertyGroupBy, propertyFields, dayKey, linkVersion],
 	);
 	// Session-only collapse state: property groups start expanded (a board's
 	// columns are all visible), and the user's collapses last until relaunch.
@@ -562,6 +588,12 @@ export function DocumentRowList({
 		[focusRowAt, navRows.length],
 	);
 
+	// A "Linked from" group's title opens the linking document.
+	const openGroupSource = (groupId: string) => {
+		const source = wantsLinks ? linkedFromGroupSource(groupId) : null;
+		return source ? () => void loadPath(source) : undefined;
+	};
+
 	const scrollClassName =
 		"min-h-0 flex-1 overflow-auto overscroll-contain [padding-block:var(--row-pad-block)]";
 
@@ -577,6 +609,21 @@ export function DocumentRowList({
 						status={failed ? "failed" : "scanning"}
 						scanningText="Scanning tags…"
 						onRetry={retryTagScan}
+					/>
+				</div>
+			</div>
+		);
+	}
+
+	if (wantsLinks && !linksReady) {
+		// Same hold as Tag: no all-"Other" list before the links are known.
+		return (
+			<div ref={swipeRef} className={scrollClassName}>
+				<div className="p-2">
+					<TagScanStateView
+						status={linkIndexState.status === "failed" ? "failed" : "scanning"}
+						scanningText="Scanning links…"
+						onRetry={resetLinkIndex}
 					/>
 				</div>
 			</div>
@@ -642,6 +689,7 @@ export function DocumentRowList({
 							onToggle={() => toggleGroup(navRow.groupId)}
 							specId={navRow.specId}
 							groupId={navRow.groupId}
+							onOpenSource={openGroupSource(navRow.groupId)}
 							index={index}
 							ariaRowIndex={
 								density === "table" || gridCells ? index + 2 : index + 1

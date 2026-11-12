@@ -11,6 +11,8 @@ export type DocumentGroupHeaderProps = {
 	depth: number;
 	expanded: boolean;
 	onToggle: () => void;
+	/** When set, a trailing button opens the document the group stands for. */
+	onOpenSource?: () => void;
 	specId: string | null;
 	groupId: string;
 	/** Absolute virtualizer index — present when rendered inside a row list. */
@@ -34,6 +36,7 @@ export function DocumentGroupHeader({
 	depth,
 	expanded,
 	onToggle,
+	onOpenSource,
 	specId,
 	groupId,
 	index,
@@ -103,6 +106,19 @@ export function DocumentGroupHeader({
 					{count}
 				</span>
 			</button>
+			{onOpenSource ? (
+				<button
+					type="button"
+					data-open-group-source=""
+					onClick={onOpenSource}
+					aria-label={`Open ${label}`}
+					title={`Open ${label}`}
+					tabIndex={-1}
+					className="shrink-0 rounded-mdly-control text-[11px] text-muted-foreground outline-hidden transition-[background-color,color] duration-150 ease-snappy hover:bg-accent hover:text-foreground motion-reduce:transition-none [padding-inline:var(--row-pad-inline)] [padding-block:var(--row-pad-block)]"
+				>
+					Open
+				</button>
+			) : null}
 		</div>
 	);
 }

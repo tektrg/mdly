@@ -1,18 +1,13 @@
 import { SidePanel } from "@mdly/workspace-kit";
 import { store } from "@simplestack/store";
 import { useStoreValue } from "@simplestack/store/react";
-import { useEffect, useMemo } from "react";
-import { desktopApi } from "../desktopApi";
-import { buildDocumentRows } from "../documentTable/documentTableView";
+import { useMemo } from "react";
 import { relativeWorkspacePath } from "../lib/filePath";
 import { backlinksFor, outgoingFor } from "../lib/linkIndex";
 import { loadPath } from "../store/actions";
-import {
-	currentLinkIndex,
-	linkIndexStore,
-	syncLinkIndex,
-} from "../store/linkIndexStore";
-import { workspacePathStore, workspaceStore } from "../store/state";
+import { currentLinkIndex, linkIndexStore } from "../store/linkIndexStore";
+import { workspacePathStore } from "../store/state";
+import { useLinkIndexSync } from "../store/useLinkIndexSync";
 
 /**
  * Open state for the right-edge Backlinks panel. A store rather than App
@@ -23,22 +18,6 @@ export const backlinksOpenStore = store(false);
 
 export function setBacklinksOpen(open: boolean) {
 	backlinksOpenStore.set(open);
-}
-
-/** Keeps the link index in sync with the listing while `enabled`. */
-function useLinkIndexSync(enabled: boolean) {
-	const workspacePath = useStoreValue(workspacePathStore);
-	const files = useStoreValue(workspaceStore, (workspace) => workspace.files);
-	useEffect(() => {
-		if (!enabled || !workspacePath) return;
-		const rows = buildDocumentRows(files, workspacePath).map((row) => ({
-			path: row.path,
-			modifiedAt: row.modifiedAt,
-		}));
-		void syncLinkIndex(workspacePath, rows, (path) =>
-			desktopApi.readFileText(path),
-		);
-	}, [enabled, workspacePath, files]);
 }
 
 export function BacklinksPanel({ path }: { path: string }) {

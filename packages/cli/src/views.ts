@@ -27,17 +27,19 @@ import {
  * mdly-only view keys, beside table-core's record (the app reads both):
  * `pathFilters` = comma-separated path patterns (plain = substring, `*` = any
  * run, `/…/` = regex; case-insensitive) on `folder/sub/file.md`;
- * `groupByKind` = folder | topFolder | tag grouping (with `groupBy: null`).
+ * `groupByKind` = folder | topFolder | tag | linked-from grouping (with `groupBy: null`).
  */
 const GROUP_KINDS: Record<string, string> = {
 	folder: "folder",
 	"top-folder": "topFolder",
 	tag: "tag",
+	"linked-from": "linked-from",
 };
 const GROUP_KIND_LABELS: Record<string, string> = {
 	folder: "folder",
 	topFolder: "top-folder",
 	tag: "tag",
+	"linked-from": "linked-from",
 };
 
 type MdlyExtras = { pathFilters?: string[]; groupByKind?: string };
@@ -80,7 +82,7 @@ const SUBCOMMANDS = ["list", "create", "rename", "delete"] as const;
 export const VIEWS_USAGE = [
 	"Usage:",
 	"  hubble [--cwd path] views list [--json]",
-	"  hubble [--cwd path] views create <name> [--folder dir]... [--path patterns]... [--group-by prop | --group folder|top-folder|tag] [--filter prop=value|prop]... [--json]",
+	"  hubble [--cwd path] views create <name> [--folder dir]... [--path patterns]... [--group-by prop | --group folder|top-folder|tag|linked-from] [--filter prop=value|prop]... [--json]",
 	"  hubble [--cwd path] views rename <name|id> <new name> [--json]",
 	"  hubble [--cwd path] views delete <name|id> [--json]",
 	"",
@@ -89,7 +91,7 @@ export const VIEWS_USAGE = [
 	"  --folder dir       Only documents in this workspace folder (subfolders included; must exist; repeatable — a document in any of them matches)",
 	"  --path patterns    Only documents whose folder/sub/file.md matches: comma-separated, any matches; plain text = contains, * = anything, /…/ = regex; case-insensitive; repeatable (OR)",
 	"  --group-by prop    Group rows by this front-matter property",
-	"  --group kind       Group rows by folder, top-folder (first folder segment) or tag",
+	"  --group kind       Group rows by folder, top-folder (first folder segment), tag or linked-from (the docs linking to each row)",
 	"  --filter k=v       Property k is v (the value may contain '='); a bare k means 'has property k'; repeatable",
 	"  --json             Machine-readable output",
 	"",
@@ -250,7 +252,7 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 		return {
 			ok: false,
 			usage: true,
-			error: `bad --group ${JSON.stringify(group)}: use folder, top-folder or tag`,
+			error: `bad --group ${JSON.stringify(group)}: use folder, top-folder, tag or linked-from`,
 		};
 	}
 	if (paths.some((p) => p.replace(/[\s,*]/g, "") === "")) {

@@ -412,6 +412,15 @@ describe("hubble views", () => {
 		expect(listed.out).toContain("group by: top-folder");
 	});
 
+	it("--group linked-from stores groupByKind linked-from and lists it", async () => {
+		const made = await cli("create", "Hubs", "--group", "linked-from");
+		expect(made.code, made.err).toBe(0);
+		expect(made.out).toContain("group by: linked-from");
+		const [record] = await views();
+		expect(record).toMatchObject({ groupBy: null, groupByKind: "linked-from" });
+		expect((await cli("list")).out).toContain("group by: linked-from");
+	});
+
 	it("bad --group, --group with --group-by, and empty --path are refused", async () => {
 		await expectRefused(["create", "X", "--group", "status"], /bad --group/);
 		await expectRefused(

@@ -409,9 +409,10 @@ const GROUP_OPTIONS: { value: DocumentGroupBy | null; label: string }[] = [
 	{ value: PATH_GROUP_BY.folder, label: "Folder" },
 	{ value: PATH_GROUP_BY.topFolder, label: "Top-level folder" },
 	{ value: PATH_GROUP_BY.tag, label: "Tag" },
+	{ value: PATH_GROUP_BY.linkedFrom, label: "Linked from" },
 ];
 
-/** "Group": folder / top-level folder / tag (property grouping stays in the column menu). */
+/** "Group": folder / top-level folder / tag / linked from (property grouping stays in the column menu). */
 function GroupPicker({ current }: { current: DocumentGroupBy | null }) {
 	const [open, setOpen] = useState(false);
 	// Shows the active path grouping; a property grouping is named elsewhere.
