@@ -2563,6 +2563,14 @@ if (!singleInstanceLock) {
 	app.on("open-file", (event, filePath) => {
 		event.preventDefault();
 		const resolved = resolvePath(filePath);
+		// Same rule as argv opens (firstExistingFileArg): only regular files
+		// open in a single-file window. A folder handed over by Finder/`open -a`
+		// would otherwise be read as a document and fail with EISDIR.
+		try {
+			if (!fsSync.statSync(resolved).isFile()) return;
+		} catch {
+			return;
+		}
 		grantFileWithParent(resolved);
 		if (!app.isReady()) {
 			pendingOpenPath = resolved;
