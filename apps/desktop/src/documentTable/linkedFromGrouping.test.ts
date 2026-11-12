@@ -3,7 +3,11 @@
  * others (titled by its name), its members the documents it links to.
  */
 import { describe, expect, it } from "vitest";
-import { createLinkIndex, setLinkSource } from "../lib/linkIndex";
+import {
+	batchLinkIndex,
+	createLinkIndex,
+	setLinkSource,
+} from "../lib/linkIndex";
 import type { NavDocument } from "./navGroupTree";
 import {
 	PATH_GROUP_BY,
@@ -80,6 +84,42 @@ describe("Linked from grouping", () => {
 		const record = JSON.parse(JSON.stringify(savedViewToRecord(view)));
 		expect(record).toMatchObject({ groupBy: null, groupByKind: "linked-from" });
 		expect(sanitizeSavedView(record)).toEqual(view);
+	});
+
+	it("groups wiki-link sources too", () => {
+		const wiki = indexOf({
+			"hub.md": "[[a]] [[B|bee]] [[missing]]",
+			"a.md": "",
+			"b.md": "",
+		});
+		expect(groups([doc("a.md"), doc("b.md"), doc("hub.md")], wiki)).toEqual([
+			"hub:a.md,b.md",
+			"Other:hub.md",
+		]);
+	});
+
+	it("indexes 50k docs with wiki links and groups them within budget", () => {
+		const big = createLinkIndex("/ws");
+		const docs: NavDocument[] = [];
+		const start = performance.now();
+		const end = batchLinkIndex(big); // as `syncLinkIndex` does
+		for (let i = 0; i < 50_000; i += 1) {
+			docs.push(doc(`f${i % 50}/d${i}.md`));
+			const links =
+				i % 10 === 0
+					? Array.from(
+							{ length: 20 },
+							(_, k) => `[[d${(i * 7 + k * 13) % 50_000}]]`,
+						).join(" ")
+					: "";
+			setLinkSource(big, `/ws/f${i % 50}/d${i}.md`, links, 1);
+		}
+		end();
+		const indexMs = performance.now() - start;
+		const tree = buildPathGroupTree(docs, PATH_GROUP_BY.linkedFrom, big);
+		expect(tree.children.length).toBeGreaterThan(4000);
+		// Pure in-memory work; file reads dominate a real sync.
+		expect(indexMs).toBeLessThan(1500);
 	});
 
 	it("groups 50k docs in one pass within budget", () => {

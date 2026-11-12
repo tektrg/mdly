@@ -60,6 +60,26 @@ describe("syncLinkIndex", () => {
 		).toEqual(["/ws/z.md"]);
 	});
 
+	it("re-resolves wiki links when a namesake appears or disappears in the listing", async () => {
+		disk["/ws/src.md"] = "[[Note]] [[dir/Note]]";
+		disk["/ws/deep/x/Note.md"] = "";
+		disk["/ws/dir/Note.md"] = "";
+		const files = [
+			{ path: "/ws/src.md", modifiedAt: 1 },
+			{ path: "/ws/deep/x/Note.md", modifiedAt: 1 },
+			{ path: "/ws/dir/Note.md", modifiedAt: 1 },
+		];
+		await syncLinkIndex("/ws", files, read);
+		const back = (p: string) =>
+			backlinksFor(currentLinkIndex(), p).map((b) => b.line);
+		expect(back("/ws/dir/Note.md")).toEqual([1, 1]);
+		expect(back("/ws/deep/x/Note.md")).toEqual([]);
+		read.mockClear();
+		await syncLinkIndex("/ws", [files[0], files[1]] as never, read);
+		expect(read).not.toHaveBeenCalled();
+		expect(back("/ws/deep/x/Note.md")).toEqual([1]);
+	});
+
 	it("resets on workspace switch", async () => {
 		disk["/ws/a.md"] = "[c](c.md)";
 		await syncLinkIndex("/ws", [{ path: "/ws/a.md", modifiedAt: 1 }], read);

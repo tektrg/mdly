@@ -1,5 +1,6 @@
 import { store } from "@simplestack/store";
 import {
+	batchLinkIndex,
 	createLinkIndex,
 	type LinkIndex,
 	pathKey,
@@ -76,9 +77,29 @@ export async function syncLinkIndex(
 ): Promise<void> {
 	const request = ++syncRequest;
 	if (linkIndexStore.get().scope !== scope) {
-		index = createLinkIndex();
+		index = createLinkIndex(scope);
 		linkIndexStore.set({ scope, status: "idle", version: 0 });
 	}
+	// Name-driven wiki re-resolution runs once per affected source when the
+	// last overlapping sync ends, not once per added namesake.
+	const target = index;
+	const endBatch = batchLinkIndex(target);
+	let status: LinkIndexStatus | null;
+	try {
+		status = await applySync(request, target, files, readFile);
+	} finally {
+		endBatch();
+	}
+	if (status && request === syncRequest) bump(status);
+}
+
+/** The listing diff + reads; returns the status to publish, or null. */
+async function applySync(
+	request: number,
+	index: LinkIndex,
+	files: readonly LinkIndexFile[],
+	readFile: (path: string) => Promise<string>,
+): Promise<LinkIndexStatus | null> {
 	const live = new Set(files.map((file) => pathKey(file.path)));
 	let removed = false;
 	for (const [key, entry] of [...index.sources]) {
@@ -88,10 +109,8 @@ export async function syncLinkIndex(
 		}
 	}
 	const toRead = linkIndexPathsToRead(index, files);
-	if (toRead.length === 0) {
-		if (removed || linkIndexStore.get().status !== "ready") bump("ready");
-		return;
-	}
+	if (toRead.length === 0)
+		return removed || linkIndexStore.get().status !== "ready" ? "ready" : null;
 	if (linkIndexStore.get().status !== "ready") bump("indexing");
 	const mtimeByPath = new Map(files.map((f) => [f.path, f.modifiedAt]));
 	let cursor = 0;
@@ -112,8 +131,8 @@ export async function syncLinkIndex(
 	await Promise.all(
 		Array.from({ length: Math.min(READ_CONCURRENCY, toRead.length) }, worker),
 	);
-	if (request !== syncRequest) return;
-	bump(failures === toRead.length ? "failed" : "ready");
+	if (request !== syncRequest) return null;
+	return failures === toRead.length ? "failed" : "ready";
 }
 
 /**

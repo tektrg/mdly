@@ -1,4 +1,10 @@
-import { hasMarkdownExtension, normalizePath } from "./filePath";
+import {
+	basename,
+	dirname,
+	hasMarkdownExtension,
+	joinPath,
+	normalizePath,
+} from "./filePath";
 import {
 	absoluteLinkPath,
 	isLocalRelativeDestination,
@@ -12,7 +18,14 @@ import {
  * workspace sweep. Pure and mutable on purpose — the renderer store wraps it
  * and bumps a version on change, and step 2's graph view reads `linkGraph`.
  *
- * Out of scope: [[wikilinks]], images, external URLs, links inside code.
+ * Wiki links `[[Note]]`, `[[Note|alias]]`, `[[Note#section]]`,
+ * `[[folder/Note]]`, `[[Note.md]]` resolve to an indexed Markdown file (see
+ * `resolveWikiTarget` for the rule); unresolved ones are not counted. Because
+ * they match by file name, adding/removing/renaming a file re-resolves the
+ * sources whose wiki targets share its name (`wikiByName`), so the index never
+ * goes stale.
+ *
+ * Out of scope: embeds `![[…]]`, images, external URLs, links inside code.
  */
 
 export type OutgoingLink = {
@@ -28,13 +41,37 @@ export type OutgoingLink = {
 
 export type Backlink = OutgoingLink & { sourcePath: string };
 
-type SourceEntry = { path: string; mtime: number; links: OutgoingLink[] };
+/** A `[[…]]` reference as written; resolved against the index on demand. */
+export type WikiRef = Omit<OutgoingLink, "targetPath"> & {
+	/** Target path/name as written, without alias or `#section`. */
+	target: string;
+};
+
+type SourceEntry = {
+	path: string;
+	mtime: number;
+	/** Standard Markdown links (resolved at extraction). */
+	mdLinks: OutgoingLink[];
+	wikiRefs: WikiRef[];
+	/** `mdLinks` + currently resolved wiki links — what `incoming` mirrors. */
+	links: OutgoingLink[];
+};
 
 export type LinkIndex = {
+	/** Workspace root for path-qualified wiki targets, if known. */
+	root: string | null;
 	/** Keyed by `pathKey(sourcePath)`. */
 	sources: Map<string, SourceEntry>;
 	/** Target key -> source keys that link to it. */
 	incoming: Map<string, Set<string>>;
+	/** Note name key -> indexed file keys with that name. */
+	byName: Map<string, Set<string>>;
+	/** Note name key -> source keys holding a wiki ref to that name. */
+	wikiByName: Map<string, Set<string>>;
+	/** Sources awaiting re-resolution while a batch is open (`batchLinkIndex`). */
+	pending: Set<string> | null;
+	/** Open `batchLinkIndex` calls; the last `end()` flushes `pending`. */
+	batchDepth: number;
 };
 
 export type LinkGraph = {
@@ -159,8 +196,216 @@ export function extractMarkdownLinks(
 	return links;
 }
 
-export function createLinkIndex(): LinkIndex {
-	return { sources: new Map(), incoming: new Map() };
+const WIKI_LINK_RE = /(!?)\[\[([^\]\n]+)\]\]/g;
+
+/**
+ * Extracts `[[…]]` references (code masked, embeds skipped). Same split as the
+ * editor's parser (`markdownToProsemirror` `textToPM`): alias after the first
+ * `|`, then the section after the first `#`.
+ */
+export function extractWikiRefs(content: string): WikiRef[] {
+	const original = content.split("\n");
+	const refs: WikiRef[] = [];
+	maskCode(content)
+		.split("\n")
+		.forEach((line, lineIndex) => {
+			for (const match of line.matchAll(WIKI_LINK_RE)) {
+				if (match[1]) continue; // embed
+				const raw = (match[2] ?? "").split("|")[0] ?? "";
+				const hash = raw.indexOf("#");
+				const target = (hash >= 0 ? raw.slice(0, hash) : raw).trim();
+				if (!target) continue;
+				const start = match.index ?? 0;
+				refs.push({
+					target,
+					anchor: hash >= 0 ? raw.slice(hash + 1).trim() || null : null,
+					line: lineIndex + 1,
+					snippet: snippetAround(
+						original[lineIndex] ?? "",
+						start,
+						start + match[0].length,
+					),
+				});
+			}
+		});
+	return refs;
+}
+
+/** Note-name identity: base name without the Markdown extension, case-folded. */
+function nameKey(path: string): string {
+	return basename(normalizePath(path))
+		.replace(/\.(md|markdown)$/i, "")
+		.toLocaleLowerCase();
+}
+
+function addTo(map: Map<string, Set<string>>, key: string, value: string) {
+	let set = map.get(key);
+	if (!set) {
+		set = new Set();
+		map.set(key, set);
+	}
+	set.add(value);
+}
+
+function deleteFrom(map: Map<string, Set<string>>, key: string, value: string) {
+	const set = map.get(key);
+	set?.delete(value);
+	if (set && set.size === 0) map.delete(key);
+}
+
+/**
+ * Resolves a wiki target to an indexed file path, or null (Obsidian-like):
+ *
+ * 1. A target with a `/` is a path: tried relative to the workspace root, then
+ *    relative to the source file's folder. No name fallback.
+ * 2. Otherwise it matches indexed files by name, case-insensitively. Several
+ *    files with that name: prefer one in the source's own folder, then the
+ *    shortest path, then A→Z by case-folded path — deterministic for any
+ *    indexing order.
+ *
+ * `.md` is implied; a target with another extension (`img.png`) only matches
+ * a file literally named `img.png.md`, so attachments never resolve.
+ */
+export function resolveWikiTarget(
+	index: LinkIndex,
+	sourcePath: string,
+	target: string,
+): string | null {
+	const written = target.replace(/\\/g, "/");
+	const file = hasMarkdownExtension(written) ? written : `${written}.md`;
+	if (written.includes("/")) {
+		const relative = file.replace(/^\/+/, "");
+		const candidates = [
+			index.root ? normalizePath(joinPath(index.root, relative)) : null,
+			file.startsWith("/") ? null : absoluteLinkPath(sourcePath, relative),
+		];
+		for (const candidate of candidates) {
+			const entry = candidate && index.sources.get(pathKey(candidate));
+			if (entry) return entry.path;
+		}
+		return null;
+	}
+	const keys = index.byName.get(nameKey(file));
+	if (!keys || keys.size === 0) return null;
+	const sourceDir = pathKey(dirname(normalizePath(sourcePath)) ?? "");
+	let best: string | null = null;
+	let bestRank: [number, number, string] | null = null;
+	for (const key of keys) {
+		const rank: [number, number, string] = [
+			pathKey(dirname(key) ?? "") === sourceDir ? 0 : 1,
+			key.length,
+			key,
+		];
+		if (
+			!bestRank ||
+			rank[0] < bestRank[0] ||
+			(rank[0] === bestRank[0] &&
+				(rank[1] < bestRank[1] ||
+					(rank[1] === bestRank[1] && rank[2] < bestRank[2])))
+		) {
+			best = key;
+			bestRank = rank;
+		}
+	}
+	return best ? (index.sources.get(best)?.path ?? null) : null;
+}
+
+export function createLinkIndex(root: string | null = null): LinkIndex {
+	return {
+		root: root ? normalizePath(root) : null,
+		sources: new Map(),
+		incoming: new Map(),
+		byName: new Map(),
+		wikiByName: new Map(),
+		pending: null,
+		batchDepth: 0,
+	};
+}
+
+function detachIncoming(index: LinkIndex, key: string, links: OutgoingLink[]) {
+	for (const link of links)
+		deleteFrom(index.incoming, pathKey(link.targetPath), key);
+}
+
+/** Recomputes a source's resolved links from its md links + wiki refs. */
+function resolveSource(index: LinkIndex, key: string) {
+	const entry = index.sources.get(key);
+	if (!entry) return;
+	detachIncoming(index, key, entry.links);
+	const links = [...entry.mdLinks];
+	for (const ref of entry.wikiRefs) {
+		const targetPath = resolveWikiTarget(index, entry.path, ref.target);
+		if (!targetPath) continue;
+		const { target: _target, ...rest } = ref;
+		links.push({ ...rest, targetPath });
+	}
+	if (entry.wikiRefs.length > 0) links.sort((a, b) => a.line - b.line);
+	entry.links = links;
+	for (const link of links)
+		addTo(index.incoming, pathKey(link.targetPath), key);
+}
+
+/** Re-resolves every source whose wiki refs could match a file named like `path`. */
+function reresolveDependents(index: LinkIndex, path: string) {
+	for (const key of [...(index.wikiByName.get(nameKey(path)) ?? [])]) {
+		if (index.pending) index.pending.add(key);
+		else resolveSource(index, key);
+	}
+}
+
+/**
+ * Opens a batch: name-driven re-resolution is deferred and done once per
+ * affected source by the returned `end()`. A bulk sync uses this so N added
+ * namesakes don't re-resolve the same linker N times. Batches nest; the
+ * outermost `end()` flushes. Until `end()` runs,
+ * other sources' wiki links may lag; call it in a `finally`.
+ */
+export function batchLinkIndex(index: LinkIndex): () => void {
+	index.batchDepth += 1;
+	index.pending ??= new Set();
+	let ended = false;
+	return () => {
+		if (ended) return;
+		ended = true;
+		index.batchDepth -= 1;
+		if (index.batchDepth > 0) return;
+		const pending = index.pending;
+		index.pending = null;
+		for (const key of pending ?? []) resolveSource(index, key);
+	};
+}
+
+function insertSource(
+	index: LinkIndex,
+	path: string,
+	mtime: number,
+	mdLinks: OutgoingLink[],
+	wikiRefs: WikiRef[],
+) {
+	const key = pathKey(path);
+	const previous = index.sources.get(key);
+	if (previous) {
+		detachIncoming(index, key, previous.links);
+		for (const ref of previous.wikiRefs)
+			deleteFrom(index.wikiByName, nameKey(ref.target), key);
+	}
+	index.sources.set(key, {
+		path: normalizePath(path),
+		mtime,
+		mdLinks,
+		wikiRefs,
+		links: [],
+	});
+	for (const ref of wikiRefs) addTo(index.wikiByName, nameKey(ref.target), key);
+	// Only Markdown files are wiki targets (an indexed `.html` is not).
+	if (!previous && hasMarkdownExtension(path)) {
+		addTo(index.byName, nameKey(path), key);
+	}
+	if (!previous) {
+		// A new file can win (or newly satisfy) other sources' wiki targets.
+		reresolveDependents(index, path);
+	}
+	resolveSource(index, key);
 }
 
 export function sourceMtime(index: LinkIndex, path: string): number | null {
@@ -172,13 +417,13 @@ export function removeLinkSource(index: LinkIndex, path: string) {
 	const key = pathKey(path);
 	const entry = index.sources.get(key);
 	if (!entry) return;
-	for (const link of entry.links) {
-		const targetKey = pathKey(link.targetPath);
-		const set = index.incoming.get(targetKey);
-		set?.delete(key);
-		if (set && set.size === 0) index.incoming.delete(targetKey);
-	}
+	detachIncoming(index, key, entry.links);
+	for (const ref of entry.wikiRefs)
+		deleteFrom(index.wikiByName, nameKey(ref.target), key);
+	deleteFrom(index.byName, nameKey(entry.path), key);
 	index.sources.delete(key);
+	// Wiki links that resolved to this file may now resolve to a namesake.
+	reresolveDependents(index, entry.path);
 }
 
 /** (Re)indexes one document from its content. */
@@ -188,26 +433,20 @@ export function setLinkSource(
 	content: string,
 	mtime: number,
 ) {
-	removeLinkSource(index, path);
-	const key = pathKey(path);
-	const links = extractMarkdownLinks(path, content);
-	index.sources.set(key, { path: normalizePath(path), mtime, links });
-	for (const link of links) {
-		const targetKey = pathKey(link.targetPath);
-		let set = index.incoming.get(targetKey);
-		if (!set) {
-			set = new Set();
-			index.incoming.set(targetKey, set);
-		}
-		set.add(key);
-	}
+	insertSource(
+		index,
+		path,
+		mtime,
+		extractMarkdownLinks(path, content),
+		extractWikiRefs(content),
+	);
 }
 
 /**
  * Moves a source. Pass `content` (the file after the move rewrite) to
  * re-resolve its relative links from the new folder; without it the old
- * resolved targets are kept and the mtime is invalidated so the next sync
- * re-reads it.
+ * resolved Markdown links are kept (wiki refs re-resolve from the new spot)
+ * and the mtime is invalidated so the next sync re-reads it.
  */
 export function renameLinkSource(
 	index: LinkIndex,
@@ -217,21 +456,9 @@ export function renameLinkSource(
 ) {
 	const entry = index.sources.get(pathKey(fromPath));
 	if (!entry) return;
-	if (content !== undefined) {
-		removeLinkSource(index, fromPath);
-		setLinkSource(index, toPath, content, entry.mtime);
-		return;
-	}
-	const links = entry.links;
 	removeLinkSource(index, fromPath);
-	const key = pathKey(toPath);
-	index.sources.set(key, { path: normalizePath(toPath), mtime: -1, links });
-	for (const link of links) {
-		const targetKey = pathKey(link.targetPath);
-		const set = index.incoming.get(targetKey) ?? new Set<string>();
-		set.add(key);
-		index.incoming.set(targetKey, set);
-	}
+	if (content !== undefined) setLinkSource(index, toPath, content, entry.mtime);
+	else insertSource(index, toPath, -1, entry.mdLinks, entry.wikiRefs);
 }
 
 /** Links pointing at `targetPath`, sorted by source path then line. Self-links excluded. */

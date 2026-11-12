@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	backlinksFor,
+	batchLinkIndex,
 	createLinkIndex,
 	extractMarkdownLinks,
 	linkGraph,
@@ -172,5 +173,166 @@ describe("extractMarkdownLinks edge forms", () => {
 			["/ws/my doc.md", null],
 			["/ws/other doc.md", "x"],
 		]);
+	});
+});
+
+describe("wiki links", () => {
+	const build = (files: Record<string, string>, root = "/ws") => {
+		const index = createLinkIndex(root);
+		for (const [p, content] of Object.entries(files))
+			setLinkSource(index, `/ws/${p}`, content, 1);
+		return index;
+	};
+	const targets = (index: ReturnType<typeof build>, p: string) =>
+		outgoingFor(index, `/ws/${p}`).map((l) => [l.targetPath, l.anchor]);
+
+	it("resolves every syntax variant to Note.md", () => {
+		const index = build({
+			"folder/Note.md": "",
+			"src.md": [
+				"[[Note]]",
+				"[[Note|alias]]",
+				"[[Note#Section]]",
+				"[[folder/Note]]",
+				"[[Note.md]]",
+				"[[note|x#y]]",
+			].join("\n"),
+		});
+		expect(targets(index, "src.md")).toEqual([
+			["/ws/folder/Note.md", null],
+			["/ws/folder/Note.md", null],
+			["/ws/folder/Note.md", "Section"],
+			["/ws/folder/Note.md", null],
+			["/ws/folder/Note.md", null],
+			["/ws/folder/Note.md", null],
+		]);
+		expect(outgoingFor(index, "/ws/src.md")[2]?.line).toBe(3);
+	});
+
+	it("ignores embeds, non-md targets, unresolved targets and code", () => {
+		const index = build({
+			"img.png": "",
+			"Note.md": "",
+			"src.md": [
+				"![[Note]] ![[img.png]] [[img.png]] [[Missing]]",
+				"```",
+				"[[Note]]",
+				"```",
+				"text `[[Note]]` here",
+			].join("\n"),
+		});
+		expect(targets(index, "src.md")).toEqual([]);
+	});
+
+	it("resolves path targets from the root, then from the source folder", () => {
+		const index = build({
+			"a/Note.md": "",
+			"sub/a/Note.md": "",
+			"sub/b/Other.md": "",
+			"sub/src.md": "[[a/Note]] [[b/Other]] [[../a/Note]] [[x/Note]]",
+		});
+		expect(targets(index, "sub/src.md")).toEqual([
+			["/ws/a/Note.md", null],
+			["/ws/sub/b/Other.md", null],
+			["/ws/a/Note.md", null],
+		]);
+	});
+
+	it("picks among duplicate names: same folder, then shortest path, then A→Z", () => {
+		const order = (files: Record<string, string>, src: string) => {
+			const a = build(files);
+			const b = build(Object.fromEntries(Object.entries(files).reverse()));
+			expect(targets(a, src)).toEqual(targets(b, src));
+			return targets(a, src)[0]?.[0];
+		};
+		const deep = { "x/y/Note.md": "", "z/Note.md": "" };
+		expect(order({ ...deep, "x/y/src.md": "[[note]]" }, "x/y/src.md")).toBe(
+			"/ws/x/y/Note.md",
+		);
+		expect(order({ ...deep, "src.md": "[[Note]]" }, "src.md")).toBe(
+			"/ws/z/Note.md",
+		);
+		expect(
+			order(
+				{ "b/Note.md": "", "a/Note.md": "", "src.md": "[[Note]]" },
+				"src.md",
+			),
+		).toBe("/ws/a/Note.md");
+	});
+
+	it("re-resolves when a same-named file is added, renamed or deleted", () => {
+		const index = build({ "src.md": "[[Note]]", "deep/er/Note.md": "" });
+		const back = (p: string) =>
+			backlinksFor(index, `/ws/${p}`).map((b) => b.sourcePath);
+		expect(back("deep/er/Note.md")).toEqual(["/ws/src.md"]);
+
+		// Added later, shorter path: wins.
+		setLinkSource(index, "/ws/z/Note.md", "", 1);
+		expect(back("z/Note.md")).toEqual(["/ws/src.md"]);
+		expect(back("deep/er/Note.md")).toEqual([]);
+
+		// Renamed away from the name: falls back to the remaining namesake.
+		renameLinkSource(index, "/ws/z/Note.md", "/ws/z/Other.md");
+		expect(back("deep/er/Note.md")).toEqual(["/ws/src.md"]);
+		expect(back("z/Other.md")).toEqual([]);
+
+		// Renamed onto the name in the source's own folder: wins.
+		renameLinkSource(index, "/ws/z/Other.md", "/ws/note.md");
+		expect(back("note.md")).toEqual(["/ws/src.md"]);
+
+		// Deleted: back to the other one; then all gone → unresolved.
+		removeLinkSource(index, "/ws/note.md");
+		expect(back("deep/er/Note.md")).toEqual(["/ws/src.md"]);
+		removeLinkSource(index, "/ws/deep/er/Note.md");
+		expect(outgoingFor(index, "/ws/src.md")).toEqual([]);
+		expect(index.incoming.size).toBe(0);
+
+		// A target indexed after its linker still resolves.
+		setLinkSource(index, "/ws/late/Note.md", "", 1);
+		expect(back("late/Note.md")).toEqual(["/ws/src.md"]);
+	});
+
+	it("re-resolves a moved source's own wiki links from its new folder", () => {
+		const index = build({
+			"a/Note.md": "",
+			"b/Note.md": "",
+			"a/src.md": "[[Note]]",
+		});
+		expect(targets(index, "a/src.md")).toEqual([["/ws/a/Note.md", null]]);
+		renameLinkSource(index, "/ws/a/src.md", "/ws/b/src.md");
+		expect(targets(index, "b/src.md")).toEqual([["/ws/b/Note.md", null]]);
+		expect(backlinksFor(index, "/ws/a/Note.md")).toEqual([]);
+	});
+
+	it("feeds backlinks and the graph next to Markdown links", () => {
+		const index = build({
+			"Note.md": "",
+			"src.md": "[md](Note.md)\n[[Note|wiki]]",
+		});
+		expect(
+			backlinksFor(index, "/ws/Note.md").map((b) => [b.sourcePath, b.line]),
+		).toEqual([
+			["/ws/src.md", 1],
+			["/ws/src.md", 2],
+		]);
+		expect(linkGraph(index, ["/ws/src.md", "/ws/Note.md"]).edges).toEqual([
+			{ source: "/ws/src.md", target: "/ws/Note.md", count: 2 },
+		]);
+	});
+});
+
+describe("batchLinkIndex", () => {
+	it("defers namesake re-resolution to the outermost end", () => {
+		const index = createLinkIndex("/ws");
+		setLinkSource(index, "/ws/src.md", "[[Note]]", 1);
+		setLinkSource(index, "/ws/deep/x/Note.md", "", 1);
+		const outer = batchLinkIndex(index);
+		const inner = batchLinkIndex(index);
+		setLinkSource(index, "/ws/Note.md", "", 1);
+		inner();
+		expect(backlinksFor(index, "/ws/deep/x/Note.md")).toHaveLength(1);
+		outer();
+		expect(backlinksFor(index, "/ws/deep/x/Note.md")).toEqual([]);
+		expect(backlinksFor(index, "/ws/Note.md")).toHaveLength(1);
 	});
 });
