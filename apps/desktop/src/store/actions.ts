@@ -43,6 +43,7 @@ import {
 	updateDocNavigationPrefix,
 } from "./docNavigationHistory";
 import { flushEditorDraft } from "./editorDraft";
+import { noteSavedLinkSource } from "./linkIndexStore";
 export { clearDocNavigationHistory };
 
 import type { SourceRetentionPreference } from "./persistence";
@@ -578,6 +579,7 @@ export async function savePathContent(
 			await desktopApi.writeFileText(path, content);
 		}
 		touchFile(path);
+		if (hasMarkdownExtension(path)) noteSavedLinkSource(path, content);
 		viewerStore.set((state) => {
 			if (state.currentPath !== path) return state;
 			// Only write the saved text back into live editor content if the user

@@ -20,7 +20,7 @@ type MarkdownFile = {
 export type MovedFileIndex = Map<string, MovedFile>;
 
 /** Splits a link destination into its filesystem path and query/hash suffix. */
-function splitLinkDestination(destination: string): {
+export function splitLinkDestination(destination: string): {
 	path: string;
 	suffix: string;
 } {
@@ -37,7 +37,7 @@ function splitLinkDestination(destination: string): {
 }
 
 /** Returns true for file links whose meaning changes when their source moves. */
-function isLocalRelativeDestination(destination: string): boolean {
+export function isLocalRelativeDestination(destination: string): boolean {
 	const { path } = splitLinkDestination(destination.trim());
 	if (!path) return false;
 	if (path.startsWith("/") || path.startsWith("\\") || path.startsWith("//"))
@@ -47,7 +47,10 @@ function isLocalRelativeDestination(destination: string): boolean {
 }
 
 /** Resolves a local link destination as it was understood from its old file. */
-function absoluteLinkPath(sourceFilePath: string, destinationPath: string) {
+export function absoluteLinkPath(
+	sourceFilePath: string,
+	destinationPath: string,
+) {
 	const sourceDir = dirname(sourceFilePath);
 	if (!sourceDir) return normalizePath(destinationPath);
 	return normalizePath(joinPath(sourceDir, destinationPath));
