@@ -122,4 +122,17 @@ describe("textPattern", () => {
 		expect(c.matches("docs/API-Spec-v2.md")).toBe(true);
 		expect(c.matches("docs/readme.md")).toBe(false);
 	});
+
+	it("treats a lone * entry as match-all, also inside a comma list", () => {
+		for (const text of ["*", "**", " * "]) {
+			const all = CompiledTextPattern.parse(text);
+			expect(all.isEmpty).toBe(false);
+			expect(all.matches("docs/readme.md")).toBe(true);
+			expect(all.matches("")).toBe(true);
+		}
+		expect(new CompiledTextPattern(["*"]).matches("anything")).toBe(true);
+		const list = CompiledTextPattern.parse("memory/*, *");
+		expect(list.matches("docs/readme.md")).toBe(true);
+		expect(matchesEntry("x.md", "*")).toBe(true);
+	});
 });

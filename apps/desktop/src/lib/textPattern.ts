@@ -7,6 +7,9 @@
  * - regex: wrapped in slashes (`/^notes\//`). An invalid regex matches nothing
  *   and never throws.
  *
+ * - lone star: an entry made only of `*` matches everything (no filter), so
+ *   typing `*` on the way to `*.md` does not empty the list.
+ *
  * A comma-separated list (`memory/*, *spec*.md`) is several entries, OR-ed.
  * Build a {@link CompiledTextPattern} once per query, then match many texts:
  * no regex is ever compiled per row.
@@ -103,7 +106,8 @@ export function splitEntries(text: string): string[] {
 type Matcher =
 	| { kind: "plain"; needle: string }
 	| { kind: "regex"; re: RegExp }
-	| { kind: "never" };
+	| { kind: "never" }
+	| { kind: "all" };
 
 /** Entries compiled once, for matching many texts. */
 export class CompiledTextPattern {
@@ -113,6 +117,7 @@ export class CompiledTextPattern {
 	constructor(entries: readonly string[]) {
 		this.entries = entries;
 		this.matchers = entries.map((entry): Matcher => {
+			if (/^\s*\*+\s*$/.test(entry)) return { kind: "all" };
 			const re = entryRegExp(entry);
 			if (re) return { kind: "regex", re };
 			return isRegexEntry(entry)
@@ -135,6 +140,7 @@ export class CompiledTextPattern {
 	matches(text: string): boolean {
 		let lower: string | null = null;
 		for (const matcher of this.matchers) {
+			if (matcher.kind === "all") return true;
 			if (matcher.kind === "plain") {
 				lower ??= text.toLowerCase();
 				if (lower.includes(matcher.needle)) return true;
