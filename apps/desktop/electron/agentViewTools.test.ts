@@ -98,6 +98,8 @@ describe("saved-view agent tools (R15)", () => {
 				name: "Open notes",
 				folders: ["notes"],
 				groupBy: "prop:status",
+				paths: [],
+				group: null,
 				filters: [{ fieldId: "prop:status", kind: "is", value: "open" }],
 			},
 		]);
@@ -180,5 +182,48 @@ describe("saved-view agent tools (R15)", () => {
 		const result = await tool("list_views").execute({}, ctx());
 		expect(result.structuredContent?.error).toMatchObject({ code: "corrupt" });
 		expect(await fs.readdir(path.join(ws, ".hubble"))).toEqual(["views.json"]);
+	});
+});
+
+describe("create_view path patterns + path grouping", () => {
+	it("writes pathFilters and groupByKind beside the core record; list_views returns them", async () => {
+		const created = await tool("create_view").execute(
+			{ name: "Specs", paths: ["memory/*, *spec*.md"], group: "top-folder" },
+			ctx(),
+		);
+		expect(created.isError).toBeFalsy();
+		const file = JSON.parse(await fs.readFile(viewsFilePath(ws), "utf8"));
+		const record = file.views.find((v: { name: string }) => v.name === "Specs");
+		expect(record.pathFilters).toEqual(["memory/*, *spec*.md"]);
+		expect(record.groupByKind).toBe("topFolder");
+		expect(record.groupBy).toBeNull();
+		const listed = await tool("list_views").execute({}, ctx());
+		const view = (
+			listed.structuredContent as {
+				views: { name: string; paths: string[]; group: string | null }[];
+			}
+		).views.find((v) => v.name === "Specs");
+		expect(view?.paths).toEqual(["memory/*, *spec*.md"]);
+		expect(view?.group).toBe("top-folder");
+	});
+
+	it("old calls write no extra keys (backward compatible)", async () => {
+		await tool("create_view").execute({ name: "Plain" }, ctx());
+		const file = JSON.parse(await fs.readFile(viewsFilePath(ws), "utf8"));
+		expect(file.views[0]).not.toHaveProperty("pathFilters");
+		expect(file.views[0]).not.toHaveProperty("groupByKind");
+	});
+
+	it("rejects a bad group, group+group_by together, and an empty or invalid pattern", async () => {
+		for (const input of [
+			{ name: "A", group: "color" },
+			{ name: "B", group: "tag", group_by: "status" },
+			{ name: "C", paths: ["  "] },
+			{ name: "D", paths: ["/(unclosed/"] },
+		]) {
+			const result = await tool("create_view").execute(input, ctx());
+			expect(result.isError).toBe(true);
+		}
+		expect(await exists(viewsFilePath(ws))).toBe(false);
 	});
 });
