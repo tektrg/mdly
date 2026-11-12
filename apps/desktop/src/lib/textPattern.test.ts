@@ -103,6 +103,20 @@ describe("textPattern", () => {
 			"/x/",
 		]);
 		expect(splitEntries("/a{1,3}/")).toEqual(["/a{1,3}/"]);
+	});
+
+	it("keeps a regex's commas inside a mixed list", () => {
+		expect(splitEntries("docs/*, /a{1,3}b/, notes")).toEqual([
+			"docs/*",
+			"/a{1,3}b/",
+			"notes",
+		]);
+		expect(splitEntries("/x,y/,z")).toEqual(["/x,y/", "z"]);
+		// A plain entry with a slash is not a regex start.
+		expect(splitEntries("docs/, a")).toEqual(["docs/", "a"]);
+		const r = CompiledTextPattern.parse("readme, /^memory\\/a{1,3}\\//");
+		expect(r.matches("memory/aa/x.md")).toBe(true);
+		expect(r.matches("memory/aaaa/x.md")).toBe(false);
 		const c = CompiledTextPattern.parse("memory/*, *spec*.md");
 		expect(c.matches("memory/a/b.md")).toBe(true);
 		expect(c.matches("docs/API-Spec-v2.md")).toBe(true);

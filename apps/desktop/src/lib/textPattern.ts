@@ -71,16 +71,33 @@ export function cleanEntries(entries: readonly string[]): string[] {
 }
 
 /**
- * A typed list → its entries, split on commas. A whole input wrapped in
- * slashes is one regex, so `/a{1,3}/` keeps its comma.
+ * A typed list → its entries, split on commas. An entry that starts with `/`
+ * runs to the next `/` followed by a comma or the end, so a regex keeps its
+ * commas (`docs/*, /a{1,3}/`). Otherwise falls back to a plain split.
  */
 export function splitEntries(text: string): string[] {
 	const trimmed = text.trim();
 	if (isRegexEntry(trimmed)) return [trimmed];
-	return trimmed
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter((entry) => entry !== "");
+	const out: string[] = [];
+	let rest = trimmed;
+	while (rest !== "") {
+		rest = rest.trimStart();
+		let entry: string;
+		const regexEnd = rest.startsWith("/")
+			? /^\/.+?\/(?=\s*(,|$))/.exec(rest)
+			: null;
+		if (regexEnd) {
+			entry = regexEnd[0];
+			rest = rest.slice(entry.length).replace(/^\s*,?/, "");
+		} else {
+			const comma = rest.indexOf(",");
+			entry = comma === -1 ? rest : rest.slice(0, comma);
+			rest = comma === -1 ? "" : rest.slice(comma + 1);
+		}
+		entry = entry.trim();
+		if (entry !== "") out.push(entry);
+	}
+	return out;
 }
 
 type Matcher =
