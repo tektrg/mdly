@@ -18,6 +18,8 @@ import {
 	SPEC_VERSION,
 	type ViewSpec,
 } from "@tektrg/table-core";
+import { basename } from "../lib/filePath";
+import { CompiledTextPattern, isPatternEntry } from "../lib/textPattern";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
@@ -25,6 +27,7 @@ import type {
 	DocumentTableView,
 } from "./documentTableView";
 import {
+	compilePathFilters,
 	isPropertyValueFilter,
 	matchesFolderFilters,
 	type PropertyFilter,
@@ -135,6 +138,7 @@ function resolveSortKey(
 }
 
 function nameFilterCondition(query: string): FilterCondition | undefined {
+	if (liveFilterPattern(query)) return undefined;
 	// A query that folds to nothing (" ", "-") means "no filter", as before.
 	if (looseFoldText(query).length === 0) return undefined;
 	return {
@@ -173,15 +177,43 @@ function rowFolderPath(row: DocumentTableRow): string {
 	return row.folderLabel === ROOT_FOLDER_LABEL ? "_" : `${row.folderLabel}/_`;
 }
 
-/** Rows in ANY `folder:` chip (OR); the same predicate on both paths. */
+/** `folder/sub/file.md`, workspace-relative — what `path:` patterns match. */
+export function rowRelativePath(
+	row: Pick<DocumentTableRow, "path" | "folderLabel">,
+): string {
+	const name = basename(row.path);
+	return row.folderLabel === ROOT_FOLDER_LABEL
+		? name
+		: `${row.folderLabel}/${name}`;
+}
+
+/**
+ * Rows in ANY `folder:` chip (OR) AND matching ANY `path:` entry (OR); the
+ * same predicate on both paths. The path pattern is compiled once here.
+ */
 function applyFolderFilters(
 	rows: DocumentTableRow[],
 	filters: readonly PropertyFilter[],
 ): DocumentTableRow[] {
-	if (!filters.some((filter) => filter.kind === "folder")) return rows;
-	return rows.filter((row) =>
-		matchesFolderFilters(rowFolderPath(row), filters),
+	const hasFolder = filters.some((filter) => filter.kind === "folder");
+	const pathPattern = compilePathFilters(filters);
+	if (!hasFolder && !pathPattern) return rows;
+	return rows.filter(
+		(row) =>
+			(!hasFolder || matchesFolderFilters(rowFolderPath(row), filters)) &&
+			(!pathPattern || pathPattern.matches(rowRelativePath(row))),
 	);
+}
+
+/**
+ * The live filter box: a `*` anywhere or a whole `/…/` switches it to pattern
+ * mode against `folder/sub/file.md`; anything else returns null (the
+ * file-name substring match, unchanged).
+ */
+export function liveFilterPattern(query: string): CompiledTextPattern | null {
+	const trimmed = query.trim();
+	if (!trimmed.includes("*") && !isPatternEntry(trimmed)) return null;
+	return CompiledTextPattern.parse(trimmed);
 }
 
 type EngineView = Pick<DocumentTableView, "filter" | "sort"> &
@@ -238,10 +270,14 @@ function evaluateDocumentRows(
 	propertyFields: readonly PropertyField[] = [],
 ): DocumentTableRow[] {
 	if (referencesMissingField(view, propertyFields)) return [];
-	return applyFolderFilters(
+	const filtered = applyFolderFilters(
 		runEvaluate(toDocumentViewSpec(view, propertyFields), rows, propertyFields),
 		view.propertyFilters ?? [],
 	);
+	const live = liveFilterPattern(view.filter);
+	return live
+		? filtered.filter((row) => live.matches(rowRelativePath(row)))
+		: filtered;
 }
 
 type SortedRowsMemo = {
@@ -339,6 +375,9 @@ export function filterAndSortDocumentRows(
 ): DocumentTableRow[] {
 	const sorted = sortDocumentRows(rows, view.sort, propertyFields);
 	const chipFiltered = applyPropertyFilters(sorted, view, propertyFields);
+	const live = liveFilterPattern(view.filter);
+	if (live)
+		return chipFiltered.filter((row) => live.matches(rowRelativePath(row)));
 	const needle = looseFoldText(view.filter);
 	if (needle.length === 0) return chipFiltered;
 	return chipFiltered.filter((row) => row.searchName.includes(needle));

@@ -22,10 +22,13 @@ import {
 import { validateSavedViewName } from "../documentViewsFileStore";
 import { SavedViewNameInput } from "../SavedViewControls";
 import {
+	type DocumentGroupBy,
 	describeGroupBy,
 	describePropertyFilter,
 	type FolderFilter,
 	isFolderFilter,
+	isPathFilter,
+	PATH_GROUP_BY,
 } from "./documentViews";
 import type { PropertyField } from "./propertyFields";
 import { type PropertyScanState, scanStatusText } from "./propertyScanStore";
@@ -149,6 +152,15 @@ export function PropertyViewBar({
 									replacePropertyFilter(filter, { kind: "folder", path })
 								}
 							/>
+						) : isPathFilter(filter) ? (
+							<PathPatternEditor
+								current={filter.pattern}
+								triggerClassName="truncate outline-hidden hover:underline focus-visible:underline"
+								triggerLabel={label}
+								onCommit={(pattern) =>
+									replacePropertyFilter(filter, { kind: "path", pattern })
+								}
+							/>
 						) : (
 							<span className="truncate">{label}</span>
 						)}
@@ -188,6 +200,14 @@ export function PropertyViewBar({
 				triggerTitle="Filter by folder"
 				onPick={(path) => addPropertyFilter({ kind: "folder", path })}
 			/>
+			<PathPatternEditor
+				current={null}
+				triggerClassName={GHOST_CHIP_CLASS}
+				triggerLabel="+ Path"
+				triggerTitle="Filter by path pattern"
+				onCommit={(pattern) => addPropertyFilter({ kind: "path", pattern })}
+			/>
+			<GroupPicker current={view.propertyGroupBy} />
 			<span aria-hidden="true" className="min-w-2 flex-1" />
 			{status && asBadge ? (
 				<span
@@ -302,6 +322,119 @@ function FolderPicker({
 							</div>
 						))
 					)}
+				</div>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+/**
+ * "+ Path" / path-chip editor: a comma-separated pattern list matched against
+ * `folder/sub/file.md`. Plain text = substring, `*` = any run, `/…/` = regex;
+ * case-insensitive; entries OR-ed. Enter commits, an empty value cancels.
+ */
+function PathPatternEditor({
+	current,
+	triggerClassName,
+	triggerLabel,
+	triggerTitle,
+	onCommit,
+}: {
+	current: string | null;
+	triggerClassName: string;
+	triggerLabel: string;
+	triggerTitle?: string;
+	onCommit: (pattern: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [text, setText] = useState("");
+	const commit = () => {
+		const pattern = text.trim();
+		setOpen(false);
+		if (pattern && pattern !== current) onCommit(pattern);
+	};
+	return (
+		<Popover
+			open={open}
+			onOpenChange={(next) => {
+				if (next) setText(current ?? "");
+				setOpen(next);
+			}}
+		>
+			<PopoverTrigger className={triggerClassName} title={triggerTitle}>
+				{triggerLabel}
+			</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				aria-label="Path pattern"
+				className="w-80 gap-1 rounded-mdly-panel p-1.5"
+			>
+				<input
+					// biome-ignore lint/a11y/noAutofocus: editor opened by an explicit click
+					autoFocus
+					aria-label="Path pattern"
+					placeholder="memory/*, *spec*.md, /regex/"
+					className="h-6 rounded-full bg-mdly-control px-2.5 outline-hidden focus-visible:ring-[3px] focus-visible:ring-mdly-ink/15"
+					value={text}
+					onChange={(event) => setText(event.target.value)}
+					onKeyDown={(event) => {
+						if (event.key === "Enter") commit();
+					}}
+				/>
+				<span className="px-1.5 text-[11px] text-muted-foreground">
+					Matches folder/file.md · * = anything · /…/ = regex · commas = or
+				</span>
+			</PopoverContent>
+		</Popover>
+	);
+}
+
+const GROUP_OPTIONS: { value: DocumentGroupBy | null; label: string }[] = [
+	{ value: null, label: "No grouping" },
+	{ value: PATH_GROUP_BY.folder, label: "Folder" },
+	{ value: PATH_GROUP_BY.topFolder, label: "Top-level folder" },
+	{ value: PATH_GROUP_BY.tag, label: "Tag" },
+];
+
+/** "Group": folder / top-level folder / tag (property grouping stays in the column menu). */
+function GroupPicker({ current }: { current: DocumentGroupBy | null }) {
+	const [open, setOpen] = useState(false);
+	return (
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
+				className={GHOST_CHIP_CLASS}
+				aria-haspopup="listbox"
+				title="Group documents"
+			>
+				Group
+			</PopoverTrigger>
+			<PopoverContent
+				align="start"
+				aria-label="Group by"
+				className="w-48 gap-1 rounded-mdly-panel p-1.5"
+			>
+				<div role="listbox" className="flex flex-col">
+					{GROUP_OPTIONS.map((option) => (
+						<div
+							key={option.label}
+							role="option"
+							tabIndex={0}
+							aria-selected={option.value === current}
+							className="cursor-default truncate rounded px-1.5 py-1 outline-hidden hover:bg-accent focus-visible:bg-accent aria-selected:font-medium"
+							onClick={() => {
+								setOpen(false);
+								setPropertyGroupBy(option.value);
+							}}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									setOpen(false);
+									setPropertyGroupBy(option.value);
+								}
+							}}
+						>
+							{option.label}
+						</div>
+					))}
 				</div>
 			</PopoverContent>
 		</Popover>

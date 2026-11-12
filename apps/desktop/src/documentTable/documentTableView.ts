@@ -23,6 +23,7 @@ export { ROOT_FOLDER_LABEL };
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 import {
 	DEFAULT_DOCUMENT_VIEW_LAYOUT,
+	type DocumentGroupBy,
 	type DocumentViewLayout,
 	type PropertyFilter,
 } from "./properties/documentViews";
@@ -80,7 +81,7 @@ export type DocumentTableView = {
 	 * Group by a property instead of folder/tag. Takes precedence over
 	 * `groupBy` while set; a live search still drops all grouping (A7).
 	 */
-	propertyGroupBy: PropertyFieldId | null;
+	propertyGroupBy: DocumentGroupBy | null;
 };
 
 export type DocumentTableRow = {

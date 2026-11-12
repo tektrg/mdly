@@ -43,6 +43,8 @@ import {
 	PINNED_GROUP_ID,
 	resolveNavViewSpec,
 } from "./navGroupTree";
+import { isPathGroupBy } from "./properties/documentViews";
+import { buildPathGroupTree } from "./properties/pathGroupTree";
 import { buildPropertyGroupTree } from "./properties/propertyGroupTree";
 import { useLocalDayKey } from "./properties/useLocalDayKey";
 import { usePropertyModel } from "./properties/usePropertyModel";
@@ -286,15 +288,17 @@ export function DocumentRowList({
 	const dayKey = useLocalDayKey();
 	const propertyTree = useMemo(
 		() =>
-			propertyGroupBy
-				? buildPropertyGroupTree(
-						groupedDocs,
-						propertyGroupBy,
-						propertyFields,
-						// Buckets depend only on the day; noon of it is that day.
-						new Date(`${dayKey}T12:00:00`),
-					)
-				: null,
+			propertyGroupBy && isPathGroupBy(propertyGroupBy)
+				? buildPathGroupTree(groupedDocs, propertyGroupBy)
+				: propertyGroupBy
+					? buildPropertyGroupTree(
+							groupedDocs,
+							propertyGroupBy,
+							propertyFields,
+							// Buckets depend only on the day; noon of it is that day.
+							new Date(`${dayKey}T12:00:00`),
+						)
+					: null,
 		[groupedDocs, propertyGroupBy, propertyFields, dayKey],
 	);
 	// Session-only collapse state: property groups start expanded (a board's

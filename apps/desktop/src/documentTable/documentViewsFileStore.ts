@@ -35,6 +35,7 @@ import {
 	MAX_SAVED_VIEW_NAME_LENGTH,
 	type SavedDocumentView,
 	sanitizeSavedView,
+	savedViewToRecord,
 } from "./properties/documentViews";
 import {
 	createDesktopViewStore,
@@ -254,7 +255,7 @@ function toFile(workspacePath: string, internal: Internal): ViewsFile {
 			(view) =>
 				({
 					...(internal.rawById.get(view.id) ?? {}),
-					...view,
+					...savedViewToRecord(view),
 				}) as SavedViewRecord,
 		),
 		invalidViews: [...base.invalidViews, ...internal.unusable],

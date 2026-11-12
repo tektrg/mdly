@@ -6,7 +6,7 @@ import type { FileEntry } from "../../store/state";
 import { workspacePathStore, workspaceStore } from "../../store/state";
 import { useCurrentDocumentView } from "../useDocumentTableRows";
 import { viewUsesFileStats } from "./builtinFields";
-import { isPropertyValueFilter } from "./documentViews";
+import { isPropertyValueFilter, propertyGroupField } from "./documentViews";
 import { runPropertyScan } from "./propertyScanStore";
 
 /** Watcher bursts (a git checkout, a sync) settle before the diff runs. */
@@ -27,7 +27,7 @@ function useViewNeedsFileStats(): boolean {
 		filterFieldIds: view.propertyFilters
 			.filter(isPropertyValueFilter)
 			.map((filter) => filter.fieldId),
-		groupBy: view.propertyGroupBy,
+		groupBy: propertyGroupField(view.propertyGroupBy),
 	});
 }
 

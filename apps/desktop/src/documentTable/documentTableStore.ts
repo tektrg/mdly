@@ -24,6 +24,7 @@ import {
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
 import {
 	type BoardViewSettings,
+	type DocumentGroupBy,
 	type DocumentViewLayout,
 	type DocumentViewType,
 	EMPTY_WORKSPACE_DOCUMENT_VIEWS,
@@ -268,7 +269,7 @@ export function replacePropertyFilter(
 	editCurrentView({ filters: [...filters, next] });
 }
 
-export function setPropertyGroupBy(fieldId: PropertyFieldId | null) {
+export function setPropertyGroupBy(fieldId: DocumentGroupBy | null) {
 	editCurrentView({ groupBy: fieldId });
 }
 

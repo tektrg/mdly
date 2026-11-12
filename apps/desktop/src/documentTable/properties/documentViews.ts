@@ -25,10 +25,11 @@ import {
 	type SavedViewType,
 	type SavedViewValueFilter,
 	sanitizeBoardSettings,
-	sanitizeSavedView,
+	sanitizeSavedView as sanitizeCoreSavedView,
 	sanitizeSavedViewSort,
 	sanitizeViewFieldIds,
 } from "@tektrg/table-core";
+import { CompiledTextPattern, splitEntries } from "../../lib/textPattern";
 import {
 	fallbackPropertyLabel,
 	type PropertyField,
@@ -44,20 +45,106 @@ import {
  * the tag, for a multi-value field); `folder:<path>` = documents in that
  * workspace-relative folder or any subfolder (`matchesFolder`).
  */
-export type PropertyFilter = SavedViewFilter;
 export type PropertyValueFilter = SavedViewValueFilter;
 export type FolderFilter = SavedViewFolderFilter;
+/**
+ * `path:` chip — a comma-separated TextPattern list (`memory/*, *spec*.md,
+ * /regex/`) matched against `folder/sub/file.md`. mdly-only: persisted as the
+ * record's top-level `pathFilters: string[]` (not inside `filters`), so
+ * table-core's sanitizer and older app builds keep the record and the value.
+ */
+export type PathFilter = { kind: "path"; pattern: string };
+export type PropertyFilter = SavedViewFilter | PathFilter;
 export type DocumentViewType = SavedViewType;
 export type DocumentViewLayout = SavedViewLayout;
-export type SavedDocumentView = SavedView;
+
+/**
+ * Non-property groupings of a saved view (mdly-only; persisted as the record's
+ * top-level `groupByKind`, with `groupBy: null`): full folder path, first
+ * folder segment, front-matter tag.
+ */
+export const PATH_GROUP_BY = {
+	folder: "group:folder",
+	topFolder: "group:topFolder",
+	tag: "group:tag",
+} as const;
+export type PathGroupBy = (typeof PATH_GROUP_BY)[keyof typeof PATH_GROUP_BY];
+export type DocumentGroupBy = PropertyFieldId | PathGroupBy;
+
+const PATH_GROUP_BY_KINDS = Object.keys(
+	PATH_GROUP_BY,
+) as (keyof typeof PATH_GROUP_BY)[];
+
+export function isPathGroupBy(value: unknown): value is PathGroupBy {
+	return Object.values(PATH_GROUP_BY).includes(value as PathGroupBy);
+}
+
+/** The property field a grouping reads, or null for a path grouping. */
+export function propertyGroupField(
+	groupBy: DocumentGroupBy | null,
+): PropertyFieldId | null {
+	return groupBy === null || isPathGroupBy(groupBy) ? null : groupBy;
+}
+
+export type SavedDocumentView = Omit<SavedView, "filters" | "groupBy"> & {
+	filters: PropertyFilter[];
+	groupBy: DocumentGroupBy | null;
+};
 export type { BoardColumnColor, BoardViewSettings };
 export {
 	BOARD_COLUMN_COLORS,
 	DEFAULT_BOARD_VIEW_SETTINGS,
 	MAX_SAVED_VIEW_NAME_LENGTH,
 	sanitizeBoardSettings,
-	sanitizeSavedView,
 };
+
+/** table-core's sanitizer plus mdly's `pathFilters` / `groupByKind` keys. */
+export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
+	const view = sanitizeCoreSavedView(value);
+	if (!view) return null;
+	const raw = value as Record<string, unknown>;
+	const pathFilters: PathFilter[] = Array.isArray(raw.pathFilters)
+		? raw.pathFilters
+				.filter(
+					(pattern): pattern is string =>
+						typeof pattern === "string" && pattern.trim() !== "",
+				)
+				.map((pattern) => ({ kind: "path", pattern }))
+		: [];
+	const kind = PATH_GROUP_BY_KINDS.find((key) => key === raw.groupByKind);
+	return {
+		...view,
+		filters: [...view.filters, ...pathFilters],
+		groupBy: kind ? PATH_GROUP_BY[kind] : view.groupBy,
+	};
+}
+
+/**
+ * The view as a `views.json` record: path chips move to `pathFilters`, a path
+ * grouping to `groupByKind`. Absent keys are `undefined`, so spreading this
+ * over an older raw record clears them (JSON drops `undefined`).
+ */
+export function savedViewToRecord(
+	view: SavedDocumentView,
+): Record<string, unknown> {
+	const pathFilters = view.filters
+		.filter(isPathFilter)
+		.map((filter) => filter.pattern);
+	const kind = PATH_GROUP_BY_KINDS.find(
+		(key) => PATH_GROUP_BY[key] === view.groupBy,
+	);
+	return {
+		...view,
+		filters: view.filters.filter((filter) => !isPathFilter(filter)),
+		groupBy: kind ? null : view.groupBy,
+		pathFilters: pathFilters.length > 0 ? pathFilters : undefined,
+		groupByKind: kind,
+	};
+}
+
+export function isPathFilter(filter: PropertyFilter): filter is PathFilter {
+	return filter.kind === "path";
+}
 export const DOCUMENT_VIEW_TYPES = SAVED_VIEW_TYPES;
 export const DEFAULT_DOCUMENT_VIEW_LAYOUT = DEFAULT_SAVED_VIEW_LAYOUT;
 export const isDocumentTableSortColumn = isSavedViewSortColumn;
@@ -71,7 +158,7 @@ export function isFolderFilter(filter: PropertyFilter): filter is FolderFilter {
 export function isPropertyValueFilter(
 	filter: PropertyFilter,
 ): filter is PropertyValueFilter {
-	return filter.kind !== "folder";
+	return filter.kind === "has" || filter.kind === "is";
 }
 
 /** Per-workspace persisted views state. */
@@ -87,6 +174,9 @@ export const EMPTY_WORKSPACE_DOCUMENT_VIEWS: WorkspaceDocumentViews = {
 };
 
 export function sameFilter(a: PropertyFilter, b: PropertyFilter): boolean {
+	if (a.kind === "path" || b.kind === "path") {
+		return a.kind === "path" && b.kind === "path" && a.pattern === b.pattern;
+	}
 	if (a.kind === "folder" || b.kind === "folder") {
 		return a.kind === "folder" && b.kind === "folder" && a.path === b.path;
 	}
@@ -112,6 +202,7 @@ export function describePropertyFilter(
 	fields: readonly PropertyField[],
 ): string {
 	if (filter.kind === "folder") return `Folder: ${filter.path}`;
+	if (filter.kind === "path") return `Path: ${filter.pattern}`;
 	const label = fieldLabel(filter.fieldId, fields);
 	if (filter.kind === "has") return `has ${label}`;
 	const value =
@@ -126,10 +217,17 @@ export function describePropertyFilter(
 		: `${label} is ${value}`;
 }
 
+const PATH_GROUP_LABELS: Record<PathGroupBy, string> = {
+	"group:folder": "Folder",
+	"group:topFolder": "Top-level folder",
+	"group:tag": "Tag",
+};
+
 export function describeGroupBy(
-	fieldId: PropertyFieldId,
+	fieldId: DocumentGroupBy,
 	fields: readonly PropertyField[],
 ): string {
+	if (isPathGroupBy(fieldId)) return `Grouped by ${PATH_GROUP_LABELS[fieldId]}`;
 	return `Grouped by ${fieldLabel(fieldId, fields)}`;
 }
 
@@ -181,7 +279,23 @@ export function matchesFolderFilters(
 	docPath: string,
 	filters: readonly PropertyFilter[],
 ): boolean {
-	return matchesFolderGroup(docPath, filters);
+	return matchesFolderGroup(docPath, filters as readonly SavedViewFilter[]);
+}
+
+/**
+ * The view's `path:` chips as one compiled pattern (chips OR-ed, entries of a
+ * chip OR-ed); null when there are none. Build once per filter set.
+ */
+export function compilePathFilters(
+	filters: readonly PropertyFilter[],
+): CompiledTextPattern | null {
+	const entries = filters
+		.filter(isPathFilter)
+		.flatMap((filter) => splitEntries(filter.pattern));
+	if (entries.length === 0) {
+		return filters.some(isPathFilter) ? new CompiledTextPattern([]) : null;
+	}
+	return new CompiledTextPattern(entries);
 }
 
 // --- sanitizing persisted JSON -------------------------------------------
