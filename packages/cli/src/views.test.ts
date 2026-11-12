@@ -386,4 +386,39 @@ describe("hubble views", () => {
 		expect(stdout).toContain("views");
 		expect(stdout).toContain("cloud");
 	});
+
+	it("--path and --group write mdly's pathFilters/groupByKind in the same create", async () => {
+		const made = await cli(
+			"create",
+			"Specs",
+			"--path",
+			"docs/*, *spec*.md",
+			"--path",
+			"/^memory\\//",
+			"--group",
+			"top-folder",
+		);
+		expect(made.code, made.err).toBe(0);
+		expect(made.out).toContain("paths:    docs/*, *spec*.md | /^memory\\//");
+		expect(made.out).toContain("group by: top-folder");
+		const [record] = await views();
+		expect(record).toMatchObject({
+			name: "Specs",
+			groupBy: null,
+			groupByKind: "topFolder",
+			pathFilters: ["docs/*, *spec*.md", "/^memory\\//"],
+		});
+		const listed = await cli("list");
+		expect(listed.out).toContain("group by: top-folder");
+	});
+
+	it("bad --group, --group with --group-by, and empty --path are refused", async () => {
+		await expectRefused(["create", "X", "--group", "status"], /bad --group/);
+		await expectRefused(
+			["create", "X", "--group", "tag", "--group-by", "status"],
+			/either --group or --group-by/,
+		);
+		await expectRefused(["create", "X", "--path", " *, "], /needs a pattern/);
+		await expectRefused(["rename", "a", "b", "--path", "x"], /only apply/);
+	});
 });

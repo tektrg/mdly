@@ -8,6 +8,7 @@
  * Every input check runs before anything is written; any error prints one
  * clear line to stderr and exits non-zero with the file untouched.
  */
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -15,7 +16,52 @@ import {
 	sanitizeSavedView,
 	savedViewFolders,
 } from "@tektrg/table-core";
-import { runViewCommand, type ViewCommand } from "@tektrg/table-core/node";
+import {
+	createWorkspaceViewStore,
+	runViewCommand,
+	type ViewCommand,
+	type WorkspaceViewStore,
+} from "@tektrg/table-core/node";
+
+/**
+ * mdly-only view keys, beside table-core's record (the app reads both):
+ * `pathFilters` = comma-separated path patterns (plain = substring, `*` = any
+ * run, `/…/` = regex; case-insensitive) on `folder/sub/file.md`;
+ * `groupByKind` = folder | topFolder | tag grouping (with `groupBy: null`).
+ */
+const GROUP_KINDS: Record<string, string> = {
+	folder: "folder",
+	"top-folder": "topFolder",
+	tag: "tag",
+};
+const GROUP_KIND_LABELS: Record<string, string> = {
+	folder: "folder",
+	topFolder: "top-folder",
+	tag: "tag",
+};
+
+type MdlyExtras = { pathFilters?: string[]; groupByKind?: string };
+
+/** The store, with `extras` merged into the record `id` as it is written. */
+function storeWithExtras(
+	workspace: string,
+	id: string,
+	extras: MdlyExtras,
+): WorkspaceViewStore {
+	const inner = createWorkspaceViewStore(workspace);
+	const patch = <F extends { views: SavedViewRecord[] }>(file: F): F => ({
+		...file,
+		views: file.views.map((view) =>
+			view.id === id ? ({ ...view, ...extras } as SavedViewRecord) : view,
+		),
+	});
+	return {
+		...inner,
+		read: () => inner.read(),
+		write: (file, snapshot) => inner.write(patch(file), snapshot),
+		resetCorrupt: (file) => inner.resetCorrupt(patch(file)),
+	};
+}
 
 export type ViewsIo = {
 	stdout: (line: string) => void;
@@ -34,14 +80,16 @@ const SUBCOMMANDS = ["list", "create", "rename", "delete"] as const;
 export const VIEWS_USAGE = [
 	"Usage:",
 	"  hubble [--cwd path] views list [--json]",
-	"  hubble [--cwd path] views create <name> [--folder dir]... [--group-by prop] [--filter prop=value|prop]... [--json]",
+	"  hubble [--cwd path] views create <name> [--folder dir]... [--path patterns]... [--group-by prop | --group folder|top-folder|tag] [--filter prop=value|prop]... [--json]",
 	"  hubble [--cwd path] views rename <name|id> <new name> [--json]",
 	"  hubble [--cwd path] views delete <name|id> [--json]",
 	"",
 	"Options:",
 	"  --cwd path, --workspace path  Workspace folder (default: current folder)",
 	"  --folder dir       Only documents in this workspace folder (subfolders included; must exist; repeatable — a document in any of them matches)",
+	"  --path patterns    Only documents whose folder/sub/file.md matches: comma-separated, any matches; plain text = contains, * = anything, /…/ = regex; case-insensitive; repeatable (OR)",
 	"  --group-by prop    Group rows by this front-matter property",
+	"  --group kind       Group rows by folder, top-folder (first folder segment) or tag",
 	"  --filter k=v       Property k is v (the value may contain '='); a bare k means 'has property k'; repeatable",
 	"  --json             Machine-readable output",
 	"",
@@ -60,6 +108,8 @@ export function isViewsInvocation(argv: readonly string[]): boolean {
 				workspace: { type: "string" },
 				folder: { type: "string", multiple: true },
 				"group-by": { type: "string" },
+				group: { type: "string" },
+				path: { type: "string", multiple: true },
 				filter: { type: "string", multiple: true },
 			},
 		});
@@ -92,8 +142,19 @@ export function formatView(record: SavedViewRecord): string[] {
 	const folders = savedViewFolders(view);
 	const filters = view.filters.filter((filter) => filter.kind !== "folder");
 	lines.push(`  folders:  ${folders.length ? folders.join(", ") : "(all)"}`);
+	const extras = record as MdlyExtras;
+	const pathFilters = Array.isArray(extras.pathFilters)
+		? extras.pathFilters.filter((p) => typeof p === "string")
+		: [];
+	const groupKind =
+		typeof extras.groupByKind === "string"
+			? GROUP_KIND_LABELS[extras.groupByKind]
+			: undefined;
 	lines.push(
-		`  group by: ${view.groupBy ? view.groupBy.replace(/^prop:/, "") : "(none)"}`,
+		`  paths:    ${pathFilters.length ? pathFilters.join(" | ") : "(all)"}`,
+	);
+	lines.push(
+		`  group by: ${groupKind ?? (view.groupBy ? view.groupBy.replace(/^prop:/, "") : "(none)")}`,
 	);
 	lines.push(
 		`  filters:  ${filters.length ? filters.map((f) => describeFilter(f as Record<string, unknown>)).join(", ") : "(none)"}`,
@@ -102,7 +163,13 @@ export function formatView(record: SavedViewRecord): string[] {
 }
 
 type Parsed =
-	| { ok: true; workspace: string; json: boolean; command: ViewCommand }
+	| {
+			ok: true;
+			workspace: string;
+			json: boolean;
+			command: ViewCommand;
+			extras: MdlyExtras;
+	  }
 	| { ok: false; error: string; usage: boolean };
 
 function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
@@ -118,6 +185,8 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 				workspace: { type: "string" },
 				folder: { type: "string", multiple: true },
 				"group-by": { type: "string" },
+				group: { type: "string" },
+				path: { type: "string", multiple: true },
 				filter: { type: "string", multiple: true },
 				json: { type: "boolean" },
 			},
@@ -145,6 +214,8 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 	const folders = (values.folder ?? []) as string[];
 	const filters = (values.filter ?? []) as string[];
 	const groupBy = values["group-by"] as string | undefined;
+	const group = values.group as string | undefined;
+	const paths = ((values.path ?? []) as string[]).map((p) => p.trim());
 	if (!sub || !(SUBCOMMANDS as readonly string[]).includes(sub)) {
 		return {
 			ok: false,
@@ -156,14 +227,39 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 	}
 	if (
 		sub !== "create" &&
-		(folders.length > 0 || filters.length > 0 || groupBy !== undefined)
+		(folders.length > 0 ||
+			filters.length > 0 ||
+			groupBy !== undefined ||
+			group !== undefined ||
+			paths.length > 0)
 	) {
 		return {
 			ok: false,
 			usage: true,
-			error: `--folder, --group-by and --filter only apply to "views create"`,
+			error: `--folder, --path, --group, --group-by and --filter only apply to "views create"`,
 		};
 	}
+	if (group !== undefined && groupBy !== undefined) {
+		return {
+			ok: false,
+			usage: true,
+			error: "use either --group or --group-by, not both",
+		};
+	}
+	if (group !== undefined && !(group in GROUP_KINDS)) {
+		return {
+			ok: false,
+			usage: true,
+			error: `bad --group ${JSON.stringify(group)}: use folder, top-folder or tag`,
+		};
+	}
+	if (paths.some((p) => p.replace(/[\s,*]/g, "") === "")) {
+		return { ok: false, usage: true, error: "--path needs a pattern" };
+	}
+	const extras: MdlyExtras = {
+		...(paths.length > 0 ? { pathFilters: paths } : {}),
+		...(group !== undefined ? { groupByKind: GROUP_KINDS[group] } : {}),
+	};
 	const arity = { list: 0, create: 1, rename: 2, delete: 1 }[
 		sub as (typeof SUBCOMMANDS)[number]
 	];
@@ -198,7 +294,7 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 		default:
 			command = { kind: "delete", target: rest[0] as string };
 	}
-	return { ok: true, workspace, json, command };
+	return { ok: true, workspace, json, command, extras };
 }
 
 /** Runs `hubble ... views ...`; returns the process exit code. */
@@ -212,7 +308,18 @@ export async function runViewsCli(
 		if (parsed.usage) for (const line of VIEWS_USAGE) io.stderr(line);
 		return 1;
 	}
-	const result = await runViewCommand(parsed.workspace, parsed.command);
+	const id = randomUUID();
+	const hasExtras = Object.keys(parsed.extras).length > 0;
+	const result = await runViewCommand(
+		parsed.workspace,
+		parsed.command,
+		hasExtras
+			? {
+					newId: () => id,
+					store: storeWithExtras(parsed.workspace, id, parsed.extras),
+				}
+			: {},
+	);
 	if ("error" in result) {
 		io.stderr(`hubble views: ${result.error.message}`);
 		return 1;
@@ -232,16 +339,20 @@ export async function runViewsCli(
 		}
 		return 0;
 	}
+	const record =
+		result.kind === "create" && hasExtras
+			? ({ ...result.record, ...parsed.extras } as SavedViewRecord)
+			: result.record;
 	if (parsed.json) {
-		io.stdout(JSON.stringify(result.record, null, 2));
+		io.stdout(JSON.stringify(record, null, 2));
 		return 0;
 	}
 	const verb = { create: "Created", rename: "Renamed", delete: "Deleted" }[
 		result.kind
 	];
-	io.stdout(`${verb} view "${result.record.name}" (id: ${result.record.id})`);
+	io.stdout(`${verb} view "${record.name}" (id: ${record.id})`);
 	if (result.kind !== "delete") {
-		for (const line of formatView(result.record).slice(1)) io.stdout(line);
+		for (const line of formatView(record).slice(1)) io.stdout(line);
 	}
 	return 0;
 }
