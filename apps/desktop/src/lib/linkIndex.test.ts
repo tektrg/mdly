@@ -132,7 +132,9 @@ describe("linkGraph case-insensitive nodes", () => {
 		setLinkSource(index, "/ws/a.md", "[b](b.md)", 1);
 		const graph = linkGraph(index, ["/ws/a.md", "/ws/A.md", "/ws/b.md"]);
 		expect(graph.nodes).toEqual(["/ws/a.md", "/ws/b.md"]);
-		expect(graph.edges).toEqual([{ source: "/ws/a.md", target: "/ws/b.md", count: 1 }]);
+		expect(graph.edges).toEqual([
+			{ source: "/ws/a.md", target: "/ws/b.md", count: 1 },
+		]);
 	});
 });
 

@@ -87,7 +87,7 @@ describe("workspace change", () => {
 		disk["/ws/a.md"] = "[b](b.md)";
 		await syncLinkIndex("/ws", [{ path: "/ws/a.md", modifiedAt: 1 }], read);
 		expect(linkIndexStore.get().scope).toBe("/ws");
-		workspacePathStore.set(null);
+		workspacePathStore.set(undefined);
 		await new Promise((r) => setTimeout(r, 0));
 		expect(linkIndexStore.get().scope).toBeNull();
 		expect(currentLinkIndex().sources.size).toBe(0);
