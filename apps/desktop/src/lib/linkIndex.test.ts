@@ -125,3 +125,40 @@ describe("link index", () => {
 		]);
 	});
 });
+
+describe("extractMarkdownLinks edge forms", () => {
+	it("resolves reference-style links via their definitions, snippet from the usage line", () => {
+		const content = [
+			"See [the plan][p] and [Notes][] and [shortcut].",
+			"Unused [x][missing].",
+			"",
+			"[p]: ./plan.md#goals",
+			'[notes]: <../my notes.md> "Title"',
+			"[shortcut]: sub/s%20c.md",
+			"[unused]: other.md",
+			"```",
+			"[q][p]",
+			"```",
+		].join("\n");
+		const links = extractMarkdownLinks("/ws/d/a.md", content);
+		expect(links.map((l) => [l.targetPath, l.anchor, l.line])).toEqual([
+			["/ws/d/plan.md", "goals", 1],
+			["/ws/my notes.md", null, 1],
+			["/ws/d/sub/s c.md", null, 1],
+		]);
+		expect(links[0]?.snippet).toBe(
+			"See [the plan][p] and [Notes][] and [shortcut].",
+		);
+	});
+
+	it("decodes %20 and accepts angle-bracket destinations with spaces", () => {
+		const links = extractMarkdownLinks(
+			"/ws/a.md",
+			"[a](my%20doc.md) [b](<./other doc.md#x>)",
+		);
+		expect(links.map((l) => [l.targetPath, l.anchor])).toEqual([
+			["/ws/my doc.md", null],
+			["/ws/other doc.md", "x"],
+		]);
+	});
+});

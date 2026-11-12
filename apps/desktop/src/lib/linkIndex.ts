@@ -88,6 +88,21 @@ function decode(path: string): string {
 	}
 }
 
+/** Normalizes a reference label per CommonMark (case-fold, collapse spaces). */
+function referenceLabel(label: string): string {
+	return label.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+/** Takes the URL part of a destination: `<...>` or the first bare token. */
+function destinationUrl(raw: string): string {
+	const destination = raw.trim();
+	const angled = destination.match(/^<([^>]+)>/);
+	if (angled) return angled[1] ?? "";
+	return destination.match(/^(\S+)/)?.[1] ?? "";
+}
+
+const REFERENCE_DEFINITION_RE = /^ {0,3}\[([^\]\n]+)\]:\s*(\S.*)$/;
+
 /** Extracts resolved links to Markdown files from one document. */
 export function extractMarkdownLinks(
 	sourcePath: string,
@@ -96,30 +111,49 @@ export function extractMarkdownLinks(
 	const original = content.split("\n");
 	const masked = maskCode(content).split("\n");
 	const links: OutgoingLink[] = [];
-	const linkRe = /(!?)\[[^\]\n]*\]\(([^)\n]+)\)/g;
+	// Reference definitions (`[label]: dest`) — first definition wins.
+	const definitions = new Map<string, string>();
+	const definitionLines = new Set<number>();
 	masked.forEach((line, lineIndex) => {
+		const def = line.match(REFERENCE_DEFINITION_RE);
+		if (!def) return;
+		definitionLines.add(lineIndex);
+		const label = referenceLabel(def[1] ?? "");
+		if (!definitions.has(label))
+			definitions.set(label, destinationUrl(def[2] ?? ""));
+	});
+	const pushLink = (
+		destination: string,
+		lineIndex: number,
+		start: number,
+		length: number,
+	) => {
+		if (!isLocalRelativeDestination(destination)) return;
+		const { path, suffix } = splitLinkDestination(destination);
+		const decoded = decode(path);
+		if (!hasMarkdownExtension(decoded)) return;
+		const hash = suffix.indexOf("#");
+		links.push({
+			targetPath: absoluteLinkPath(sourcePath, decoded),
+			anchor: hash >= 0 ? suffix.slice(hash + 1) || null : null,
+			line: lineIndex + 1,
+			snippet: snippetAround(original[lineIndex] ?? "", start, start + length),
+		});
+	};
+	// Inline `[t](dest)`, full `[t][label]`, collapsed `[t][]`, shortcut `[t]`.
+	const linkRe = /(!?)\[([^\]\n]*)\](?:\(([^)\n]+)\)|\[([^\]\n]*)\])?(?![(:])/g;
+	masked.forEach((line, lineIndex) => {
+		if (definitionLines.has(lineIndex)) return;
 		for (const match of line.matchAll(linkRe)) {
 			if (match[1]) continue; // image
-			let destination = (match[2] ?? "").trim();
-			const angled = destination.match(/^<([^>]+)>/);
-			if (angled) destination = angled[1] ?? "";
-			else destination = destination.match(/^(\S+)/)?.[1] ?? "";
-			if (!isLocalRelativeDestination(destination)) continue;
-			const { path, suffix } = splitLinkDestination(destination);
-			const decoded = decode(path);
-			if (!hasMarkdownExtension(decoded)) continue;
-			const hash = suffix.indexOf("#");
 			const start = match.index ?? 0;
-			links.push({
-				targetPath: absoluteLinkPath(sourcePath, decoded),
-				anchor: hash >= 0 ? suffix.slice(hash + 1) || null : null,
-				line: lineIndex + 1,
-				snippet: snippetAround(
-					original[lineIndex] ?? "",
-					start,
-					start + match[0].length,
-				),
-			});
+			let destination: string | undefined;
+			if (match[3] !== undefined) destination = destinationUrl(match[3]);
+			else {
+				const label = match[4] ? match[4] : (match[2] ?? "");
+				destination = definitions.get(referenceLabel(label));
+			}
+			if (destination) pushLink(destination, lineIndex, start, match[0].length);
 		}
 	});
 	return links;
