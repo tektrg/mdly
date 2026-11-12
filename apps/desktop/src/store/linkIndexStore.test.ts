@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { backlinksFor } from "../lib/linkIndex";
 import {
@@ -7,6 +8,7 @@ import {
 	resetLinkIndex,
 	syncLinkIndex,
 } from "./linkIndexStore";
+import { workspacePathStore } from "./state";
 
 const disk: Record<string, string> = {};
 const read = vi.fn(async (path: string) => {
@@ -76,5 +78,18 @@ describe("syncLinkIndex", () => {
 		disk["/ws/a.md"] = "[c](c.md)";
 		await syncLinkIndex("/ws", files, read);
 		expect(read).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("workspace change", () => {
+	it("drops the index when the workspace path changes or closes", async () => {
+		workspacePathStore.set("/ws");
+		disk["/ws/a.md"] = "[b](b.md)";
+		await syncLinkIndex("/ws", [{ path: "/ws/a.md", modifiedAt: 1 }], read);
+		expect(linkIndexStore.get().scope).toBe("/ws");
+		workspacePathStore.set(null);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(linkIndexStore.get().scope).toBeNull();
+		expect(currentLinkIndex().sources.size).toBe(0);
 	});
 });

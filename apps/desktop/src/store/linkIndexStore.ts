@@ -7,6 +7,7 @@ import {
 	setLinkSource,
 	sourceMtime,
 } from "../lib/linkIndex";
+import { workspacePathStore } from "./state";
 
 /**
  * Renderer-side owner of the workspace link index (`lib/linkIndex.ts`).
@@ -133,3 +134,9 @@ export function resetLinkIndex() {
 	index = createLinkIndex();
 	linkIndexStore.set({ scope: null, status: "idle", version: 0 });
 }
+
+// Closing or switching the workspace drops the old index, so a stale graph
+// never outlives its workspace (the next sync rebuilds for the new scope).
+workspacePathStore.subscribe((next) => {
+	if (linkIndexStore.get().scope !== (next ?? null)) resetLinkIndex();
+});
