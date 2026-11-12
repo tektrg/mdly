@@ -2,9 +2,14 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { workspacePathStore } from "../store/state";
 import { DocumentTable } from "./DocumentTable";
 import type { DocumentListingState } from "./documentListingState";
 import { resetDocumentTableLayoutForTests } from "./documentTableLayout";
+import {
+	getCurrentPropertyColumns,
+	togglePropertyColumn,
+} from "./documentTableStore";
 import type { DocumentTableRow } from "./documentTableView";
 import { buildRows, viewWith } from "./testFixtures";
 
@@ -148,5 +153,72 @@ describe("DocumentTable column reorder", () => {
 			"⠿Folder",
 			"⠿Created",
 		]);
+	});
+});
+
+describe("DocumentTable property column reorder", () => {
+	let container: HTMLDivElement;
+	let root: Root;
+
+	beforeEach(async () => {
+		localStorage.clear();
+		resetDocumentTableLayoutForTests();
+		workspacePathStore.set("/ws-reorder");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		togglePropertyColumn("prop:status");
+		togglePropertyColumn("prop:due");
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+		act(() => {
+			root.render(
+				<DocumentTable
+					rows={buildRows() as DocumentTableRow[]}
+					view={viewWith()}
+					listing={LISTED}
+					onOpenDocument={vi.fn()}
+					onFilterChange={vi.fn()}
+					onToggleSort={vi.fn()}
+					onRetryListing={vi.fn()}
+				/>,
+			);
+		});
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+		for (const id of getCurrentPropertyColumns()) togglePropertyColumn(id);
+	});
+
+	it("drags a newly added property column onto another one", () => {
+		const cells = headerCells(container);
+		const status = cells[4];
+		const due = cells[5];
+		expect(status?.getAttribute("draggable")).toBe("true");
+
+		const dataTransfer = dragData();
+		fireDrag(due, "dragstart", dataTransfer);
+		const over = fireDrag(status, "dragover", dataTransfer);
+		expect(over.defaultPrevented).toBe(true);
+		fireDrag(status, "drop", dataTransfer);
+
+		expect(getCurrentPropertyColumns()).toEqual(["prop:due", "prop:status"]);
+		// Built-in columns are untouched by a property drag.
+		expect(headerLabels(container).slice(0, 4)).toEqual([
+			"Name",
+			"⠿Folder",
+			"⠿Modified",
+			"⠿Created",
+		]);
+	});
+
+	it("ignores a built-in column dropped onto a property column", () => {
+		const cells = headerCells(container);
+		const dataTransfer = dragData();
+		fireDrag(cells[1], "dragstart", dataTransfer);
+		const over = fireDrag(cells[4], "dragover", dataTransfer);
+		expect(over.defaultPrevented).toBe(false);
+		expect(getCurrentPropertyColumns()).toEqual(["prop:status", "prop:due"]);
 	});
 });

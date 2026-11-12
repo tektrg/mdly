@@ -282,6 +282,28 @@ export function togglePropertyColumn(fieldId: PropertyFieldId) {
 	});
 }
 
+/**
+ * Header drag / Alt+Arrow on a property column: reorders within the current
+ * view's property columns (saved views persist it). Property columns stay
+ * after the built-ins, so this never crosses into the global built-in order.
+ */
+export function movePropertyColumn(from: number, to: number) {
+	const columns = getCurrentPropertyColumns();
+	if (
+		from === to ||
+		from < 0 ||
+		to < 0 ||
+		from >= columns.length ||
+		to >= columns.length
+	) {
+		return;
+	}
+	const next = [...columns];
+	const [moved] = next.splice(from, 1);
+	next.splice(to, 0, moved);
+	editCurrentView({ propertyColumns: next });
+}
+
 function newSavedViewId(): string {
 	return typeof crypto !== "undefined" && "randomUUID" in crypto
 		? crypto.randomUUID()

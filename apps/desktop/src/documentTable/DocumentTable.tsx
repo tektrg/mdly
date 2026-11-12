@@ -1,5 +1,11 @@
 import { Button } from "@hubble.md/ui";
-import { type ComponentProps, type ReactNode, useRef, useState } from "react";
+import {
+	type ComponentProps,
+	type HTMLAttributes,
+	type ReactNode,
+	useRef,
+	useState,
+} from "react";
 import MingcuteArrowUpLine from "~icons/mingcute/arrow-up-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
@@ -20,6 +26,7 @@ import {
 	setDocumentTableColumnWidth,
 	useDocumentTableLayout,
 } from "./documentTableLayout";
+import { movePropertyColumn } from "./documentTableStore";
 import type {
 	DocumentTableColumn,
 	DocumentTableRow,
@@ -102,12 +109,23 @@ function PropertyColumnHeader({
 	view,
 	onToggleSort,
 	resizeHandle,
+	reorder,
 }: {
 	fieldId: PropertyFieldId;
 	field: PropertyField | undefined;
 	view: DocumentTableView;
 	onToggleSort: (column: DocumentTableSortColumn) => void;
 	resizeHandle: ReactNode;
+	/** Drag + Alt+Arrow wiring; property columns reorder among themselves. */
+	reorder: {
+		isSource: boolean;
+		isTarget: boolean;
+		dragProps: Pick<
+			HTMLAttributes<HTMLDivElement>,
+			"onDragStart" | "onDragOver" | "onDrop" | "onDragEnd"
+		>;
+		onMove: (delta: -1 | 1) => void;
+	};
 }) {
 	const label = titleCaseLabel(field?.label ?? fallbackPropertyLabel(fieldId));
 	const sortable = field !== undefined && field.type !== "multiSelect";
@@ -117,16 +135,39 @@ function PropertyColumnHeader({
 			role="columnheader"
 			tabIndex={-1}
 			aria-sort={ariaSortFor(view, fieldId)}
-			className="group relative flex min-w-0 items-center"
+			draggable
+			{...reorder.dragProps}
+			className={cn(
+				"group relative flex min-w-0 cursor-grab select-none items-center",
+				reorder.isSource && "opacity-40",
+				reorder.isTarget && "bg-accent",
+			)}
 		>
 			<button
 				type="button"
 				className={cn(HEADER_BUTTON_CLASS, "min-w-0 flex-1")}
 				onClick={() => (sortable ? onToggleSort(fieldId) : undefined)}
-				title={
+				onKeyDown={(event) => {
+					if (!event.altKey) return;
+					if (event.key === "ArrowLeft") {
+						event.preventDefault();
+						reorder.onMove(-1);
+					} else if (event.key === "ArrowRight") {
+						event.preventDefault();
+						reorder.onMove(1);
+					}
+				}}
+				title={`${
 					sortable ? `Sort by ${label}.` : `${label} (tags cannot be sorted).`
-				}
+				} Drag to reorder (Alt+←/→ to move).`}
 			>
+				<span
+					aria-hidden="true"
+					data-drag-handle
+					className="shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-40 group-focus-within:opacity-40 motion-reduce:transition-none"
+				>
+					⠿
+				</span>
 				<span className="min-w-0 truncate">{label}</span>
 				{sortable ? (
 					<MingcuteArrowUpLine
@@ -168,6 +209,13 @@ function DocumentTableHeader({
 	const { columns, gridStyle, propertyColumns } = useDocumentTableLayout();
 	const [dragSourceIndex, setDragSourceIndex] = useState<number | null>(null);
 	const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+	// Separate from the built-in drag: the two groups never accept each other's drops.
+	const [propDragIndex, setPropDragIndex] = useState<number | null>(null);
+	const [propDropIndex, setPropDropIndex] = useState<number | null>(null);
+	const endPropDrag = () => {
+		setPropDragIndex(null);
+		setPropDropIndex(null);
+	};
 	const resizeDragRef = useRef<{
 		column: DocumentTableLayoutColumn;
 		startX: number;
@@ -313,7 +361,7 @@ function DocumentTableHeader({
 						</div>
 					);
 				})}
-				{propertyColumns.map((fieldId) => (
+				{propertyColumns.map((fieldId, index) => (
 					<PropertyColumnHeader
 						key={fieldId}
 						fieldId={fieldId}
@@ -321,16 +369,47 @@ function DocumentTableHeader({
 						view={view}
 						onToggleSort={onToggleSort}
 						resizeHandle={resizeHandleFor(fieldId)}
+						reorder={{
+							isSource: propDragIndex === index,
+							isTarget: propDropIndex === index,
+							onMove: (delta) => movePropertyColumn(index, index + delta),
+							dragProps: {
+								onDragStart: (event) => {
+									if (
+										(event.target as HTMLElement | null)?.closest?.(
+											"[data-resize-handle]",
+										)
+									) {
+										event.preventDefault();
+										return;
+									}
+									setPropDragIndex(index);
+									setPropDropIndex(null);
+									event.dataTransfer.effectAllowed = "move";
+									event.dataTransfer.setData("text/plain", fieldId);
+								},
+								onDragOver: (event) => {
+									if (propDragIndex === null) return;
+									event.preventDefault();
+									event.dataTransfer.dropEffect = "move";
+									if (index !== propDragIndex) setPropDropIndex(index);
+								},
+								onDrop: (event) => {
+									if (propDragIndex === null) return;
+									event.preventDefault();
+									movePropertyColumn(propDragIndex, index);
+									endPropDrag();
+								},
+								onDragEnd: endPropDrag,
+							},
+						}}
 					/>
 				))}
 			</div>
 			{/* Its own fixed cell, never over a column; the body reserves the same gutter. */}
 			<div
 				data-header-add-cell
-				className={cn(
-					TRAILING_CELL_CLASS,
-					"flex items-center justify-center",
-				)}
+				className={cn(TRAILING_CELL_CLASS, "flex items-center justify-center")}
 			>
 				{trailing}
 			</div>
@@ -554,24 +633,24 @@ export function DocumentTable({
 					/>
 					<div className="flex min-h-0 flex-1">
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-					<DocumentRowList
-						rows={rows}
-						density="table"
-						view={view}
-						onOpenDocument={onOpenDocument}
-						menu={rowMenu}
-						emptyState={
-							<DocumentTableEmptyState
-								listing={listing}
-								filter={view.filter}
-								hasPropertyFilters={view.propertyFilters.length > 0}
-								propertiesPending={
-									scanStatus === "scanning" || scanStatus === "idle"
+							<DocumentRowList
+								rows={rows}
+								density="table"
+								view={view}
+								onOpenDocument={onOpenDocument}
+								menu={rowMenu}
+								emptyState={
+									<DocumentTableEmptyState
+										listing={listing}
+										filter={view.filter}
+										hasPropertyFilters={view.propertyFilters.length > 0}
+										propertiesPending={
+											scanStatus === "scanning" || scanStatus === "idle"
+										}
+										onRetryListing={onRetryListing}
+									/>
 								}
-								onRetryListing={onRetryListing}
 							/>
-						}
-					/>
 						</div>
 						<div aria-hidden="true" className={TRAILING_CELL_CLASS} />
 					</div>

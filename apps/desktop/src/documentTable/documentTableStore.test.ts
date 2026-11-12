@@ -218,6 +218,39 @@ describe("documentTableStore", () => {
 		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
 	});
 
+	it("reorders added property columns in the session and inside a saved view", async () => {
+		const {
+			getSavedViews,
+			movePropertyColumn,
+			saveCurrentViewAs,
+			togglePropertyColumn,
+			workspaceStore,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		workspacePathStore.set("/ws");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		togglePropertyColumn("prop:status");
+		togglePropertyColumn("prop:due");
+		movePropertyColumn(1, 0);
+		expect(workspaceStore.get().documentViews["/ws"]?.propertyColumns).toEqual([
+			"prop:due",
+			"prop:status",
+		]);
+
+		saveCurrentViewAs("Ordered");
+		togglePropertyColumn("prop:owner");
+		movePropertyColumn(2, 0);
+		expect(getSavedViews("/ws")[0]?.propertyColumns).toEqual([
+			"prop:owner",
+			"prop:due",
+			"prop:status",
+		]);
+		// Out-of-range moves are no-ops, not corruptions.
+		movePropertyColumn(0, 9);
+		expect(getSavedViews("/ws")[0]?.propertyColumns).toHaveLength(3);
+	});
+
 	it("keeps the layout per view: session for All documents, saved into a saved view", async () => {
 		const {
 			documentTableViewStore,
