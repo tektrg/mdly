@@ -86,7 +86,7 @@ export function BacklinksPanel({ path }: { path: string }) {
 										workspacePath ?? null,
 									)}
 								</span>
-								<span className="line-clamp-2 text-[11px] text-muted-foreground">
+								<span className="line-clamp-2 text-[11px] text-muted-foreground [overflow-wrap:anywhere]">
 									{link.snippet}
 								</span>
 							</button>
