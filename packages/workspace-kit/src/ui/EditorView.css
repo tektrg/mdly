@@ -494,9 +494,9 @@
 
 [data-hubble-editor] .ProseMirror code {
 	/* Slightly lifted chip so inline code reads apart from body text in both themes. */
-	background: color-mix(in oklch, var(--muted), var(--foreground) 9%);
-	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 12%);
-	color: var(--foreground);
+	background: color-mix(in oklch, var(--muted), var(--foreground) 5%);
+	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 6%);
+	color: color-mix(in oklch, var(--foreground) 88%, var(--muted));
 	padding: 0.12em 0.4em;
 	border-radius: 4px;
 	font-size: 0.9em;
