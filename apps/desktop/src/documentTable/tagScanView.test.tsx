@@ -177,4 +177,55 @@ describe("tag scan view (A9)", () => {
 		expect(scanFrontMatterTags).not.toHaveBeenCalled();
 		expect(tagScanStore.get()).toEqual({ kind: "idle" });
 	});
+
+	describe("saved view grouped by Tag", () => {
+		async function renderTagGroupedView() {
+			const view = viewWith({ propertyGroupBy: "group:tag" });
+			await act(async () => {
+				root.render(
+					<DocumentRowList
+						rows={buildRows({ view })}
+						density="table"
+						view={view}
+						onOpenDocument={vi.fn()}
+						emptyState={<p>No documents</p>}
+					/>,
+				);
+			});
+		}
+
+		it("shows Scanning tags… instead of an all-Other list while the scan runs", async () => {
+			scanFrontMatterTags.mockReturnValue(new Promise(() => {}));
+
+			await renderTagGroupedView();
+
+			// The grouping itself starts the same scan the nav Tag view uses.
+			expect(scanFrontMatterTags).toHaveBeenCalledTimes(1);
+			expect(
+				container.querySelector('[data-tag-scan-state="scanning"]')
+					?.textContent,
+			).toContain("Scanning tags");
+			expect(container.querySelectorAll("[data-group-id]")).toHaveLength(0);
+			expect(container.textContent).not.toContain("Other");
+		});
+
+		it("renders the tag groups once the scan completes", async () => {
+			scanFrontMatterTags.mockResolvedValue({
+				"/ws/alpha.md": ["idea"],
+			});
+
+			await renderTagGroupedView();
+			await act(async () => {});
+
+			expect(
+				container.querySelector('[data-tag-scan-state="scanning"]'),
+			).toBeNull();
+			expect(
+				container.querySelector('[data-group-id="group:tag::idea"]'),
+			).not.toBeNull();
+			expect(
+				container.querySelector('[data-group-id="group:tag::(other)"]'),
+			).not.toBeNull();
+		});
+	});
 });

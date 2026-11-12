@@ -43,7 +43,7 @@ import {
 	PINNED_GROUP_ID,
 	resolveNavViewSpec,
 } from "./navGroupTree";
-import { isPathGroupBy } from "./properties/documentViews";
+import { isPathGroupBy, PATH_GROUP_BY } from "./properties/documentViews";
 import { buildPathGroupTree } from "./properties/pathGroupTree";
 import { buildPropertyGroupTree } from "./properties/propertyGroupTree";
 import { useLocalDayKey } from "./properties/useLocalDayKey";
@@ -359,8 +359,11 @@ export function DocumentRowList({
 	// fails) the scan. The scope lives in the store, so a result for a workspace
 	// the user already left is dropped instead of painted here.
 	const tagScanRequestRef = useRef(0);
+	// A saved view grouped by Tag needs the same map as the nav Tag view.
+	const wantsTags =
+		spec.groupBy === "tag" || propertyGroupBy === PATH_GROUP_BY.tag;
 	useEffect(() => {
-		if (spec.groupBy !== "tag" || !workspacePath) return;
+		if (!wantsTags || !workspacePath) return;
 		// A scan already in flight for this workspace is left alone; a failed
 		// one waits for the user's "Try again" (which resets to idle) rather
 		// than looping on the failure.
@@ -410,7 +413,7 @@ export function DocumentRowList({
 				);
 			},
 		);
-	}, [spec.groupBy, tagScanState, workspacePath, workspaceFiles]);
+	}, [wantsTags, tagScanState, workspacePath, workspaceFiles]);
 
 	// A view switch lands at the top of the new view, not at the old view's
 	// scroll offset clamped into a different-length list.
@@ -561,6 +564,24 @@ export function DocumentRowList({
 
 	const scrollClassName =
 		"min-h-0 flex-1 overflow-auto overscroll-contain [padding-block:var(--row-pad-block)]";
+
+	if (propertyGroupBy === PATH_GROUP_BY.tag && !tagsReady) {
+		// Grouping by Tag before the scan lands would put every document in
+		// "Other"; hold the groups until the tags are known.
+		const failed =
+			tagScanState.kind === "failed" && tagScanState.scope === scanScope;
+		return (
+			<div ref={swipeRef} className={scrollClassName}>
+				<div className="p-2">
+					<TagScanStateView
+						status={failed ? "failed" : "scanning"}
+						scanningText="Scanning tags…"
+						onRetry={retryTagScan}
+					/>
+				</div>
+			</div>
+		);
+	}
 
 	if (navRows.length === 0) {
 		// Not a `rowgroup`: an empty grid body would announce phantom structure,

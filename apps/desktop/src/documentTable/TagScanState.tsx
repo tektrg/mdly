@@ -8,9 +8,11 @@ import { Button } from "@hubble.md/ui";
 export function TagScanStateView({
 	status,
 	onRetry,
+	scanningText = "Reading tags…",
 }: {
 	status: "scanning" | "failed";
 	onRetry: () => void;
+	scanningText?: string;
 }) {
 	if (status === "scanning") {
 		return (
@@ -18,7 +20,7 @@ export function TagScanStateView({
 				data-tag-scan-state="scanning"
 				className="m-0 text-[length:var(--font-size-sidebar)] text-muted-foreground"
 			>
-				Reading tags…
+				{scanningText}
 			</p>
 		);
 	}
