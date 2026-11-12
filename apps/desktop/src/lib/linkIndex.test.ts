@@ -126,6 +126,16 @@ describe("link index", () => {
 	});
 });
 
+describe("linkGraph case-insensitive nodes", () => {
+	it("dedupes node paths that differ only by case", () => {
+		const index = createLinkIndex();
+		setLinkSource(index, "/ws/a.md", "[b](b.md)", 1);
+		const graph = linkGraph(index, ["/ws/a.md", "/ws/A.md", "/ws/b.md"]);
+		expect(graph.nodes).toEqual(["/ws/a.md", "/ws/b.md"]);
+		expect(graph.edges).toEqual([{ source: "/ws/a.md", target: "/ws/b.md", count: 1 }]);
+	});
+});
+
 describe("extractMarkdownLinks edge forms", () => {
 	it("resolves reference-style links via their definitions, snippet from the usage line", () => {
 		const content = [

@@ -268,7 +268,9 @@ export function linkGraph(
 	index: LinkIndex,
 	paths: readonly string[],
 ): LinkGraph {
-	const byKey = new Map(paths.map((p) => [pathKey(p), p]));
+	// First spelling wins, so a case-variant duplicate collapses to one node.
+	const byKey = new Map<string, string>();
+	for (const p of paths) if (!byKey.has(pathKey(p))) byKey.set(pathKey(p), p);
 	const edges: LinkGraph["edges"] = [];
 	for (const [sourceKey, source] of byKey) {
 		const counts = new Map<string, number>();
@@ -281,5 +283,5 @@ export function linkGraph(
 			edges.push({ source, target: byKey.get(targetKey) as string, count });
 		}
 	}
-	return { nodes: [...paths], edges };
+	return { nodes: [...byKey.values()], edges };
 }
