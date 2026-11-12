@@ -1,35 +1,41 @@
-import {
-	stripMarkdownExtension,
-	withMarkdownExtension,
-} from "@mdly/workspace-kit/engine";
+import { withMarkdownExtension } from "@mdly/workspace-kit/engine";
 import type { FileEntry } from "../store/state";
-import { joinPath, relativeWorkspacePath } from "./filePath";
+import { joinPath } from "./filePath";
+import { resolveWikiTargetAmong, wikiCandidatesFromPaths } from "./linkIndex";
 
+/**
+ * Editor click-to-open for `[[…]]`. Uses the link index's rule
+ * (`resolveWikiTargetAmong`), so a click opens the same file Backlinks counts.
+ * Alias and `#section` are dropped (the click opens the file, no section jump).
+ * Unresolved: an absolute target opens as written, else the root-joined path.
+ */
 export function resolveWikiPath({
 	target,
 	files,
 	workspacePath,
+	sourcePath,
 }: {
 	target: string;
 	files: FileEntry[];
 	workspacePath: string | null;
+	sourcePath: string | null;
 }) {
-	const path = target.split("#")[0];
+	const raw = target.split("|")[0] ?? "";
+	const path = (raw.split("#")[0] ?? "").trim();
+	const resolved = path
+		? resolveWikiTargetAmong(
+				wikiCandidatesFromPaths(
+					workspacePath,
+					files.map((file) => file.path),
+				),
+				sourcePath ?? joinPath(workspacePath ?? "/", "_"),
+				path,
+			)
+		: null;
+	if (resolved) return resolved;
 	const pathWithExtension = withMarkdownExtension(path);
 	if (pathWithExtension.startsWith("/")) return pathWithExtension;
-
-	const exactPath = workspacePath
+	return workspacePath
 		? joinPath(workspacePath, pathWithExtension)
 		: pathWithExtension;
-	const exactMatch = files.find((file) => file.path === exactPath);
-	if (exactMatch) return exactMatch.path;
-
-	const targetStem = stripMarkdownExtension(path);
-	const stemMatch = files.find((file) => {
-		const relativePath = relativeWorkspacePath(file.path, workspacePath);
-		const relativeStem = stripMarkdownExtension(relativePath);
-		const fileStem = relativeStem.split(/[\\/]/).pop() ?? relativeStem;
-		return relativeStem === targetStem || fileStem === targetStem;
-	});
-	return stemMatch?.path ?? exactPath;
 }

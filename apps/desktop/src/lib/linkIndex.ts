@@ -232,7 +232,7 @@ export function extractWikiRefs(content: string): WikiRef[] {
 }
 
 /** Note-name identity: base name without the Markdown extension, case-folded. */
-function nameKey(path: string): string {
+export function wikiNameKey(path: string): string {
 	return basename(normalizePath(path))
 		.replace(/\.(md|markdown)$/i, "")
 		.toLocaleLowerCase();
@@ -271,26 +271,75 @@ export function resolveWikiTarget(
 	sourcePath: string,
 	target: string,
 ): string | null {
+	return resolveWikiTargetAmong(
+		{
+			root: index.root,
+			pathFor: (key) => index.sources.get(key)?.path ?? null,
+			keysNamed: (name) => index.byName.get(name) ?? [],
+		},
+		sourcePath,
+		target,
+	);
+}
+
+/**
+ * The files a wiki target can resolve against. `pathFor` maps a `pathKey` to
+ * the file's real path; `keysNamed` lists the `pathKey`s of Markdown files
+ * with a `wikiNameKey`.
+ */
+export type WikiCandidates = {
+	root: string | null;
+	pathFor: (key: string) => string | null;
+	keysNamed: (name: string) => Iterable<string>;
+};
+
+/** Builds `WikiCandidates` from a plain file listing (non-Markdown skipped). */
+export function wikiCandidatesFromPaths(
+	root: string | null,
+	paths: Iterable<string>,
+): WikiCandidates {
+	const byKey = new Map<string, string>();
+	const byName = new Map<string, Set<string>>();
+	for (const path of paths) {
+		if (!hasMarkdownExtension(path)) continue;
+		const key = pathKey(path);
+		if (byKey.has(key)) continue;
+		byKey.set(key, normalizePath(path));
+		addTo(byName, wikiNameKey(path), key);
+	}
+	return {
+		root: root ? normalizePath(root) : null,
+		pathFor: (key) => byKey.get(key) ?? null,
+		keysNamed: (name) => byName.get(name) ?? [],
+	};
+}
+
+/** The single wiki resolution rule, shared by the index and the editor click. */
+export function resolveWikiTargetAmong(
+	candidates: WikiCandidates,
+	sourcePath: string,
+	target: string,
+): string | null {
 	const written = target.replace(/\\/g, "/");
 	const file = hasMarkdownExtension(written) ? written : `${written}.md`;
 	if (written.includes("/")) {
 		const relative = file.replace(/^\/+/, "");
-		const candidates = [
-			index.root ? normalizePath(joinPath(index.root, relative)) : null,
+		const tries = [
+			candidates.root
+				? normalizePath(joinPath(candidates.root, relative))
+				: null,
 			file.startsWith("/") ? null : absoluteLinkPath(sourcePath, relative),
 		];
-		for (const candidate of candidates) {
-			const entry = candidate && index.sources.get(pathKey(candidate));
-			if (entry) return entry.path;
+		for (const candidate of tries) {
+			const path = candidate && candidates.pathFor(pathKey(candidate));
+			if (path) return path;
 		}
 		return null;
 	}
-	const keys = index.byName.get(nameKey(file));
-	if (!keys || keys.size === 0) return null;
 	const sourceDir = pathKey(dirname(normalizePath(sourcePath)) ?? "");
 	let best: string | null = null;
 	let bestRank: [number, number, string] | null = null;
-	for (const key of keys) {
+	for (const key of candidates.keysNamed(wikiNameKey(file))) {
 		const rank: [number, number, string] = [
 			pathKey(dirname(key) ?? "") === sourceDir ? 0 : 1,
 			key.length,
@@ -307,7 +356,7 @@ export function resolveWikiTarget(
 			bestRank = rank;
 		}
 	}
-	return best ? (index.sources.get(best)?.path ?? null) : null;
+	return best ? candidates.pathFor(best) : null;
 }
 
 export function createLinkIndex(root: string | null = null): LinkIndex {
@@ -347,7 +396,7 @@ function resolveSource(index: LinkIndex, key: string) {
 
 /** Re-resolves every source whose wiki refs could match a file named like `path`. */
 function reresolveDependents(index: LinkIndex, path: string) {
-	for (const key of [...(index.wikiByName.get(nameKey(path)) ?? [])]) {
+	for (const key of [...(index.wikiByName.get(wikiNameKey(path)) ?? [])]) {
 		if (index.pending) index.pending.add(key);
 		else resolveSource(index, key);
 	}
@@ -387,7 +436,7 @@ function insertSource(
 	if (previous) {
 		detachIncoming(index, key, previous.links);
 		for (const ref of previous.wikiRefs)
-			deleteFrom(index.wikiByName, nameKey(ref.target), key);
+			deleteFrom(index.wikiByName, wikiNameKey(ref.target), key);
 	}
 	index.sources.set(key, {
 		path: normalizePath(path),
@@ -396,10 +445,11 @@ function insertSource(
 		wikiRefs,
 		links: [],
 	});
-	for (const ref of wikiRefs) addTo(index.wikiByName, nameKey(ref.target), key);
+	for (const ref of wikiRefs)
+		addTo(index.wikiByName, wikiNameKey(ref.target), key);
 	// Only Markdown files are wiki targets (an indexed `.html` is not).
 	if (!previous && hasMarkdownExtension(path)) {
-		addTo(index.byName, nameKey(path), key);
+		addTo(index.byName, wikiNameKey(path), key);
 	}
 	if (!previous) {
 		// A new file can win (or newly satisfy) other sources' wiki targets.
@@ -419,8 +469,8 @@ export function removeLinkSource(index: LinkIndex, path: string) {
 	if (!entry) return;
 	detachIncoming(index, key, entry.links);
 	for (const ref of entry.wikiRefs)
-		deleteFrom(index.wikiByName, nameKey(ref.target), key);
-	deleteFrom(index.byName, nameKey(entry.path), key);
+		deleteFrom(index.wikiByName, wikiNameKey(ref.target), key);
+	deleteFrom(index.byName, wikiNameKey(entry.path), key);
 	index.sources.delete(key);
 	// Wiki links that resolved to this file may now resolve to a namesake.
 	reresolveDependents(index, entry.path);

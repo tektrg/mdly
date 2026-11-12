@@ -204,9 +204,10 @@ function MarkdownEditor({
 					target,
 					files: workspace.files,
 					workspacePath: workspace.workspacePath,
+					sourcePath: path,
 				}),
 			),
-		[workspace.files, workspace.workspacePath],
+		[workspace.files, workspace.workspacePath, path],
 	);
 	const showEditorMessage = useCallback(
 		(message: string, kind: "success" | "error") => {
