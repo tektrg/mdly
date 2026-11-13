@@ -375,3 +375,19 @@ describe("table markdown conversion", () => {
 		]);
 	});
 });
+
+describe("wiki links inside table cells", () => {
+	it.each([
+		"| a | b |\n| --- | --- |\n| [[Note\\|alias]] | x |",
+		"| a | b |\n| --- | --- |\n| [[Note]] | [[Folder/Note.md\\|My a\\|b]] |",
+	])("round-trips %j byte for byte", (input) => {
+		expect(tiptapDocToMarkdown(markdownToTiptapDoc(input))).toBe(input);
+	});
+
+	it("parses the escaped pipe as the alias separator", () => {
+		const doc = markdownToTiptapDoc("| a |\n| --- |\n| [[Note\\|alias]] |");
+		expect(JSON.stringify(doc)).toContain(
+			'"text":"alias","marks":[{"type":"link","attrs":{"href":"Note","kind":"wiki","target":"Note"}}]',
+		);
+	});
+});

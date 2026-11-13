@@ -495,6 +495,7 @@ function runToMarkdown(
 			result += linkToMarkdown(
 				attrs,
 				runToMarkdown(grouped, leafToMarkdown, applied),
+				leafToMarkdown === leafToTableMarkdown,
 			);
 			i = end;
 			continue;
@@ -510,7 +511,15 @@ function escapeWikiAlias(alias: string) {
 	return alias.split("|").join("\\|");
 }
 
-function linkToMarkdown(attrs: LinkAttrs, text: string): string {
+/**
+ * `inTable`: the text is already pipe-escaped by `leafToTableMarkdown`, and the
+ * wiki alias separator must be `\|` too or it would split the GFM cell.
+ */
+function linkToMarkdown(
+	attrs: LinkAttrs,
+	text: string,
+	inTable = false,
+): string {
 	if (attrs.kind === "notionMention") {
 		return `<mention-page url="${escapeHtmlAttr(attrs.href)}"/>`;
 	}
@@ -519,7 +528,9 @@ function linkToMarkdown(attrs: LinkAttrs, text: string): string {
 		const defaultText = wikiDisplayNameForTarget(target);
 		return text === defaultText
 			? `[[${target}]]`
-			: `[[${target}|${escapeWikiAlias(text)}]]`;
+			: inTable
+				? `[[${target}\\|${text}]]`
+				: `[[${target}|${escapeWikiAlias(text)}]]`;
 	}
 	return `[${text}](${attrs.href})`;
 }
