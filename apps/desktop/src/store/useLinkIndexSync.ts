@@ -7,7 +7,7 @@ import { workspacePathStore, workspaceStore } from "./state";
 
 /**
  * Keeps the link index in sync with the listing while `enabled` (the
- * Backlinks panel, a saved view grouped by "Linked from"). The first enabled
+ * ⋯ menu Backlinks submenu, a saved view grouped by "Linked from"). The first enabled
  * render starts the index; later listing changes read only changed files.
  */
 export function useLinkIndexSync(enabled: boolean) {

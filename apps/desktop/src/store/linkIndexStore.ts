@@ -13,7 +13,7 @@ import { workspacePathStore } from "./state";
 /**
  * Renderer-side owner of the workspace link index (`lib/linkIndex.ts`).
  *
- * Lazy: nothing is read until a consumer (the Backlinks panel, later the graph
+ * Lazy: nothing is read until a consumer (the ⋯ menu's Backlinks submenu, later the graph
  * view) calls `syncLinkIndex`. Incremental: like `tagScanStore`, a sync diffs
  * the listing's mtimes against what was indexed and reads only new/changed
  * files, so a refocus or a watcher tick that changed nothing reads zero files.

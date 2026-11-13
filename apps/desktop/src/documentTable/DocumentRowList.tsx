@@ -297,7 +297,7 @@ export function DocumentRowList({
 	const groupedDocs = propertyGroupBy ? deferredNavDocs : navDocs;
 	// Date-range groups are relative to today: rebuilt when the day rolls over.
 	const dayKey = useLocalDayKey();
-	// "Linked from" reads the workspace link index (the Backlinks panel's),
+	// "Linked from" reads the workspace link index (the Backlinks submenu's),
 	// starting it here when nothing has yet.
 	const wantsLinks = propertyGroupBy === PATH_GROUP_BY.linkedFrom;
 	useLinkIndexSync(wantsLinks);

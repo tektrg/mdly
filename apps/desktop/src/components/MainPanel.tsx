@@ -47,11 +47,6 @@ import {
 	workspacePathStore,
 	workspaceStore,
 } from "../store/state";
-import {
-	BacklinksPanel,
-	backlinksOpenStore,
-	setBacklinksOpen,
-} from "./BacklinksPanel";
 import { DocumentViewer } from "./DocumentViewer";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
 import { WelcomeScreen } from "./WelcomeScreen";
@@ -423,8 +418,7 @@ function ReadyDocument({
 	// covers the document's centered column instead of the document yielding
 	// the space. Padding the pane by the panel width shifts the centered
 	// content left so it stays fully visible while a panel is open.
-	const backlinksOpen = useStoreValue(backlinksOpenStore);
-	const rightPanelOpen = historyOpen || commentsOpen || backlinksOpen;
+	const rightPanelOpen = historyOpen || commentsOpen;
 
 	// The history panel, the comments panel, and any revision the former is
 	// showing a diff for all belong to the document they were opened for --
@@ -437,7 +431,6 @@ function ReadyDocument({
 		onHistoryOpenChange(false);
 		onCommentsOpenChange(false);
 		onViewingRevisionChange(null);
-		setBacklinksOpen(false);
 	}, [currentPath]);
 
 	return (
@@ -487,7 +480,6 @@ function ReadyDocument({
 				selectedRevisionId={viewingRevision?.id ?? null}
 				onSelectRevision={onViewingRevisionChange}
 			/>
-			{isSingleFile ? null : <BacklinksPanel path={currentPath} />}
 		</div>
 	);
 }

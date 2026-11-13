@@ -13,10 +13,6 @@ import { toast } from "sonner";
 import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { AgentAccessSettings } from "./components/AgentAccessSettings";
 import {
-	backlinksOpenStore,
-	setBacklinksOpen,
-} from "./components/BacklinksPanel";
-import {
 	HtmlAppsDialog,
 	SidebarHtmlAppsCallout,
 } from "./components/HtmlAppsCallout";
@@ -229,7 +225,6 @@ function App() {
 		setCommentsOpen(open);
 		if (open) {
 			setHistoryOpen(false);
-			setBacklinksOpen(false);
 		}
 	}, []);
 	// The revision currently swapped into the main document pane as a diff
@@ -655,7 +650,6 @@ function App() {
 				setHistoryOpen(false);
 				setCommentsOpen(false);
 				setViewingRevision(null);
-				setBacklinksOpen(false);
 			}),
 		[],
 	);
@@ -739,13 +733,7 @@ function App() {
 	useEffect(() => {
 		const onEscape = (event: KeyboardEvent) => {
 			if (event.key !== "Escape" || event.defaultPrevented) return;
-			if (
-				isAnyDialogOpen ||
-				historyOpen ||
-				commentsOpen ||
-				viewingRevision ||
-				backlinksOpenStore.get()
-			) {
+			if (isAnyDialogOpen || historyOpen || commentsOpen || viewingRevision) {
 				return;
 			}
 			if (viewerStore.get().requestedPath === null) return;
@@ -860,19 +848,11 @@ function App() {
 				onReimportDoc={() => void reimportDoc()}
 				onOpenRevisionHistory={() => {
 					setCommentsOpen(false);
-					setBacklinksOpen(false);
 					setHistoryOpen(true);
 				}}
 				onOpenComments={() => {
 					setHistoryOpen(false);
-					setBacklinksOpen(false);
 					setCommentsOpen(true);
-				}}
-				onOpenBacklinks={() => {
-					setHistoryOpen(false);
-					setCommentsOpen(false);
-					setViewingRevision(null);
-					setBacklinksOpen(true);
 				}}
 				notionSyncMode={notionSyncMode}
 				docImported={docImported}

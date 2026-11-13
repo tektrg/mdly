@@ -17,6 +17,7 @@ import {
 	viewerStore,
 	workspacePathStore,
 } from "../store/state";
+import { BacklinksSubmenu } from "./BacklinksSubmenu";
 import { ExternalChangeReviewDialog } from "./ExternalChangeReviewDialog";
 
 type NotionSyncMode = "none" | "page" | "database";
@@ -36,7 +37,6 @@ export function Toolbar({
 	onMoveCurrentFile,
 	onOpenRevisionHistory,
 	onOpenComments,
-	onOpenBacklinks,
 	notionSyncMode,
 	docImported,
 }: {
@@ -51,7 +51,6 @@ export function Toolbar({
 	onMoveCurrentFile: () => void;
 	onOpenRevisionHistory: () => void;
 	onOpenComments: () => void;
-	onOpenBacklinks: () => void;
 	notionSyncMode: NotionSyncMode;
 	docImported: boolean;
 }) {
@@ -160,7 +159,6 @@ export function Toolbar({
 						onMoveFile={onMoveCurrentFile}
 						onOpenRevisionHistory={onOpenRevisionHistory}
 						onOpenComments={onOpenComments}
-						onOpenBacklinks={onOpenBacklinks}
 						notionSyncMode={notionSyncMode}
 						docImported={docImported}
 					/>
@@ -195,7 +193,6 @@ function NoteActionsMenu({
 	onMoveFile,
 	onOpenRevisionHistory,
 	onOpenComments,
-	onOpenBacklinks,
 	notionSyncMode,
 	docImported,
 }: {
@@ -216,7 +213,6 @@ function NoteActionsMenu({
 	onMoveFile: () => void;
 	onOpenRevisionHistory: () => void;
 	onOpenComments: () => void;
-	onOpenBacklinks: () => void;
 	notionSyncMode: NotionSyncMode;
 	docImported: boolean;
 }) {
@@ -359,13 +355,7 @@ function NoteActionsMenu({
 											<MingcuteMessage3Line className="size-3 shrink-0" />
 											<span className="min-w-0 flex-1">View comments</span>
 										</Menu.Item>
-										<Menu.Item
-											className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
-											onClick={onOpenBacklinks}
-										>
-											<MingcuteLinkLine className="size-3 shrink-0" />
-											<span className="min-w-0 flex-1">View backlinks</span>
-										</Menu.Item>
+										<BacklinksSubmenu path={path} />
 									</>
 								)}
 							</>
