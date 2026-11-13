@@ -118,8 +118,10 @@ describe("Linked from grouping", () => {
 		const indexMs = performance.now() - start;
 		const tree = buildPathGroupTree(docs, PATH_GROUP_BY.linkedFrom, big);
 		expect(tree.children.length).toBeGreaterThan(4000);
-		// Pure in-memory work; file reads dominate a real sync.
-		expect(indexMs).toBeLessThan(1500);
+		// Pure in-memory work; file reads dominate a real sync. ~360 ms alone
+		// and ~750 ms inside the full parallel suite on the Air (2026-11-13);
+		// the pre-optimization build took ~650 ms alone (~1.3 s loaded).
+		expect(indexMs).toBeLessThan(1000);
 	});
 
 	it("groups 50k docs in one pass within budget", () => {

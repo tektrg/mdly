@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizePath } from "./filePath";
 import {
 	backlinksFor,
 	batchLinkIndex,
@@ -6,6 +7,7 @@ import {
 	extractMarkdownLinks,
 	linkGraph,
 	outgoingFor,
+	pathKey,
 	removeLinkSource,
 	renameLinkSource,
 	setLinkSource,
@@ -321,6 +323,25 @@ describe("wiki links", () => {
 	});
 });
 
+describe("wiki alias escaped in a GFM table", () => {
+	it("treats [[Note\\|alias]] as an alias of Note", () => {
+		const index = createLinkIndex("/ws");
+		setLinkSource(index, "/ws/folder/Note.md", "", 1);
+		setLinkSource(
+			index,
+			"/ws/src.md",
+			"| a | b |\n| --- | --- |\n| [[Note\\|alias]] | [[Note#Sec\\|x]] |",
+			1,
+		);
+		expect(
+			outgoingFor(index, "/ws/src.md").map((l) => [l.targetPath, l.anchor]),
+		).toEqual([
+			["/ws/folder/Note.md", null],
+			["/ws/folder/Note.md", "Sec"],
+		]);
+	});
+});
+
 describe("batchLinkIndex", () => {
 	it("defers namesake re-resolution to the outermost end", () => {
 		const index = createLinkIndex("/ws");
@@ -334,5 +355,26 @@ describe("batchLinkIndex", () => {
 		outer();
 		expect(backlinksFor(index, "/ws/deep/x/Note.md")).toEqual([]);
 		expect(backlinksFor(index, "/ws/Note.md")).toHaveLength(1);
+	});
+});
+
+describe("pathKey fast path", () => {
+	it("matches the full normalization for every path shape", () => {
+		for (const path of [
+			"/",
+			"/ws/A.md",
+			"/ws//a.md",
+			"/ws/./a.md",
+			"/ws/x/../a.md",
+			"/ws/a/",
+			"/ws/.hidden/a.md",
+			"/ws/..a/b.md",
+			"/ws/a/..",
+			"/ws/a/.",
+			"C:\\ws\\a.md",
+			"/ws\\a.md",
+			"rel/./a.md",
+		])
+			expect(pathKey(path)).toBe(normalizePath(path).toLocaleLowerCase());
 	});
 });

@@ -1,7 +1,11 @@
 import { withMarkdownExtension } from "@mdly/workspace-kit/engine";
 import type { FileEntry } from "../store/state";
 import { joinPath } from "./filePath";
-import { resolveWikiTargetAmong, wikiCandidatesFromPaths } from "./linkIndex";
+import {
+	resolveWikiTargetAmong,
+	splitWikiLink,
+	wikiCandidatesFromPaths,
+} from "./linkIndex";
 
 /**
  * Editor click-to-open for `[[…]]`. Uses the link index's rule
@@ -20,8 +24,7 @@ export function resolveWikiPath({
 	workspacePath: string | null;
 	sourcePath: string | null;
 }) {
-	const raw = target.split("|")[0] ?? "";
-	const path = (raw.split("#")[0] ?? "").trim();
+	const path = splitWikiLink(target).target;
 	const resolved = path
 		? resolveWikiTargetAmong(
 				wikiCandidatesFromPaths(

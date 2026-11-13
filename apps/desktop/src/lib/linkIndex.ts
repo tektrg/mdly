@@ -83,14 +83,24 @@ const SNIPPET_MAX = 160;
 
 /** Case-insensitive identity, matching `pathEquals` and the move rewriter. */
 export function pathKey(path: string): string {
-	return normalizePath(path).toLocaleLowerCase();
+	// Hot path: index paths are already normalized, so skip the re-split.
+	const normalized =
+		path.startsWith("/") && !NOT_NORMALIZED_RE.test(path)
+			? path
+			: normalizePath(path);
+	return normalized.toLocaleLowerCase();
 }
+
+/** Anything `normalizePath` would change in an absolute path. */
+const NOT_NORMALIZED_RE = /\\|\/\/|\/\.\.?(?:\/|$)|.\/$/;
 
 /**
  * Blanks fenced code blocks and inline code spans (same length, newlines kept)
  * so link offsets and line numbers still line up with the original text.
  */
 function maskCode(content: string): string {
+	// Nothing to blank: no backtick and no `~~~` fence.
+	if (!content.includes("`") && !content.includes("~~~")) return content;
 	const lines = content.split("\n");
 	let fence: string | null = null;
 	const masked = lines.map((line) => {
@@ -145,8 +155,25 @@ export function extractMarkdownLinks(
 	sourcePath: string,
 	content: string,
 ): OutgoingLink[] {
+	return markdownLinksIn(sourcePath, scanLines(content));
+}
+
+/** A document split once for both link scans: original + code-masked lines. */
+type ScanLines = { original: string[]; masked: string[] };
+
+function scanLines(content: string): ScanLines {
 	const original = content.split("\n");
-	const masked = maskCode(content).split("\n");
+	const masked = maskCode(content);
+	return {
+		original,
+		masked: masked === content ? original : masked.split("\n"),
+	};
+}
+
+function markdownLinksIn(
+	sourcePath: string,
+	{ original, masked }: ScanLines,
+): OutgoingLink[] {
 	const links: OutgoingLink[] = [];
 	// Reference definitions (`[label]: dest`) — first definition wins.
 	const definitions = new Map<string, string>();
@@ -199,43 +226,62 @@ export function extractMarkdownLinks(
 const WIKI_LINK_RE = /(!?)\[\[([^\]\n]+)\]\]/g;
 
 /**
- * Extracts `[[…]]` references (code masked, embeds skipped). Same split as the
- * editor's parser (`markdownToProsemirror` `textToPM`): alias after the first
- * `|`, then the section after the first `#`.
+ * Splits the inside of `[[…]]` the way the editor's parser
+ * (`markdownToProsemirror` `textToPM`) does: alias after the first `|`, then
+ * the section after the first `#`. `\|` (the pipe escaped inside a GFM table
+ * cell, which the editor sees already unescaped) is the alias separator too.
  */
+export function splitWikiLink(inner: string): {
+	target: string;
+	anchor: string | null;
+} {
+	const pipe = inner.indexOf("|");
+	let raw = pipe >= 0 ? inner.slice(0, pipe) : inner;
+	if (pipe > 0 && raw.endsWith("\\")) raw = raw.slice(0, -1);
+	const hash = raw.indexOf("#");
+	return {
+		target: (hash >= 0 ? raw.slice(0, hash) : raw).trim(),
+		anchor: hash >= 0 ? raw.slice(hash + 1).trim() || null : null,
+	};
+}
+
+/** Extracts `[[…]]` references (code masked, embeds skipped). */
 export function extractWikiRefs(content: string): WikiRef[] {
-	const original = content.split("\n");
+	return content.includes("[[") ? wikiRefsIn(scanLines(content)) : [];
+}
+
+function wikiRefsIn({ original, masked }: ScanLines): WikiRef[] {
 	const refs: WikiRef[] = [];
-	maskCode(content)
-		.split("\n")
-		.forEach((line, lineIndex) => {
-			for (const match of line.matchAll(WIKI_LINK_RE)) {
-				if (match[1]) continue; // embed
-				const raw = (match[2] ?? "").split("|")[0] ?? "";
-				const hash = raw.indexOf("#");
-				const target = (hash >= 0 ? raw.slice(0, hash) : raw).trim();
-				if (!target) continue;
-				const start = match.index ?? 0;
-				refs.push({
-					target,
-					anchor: hash >= 0 ? raw.slice(hash + 1).trim() || null : null,
-					line: lineIndex + 1,
-					snippet: snippetAround(
-						original[lineIndex] ?? "",
-						start,
-						start + match[0].length,
-					),
-				});
-			}
-		});
+	masked.forEach((line, lineIndex) => {
+		if (!line.includes("[[")) return;
+		for (const match of line.matchAll(WIKI_LINK_RE)) {
+			if (match[1]) continue; // embed
+			const { target, anchor } = splitWikiLink(match[2] ?? "");
+			if (!target) continue;
+			const start = match.index ?? 0;
+			refs.push({
+				target,
+				anchor,
+				line: lineIndex + 1,
+				snippet: snippetAround(
+					original[lineIndex] ?? "",
+					start,
+					start + match[0].length,
+				),
+			});
+		}
+	});
 	return refs;
 }
 
 /** Note-name identity: base name without the Markdown extension, case-folded. */
 export function wikiNameKey(path: string): string {
-	return basename(normalizePath(path))
-		.replace(/\.(md|markdown)$/i, "")
-		.toLocaleLowerCase();
+	// Bare names (most wiki targets) skip the path normalization.
+	const name =
+		path.includes("/") || path.includes("\\")
+			? basename(normalizePath(path))
+			: path;
+	return name.replace(/\.(md|markdown)$/i, "").toLocaleLowerCase();
 }
 
 function addTo(map: Map<string, Set<string>>, key: string, value: string) {
@@ -271,15 +317,15 @@ export function resolveWikiTarget(
 	sourcePath: string,
 	target: string,
 ): string | null {
-	return resolveWikiTargetAmong(
-		{
-			root: index.root,
-			pathFor: (key) => index.sources.get(key)?.path ?? null,
-			keysNamed: (name) => index.byName.get(name) ?? [],
-		},
-		sourcePath,
-		target,
-	);
+	return resolveWikiTargetAmong(indexCandidates(index), sourcePath, target);
+}
+
+function indexCandidates(index: LinkIndex): WikiCandidates {
+	return {
+		root: index.root,
+		pathFor: (key) => index.sources.get(key)?.path ?? null,
+		keysNamed: (name) => index.byName.get(name) ?? [],
+	};
 }
 
 /**
@@ -336,17 +382,29 @@ export function resolveWikiTargetAmong(
 		}
 		return null;
 	}
-	const sourceDir = pathKey(dirname(normalizePath(sourcePath)) ?? "");
+	const keys = candidates.keysNamed(wikiNameKey(file));
+	let sourceDir: string | null = null;
 	let best: string | null = null;
 	let bestRank: [number, number, string] | null = null;
-	for (const key of candidates.keysNamed(wikiNameKey(file))) {
+	for (const key of keys) {
+		if (best === null) {
+			best = key; // ranked only once a second namesake shows up
+			continue;
+		}
+		if (!bestRank) {
+			sourceDir = pathKey(dirname(normalizePath(sourcePath)) ?? "");
+			bestRank = [
+				pathKey(dirname(best) ?? "") === sourceDir ? 0 : 1,
+				best.length,
+				best,
+			];
+		}
 		const rank: [number, number, string] = [
 			pathKey(dirname(key) ?? "") === sourceDir ? 0 : 1,
 			key.length,
 			key,
 		];
 		if (
-			!bestRank ||
 			rank[0] < bestRank[0] ||
 			(rank[0] === bestRank[0] &&
 				(rank[1] < bestRank[1] ||
@@ -382,8 +440,10 @@ function resolveSource(index: LinkIndex, key: string) {
 	if (!entry) return;
 	detachIncoming(index, key, entry.links);
 	const links = [...entry.mdLinks];
+	const candidates = entry.wikiRefs.length > 0 ? indexCandidates(index) : null;
 	for (const ref of entry.wikiRefs) {
-		const targetPath = resolveWikiTarget(index, entry.path, ref.target);
+		const targetPath =
+			candidates && resolveWikiTargetAmong(candidates, entry.path, ref.target);
 		if (!targetPath) continue;
 		const { target: _target, ...rest } = ref;
 		links.push({ ...rest, targetPath });
@@ -394,9 +454,11 @@ function resolveSource(index: LinkIndex, key: string) {
 		addTo(index.incoming, pathKey(link.targetPath), key);
 }
 
-/** Re-resolves every source whose wiki refs could match a file named like `path`. */
-function reresolveDependents(index: LinkIndex, path: string) {
-	for (const key of [...(index.wikiByName.get(wikiNameKey(path)) ?? [])]) {
+/** Re-resolves every source whose wiki refs could match a file with `nameKey`. */
+function reresolveDependents(index: LinkIndex, nameKey: string) {
+	const dependents = index.wikiByName.get(nameKey);
+	if (!dependents) return;
+	for (const key of [...dependents]) {
 		if (index.pending) index.pending.add(key);
 		else resolveSource(index, key);
 	}
@@ -431,7 +493,8 @@ function insertSource(
 	mdLinks: OutgoingLink[],
 	wikiRefs: WikiRef[],
 ) {
-	const key = pathKey(path);
+	const normalized = normalizePath(path);
+	const key = normalized.toLocaleLowerCase(); // = pathKey(path)
 	const previous = index.sources.get(key);
 	if (previous) {
 		detachIncoming(index, key, previous.links);
@@ -439,7 +502,7 @@ function insertSource(
 			deleteFrom(index.wikiByName, wikiNameKey(ref.target), key);
 	}
 	index.sources.set(key, {
-		path: normalizePath(path),
+		path: normalized,
 		mtime,
 		mdLinks,
 		wikiRefs,
@@ -448,12 +511,21 @@ function insertSource(
 	for (const ref of wikiRefs)
 		addTo(index.wikiByName, wikiNameKey(ref.target), key);
 	// Only Markdown files are wiki targets (an indexed `.html` is not).
-	if (!previous && hasMarkdownExtension(path)) {
-		addTo(index.byName, wikiNameKey(path), key);
-	}
 	if (!previous) {
+		const nameKey = wikiNameKey(normalized);
+		if (hasMarkdownExtension(path)) addTo(index.byName, nameKey, key);
 		// A new file can win (or newly satisfy) other sources' wiki targets.
-		reresolveDependents(index, path);
+		reresolveDependents(index, nameKey);
+	}
+	if (index.pending && wikiRefs.length > 0) {
+		// In a batch, wiki refs resolve once at `end()` (a later file in the
+		// same sync may be the better namesake). Md links attach now.
+		const entry = index.sources.get(key) as SourceEntry;
+		entry.links = mdLinks;
+		for (const link of mdLinks)
+			addTo(index.incoming, pathKey(link.targetPath), key);
+		index.pending.add(key);
+		return;
 	}
 	resolveSource(index, key);
 }
@@ -473,7 +545,7 @@ export function removeLinkSource(index: LinkIndex, path: string) {
 	deleteFrom(index.byName, wikiNameKey(entry.path), key);
 	index.sources.delete(key);
 	// Wiki links that resolved to this file may now resolve to a namesake.
-	reresolveDependents(index, entry.path);
+	reresolveDependents(index, wikiNameKey(entry.path));
 }
 
 /** (Re)indexes one document from its content. */
@@ -483,12 +555,14 @@ export function setLinkSource(
 	content: string,
 	mtime: number,
 ) {
+	// Split + mask once, shared by both scans; most notes have no `[[`.
+	const lines = scanLines(content);
 	insertSource(
 		index,
 		path,
 		mtime,
-		extractMarkdownLinks(path, content),
-		extractWikiRefs(content),
+		markdownLinksIn(path, lines),
+		content.includes("[[") ? wikiRefsIn(lines) : [],
 	);
 }
 

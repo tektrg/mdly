@@ -82,3 +82,9 @@ describe("click and Backlinks agree", () => {
 		).toEqual(["/ws/a/src.md"]);
 	});
 });
+
+describe("resolveWikiPath table-escaped alias", () => {
+	it("drops a \\| alias like a plain | alias", () => {
+		expect(click("Note\\|alias", ["/ws/z/Note.md"])).toBe("/ws/z/Note.md");
+	});
+});
