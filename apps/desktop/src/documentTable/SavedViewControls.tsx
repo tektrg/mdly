@@ -86,7 +86,7 @@ export function SavedViewNameInput({
 }
 
 /**
- * Right-click menu of a saved-view icon: Rename / Delete. Built-ins never
+ * Right-click menu of a saved-view icon: Rename / Change icon / Delete. Built-ins never
  * get one (saved views R4).
  */
 export function SavedViewContextMenu({
@@ -94,12 +94,14 @@ export function SavedViewContextMenu({
 	name,
 	onClose,
 	onRename,
+	onChangeIcon,
 	onDelete,
 }: {
 	anchor: HTMLElement | null;
 	name: string;
 	onClose: () => void;
 	onRename: () => void;
+	onChangeIcon?: () => void;
 	onDelete: () => void;
 }) {
 	const portalContainer = usePortalContainer();
@@ -131,6 +133,14 @@ export function SavedViewContextMenu({
 						>
 							Rename view
 						</Menu.Item>
+						{onChangeIcon ? (
+							<Menu.Item
+								className="flex h-7 cursor-pointer items-center rounded-mdly-control px-2 outline-hidden data-highlighted:bg-accent"
+								onClick={onChangeIcon}
+							>
+								Change icon…
+							</Menu.Item>
+						) : null}
 						<Menu.Item
 							className="flex h-7 cursor-pointer items-center rounded-mdly-control px-2 text-destructive outline-hidden data-highlighted:bg-accent"
 							onClick={onDelete}

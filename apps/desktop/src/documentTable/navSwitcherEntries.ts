@@ -11,7 +11,13 @@ export type NavSwitcherKey = NavViewId | SavedViewKey;
  */
 export type NavSwitcherEntry =
 	| { key: NavViewId; kind: "builtin"; view: NavViewId }
-	| { key: SavedViewKey; kind: "saved"; id: string; name: string };
+	| {
+			key: SavedViewKey;
+			kind: "saved";
+			id: string;
+			name: string;
+			icon?: string;
+	  };
 
 export function savedViewKey(id: string): SavedViewKey {
 	return `saved:${id}`;
@@ -31,5 +37,6 @@ export function savedEntries(
 		kind: "saved",
 		id: view.id,
 		name: view.name,
+		...(view.icon ? { icon: view.icon } : {}),
 	}));
 }

@@ -11,6 +11,7 @@ import {
 	documentTableViewStore,
 	renameSavedView,
 	setDocumentTableSort,
+	setSavedViewIcon,
 } from "./documentTableStore";
 import { DEFAULT_NAV_VIEW_SORT } from "./documentTableView";
 import { savedViewsStore } from "./documentViewsFileStore";
@@ -23,6 +24,7 @@ import {
 	useNavViewSort,
 } from "./navViewSort";
 import { SavedViewContextMenu, SavedViewNameInput } from "./SavedViewControls";
+import { SavedViewIconPicker } from "./SavedViewIconPicker";
 import { useNavViewSwitcher } from "./useNavViewSwitcher";
 
 /**
@@ -69,6 +71,14 @@ export function NavListHeader({
 		null,
 	);
 	const [renamingId, setRenamingId] = useState<string | null>(null);
+	const [iconPicker, setIconPicker] = useState<{
+		id: string;
+		anchor: HTMLElement;
+	} | null>(null);
+	const pickerEntry = entries.find(
+		(candidate) =>
+			candidate.kind === "saved" && candidate.id === iconPicker?.id,
+	);
 	const savedName = (id: string | null) => {
 		const entry = entries.find(
 			(candidate) => candidate.kind === "saved" && candidate.id === id,
@@ -161,7 +171,7 @@ export function NavListHeader({
 								aria-label={`${label} view`}
 								title={
 									entry.kind === "saved"
-										? `${label} — right-click to rename or delete`
+										? `${label} — right-click to rename, change icon or delete`
 										: entry.view === "recent"
 											? "Recent view"
 											: isHidden
@@ -245,6 +255,12 @@ export function NavListHeader({
 					// or the closing menu's focus move would blur (cancel) it.
 					if (id) setTimeout(() => setRenamingId(id), 0);
 				}}
+				onChangeIcon={() => {
+					const current = menu;
+					setMenu(null);
+					// After the menu closes, or its focus return would steal the search box.
+					if (current) setTimeout(() => setIconPicker(current), 0);
+				}}
 				onDelete={() => {
 					const undo = menu ? deleteSavedView(menu.id) : null;
 					setMenu(null);
@@ -261,6 +277,16 @@ export function NavListHeader({
 							},
 						});
 					}
+				}}
+			/>
+			<SavedViewIconPicker
+				anchor={pickerEntry ? (iconPicker?.anchor ?? null) : null}
+				name={pickerEntry ? navEntryLabel(pickerEntry) : ""}
+				current={pickerEntry?.kind === "saved" ? pickerEntry.icon : undefined}
+				onClose={() => setIconPicker(null)}
+				onSelect={(icon) => {
+					if (iconPicker) setSavedViewIcon(iconPicker.id, icon);
+					setIconPicker(null);
 				}}
 			/>
 			<Button

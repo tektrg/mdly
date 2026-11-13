@@ -58,7 +58,7 @@ export function NavViewDots({
 						aria-label={`${label} view`}
 						title={
 							entry.kind === "saved"
-								? `${label} — right-click to rename or delete`
+								? `${label} — right-click to rename, change icon or delete`
 								: entry.view === "recent"
 									? "Recent view"
 									: `${label} view — right-click to hide`

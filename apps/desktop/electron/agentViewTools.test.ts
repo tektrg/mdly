@@ -100,6 +100,7 @@ describe("saved-view agent tools (R15)", () => {
 				groupBy: "prop:status",
 				paths: [],
 				group: null,
+				icon: null,
 				filters: [{ fieldId: "prop:status", kind: "is", value: "open" }],
 			},
 		]);
@@ -242,6 +243,35 @@ describe("create_view path patterns + path grouping", () => {
 			const result = await tool("create_view").execute(input, ctx());
 			expect(result.isError).toBe(true);
 		}
+		expect(await exists(viewsFilePath(ws))).toBe(false);
+	});
+
+	it("icon round-trips; list_views shows null for the default", async () => {
+		const created = await tool("create_view").execute(
+			{ name: "Reading", icon: "book" },
+			ctx(),
+		);
+		expect(created.isError).toBeFalsy();
+		await tool("create_view").execute({ name: "Plain" }, ctx());
+		const file = JSON.parse(await fs.readFile(viewsFilePath(ws), "utf8"));
+		expect(file.views[0]).toMatchObject({ icon: "book" });
+		expect(file.views[1]).not.toHaveProperty("icon");
+		const listed = await tool("list_views").execute({}, ctx());
+		const icons = (
+			listed.structuredContent as { views: { icon: string | null }[] }
+		).views.map((view) => view.icon);
+		expect(icons).toEqual(["book", null]);
+	});
+
+	it("rejects an unknown icon and lists the valid ones", async () => {
+		const result = await tool("create_view").execute(
+			{ name: "X", icon: "unicorn" },
+			ctx(),
+		);
+		expect(result.isError).toBe(true);
+		expect(JSON.stringify(result.content)).toMatch(
+			/Unknown icon .*unicorn.*Valid icons: .*bookmark.*star/,
+		);
 		expect(await exists(viewsFilePath(ws))).toBe(false);
 	});
 });

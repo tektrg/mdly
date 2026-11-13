@@ -97,6 +97,12 @@ export function propertyGroupField(
 export type SavedDocumentView = Omit<SavedView, "filters" | "groupBy"> & {
 	filters: PropertyFilter[];
 	groupBy: DocumentGroupBy | null;
+	/**
+	 * mdly-only top-level `icon` (a `savedViewIcons` name). Any non-empty string
+	 * is kept so a newer build's icon survives a write; drawing falls back to the
+	 * default for names this build doesn't know.
+	 */
+	icon?: string;
 };
 export type { BoardColumnColor, BoardViewSettings };
 export {
@@ -106,7 +112,7 @@ export {
 	sanitizeBoardSettings,
 };
 
-/** table-core's sanitizer plus mdly's `pathFilters` / `groupByKind` keys. */
+/** table-core's sanitizer plus mdly's `pathFilters` / `groupByKind` / `icon` keys. */
 export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 	const view = sanitizeCoreSavedView(value);
 	if (!view) return null;
@@ -122,10 +128,15 @@ export function sanitizeSavedView(value: unknown): SavedDocumentView | null {
 	const kind = PATH_GROUP_BY_KINDS.find(
 		(key) => GROUP_BY_KIND_VALUE[key] === raw.groupByKind,
 	);
+	const icon =
+		typeof raw.icon === "string" && raw.icon.trim() !== ""
+			? raw.icon
+			: undefined;
 	return {
 		...view,
 		filters: [...view.filters, ...pathFilters],
 		groupBy: kind ? PATH_GROUP_BY[kind] : view.groupBy,
+		...(icon ? { icon } : {}),
 	};
 }
 
@@ -149,6 +160,7 @@ export function savedViewToRecord(
 		groupBy: kind ? null : view.groupBy,
 		pathFilters: pathFilters.length > 0 ? pathFilters : undefined,
 		groupByKind: kind ? GROUP_BY_KIND_VALUE[kind] : undefined,
+		icon: view.icon || undefined,
 	};
 }
 

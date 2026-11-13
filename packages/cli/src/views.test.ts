@@ -430,4 +430,30 @@ describe("hubble views", () => {
 		await expectRefused(["create", "X", "--path", " *, "], /needs a pattern/);
 		await expectRefused(["rename", "a", "b", "--path", "x"], /only apply/);
 	});
+
+	it("--icon stores the icon and lists it; default shows (default)", async () => {
+		const made = await cli("create", "Code", "--icon", "code");
+		expect(made.code, made.err).toBe(0);
+		expect(made.out).toContain("icon:     code");
+		const [record] = await views();
+		expect(record).toMatchObject({ icon: "code" });
+		await cli("create", "Plain");
+		const listed = (await cli("list")).out;
+		expect(listed).toContain("icon:     code");
+		expect(listed).toContain("icon:     (default)");
+		expect((await views())[1]).not.toHaveProperty("icon");
+	});
+
+	it("unknown --icon is refused with the valid names listed", async () => {
+		const result = await cli("create", "X", "--icon", "unicorn");
+		expect(result.code).toBe(1);
+		expect(result.err).toMatch(
+			/unknown --icon "unicorn"; valid icons: .*bookmark.*star/,
+		);
+		expect(await readRaw()).toBeNull();
+		await expectRefused(
+			["list", "--icon", "star"],
+			/only apply to "views create"/,
+		);
+	});
 });

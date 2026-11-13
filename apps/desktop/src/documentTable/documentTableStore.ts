@@ -34,6 +34,7 @@ import {
 	type WorkspaceDocumentViews,
 } from "./properties/documentViews";
 import type { PropertyFieldId } from "./properties/propertyFields";
+import { isSavedViewIconName } from "./savedViewIcons";
 
 /**
  * The session's document-table view (filter text, grouping, mode). Sort is not
@@ -388,6 +389,26 @@ export function renameSavedView(id: string, name: string): ViewNameResult {
 			: views,
 	);
 	return valid;
+}
+
+/**
+ * Sets a saved view's icon (a `savedViewIcons` name), or clears it (null) so
+ * the view draws the default. Unknown names are refused (returns false).
+ */
+export function setSavedViewIcon(id: string, icon: string | null): boolean {
+	const workspacePath = currentWorkspacePath();
+	if (!workspacePath) return false;
+	if (icon !== null && !isSavedViewIconName(icon)) return false;
+	if (!getSavedViews(workspacePath).some((view) => view.id === id))
+		return false;
+	updateSavedViews(workspacePath, (views) =>
+		views.map((view) => {
+			if (view.id !== id) return view;
+			const { icon: _old, ...rest } = view;
+			return icon === null ? rest : { ...rest, icon };
+		}),
+	);
+	return true;
 }
 
 /** Bumped on every delete so only the latest delete's undo can apply. */

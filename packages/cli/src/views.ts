@@ -22,12 +22,14 @@ import {
 	type ViewCommand,
 	type WorkspaceViewStore,
 } from "@tektrg/table-core/node";
+import { VIEW_ICON_NAMES } from "./viewIcons.js";
 
 /**
  * mdly-only view keys, beside table-core's record (the app reads both):
  * `pathFilters` = comma-separated path patterns (plain = substring, `*` = any
  * run, `/…/` = regex; case-insensitive) on `folder/sub/file.md`;
- * `groupByKind` = folder | topFolder | tag | linked-from grouping (with `groupBy: null`).
+ * `groupByKind` = folder | topFolder | tag | linked-from grouping (with `groupBy: null`);
+ * `icon` = the view's icon in the switcher (a `VIEW_ICON_NAMES` name).
  */
 const GROUP_KINDS: Record<string, string> = {
 	folder: "folder",
@@ -42,7 +44,11 @@ const GROUP_KIND_LABELS: Record<string, string> = {
 	"linked-from": "linked-from",
 };
 
-type MdlyExtras = { pathFilters?: string[]; groupByKind?: string };
+type MdlyExtras = {
+	pathFilters?: string[];
+	groupByKind?: string;
+	icon?: string;
+};
 
 /** The store, with `extras` merged into the record `id` as it is written. */
 function storeWithExtras(
@@ -82,7 +88,7 @@ const SUBCOMMANDS = ["list", "create", "rename", "delete"] as const;
 export const VIEWS_USAGE = [
 	"Usage:",
 	"  hubble [--cwd path] views list [--json]",
-	"  hubble [--cwd path] views create <name> [--folder dir]... [--path patterns]... [--group-by prop | --group folder|top-folder|tag|linked-from] [--filter prop=value|prop]... [--json]",
+	"  hubble [--cwd path] views create <name> [--folder dir]... [--path patterns]... [--group-by prop | --group folder|top-folder|tag|linked-from] [--filter prop=value|prop]... [--icon name] [--json]",
 	"  hubble [--cwd path] views rename <name|id> <new name> [--json]",
 	"  hubble [--cwd path] views delete <name|id> [--json]",
 	"",
@@ -93,6 +99,7 @@ export const VIEWS_USAGE = [
 	"  --group-by prop    Group rows by this front-matter property",
 	"  --group kind       Group rows by folder, top-folder (first folder segment), tag or linked-from (the docs linking to each row)",
 	"  --filter k=v       Property k is v (the value may contain '='); a bare k means 'has property k'; repeatable",
+	"  --icon name        The view's icon in mdly's view switcher (e.g. star, code, book; an unknown name lists the valid ones)",
 	"  --json             Machine-readable output",
 	"",
 	"Views are stored in <workspace>/.hubble/views.json and appear in mdly's view-switcher row at the top of the document table (next to Recent/Folder/Tags) when its window is focused.",
@@ -156,6 +163,9 @@ export function formatView(record: SavedViewRecord): string[] {
 		`  paths:    ${pathFilters.length ? pathFilters.join(" | ") : "(all)"}`,
 	);
 	lines.push(
+		`  icon:     ${typeof extras.icon === "string" && extras.icon !== "" ? extras.icon : "(default)"}`,
+	);
+	lines.push(
 		`  group by: ${groupKind ?? (view.groupBy ? view.groupBy.replace(/^prop:/, "") : "(none)")}`,
 	);
 	lines.push(
@@ -191,6 +201,7 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 				path: { type: "string", multiple: true },
 				filter: { type: "string", multiple: true },
 				json: { type: "boolean" },
+				icon: { type: "string" },
 			},
 		}));
 	} catch (error) {
@@ -217,6 +228,7 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 	const filters = (values.filter ?? []) as string[];
 	const groupBy = values["group-by"] as string | undefined;
 	const group = values.group as string | undefined;
+	const icon = values.icon as string | undefined;
 	const paths = ((values.path ?? []) as string[]).map((p) => p.trim());
 	if (!sub || !(SUBCOMMANDS as readonly string[]).includes(sub)) {
 		return {
@@ -233,12 +245,13 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 			filters.length > 0 ||
 			groupBy !== undefined ||
 			group !== undefined ||
+			icon !== undefined ||
 			paths.length > 0)
 	) {
 		return {
 			ok: false,
 			usage: true,
-			error: `--folder, --path, --group, --group-by and --filter only apply to "views create"`,
+			error: `--folder, --path, --group, --group-by, --filter and --icon only apply to "views create"`,
 		};
 	}
 	if (group !== undefined && groupBy !== undefined) {
@@ -255,12 +268,20 @@ function parseViewsArgs(argv: readonly string[], cwd: string): Parsed {
 			error: `bad --group ${JSON.stringify(group)}: use folder, top-folder, tag or linked-from`,
 		};
 	}
+	if (icon !== undefined && !VIEW_ICON_NAMES.includes(icon)) {
+		return {
+			ok: false,
+			usage: false,
+			error: `unknown --icon ${JSON.stringify(icon)}; valid icons: ${VIEW_ICON_NAMES.join(", ")}`,
+		};
+	}
 	if (paths.some((p) => p.replace(/[\s,*]/g, "") === "")) {
 		return { ok: false, usage: true, error: "--path needs a pattern" };
 	}
 	const extras: MdlyExtras = {
 		...(paths.length > 0 ? { pathFilters: paths } : {}),
 		...(group !== undefined ? { groupByKind: GROUP_KINDS[group] } : {}),
+		...(icon !== undefined ? { icon } : {}),
 	};
 	const arity = { list: 0, create: 1, rename: 2, delete: 1 }[
 		sub as (typeof SUBCOMMANDS)[number]
