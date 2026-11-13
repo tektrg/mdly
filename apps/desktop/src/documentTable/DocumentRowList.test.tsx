@@ -461,7 +461,11 @@ describe("DocumentRowList open-document reveal in grouped views", () => {
 		workspaceStore.set((state) => ({
 			...state,
 			workspacePath: "/ws",
-			navExpandedGroups: { "/ws": [] },
+			navGroupExpansion: {
+				"/ws": {
+					"folder|folder": { notes: false, "notes/deep": false, other: false },
+				},
+			},
 		}));
 		try {
 			renderRows(
@@ -480,12 +484,11 @@ describe("DocumentRowList open-document reveal in grouped views", () => {
 			const scroller =
 				container.querySelector<HTMLElement>('[role="rowgroup"]');
 			expect(scroller?.scrollTop).toBeGreaterThan(0);
-			const expanded = workspaceStore.get().navExpandedGroups["/ws"] ?? [];
-			expect(expanded).toContain("notes");
-			expect(expanded).toContain("notes/deep");
-			// The user's other collapses are untouched — only the open file's
-			// own chain reopens.
-			expect([...expanded].sort()).toEqual(["notes", "notes/deep"]);
+			// Reopening to the default drops the override; the user's other
+			// collapses are untouched — only the open file's own chain reopens.
+			expect(
+				workspaceStore.get().navGroupExpansion["/ws"]?.["folder|folder"],
+			).toEqual({ other: false });
 		} finally {
 			workspaceStore.set(() => previous);
 		}

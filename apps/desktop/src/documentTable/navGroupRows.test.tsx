@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { workspaceStore } from "../store/state";
 import { DocumentRowList } from "./DocumentRowList";
+import { documentTableViewStore } from "./documentTableStore";
 import { beginTagScan, completeTagScan, resetTagScan } from "./tagScanStore";
 import { buildRows, viewWith } from "./testFixtures";
 
@@ -18,7 +19,7 @@ function setWorkspace(path: string | null) {
 }
 
 function clearNavExpanded() {
-	workspaceStore.set((state) => ({ ...state, navExpandedGroups: {} }));
+	workspaceStore.set((state) => ({ ...state, navGroupExpansion: {} }));
 }
 
 describe("nav group rows (R2)", () => {
@@ -149,8 +150,8 @@ describe("nav group rows (R2)", () => {
 		});
 		expect(docNames().some((text) => text?.includes("beta"))).toBe(false);
 		expect(
-			workspaceStore.get().navExpandedGroups[WORKSPACE] ?? [],
-		).not.toContain("notes");
+			workspaceStore.get().navGroupExpansion[WORKSPACE]?.["folder|folder"],
+		).toEqual({ notes: false });
 
 		// A remount reads the persisted set back: still collapsed.
 		act(() => root.unmount());
@@ -193,6 +194,66 @@ describe("nav group rows (R2)", () => {
 		// Tagged groups arrive expanded; the untagged document stays hidden.
 		expect(docNames().some((text) => text?.includes("beta"))).toBe(true);
 		expect(docNames().some((text) => text?.includes("alpha"))).toBe(false);
+	});
+
+	describe("collapse state per view", () => {
+		const betaShown = () => docNames().some((text) => text?.includes("beta"));
+		const selectSaved = (id: string | null) =>
+			act(async () => {
+				documentTableViewStore.set((view) => ({
+					...view,
+					activeSavedViewId: id,
+				}));
+			});
+		async function collapseNotes() {
+			await act(async () => {
+				container
+					.querySelector<HTMLElement>('[data-group-id="notes"]')
+					?.querySelector("button")
+					?.click();
+			});
+		}
+		afterEach(async () => {
+			await selectSaved(null);
+		});
+
+		it("keeps each view's collapses separate", async () => {
+			setWorkspace(WORKSPACE);
+			renderList(viewWith({ groupBy: "folder" }));
+			await collapseNotes();
+			expect(betaShown()).toBe(false);
+
+			// Another view with the same grouping starts from the default.
+			await selectSaved("v1");
+			renderList(viewWith({ groupBy: "folder" }));
+			expect(betaShown()).toBe(true);
+
+			// Back on the first view: its collapse is still there.
+			await selectSaved(null);
+			renderList(viewWith({ groupBy: "folder" }));
+			expect(betaShown()).toBe(false);
+		});
+
+		it("does not leak a view's state into a new grouping of that view", async () => {
+			setWorkspace(WORKSPACE);
+			// Let the workspace switch's view reset land before selecting.
+			await act(async () => {});
+			await selectSaved("v1");
+			renderList(viewWith({ groupBy: "folder" }));
+			await collapseNotes();
+			expect(betaShown()).toBe(false);
+
+			renderList(viewWith({ groupBy: null, propertyGroupBy: "group:folder" }));
+			renderList(viewWith({ groupBy: "tag" }));
+			// Regrouped: nothing collapsed by the old grouping applies.
+			expect(
+				Object.keys(workspaceStore.get().navGroupExpansion[WORKSPACE] ?? {}),
+			).toEqual(["saved:v1|folder"]);
+
+			// Regrouping back restores the old grouping's state.
+			renderList(viewWith({ groupBy: "folder" }));
+			expect(betaShown()).toBe(false);
+		});
 	});
 
 	it("headers share the list's fixed row height in both densities", () => {

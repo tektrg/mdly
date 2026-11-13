@@ -29,7 +29,7 @@ function setWorkspace(path: string | null) {
 }
 
 function clearNavExpanded() {
-	workspaceStore.set((state) => ({ ...state, navExpandedGroups: {} }));
+	workspaceStore.set((state) => ({ ...state, navGroupExpansion: {} }));
 }
 
 describe("tag scan view (A9)", () => {

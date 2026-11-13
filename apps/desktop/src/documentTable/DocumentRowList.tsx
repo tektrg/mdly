@@ -33,6 +33,7 @@ import {
 	narrowGridStyleFor,
 	useDocumentTableLayout,
 } from "./documentTableLayout";
+import { documentTableViewStore } from "./documentTableStore";
 import {
 	buildDocumentRows,
 	type DocumentTableRow,
@@ -41,7 +42,12 @@ import {
 } from "./documentTableView";
 import { anchoredScrollTop, takeScrollAnchor } from "./layoutTransition";
 import { type NavDensityTier, navIndentRem } from "./navDensity";
-import { setNavExpandedIds } from "./navExpandedGroups";
+import {
+	isNavGroupExpanded,
+	type NavGroupOverrides,
+	navGroupScopeKey,
+	setNavGroupStates,
+} from "./navExpandedGroups";
 import {
 	buildGroupTree,
 	buildNavRows,
@@ -53,6 +59,7 @@ import {
 	PINNED_GROUP_ID,
 	resolveNavViewSpec,
 } from "./navGroupTree";
+import { groupByToViewId } from "./navHiddenViews";
 import { isPathGroupBy, PATH_GROUP_BY } from "./properties/documentViews";
 import {
 	buildPathGroupTree,
@@ -129,6 +136,8 @@ type DocumentRowListProps = {
 };
 
 /** The engine's document shape over the table's own row: identity preserved. */
+const NO_GROUP_OVERRIDES: NavGroupOverrides = {};
+
 type GroupableRow = DocumentTableRow & NavDocument;
 
 function collectGroupIds(root: NavGroupNode): Set<string> {
@@ -227,8 +236,24 @@ export function DocumentRowList({
 		workspaceStore,
 		(workspace) => workspace.pinnedNotes,
 	);
-	const storedExpandedIds = useStoreValue(workspaceStore, (workspace) =>
-		workspacePath ? (workspace.navExpandedGroups[workspacePath] ?? null) : null,
+	// Collapse state is remembered per view (built-in or saved) AND per
+	// grouping, so regrouping a view never inherits the old grouping's state.
+	const activeSavedViewId = useStoreValue(
+		documentTableViewStore,
+		(session) => session.activeSavedViewId,
+	);
+	const groupScope = navGroupScopeKey(
+		activeSavedViewId
+			? `saved:${activeSavedViewId}`
+			: groupByToViewId(view?.groupBy ?? null),
+		view?.propertyGroupBy ?? view?.groupBy ?? "none",
+	);
+	const groupOverrides = useStoreValue(
+		workspaceStore,
+		(workspace) =>
+			(workspacePath
+				? workspace.navGroupExpansion[workspacePath]?.[groupScope]
+				: undefined) ?? NO_GROUP_OVERRIDES,
 	);
 	const workspaceFiles = useStoreValue(
 		workspaceStore,
@@ -264,28 +289,15 @@ export function DocumentRowList({
 	// inside `buildNavRows`. Kept because the seam owns flattening and the
 	// defaults need the tree before the set can be merged.
 	const tree = useMemo(() => buildGroupTree(navDocs, spec), [navDocs, spec]);
-	const prevGroupIdsRef = useRef<Set<string> | null>(null);
+	const navDefaults = useMemo(() => defaultExpandedIds(tree), [tree]);
 	const expandedIds = useMemo(() => {
-		const defaults = defaultExpandedIds(tree);
-		const stored = storedExpandedIds;
-		let merged: Set<string>;
-		if (stored === null) {
-			merged = new Set(defaults);
-		} else {
-			merged = new Set(stored);
-			const prev = prevGroupIdsRef.current;
-			if (prev) {
-				// Groups that did not exist on the last build keep their
-				// default: a new folder arrives expanded, a collapsed one stays
-				// collapsed, and Untagged stays collapsed until toggled.
-				for (const id of defaults) if (!prev.has(id)) merged.add(id);
-			}
+		const merged = new Set<string>();
+		for (const id of collectGroupIds(tree)) {
+			if (isNavGroupExpanded(groupOverrides, id, navDefaults.has(id)))
+				merged.add(id);
 		}
-		prevGroupIdsRef.current = collectGroupIds(tree);
 		return merged;
-		// storedExpandedIds already encodes the workspace through its selector,
-		// so the workspace itself is not a separate dependency.
-	}, [tree, storedExpandedIds]);
+	}, [tree, navDefaults, groupOverrides]);
 	// Group-by-property replaces folder/tag grouping while set; a live search
 	// still drops all grouping (A7), exactly like the nav views.
 	const { fields: propertyFields } = usePropertyModel();
@@ -330,17 +342,13 @@ export function DocumentRowList({
 					: null,
 		[groupedDocs, propertyGroupBy, propertyFields, dayKey, linkVersion],
 	);
-	// Session-only collapse state: property groups start expanded (a board's
-	// columns are all visible), and the user's collapses last until relaunch.
-	const [collapsedPropertyGroups, setCollapsedPropertyGroups] = useState<
-		ReadonlySet<string>
-	>(() => new Set());
+
 	const navRows = useMemo(() => {
 		if (propertyTree) {
 			const expanded = new Set(
 				propertyTree.children
 					.map((child) => child.id)
-					.filter((id) => !collapsedPropertyGroups.has(id)),
+					.filter((id) => isNavGroupExpanded(groupOverrides, id, true)),
 			);
 			if (expandedIds.has(PINNED_GROUP_ID)) expanded.add(PINNED_GROUP_ID);
 			return flattenGroupRows(propertyTree, expanded, groupedDocs, spec);
@@ -353,7 +361,7 @@ export function DocumentRowList({
 		}).rows;
 	}, [
 		propertyTree,
-		collapsedPropertyGroups,
+		groupOverrides,
 		groupedDocs,
 		navDocs,
 		spec,
@@ -364,22 +372,22 @@ export function DocumentRowList({
 
 	const toggleGroup = useCallback(
 		(groupId: string) => {
-			if (propertyTree && groupId !== PINNED_GROUP_ID) {
-				setCollapsedPropertyGroups((collapsed) => {
-					const next = new Set(collapsed);
-					if (next.has(groupId)) next.delete(groupId);
-					else next.add(groupId);
-					return next;
-				});
-				return;
-			}
-			if (!workspacePath) return;
-			const next = new Set(expandedIds);
-			if (next.has(groupId)) next.delete(groupId);
-			else next.add(groupId);
-			setNavExpandedIds(workspacePath, [...next]);
+			// Property groups (and the Pinned section beside them) default open;
+			// nav groups use the tree's own defaults (Untagged starts closed).
+			const defaultExpanded =
+				propertyTree && groupId !== PINNED_GROUP_ID
+					? true
+					: navDefaults.has(groupId);
+			const current = isNavGroupExpanded(
+				groupOverrides,
+				groupId,
+				defaultExpanded,
+			);
+			setNavGroupStates(workspacePath ?? null, groupScope, [
+				{ id: groupId, expanded: !current, defaultExpanded },
+			]);
 		},
-		[workspacePath, expandedIds, propertyTree],
+		[workspacePath, groupScope, groupOverrides, navDefaults, propertyTree],
 	);
 
 	// A9's reader: the tag view's actual scan. Entering the tag view — or a file
@@ -535,15 +543,23 @@ export function DocumentRowList({
 		if (activeIndex !== -1 || !workspacePath) return;
 		const ancestors = ancestorGroupIdsForPath(tree, openPath);
 		if (ancestors.size === 0) return;
-		const next = new Set(expandedIds);
-		let changed = false;
-		for (const id of ancestors) {
-			if (next.has(id)) continue;
-			next.add(id);
-			changed = true;
-		}
-		if (changed) setNavExpandedIds(workspacePath, [...next]);
-	}, [openPath, activeIndex, tree, expandedIds, workspacePath]);
+		const changes = [...ancestors]
+			.filter((id) => !expandedIds.has(id))
+			.map((id) => ({
+				id,
+				expanded: true,
+				defaultExpanded: navDefaults.has(id),
+			}));
+		setNavGroupStates(workspacePath ?? null, groupScope, changes);
+	}, [
+		openPath,
+		activeIndex,
+		tree,
+		expandedIds,
+		workspacePath,
+		groupScope,
+		navDefaults,
+	]);
 
 	// Closing a document leaves focus on `<body>`, so Tab would restart from the
 	// top of the window instead of continuing in the list the user is now looking

@@ -1,4 +1,5 @@
 import type { DocumentTableSort } from "../documentTable/documentTableView";
+import type { NavGroupExpansion } from "../documentTable/navExpandedGroups";
 import {
 	isDocumentTableSortColumn,
 	sanitizeDocumentViews,
@@ -39,12 +40,11 @@ type WorkspaceState = {
 	 */
 	peekListWidths: Record<string, number>;
 	/**
-	 * R2: group expansion per workspace, as expanded group ids. Seeded from
-	 * `defaultExpandedIds` when a workspace has no record yet — a missing
-	 * record is "never toggled", not an error. Same per-workspace-map shape
-	 * and middleware as `peekListWidths`; no second mechanism.
+	 * Group collapse state per workspace → view+grouping scope → group id,
+	 * stored as deviations from the default (see `navExpandedGroups.ts`).
+	 * Local per-machine pref, never written to `.hubble/views.json`.
 	 */
-	navExpandedGroups: Record<string, string[]>;
+	navGroupExpansion: NavGroupExpansion;
 	/**
 	 * A12: views hidden from the Rail dot strip, per workspace. Empty means
 	 * both dots show. Same per-workspace-map shape and middleware as the maps
@@ -154,7 +154,7 @@ type Persisted = {
 		recentWorkspaces?: string[];
 		lastOpenedPaths?: Record<string, string>;
 		peekListWidths?: Record<string, number>;
-		navExpandedGroups?: Record<string, string[]>;
+		navGroupExpansion?: unknown;
 		navHiddenViews?: Record<string, string[]>;
 		navViewSorts?: Record<string, NavViewSorts>;
 		selectedSavedViews?: unknown;
@@ -204,20 +204,28 @@ function sanitizePeekListWidths(value: unknown): Record<string, number> {
  * Keeps only string-id arrays: same "legal record, drop bad entries" rule as
  * the width map above.
  */
-function sanitizeNavExpandedGroups(value: unknown): Record<string, string[]> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-	const groups: Record<string, string[]> = {};
-	for (const [workspacePath, ids] of Object.entries(
-		value as Record<string, unknown>,
-	)) {
-		if (
-			Array.isArray(ids) &&
-			ids.every((id): id is string => typeof id === "string")
-		) {
-			groups[workspacePath] = [...ids];
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Keeps only boolean entries; the old flat `navExpandedGroups` is dropped. */
+function sanitizeNavGroupExpansion(value: unknown): NavGroupExpansion {
+	if (!isPlainObject(value)) return {};
+	const out: NavGroupExpansion = {};
+	for (const [workspacePath, scopes] of Object.entries(value)) {
+		if (!isPlainObject(scopes)) continue;
+		const kept: NavGroupExpansion[string] = {};
+		for (const [scope, overrides] of Object.entries(scopes)) {
+			if (!isPlainObject(overrides)) continue;
+			const ids: Record<string, boolean> = {};
+			for (const [id, expanded] of Object.entries(overrides)) {
+				if (typeof expanded === "boolean") ids[id] = expanded;
+			}
+			kept[scope] = ids;
 		}
+		out[workspacePath] = kept;
 	}
-	return groups;
+	return out;
 }
 
 /**
@@ -298,7 +306,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 				? ws.lastOpenedPaths
 				: {},
 		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
-		navExpandedGroups: sanitizeNavExpandedGroups(ws?.navExpandedGroups),
+		navGroupExpansion: sanitizeNavGroupExpansion(ws?.navGroupExpansion),
 		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
 		navViewSorts: sanitizeNavViewSorts(ws?.navViewSorts),
 		selectedSavedViews: sanitizeSelectedSavedViews(ws?.selectedSavedViews),
@@ -405,7 +413,7 @@ export function serialize(state: DesktopState): Persisted {
 			recentWorkspaces: state.workspace.recentWorkspaces,
 			lastOpenedPaths: state.workspace.lastOpenedPaths,
 			peekListWidths: state.workspace.peekListWidths,
-			navExpandedGroups: state.workspace.navExpandedGroups,
+			navGroupExpansion: state.workspace.navGroupExpansion,
 			navHiddenViews: state.workspace.navHiddenViews,
 			navViewSorts: state.workspace.navViewSorts,
 			selectedSavedViews: state.workspace.selectedSavedViews,

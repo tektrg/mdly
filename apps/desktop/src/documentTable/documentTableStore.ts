@@ -15,6 +15,7 @@ import {
 	updateSavedViews,
 	validateSavedViewName,
 } from "./documentViewsFileStore";
+import { pruneDeletedSavedViewGroups } from "./navExpandedGroups";
 import type { NavGroupBy, NavViewMode } from "./navGroupTree";
 import {
 	groupByToViewId,
@@ -521,4 +522,22 @@ workspacePathStore.subscribe(() => {
 	reconcileSelectedSavedView();
 });
 restoreSelectedSavedView();
-savedViewsStore.subscribe(() => reconcileSelectedSavedView());
+/**
+ * Collapse state of a saved view deleted here or by the CLI/an agent is
+ * dropped once the views file gives a definite answer (not while loading or
+ * when the file is unreadable — the view may still exist).
+ */
+function pruneCollapseStateOfDeletedViews() {
+	for (const [workspacePath, saved] of Object.entries(savedViewsStore.get())) {
+		if (saved.status !== "ok" && saved.status !== "missing") continue;
+		pruneDeletedSavedViewGroups(
+			workspacePath,
+			new Set(saved.views.map((view) => view.id)),
+		);
+	}
+}
+
+savedViewsStore.subscribe(() => {
+	reconcileSelectedSavedView();
+	pruneCollapseStateOfDeletedViews();
+});
