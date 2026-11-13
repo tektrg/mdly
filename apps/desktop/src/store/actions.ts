@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import type { InAppHistoryCause } from "../desktopApi/types";
+import { runLayoutTransition } from "../documentTable/layoutTransition";
 import { classifyFileChange } from "../externalFileChange";
 import {
 	absoluteWorkspacePath,
@@ -1158,7 +1159,17 @@ export const loadPath = latest(
 		// `await`: the layout flips on the same frame as the click, with no
 		// full-width-table flash and no LOADING_DELAY_MS gap. This is the only
 		// write site of `requestedPath`, so all 17 open-doors inherit it.
-		viewerStore.set((state) => ({ ...state, requestedPath: path }));
+		// Table -> peek split is animated (layoutTransition.ts); every other
+		// open (doc -> doc, single-file window) writes synchronously as before.
+		const claim = () => {
+			if (isStale()) return;
+			viewerStore.set((state) => ({ ...state, requestedPath: path }));
+		};
+		const flipsLayout =
+			viewerStore.get().requestedPath === null &&
+			workspaceStore.get().workspacePath !== null;
+		if (flipsLayout) void runLayoutTransition(claim, path);
+		else claim();
 		await flushOutgoingEdits(path);
 
 		const timer = window.setTimeout(() => {

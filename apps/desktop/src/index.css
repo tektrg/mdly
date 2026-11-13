@@ -181,3 +181,67 @@
 		}
 	}
 }
+
+/*
+ * Table <-> peek split switch (documentTable/layoutTransition.ts).
+ * The list surface clips from full width to the peek width while the old
+ * (table) and new (narrow list) snapshots cross-fade at their natural size, so
+ * text never stretches or reflows mid-flight; the document pane slides 24px
+ * and fades. Compositor-only: no React render per frame.
+ */
+[data-doc-surface] {
+	view-transition-name: doc-list;
+}
+[data-peek-split] > [data-document-pane] {
+	view-transition-name: doc-pane;
+}
+::view-transition {
+	/* Clicks fall through to the live DOM, so a second row can be picked mid-flight. */
+	pointer-events: none;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation: none;
+}
+::view-transition-group(doc-list),
+::view-transition-group(doc-pane) {
+	animation-duration: 240ms;
+	animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+::view-transition-group(doc-list) {
+	overflow: clip;
+}
+::view-transition-old(doc-list),
+::view-transition-new(doc-list) {
+	inline-size: auto;
+	block-size: 100%;
+	object-fit: none;
+	object-position: left top;
+	animation-duration: 240ms;
+	animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+::view-transition-new(doc-pane) {
+	animation: mdly-doc-pane-in 240ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+::view-transition-old(doc-pane) {
+	animation: mdly-doc-pane-out 200ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+@keyframes mdly-doc-pane-in {
+	from {
+		opacity: 0;
+		transform: translateX(24px);
+	}
+}
+@keyframes mdly-doc-pane-out {
+	to {
+		opacity: 0;
+		transform: translateX(24px);
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none;
+	}
+}

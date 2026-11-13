@@ -539,7 +539,10 @@ export function DocumentTable({
 		propertyColumns,
 	);
 	return (
-		<section className="flex h-full min-h-0 flex-col bg-background">
+		<section
+			data-doc-surface
+			className="flex h-full min-h-0 flex-col bg-background"
+		>
 			<header
 				data-document-table-header
 				className={cn(

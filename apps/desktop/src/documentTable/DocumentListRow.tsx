@@ -423,6 +423,7 @@ export function DocumentListRow({
 			aria-rowindex={density === "table" ? index + 2 : index + 1}
 			aria-current={row.isActive ? "true" : undefined}
 			data-document-row-index={index}
+			data-document-path={row.path}
 			tabIndex={index === tabbableIndex ? 0 : -1}
 			style={{
 				transform: `translateY(${index * rowHeight}px)`,

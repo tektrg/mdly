@@ -6,6 +6,7 @@ import {
 	useCallback,
 	useDeferredValue,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -38,6 +39,7 @@ import {
 	type DocumentTableView,
 	ROOT_FOLDER_LABEL,
 } from "./documentTableView";
+import { anchoredScrollTop, takeScrollAnchor } from "./layoutTransition";
 import { type NavDensityTier, navIndentRem } from "./navDensity";
 import { setNavExpandedIds } from "./navExpandedGroups";
 import {
@@ -488,6 +490,28 @@ export function DocumentRowList({
 	// tag scan completes: a live re-sort under the same open document stays
 	// shown -> shown and never yanks the viewport.
 	const activeVisibility = activeIndex === -1 ? "hidden" : "shown";
+	// A table <-> peek switch (layoutTransition.ts) hands over the clicked
+	// row's on-screen offset; land it at the same height in this new list.
+	// Layout effect, so it lands inside the transition's flushSync and the new
+	// snapshot already shows it. Keyed by path, not "open document", so the
+	// full table (no active row) can anchor the row that was just closed.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only handoff
+	useLayoutEffect(() => {
+		const scrollEl = scrollRef.current;
+		const anchor = takeScrollAnchor();
+		if (!scrollEl || !anchor) return;
+		const index = navRows.findIndex(
+			(navRow) => navRow.kind === "document" && navRow.doc.path === anchor.path,
+		);
+		if (index === -1) return;
+		scrollEl.scrollTop = anchoredScrollTop({
+			index,
+			rowHeight,
+			offset: anchor.offset,
+			clientHeight: scrollEl.clientHeight,
+			contentHeight: navRows.length * rowHeight,
+		});
+	}, []);
 	useEffect(() => {
 		if (activePath === null || activeVisibility === "hidden") return;
 		scrollToIndex(activeIndexRef.current);

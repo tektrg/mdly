@@ -193,6 +193,7 @@ export function DocumentNarrowList({
 	return (
 		<div
 			ref={setListElement}
+			data-doc-surface
 			data-row-layout={isBoard ? "board" : isGrid ? "grid" : "stacked"}
 			data-nav-tier={navTier}
 			className="flex shrink-0 flex-col bg-sidebar"

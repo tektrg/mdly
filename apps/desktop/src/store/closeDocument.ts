@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { runLayoutTransition } from "../documentTable/layoutTransition";
 import { basename } from "../lib/filePath";
 import { clearViewer, flushOutgoingEdits, loadPath } from "./actions";
 import { recordDocNavigation, TABLE_NAV_ENTRY } from "./docNavigationHistory";
@@ -165,7 +166,13 @@ export async function closeDocumentToTable(options?: CloseDocumentOptions) {
 	if (options?.recordNavigation !== false) {
 		recordDocNavigation(TABLE_NAV_ENTRY);
 	}
-	clearViewer();
-	activeDocumentPanelReset?.();
+	// Peek split -> table animates in reverse, anchored on the closing row.
+	const closingPath = documentBeforeClose.requestedPath;
+	const reset = () => {
+		clearViewer();
+		activeDocumentPanelReset?.();
+	};
+	if (closingPath !== null) await runLayoutTransition(reset, closingPath);
+	else reset();
 	if (isShowingDocument(documentBeforeClose)) activeDocumentCloseFocus?.();
 }
