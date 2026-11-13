@@ -4,6 +4,11 @@ import { BottomSheet } from "../primitives/bottomSheet.js";
 import { Button } from "../primitives/button.js";
 import { SidePanel } from "../primitives/sidePanel.js";
 import { CommentMarkdown } from "./CommentMarkdown.js";
+import {
+	isSubmitShortcut,
+	SUBMIT_SHORTCUT_ARIA,
+	SUBMIT_SHORTCUT_HINT,
+} from "./submitShortcut.js";
 import type { CommentAuthor, CommentThreadEvent, TextAnchor } from "./types.js";
 import type { ResolvedThread } from "./useCommentThreads.js";
 
@@ -162,6 +167,13 @@ function NewThreadComposer({
 					onDraftChange(event.target.value);
 					onErrorChange(null);
 				}}
+				onKeyDown={(event) => {
+					if (!isSubmitShortcut(event.nativeEvent)) return;
+					// No newline, and no editor/global Mod-Enter handler sees it.
+					event.preventDefault();
+					event.stopPropagation();
+					handleSubmit();
+				}}
 			/>
 			{error ? (
 				<p className="m-0 text-destructive text-xs" data-new-thread-error>
@@ -174,6 +186,8 @@ function NewThreadComposer({
 					variant="ink"
 					size="sm"
 					data-new-thread-submit
+					title={`Post (${SUBMIT_SHORTCUT_HINT})`}
+					aria-keyshortcuts={SUBMIT_SHORTCUT_ARIA}
 					disabled={submitting || draft.trim().length === 0}
 					onClick={handleSubmit}
 				>
@@ -343,6 +357,12 @@ export function ThreadItem({
 					setDraft(event.target.value);
 					setActionError(null);
 				}}
+				onKeyDown={(event) => {
+					if (!isSubmitShortcut(event.nativeEvent)) return;
+					event.preventDefault();
+					event.stopPropagation();
+					if (!isResolved) submitReply();
+				}}
 			/>
 
 			{actionError ? (
@@ -371,6 +391,8 @@ export function ThreadItem({
 							size="sm"
 							data-reply-button
 							data-thread-id={thread.id}
+							title={`Reply (${SUBMIT_SHORTCUT_HINT})`}
+							aria-keyshortcuts={SUBMIT_SHORTCUT_ARIA}
 							onClick={submitReply}
 						>
 							Reply
