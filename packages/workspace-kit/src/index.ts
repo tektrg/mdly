@@ -46,6 +46,10 @@ export {
 } from "./engine/frontMatter.js";
 export { HeadingExtension } from "./engine/Heading.js";
 export {
+	HtmlCommentBlockExtension,
+	HtmlCommentExtension,
+} from "./engine/HtmlComment.js";
+export {
 	iframeEmbedToMarkdown,
 	isRemoteIframeSrc,
 	isValidIframeEmbedSrc,

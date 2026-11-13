@@ -495,7 +495,8 @@
 [data-hubble-editor] .ProseMirror code {
 	/* Slightly lifted chip so inline code reads apart from body text in both themes. */
 	background: color-mix(in oklch, var(--muted), var(--foreground) 5%);
-	box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--border), var(--foreground) 6%);
+	box-shadow: inset 0 0 0 1px
+		color-mix(in oklch, var(--border), var(--foreground) 6%);
 	color: color-mix(in oklch, var(--foreground) 88%, var(--muted));
 	padding: 0.12em 0.4em;
 	border-radius: 4px;
@@ -1063,4 +1064,100 @@
 	block-size: 100%;
 	object-fit: contain;
 	-webkit-user-drag: none;
+}
+
+/* HTML comment (`<!-- … -->`) collapsed marker: a small dot in the text flow. */
+[data-hubble-editor] .ProseMirror .pm-html-comment {
+	display: inline;
+	line-height: 0;
+}
+
+[data-hubble-editor] .ProseMirror .pm-html-comment-block {
+	display: block;
+	line-height: 1;
+	margin-block: 0.15rem;
+}
+
+[data-hubble-editor] .ProseMirror .pm-html-comment-marker {
+	display: inline-block;
+	inline-size: 0.45em;
+	block-size: 0.45em;
+	margin-inline: 0.15em;
+	vertical-align: 0.2em;
+	border-radius: 999px;
+	background: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+	cursor: pointer;
+	outline: none;
+	transition: background-color 120ms var(--ease-snappy, ease);
+}
+
+[data-hubble-editor] .ProseMirror .pm-html-comment-marker:hover,
+[data-hubble-editor]
+	.ProseMirror
+	.ProseMirror-selectednode
+	> .pm-html-comment-marker {
+	background: var(--brand, var(--foreground));
+}
+
+[data-hubble-editor] .ProseMirror .pm-html-comment-marker:focus-visible {
+	box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 60%, transparent);
+}
+
+.pm-html-comment-popover {
+	position: absolute;
+	z-index: 60;
+	max-inline-size: min(26rem, calc(100vw - 1rem));
+	padding: 0.6rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 0.6rem;
+	background: var(--popover, var(--background));
+	color: var(--popover-foreground, var(--foreground));
+	box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+	font-size: 12px;
+}
+
+.pm-html-comment-text {
+	margin: 0 0 0.5rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.pm-html-comment-input {
+	inline-size: 22rem;
+	max-inline-size: 100%;
+	min-block-size: 4.5rem;
+	padding: 0.4rem 0.5rem;
+	border: 1px solid var(--border);
+	border-radius: 0.4rem;
+	background: var(--background);
+	color: var(--foreground);
+	font: inherit;
+	resize: vertical;
+}
+
+.pm-html-comment-error {
+	margin: 0.3rem 0 0;
+	color: var(--destructive);
+}
+
+.pm-html-comment-actions {
+	display: flex;
+	gap: 0.4rem;
+	margin-block-start: 0.4rem;
+}
+
+.pm-html-comment-button {
+	padding: 0.2rem 0.6rem;
+	border: 1px solid var(--border);
+	border-radius: 0.4rem;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.pm-html-comment-button--primary {
+	border-color: transparent;
+	background: var(--foreground);
+	color: var(--background);
 }

@@ -22,6 +22,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
 import { visit } from "unist-util-visit";
+import { isSingleHtmlComment } from "./HtmlComment.js";
 import { isValidIframeEmbedSrc, readIframeAttr } from "./IframeEmbed.js";
 import { wikiDisplayNameForTarget } from "./markdownPath.js";
 import { normalizeMarkdownTableBoundaries } from "./markdownTableBoundaries.js";
@@ -411,6 +412,17 @@ function blockToPM(node: Content): JSONContent[] {
 				}
 			} catch {
 				// If parsing fails, fall through to text fallback
+			}
+
+			if (isSingleHtmlComment(raw)) {
+				return [{ type: "htmlCommentBlock", attrs: { raw } }];
+			}
+			// A comment opening a line starts a raw HTML block that runs to the
+			// end of that line, so `<!-- n --> words` lands here: split the
+			// comments out so they still collapse, keeping the bytes in order.
+			const withComments = splitHtmlComments(raw);
+			if (withComments) {
+				return [{ type: "paragraph", content: withComments }];
 			}
 
 			// Fallback: keep raw HTML as a text paragraph to avoid data loss
@@ -851,7 +863,8 @@ function inlineToPM(children: Content[]): JSONContent[] {
 			case "html":
 				if (child.value) {
 					out.push(
-						...(brHtmlToPM(child.value) ??
+						...(htmlCommentToPM(child.value) ??
+							brHtmlToPM(child.value) ??
 							notionMentionToPM(child.value) ?? [
 								{ type: "text", text: child.value },
 							]),
@@ -862,6 +875,28 @@ function inlineToPM(children: Content[]): JSONContent[] {
 				// Unknown inline; ignore.
 				break;
 		}
+	}
+	return out;
+}
+
+function htmlCommentToPM(raw: string): JSONContent[] | null {
+	return isSingleHtmlComment(raw)
+		? [{ type: "htmlComment", attrs: { raw } }]
+		: null;
+}
+
+/** Text and `htmlComment` nodes for raw HTML containing comments, else null. */
+function splitHtmlComments(raw: string): JSONContent[] | null {
+	const parts = raw.split(/(<!--(?:(?!-->)[\s\S])*-->)/);
+	if (parts.length === 1) return null;
+	const out: JSONContent[] = [];
+	for (const part of parts) {
+		if (!part) continue;
+		out.push(
+			isSingleHtmlComment(part)
+				? { type: "htmlComment", attrs: { raw: part } }
+				: { type: "text", text: part },
+		);
 	}
 	return out;
 }
@@ -972,7 +1007,9 @@ function applyMark(
 	attrs?: Record<string, unknown>,
 ): JSONContent[] {
 	return nodes.map((n) => {
-		if (n.type === "text") {
+		// Comment markers inside bold/link text carry the mark too, so the
+		// serializer keeps them inside the same `**…**` / `[…](…)` run.
+		if (n.type === "text" || n.type === "htmlComment") {
 			const existing = n.marks ?? [];
 			// Skip stacking a mark type the node already carries. Nested/repeated
 			// emphasis (e.g. `****x****`) would otherwise pile up duplicate marks,

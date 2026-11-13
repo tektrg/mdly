@@ -156,6 +156,10 @@ function blockToMarkdown(node: JSONContent): string {
 			return toggleToMarkdown(node);
 		}
 
+		case "htmlCommentBlock": {
+			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
+		}
+
 		case "notionHtmlBlock": {
 			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
 		}
@@ -555,6 +559,10 @@ function leafToMarkdown(node: JSONContent): string {
 			return markTypesOf(node).has("code") ? `\`${text}\`` : text;
 		}
 
+		case "htmlComment": {
+			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
+		}
+
 		case "hardBreak": {
 			return "  \n"; // Two spaces + newline creates a line break in Markdown
 		}
@@ -569,6 +577,11 @@ function leafToTableMarkdown(node: JSONContent): string {
 		case "text": {
 			const text = (node.text ?? "").split("|").join("\\|");
 			return markTypesOf(node).has("code") ? `\`${text}\`` : text;
+		}
+
+		case "htmlComment": {
+			// Verbatim: any `\|` was already escaped in the source cell.
+			return typeof node.attrs?.raw === "string" ? node.attrs.raw : "";
 		}
 
 		case "hardBreak": {

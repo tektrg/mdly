@@ -70,6 +70,7 @@ import {
 } from "./FilePropertiesPanel";
 import { FormatCommandMenu } from "./FormatCommandMenu";
 import { FormattingStatusBar } from "./FormattingStatusBar";
+import { htmlCommentViewExtensions } from "./HtmlCommentView.js";
 import type { VirtualCursorMode } from "./virtualCursorMode";
 
 // A short debounce fires a disk write (plus the workspace-store "touch" that
@@ -455,6 +456,7 @@ export function EditorView({
 			NotionEmptyBlockExtension,
 			createNotionHtmlBlockViewExtension({ onOpenExternalLink }),
 			MermaidBlockViewExtension,
+			...htmlCommentViewExtensions,
 			ToggleBlockViewExtension,
 			ToggleSummaryExtension,
 			...columnsExtensions,
