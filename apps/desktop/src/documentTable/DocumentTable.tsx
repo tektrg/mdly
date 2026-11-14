@@ -33,6 +33,7 @@ import type {
 	DocumentTableSortColumn,
 	DocumentTableView,
 } from "./documentTableView";
+import { FilterEmptyMessage } from "./FilterEmptyMessage";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
 import { addColumnMenuFields } from "./properties/builtinFields";
@@ -427,9 +428,11 @@ function DocumentTableEmptyState({
 	hasPropertyFilters,
 	propertiesPending = false,
 	onRetryListing,
+	onClearFilter,
 }: {
 	listing: DocumentListingState;
 	filter: string;
+	onClearFilter: () => void;
 	hasPropertyFilters: boolean;
 	/** Chips are set but the property scan has not finished: not "no match" yet. */
 	propertiesPending?: boolean;
@@ -474,9 +477,21 @@ function DocumentTableEmptyState({
 		);
 	}
 
+	if (filter.length > 0) {
+		return (
+			<div className="p-3">
+				<FilterEmptyMessage
+					filter={filter}
+					onClearFilter={onClearFilter}
+					className="m-0 text-sm text-muted-foreground"
+				/>
+			</div>
+		);
+	}
+
 	return (
 		<p className="m-0 p-3 text-sm text-muted-foreground">
-			{filter.length > 0 || hasPropertyFilters
+			{hasPropertyFilters
 				? "No documents match this filter."
 				: "No documents in this workspace yet."}
 		</p>
@@ -646,6 +661,7 @@ export function DocumentTable({
 									<DocumentTableEmptyState
 										listing={listing}
 										filter={view.filter}
+										onClearFilter={() => onFilterChange("")}
 										hasPropertyFilters={view.propertyFilters.length > 0}
 										propertiesPending={
 											scanStatus === "scanning" || scanStatus === "idle"

@@ -155,7 +155,13 @@ describe("DocumentTable", () => {
 		expect(afterFilter).toBe(input);
 		expect(document.activeElement).toBe(input);
 		expect(bodyRowElements()).toHaveLength(0);
-		expect(container.textContent).toContain("No documents match this filter.");
+		expect(container.textContent).toContain(
+			"No documents match the search “zzzz”.",
+		);
+		const clear = [...container.querySelectorAll("button")].find(
+			(b) => b.textContent === "Clear search",
+		);
+		expect(clear).toBeTruthy();
 	});
 
 	it("narrows the rows it is given as the filter changes", () => {

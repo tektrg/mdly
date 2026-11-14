@@ -46,7 +46,9 @@ describe("desktop state persistence", () => {
 		expect(snapshot).not.toContain("sidebarAutoCollapsed");
 		expect(snapshot).not.toContain("hasListedOnce");
 		expect(snapshot).not.toContain("listingError");
-		expect(snapshot).not.toContain("filter");
+		// The session's live `filter` is not serialized; per-view search text is
+		// remembered separately, debounced, in `navViewFilters`.
+		expect(snapshot).not.toContain('"filter"');
 	});
 
 	it("hydrates a fresh session onto the document table with the sidebar hidden", () => {

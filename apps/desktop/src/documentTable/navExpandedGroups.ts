@@ -58,7 +58,7 @@ export function isNavGroupExpanded(
 	return typeof value === "boolean" ? value : defaultExpanded;
 }
 
-function dropOldest<T>(record: Record<string, T>, max: number) {
+export function dropOldest<T>(record: Record<string, T>, max: number) {
 	const keys = Object.keys(record);
 	if (keys.length <= max) return record;
 	const kept: Record<string, T> = {};
@@ -67,7 +67,7 @@ function dropOldest<T>(record: Record<string, T>, max: number) {
 }
 
 /** Moves `key` to the end (most recent) with `value`. */
-function touch<T>(record: Record<string, T>, key: string, value: T) {
+export function touch<T>(record: Record<string, T>, key: string, value: T) {
 	const { [key]: _old, ...rest } = record;
 	return { ...rest, [key]: value };
 }

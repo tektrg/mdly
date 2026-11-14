@@ -17,6 +17,7 @@ import {
 	useDocumentTableLayout,
 } from "./documentTableLayout";
 import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
+import { FilterEmptyMessage } from "./FilterEmptyMessage";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
 import { columnsForTier, type NavDensityTier } from "./navDensity";
@@ -111,9 +112,11 @@ function NarrowListEmptyState({
 	listing,
 	filter,
 	onRetryListing,
+	onClearFilter,
 }: {
 	listing: DocumentListingState;
 	filter: string;
+	onClearFilter: () => void;
 	onRetryListing: () => void;
 }) {
 	if (listing.kind === "scanning") {
@@ -133,12 +136,18 @@ function NarrowListEmptyState({
 		);
 	}
 
+	if (filter.length > 0) {
+		return (
+			<FilterEmptyMessage
+				filter={filter}
+				onClearFilter={onClearFilter}
+				className={NARROW_MESSAGE_CLASS}
+			/>
+		);
+	}
+
 	return (
-		<p className={NARROW_MESSAGE_CLASS}>
-			{filter.length > 0
-				? "No documents match this filter."
-				: "No documents in this workspace yet."}
-		</p>
+		<p className={NARROW_MESSAGE_CLASS}>No documents in this workspace yet.</p>
 	);
 }
 
@@ -251,6 +260,7 @@ export function DocumentNarrowList({
 								<NarrowListEmptyState
 									listing={listing}
 									filter={view.filter}
+									onClearFilter={() => onFilterChange("")}
 									onRetryListing={onRetryListing}
 								/>
 							</div>

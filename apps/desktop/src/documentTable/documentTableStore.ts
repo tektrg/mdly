@@ -22,6 +22,12 @@ import {
 	type NavViewId,
 	viewIdToGroupBy,
 } from "./navHiddenViews";
+import {
+	getNavViewFilter,
+	navFilterViewKey,
+	pruneDeletedSavedViewFilters,
+	setNavViewFilter,
+} from "./navViewFilters";
 import { getNavViewSort, setNavViewSort } from "./navViewSort";
 import {
 	type BoardViewSettings,
@@ -42,19 +48,75 @@ import { isSavedViewIconName } from "./savedViewIcons";
  * here: it is persisted per nav view (`navViewSort.ts`) and composed in by
  * `useDocumentTableRows`.
  *
- * Declared **outside** `appStore` on purpose. `appStore` runs through
- * `localStoragePersist`, so filter text living there would be one whitelist edit
- * away from being persisted — and every keystroke would also land in the write
- * path the renderer-OOM storm detector instruments. Here there is no code path
- * to persistence at all: R-"filter is transient" holds by construction rather
- * than by review.
+ * Declared **outside** `appStore`. The filter text shown here is the live,
+ * per-keystroke value; it is remembered per view (`navViewFilters.ts`, local
+ * storage only) through a debounced write, so typing never hits persistence
+ * on every keystroke. (This replaces the old "filter is transient" rule: the
+ * user chose per-view, restart-surviving search text.)
  */
 export const documentTableViewStore = store<DocumentTableSessionView>(
 	createDefaultSessionView(),
 );
 
+/** Delay before a typed filter is written to local storage. */
+export const FILTER_PERSIST_DEBOUNCE_MS = 300;
+
+let pendingFilterWrite: {
+	workspacePath: string | null;
+	viewKey: string;
+	text: string;
+} | null = null;
+let pendingFilterTimer: ReturnType<typeof setTimeout> | null = null;
+
+function currentFilterViewKey(): string {
+	const view = documentTableViewStore.get();
+	return navFilterViewKey(
+		view.activeSavedViewId,
+		groupByToViewId(view.groupBy),
+	);
+}
+
+/** Writes a pending (debounced) filter now. Called on view switch and quit. */
+export function flushDocumentTableFilter() {
+	if (pendingFilterTimer !== null) clearTimeout(pendingFilterTimer);
+	pendingFilterTimer = null;
+	const write = pendingFilterWrite;
+	pendingFilterWrite = null;
+	if (write) setNavViewFilter(write.workspacePath, write.viewKey, write.text);
+}
+
 export function setDocumentTableFilter(filter: string) {
 	documentTableViewStore.set((view) => ({ ...view, filter }));
+	pendingFilterWrite = {
+		workspacePath: currentWorkspacePath(),
+		viewKey: currentFilterViewKey(),
+		text: filter,
+	};
+	if (pendingFilterTimer !== null) clearTimeout(pendingFilterTimer);
+	pendingFilterTimer = setTimeout(
+		flushDocumentTableFilter,
+		FILTER_PERSIST_DEBOUNCE_MS,
+	);
+}
+
+/** Workspace + view whose remembered text the box currently shows. */
+let filterScope: string | null = null;
+
+/**
+ * Whenever the view (or workspace) changes, any pending text is written to the
+ * view it was typed in, then the new view's remembered text (or "") is shown.
+ */
+function syncFilterToView() {
+	const workspacePath = currentWorkspacePath();
+	const viewKey = currentFilterViewKey();
+	const scope = `${workspacePath ?? ""}\u0000${viewKey}`;
+	if (scope === filterScope) return;
+	filterScope = scope;
+	flushDocumentTableFilter();
+	const text = getNavViewFilter(workspacePath, viewKey);
+	if (documentTableViewStore.get().filter !== text) {
+		documentTableViewStore.set((view) => ({ ...view, filter: text }));
+	}
 }
 
 // --- saved views (design note phase 3) -----------------------------------
@@ -331,8 +393,14 @@ export function saveCurrentViewAs(name: string): string | null {
 		propertyColumns: [...getCurrentPropertyColumns()],
 		...getCurrentViewLayout(),
 	};
+	const searchText = session.filter;
 	updateSavedViews(workspacePath, (views) => [...views, view]);
 	selectSavedView(view.id);
+	// The new view starts with the search the user was looking at.
+	if (searchText) {
+		setDocumentTableFilter(searchText);
+		flushDocumentTableFilter();
+	}
 	return view.id;
 }
 
@@ -361,6 +429,7 @@ export function selectSavedView(id: string | null) {
 		groupBy: null,
 	}));
 	rememberSelectedSavedView(currentWorkspacePath(), id);
+	syncFilterToView();
 }
 
 /** View-switcher pick of a built-in (Recent / Folder / Tag): leaves any saved view. */
@@ -467,6 +536,7 @@ export function setDocumentTableGroupBy(groupBy: NavGroupBy) {
 			: { ...view, groupBy, propertyGroupBy: null, activeSavedViewId: null },
 	);
 	if (groupBy !== null) rememberSelectedSavedView(currentWorkspacePath(), null);
+	syncFilterToView();
 }
 
 /** A7: the mode the query is read in. Grouping and pinning follow from it. */
@@ -479,7 +549,8 @@ export function resetDocumentTableView() {
 }
 
 // A filter typed in one workspace must not survive into the next one, where it
-// means nothing. Same subscription precedent as docNavigationHistory.ts.
+// means nothing: the reset clears it, then `syncFilterToView` brings back the
+// new workspace's own remembered text for its view. Same subscription precedent as docNavigationHistory.ts.
 //
 // The grouping and mode added for the navigation views ride the same reset on
 // purpose (defect 4, EC-72): the view resets on a workspace switch exactly as
@@ -520,8 +591,16 @@ workspacePathStore.subscribe(() => {
 	resetDocumentTableView();
 	restoreSelectedSavedView();
 	reconcileSelectedSavedView();
+	syncFilterToView();
 });
 restoreSelectedSavedView();
+// Safety net for any other writer of the view (store notifications are async;
+// the view-switch functions above sync immediately so no stale text flashes).
+documentTableViewStore.subscribe(syncFilterToView);
+syncFilterToView();
+if (typeof window !== "undefined") {
+	window.addEventListener("beforeunload", flushDocumentTableFilter);
+}
 /**
  * Collapse state of a saved view deleted here or by the CLI/an agent is
  * dropped once the views file gives a definite answer (not while loading or
@@ -531,6 +610,10 @@ function pruneCollapseStateOfDeletedViews() {
 	for (const [workspacePath, saved] of Object.entries(savedViewsStore.get())) {
 		if (saved.status !== "ok" && saved.status !== "missing") continue;
 		pruneDeletedSavedViewGroups(
+			workspacePath,
+			new Set(saved.views.map((view) => view.id)),
+		);
+		pruneDeletedSavedViewFilters(
 			workspacePath,
 			new Set(saved.views.map((view) => view.id)),
 		);

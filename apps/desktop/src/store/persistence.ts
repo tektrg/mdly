@@ -1,5 +1,6 @@
 import type { DocumentTableSort } from "../documentTable/documentTableView";
 import type { NavGroupExpansion } from "../documentTable/navExpandedGroups";
+import type { NavViewFilters } from "../documentTable/navViewFilters";
 import {
 	isDocumentTableSortColumn,
 	sanitizeDocumentViews,
@@ -45,6 +46,11 @@ type WorkspaceState = {
 	 * Local per-machine pref, never written to `.hubble/views.json`.
 	 */
 	navGroupExpansion: NavGroupExpansion;
+	/**
+	 * Search-box (Cmd+L) text per workspace → view key (`recent` | `folder` |
+	 * `tag` | `saved:<id>`). See `navViewFilters.ts`. Local only.
+	 */
+	navViewFilters: NavViewFilters;
 	/**
 	 * A12: views hidden from the Rail dot strip, per workspace. Empty means
 	 * both dots show. Same per-workspace-map shape and middleware as the maps
@@ -155,6 +161,7 @@ type Persisted = {
 		lastOpenedPaths?: Record<string, string>;
 		peekListWidths?: Record<string, number>;
 		navGroupExpansion?: unknown;
+		navViewFilters?: unknown;
 		navHiddenViews?: Record<string, string[]>;
 		navViewSorts?: Record<string, NavViewSorts>;
 		selectedSavedViews?: unknown;
@@ -224,6 +231,25 @@ function sanitizeNavGroupExpansion(value: unknown): NavGroupExpansion {
 			kept[scope] = ids;
 		}
 		out[workspacePath] = kept;
+	}
+	return out;
+}
+
+/** Mirrors `NAV_VIEW_FILTER_MAX_LENGTH` (not imported: it would cycle through `state`). */
+const NAV_VIEW_FILTER_MAX_LENGTH_ON_LOAD = 1000;
+
+/** Keeps only non-empty string entries, capped in length. */
+export function sanitizeNavViewFilters(value: unknown): NavViewFilters {
+	if (!isPlainObject(value)) return {};
+	const out: NavViewFilters = {};
+	for (const [workspacePath, views] of Object.entries(value)) {
+		if (workspacePath === "__proto__" || !isPlainObject(views)) continue;
+		const kept: Record<string, string> = {};
+		for (const [key, text] of Object.entries(views)) {
+			if (key === "__proto__" || typeof text !== "string" || !text) continue;
+			kept[key] = text.slice(0, NAV_VIEW_FILTER_MAX_LENGTH_ON_LOAD);
+		}
+		if (Object.keys(kept).length > 0) out[workspacePath] = kept;
 	}
 	return out;
 }
@@ -307,6 +333,7 @@ function hydrateWorkspace(ws: Persisted["workspace"]): WorkspaceState {
 				: {},
 		peekListWidths: sanitizePeekListWidths(ws?.peekListWidths),
 		navGroupExpansion: sanitizeNavGroupExpansion(ws?.navGroupExpansion),
+		navViewFilters: sanitizeNavViewFilters(ws?.navViewFilters),
 		navHiddenViews: sanitizeNavHiddenViews(ws?.navHiddenViews),
 		navViewSorts: sanitizeNavViewSorts(ws?.navViewSorts),
 		selectedSavedViews: sanitizeSelectedSavedViews(ws?.selectedSavedViews),
@@ -414,6 +441,7 @@ export function serialize(state: DesktopState): Persisted {
 			lastOpenedPaths: state.workspace.lastOpenedPaths,
 			peekListWidths: state.workspace.peekListWidths,
 			navGroupExpansion: state.workspace.navGroupExpansion,
+			navViewFilters: state.workspace.navViewFilters,
 			navHiddenViews: state.workspace.navHiddenViews,
 			navViewSorts: state.workspace.navViewSorts,
 			selectedSavedViews: state.workspace.selectedSavedViews,

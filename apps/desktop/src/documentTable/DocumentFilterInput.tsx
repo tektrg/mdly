@@ -81,7 +81,10 @@ export function DocumentFilterInput({
 				className={cn(
 					"h-8 w-full rounded-full ps-7 text-[length:var(--font-size-sidebar)] bg-mdly-control focus-visible:ring-[3px] focus-visible:ring-mdly-ink/[0.07]",
 					mode === "plain" ? "pe-7" : "pe-[4.5rem]",
+					// A remembered search can hide files: make a non-empty box obvious.
+					value.length > 0 && "border-mdly-ink/40",
 				)}
+				data-active={value.length > 0 || undefined}
 			/>
 			{mode !== "plain" ? (
 				<span
