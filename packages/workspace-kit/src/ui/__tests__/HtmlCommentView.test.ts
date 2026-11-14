@@ -3,7 +3,7 @@
 import { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { markdownToTiptapDoc } from "../../engine/markdownToProsemirror";
 import {
 	sliceToMarkdown,
@@ -55,7 +55,8 @@ describe("inline comment marker", () => {
 		const el = marker();
 		expect(el).not.toBeNull();
 		expect(el?.getAttribute("aria-label")).toBe("Note: CHECKED: source says x");
-		expect(el?.getAttribute("title")).toBe("CHECKED: source says x");
+		// No native tooltip: the hover popover replaces it.
+		expect(el?.hasAttribute("title")).toBe(false);
 		expect(el?.getAttribute("tabindex")).toBe("0");
 		expect(el?.getAttribute("role")).toBe("button");
 		expect(document.querySelector(".ProseMirror")?.textContent).not.toContain(
@@ -144,7 +145,7 @@ describe("inline comment marker", () => {
 			?.click();
 		expect(md(editor)).toBe("a <!-- new note --> b");
 		expect(popover()).toBeNull();
-		expect(marker()?.getAttribute("title")).toBe("new note");
+		expect(marker()?.getAttribute("aria-label")).toBe("Note: new note");
 		editor.commands.undo();
 		expect(md(editor)).toBe(`a ${NOTE} b`);
 	});
@@ -188,7 +189,9 @@ describe("inline comment marker", () => {
 describe("block comment marker", () => {
 	it("renders a marker for a multi-line block and edits it", () => {
 		const editor = setup("# H\n\n<!--\nline one\nline two\n-->\n\nPara");
-		expect(marker()?.getAttribute("title")).toBe("line one\nline two");
+		expect(marker()?.getAttribute("aria-label")).toBe(
+			"Note: line one\nline two",
+		);
 		marker()?.click();
 		popover()
 			?.querySelector<HTMLButtonElement>("[data-html-comment-edit]")
@@ -199,5 +202,99 @@ describe("block comment marker", () => {
 			?.querySelector<HTMLButtonElement>("[data-html-comment-save]")
 			?.click();
 		expect(md(editor)).toBe("# H\n\n<!--\nonly\n-->\n\nPara");
+	});
+});
+
+describe("hover popover", () => {
+	afterEach(() => vi.useRealTimers());
+	const enter = (el: Element | null | undefined) =>
+		el?.dispatchEvent(new MouseEvent("mouseenter"));
+	const leave = (el: Element | null | undefined) =>
+		el?.dispatchEvent(new MouseEvent("mouseleave"));
+
+	it("opens after ~150ms of hover and closes ~200ms after leaving", () => {
+		vi.useFakeTimers();
+		setup(`a ${NOTE} b`);
+		enter(marker());
+		vi.advanceTimersByTime(100);
+		expect(popover()).toBeNull();
+		vi.advanceTimersByTime(60);
+		expect(popover()?.textContent).toContain("CHECKED: source says x");
+		leave(marker());
+		vi.advanceTimersByTime(150);
+		expect(popover()).not.toBeNull();
+		vi.advanceTimersByTime(60);
+		expect(popover()).toBeNull();
+	});
+
+	it("a quick pass over the dot does not open it", () => {
+		vi.useFakeTimers();
+		setup(`a ${NOTE} b`);
+		enter(marker());
+		vi.advanceTimersByTime(80);
+		leave(marker());
+		vi.advanceTimersByTime(500);
+		expect(popover()).toBeNull();
+	});
+
+	it("stays open while the pointer moves from the dot into the popover", () => {
+		vi.useFakeTimers();
+		setup(`a ${NOTE} b`);
+		enter(marker());
+		vi.advanceTimersByTime(160);
+		leave(marker());
+		vi.advanceTimersByTime(100);
+		enter(popover());
+		vi.advanceTimersByTime(1000);
+		expect(popover()).not.toBeNull();
+		leave(popover());
+		vi.advanceTimersByTime(210);
+		expect(popover()).toBeNull();
+	});
+
+	it("click pins it: leaving does not close it", () => {
+		vi.useFakeTimers();
+		setup(`a ${NOTE} b`);
+		enter(marker());
+		marker()?.click();
+		leave(marker());
+		vi.advanceTimersByTime(1000);
+		expect(popover()).not.toBeNull();
+	});
+
+	it("clicking Edit in a hover popover pins it", () => {
+		vi.useFakeTimers();
+		setup(`a ${NOTE} b`);
+		enter(marker());
+		vi.advanceTimersByTime(160);
+		enter(popover());
+		popover()
+			?.querySelector<HTMLButtonElement>("[data-html-comment-edit]")
+			?.click();
+		leave(popover());
+		vi.advanceTimersByTime(1000);
+		expect(popover()?.querySelector("textarea")).not.toBeNull();
+	});
+
+	it("keyboard focus opens it; Escape on the marker closes it", () => {
+		setup(`a ${NOTE} b`);
+		marker()?.dispatchEvent(new FocusEvent("focus"));
+		expect(popover()).not.toBeNull();
+		marker()?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		expect(popover()).toBeNull();
+	});
+
+	it("only one note popover is open at a time", () => {
+		setup(`a ${NOTE} b <!-- second --> c`);
+		const [first, second] = document.querySelectorAll<HTMLElement>(
+			"[data-html-comment-marker]",
+		);
+		first?.click();
+		second?.click();
+		const open = document.querySelectorAll("[data-html-comment-popover]");
+		expect(open).toHaveLength(1);
+		expect(open[0]?.textContent).toContain("second");
 	});
 });

@@ -10,13 +10,37 @@ import {
 	validateHtmlCommentText,
 	withHtmlCommentText,
 } from "../engine/HtmlComment.js";
+import { placeNotePopover, type Rect } from "./htmlCommentPopoverPosition.js";
 
 const OPEN_EVENT = "mdly-html-comment-open";
+const HOVER_OPEN_MS = 150;
+const HOVER_CLOSE_MS = 200;
+
+/** Only one note popover at a time, across every marker in every editor. */
+let closeActive: (() => void) | null = null;
+
+/** Visible editor area (pane ∩ viewport) the popover must stay inside. */
+function visibleBounds(from: Element): Rect {
+	const host = from.closest("[data-hubble-editor]") ?? from;
+	const r = host.getBoundingClientRect();
+	const vw = window.innerWidth;
+	const vh = window.innerHeight;
+	const box = {
+		left: Math.max(0, r.left),
+		top: Math.max(0, r.top),
+		right: Math.min(vw, r.right),
+		bottom: Math.min(vh, r.bottom),
+	};
+	// Degenerate (unlaid-out / off-screen host): fall back to the viewport.
+	return box.right - box.left < 50 || box.bottom - box.top < 50
+		? { left: 0, top: 0, right: vw, bottom: vh }
+		: box;
+}
 
 /**
  * Collapsed marker for an HTML comment: a small dot in the text flow, the
- * full note in its tooltip/aria-label, and a click/Enter popover to read or
- * edit it. Plain DOM (not a React node view) so the inline marker adds no
+ * full note in its aria-label, and a popover that opens on hover/focus
+ * (transient) or click/Enter (pinned) to read or edit it. Plain DOM (not a React node view) so the inline marker adds no
  * wrapper elements that could disturb line height.
  */
 function createHtmlCommentView(
@@ -38,21 +62,40 @@ function createHtmlCommentView(
 
 	const label = () => {
 		const text = htmlCommentText(current.attrs.raw as string);
-		marker.title = text;
 		marker.setAttribute("aria-label", `Note: ${text}`);
 	};
 	label();
 
 	let popover: HTMLElement | null = null;
+	let pinned = false;
+	/** Returning focus after Esc must not reopen via the focus handler. */
+	let refocusing = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const clearTimer = () => {
+		clearTimeout(timer);
+		timer = undefined;
+	};
 	const onOutside = (event: MouseEvent) => {
 		const target = event.target as globalThis.Node | null;
 		if (popover?.contains(target) || marker.contains(target)) return;
 		close();
 	};
 	const close = () => {
+		clearTimer();
 		popover?.remove();
 		popover = null;
+		pinned = false;
+		if (closeActive === close) closeActive = null;
 		document.removeEventListener("mousedown", onOutside, true);
+	};
+	const scheduleClose = () => {
+		if (pinned || !popover) return;
+		clearTimer();
+		timer = setTimeout(close, HOVER_CLOSE_MS);
+	};
+	const pin = () => {
+		clearTimer();
+		pinned = true;
 	};
 
 	const save = (text: string, error: HTMLElement): boolean => {
@@ -97,7 +140,10 @@ function createHtmlCommentView(
 		const actions = document.createElement("div");
 		actions.className = "pm-html-comment-actions";
 		const edit = button("Edit", "data-html-comment-edit");
-		edit.addEventListener("click", () => renderEdit(box));
+		edit.addEventListener("click", () => {
+			pin();
+			renderEdit(box);
+		});
 		actions.append(edit);
 		box.append(body, actions);
 	};
@@ -120,7 +166,10 @@ function createHtmlCommentView(
 		saveButton.setAttribute("aria-keyshortcuts", "Meta+Enter");
 		const cancel = button("Cancel", "data-html-comment-cancel");
 		saveButton.addEventListener("click", () => save(textarea.value, error));
-		cancel.addEventListener("click", () => renderRead(box));
+		cancel.addEventListener("click", () => {
+			renderRead(box);
+			place(box);
+		});
 		textarea.addEventListener("input", () => {
 			error.hidden = true;
 		});
@@ -132,11 +181,31 @@ function createHtmlCommentView(
 		});
 		actions.append(saveButton, cancel);
 		box.append(textarea, error, actions);
+		place(box);
 		textarea.focus();
 	};
 
-	const open = () => {
-		if (popover) return;
+	const place = (box: HTMLElement) => {
+		const p = placeNotePopover(
+			marker.getBoundingClientRect(),
+			{ width: box.offsetWidth, height: box.offsetHeight },
+			visibleBounds(marker),
+		);
+		box.dataset.placement = p.placement;
+		box.style.insetBlockStart = `${p.top + window.scrollY}px`;
+		box.style.insetInlineStart = `${p.left + window.scrollX}px`;
+	};
+
+	/** `pinnedOpen`: click/Enter (focus moves in, stays until dismissed). */
+	const open = (pinnedOpen: boolean) => {
+		clearTimer();
+		if (pinnedOpen) pinned = true;
+		if (popover) {
+			if (pinnedOpen) popover.querySelector<HTMLElement>("button")?.focus();
+			return;
+		}
+		closeActive?.();
+		closeActive = close;
 		const box = document.createElement("div");
 		box.className = "pm-html-comment-popover";
 		box.setAttribute("data-html-comment-popover", "");
@@ -147,30 +216,66 @@ function createHtmlCommentView(
 			event.preventDefault();
 			event.stopPropagation();
 			close();
-			marker.focus();
+			refocusing = true;
+			marker.focus({ preventScroll: true });
+			refocusing = false;
 		});
-		const rect = marker.getBoundingClientRect();
-		box.style.insetBlockStart = `${rect.bottom + window.scrollY + 6}px`;
-		box.style.insetInlineStart = `${Math.max(8, rect.left + window.scrollX - 8)}px`;
+		box.addEventListener("mouseenter", clearTimer);
+		box.addEventListener("mouseleave", scheduleClose);
+		box.addEventListener("focusin", clearTimer);
+		box.addEventListener("focusout", (event) => {
+			const next = event.relatedTarget as globalThis.Node | null;
+			if (!box.contains(next) && next !== marker) scheduleClose();
+		});
 		renderRead(box);
 		document.body.append(box);
 		popover = box;
+		place(box);
 		document.addEventListener("mousedown", onOutside, true);
-		box.querySelector<HTMLElement>("button")?.focus();
+		if (pinnedOpen) box.querySelector<HTMLElement>("button")?.focus();
 	};
 
 	marker.addEventListener("mousedown", (event) => event.preventDefault());
 	marker.addEventListener("click", (event) => {
 		event.preventDefault();
-		popover ? close() : open();
+		if (popover && pinned) close();
+		else open(true);
+	});
+	marker.addEventListener("mouseenter", () => {
+		if (popover) {
+			clearTimer();
+			return;
+		}
+		clearTimer();
+		timer = setTimeout(() => open(false), HOVER_OPEN_MS);
+	});
+	marker.addEventListener("mouseleave", () => {
+		if (popover) scheduleClose();
+		else clearTimer();
+	});
+	// Mouse clicks never focus the marker (mousedown is prevented), so focus
+	// here means keyboard/AT navigation.
+	marker.addEventListener("focus", () => {
+		if (!refocusing) open(false);
+	});
+	marker.addEventListener("blur", (event) => {
+		if (!popover?.contains(event.relatedTarget as globalThis.Node | null)) {
+			scheduleClose();
+		}
 	});
 	marker.addEventListener("keydown", (event) => {
+		if (event.key === "Escape" && popover) {
+			event.preventDefault();
+			event.stopPropagation();
+			close();
+			return;
+		}
 		if (event.key !== "Enter" && event.key !== " ") return;
 		event.preventDefault();
 		event.stopPropagation();
-		open();
+		open(true);
 	});
-	dom.addEventListener(OPEN_EVENT, open);
+	dom.addEventListener(OPEN_EVENT, () => open(true));
 
 	return {
 		dom,
