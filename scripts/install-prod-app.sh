@@ -116,6 +116,15 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 		echo "[prod-app] stamping build for in-app updates (signed DMG release)"
 		BUILDER_ARGS+=(--config.extraMetadata.mdlyAutoUpdate=developer-id)
 	fi
+	# No signing identity (CSC_IDENTITY_AUTO_DISCOVERY=false: the unsigned daily ship and the
+	# release-dmg pre-sign build) => electron-builder falls back to an AD-HOC signature. Ad-hoc plus
+	# hardened runtime (which build/entitlements.mac.plist now enables by default, without
+	# disable-library-validation) makes dyld refuse Electron Framework ("different Team IDs"), so the
+	# app cannot launch. Drop hardened runtime for that case; release-dmg-pro.sh re-signs the DMG
+	# build with the real identity + runtime flag anyway.
+	if [[ "${CSC_IDENTITY_AUTO_DISCOVERY:-}" == "false" ]]; then
+		BUILDER_ARGS+=(--config.mac.hardenedRuntime=false)
+	fi
 	"$PNPM" --filter @hubble.md/desktop exec electron-builder "${BUILDER_ARGS[@]}"
 	fp_after="$(out_fingerprint)"
 	if [[ "$fp_before" != "$fp_after" ]]; then
