@@ -119,6 +119,7 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
+import { readPackageMetadata, resolveUpdateGate } from "./updateGate";
 import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
 	loadZoomFactor,
@@ -168,11 +169,11 @@ type WindowBounds = {
 
 const isDev = !app.isPackaged || process.env.HUBBLE_DESKTOP_FORCE_DEV === "1";
 
-// electron-updater is loaded lazily instead of imported at module load. Auto
-// updates are disabled (supportsAutoUpdates === false), so this dependency is
-// never needed at runtime and is intentionally NOT bundled into the packaged
-// app (see electron.vite.config.ts). Every caller sits behind the
-// supportsAutoUpdates guard, so a packaged build never reaches this import.
+// electron-updater is loaded lazily and only behind the updateGate switch
+// (supportsAutoUpdates), so builds without the stamp never import it. It stays
+// external to the main bundle (see electron.vite.config.ts) and is resolved from
+// app.asar/node_modules, where electron-builder packs it as a production
+// dependency; scripts/check-updater-bundle.mjs verifies that on release builds.
 async function loadAutoUpdater(): Promise<
 	import("electron-updater").AppUpdater
 > {
@@ -191,7 +192,14 @@ const rendererAppUrl = "app://mdly/index.html";
 // __dirname is out/main at runtime, so the renderer lives one level up.
 const rendererDir = path.join(__dirname, "../renderer");
 const updateFeedUrl = process.env.HUBBLE_DESKTOP_UPDATE_URL;
-const supportsAutoUpdates = false;
+// Updates run only in the Developer-ID signed DMG build (stamped at build time
+// by scripts/release-dmg.sh); see updateGate.ts. Everything else stays off.
+const updateGate = resolveUpdateGate({
+	isPackaged: !isDev,
+	isMas: process.mas === true,
+	packageMetadata: readPackageMetadata(app.getAppPath()),
+});
+const supportsAutoUpdates = updateGate.supported;
 const devHttpCacheSizeBytes = 10 * 1024 * 1024;
 // Check every 4 hours after the initial packaged-app update check.
 const updateCheckIntervalMs = 4 * 60 * 60 * 1000;
@@ -259,9 +267,7 @@ let updateState: DesktopUpdateState = {
 	currentVersion: app.getVersion(),
 	availableVersion: null,
 	progressPercent: null,
-	message: supportsAutoUpdates
-		? null
-		: "Automatic updates are disabled for this build.",
+	message: updateGate.message,
 	lastCheckedAt: null,
 };
 const watchers = new Map<string, FSWatcher>();
@@ -1130,7 +1136,7 @@ async function checkForUpdates() {
 	if (!supportsAutoUpdates) {
 		patchUpdateState({
 			status: "idle",
-			message: "Automatic updates are disabled for this build.",
+			message: updateGate.message,
 		});
 		return;
 	}
@@ -1167,9 +1173,21 @@ async function configureAutoUpdates() {
 			url: updateFeedUrl,
 		});
 	}
+	// Only normal GitHub releases (never prereleases) on the default "latest"
+	// channel; the install happens on quit or when the user clicks Restart,
+	// never on its own.
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
+	autoUpdater.allowPrerelease = false;
+	autoUpdater.allowDowngrade = false;
+	console.info(
+		`[updater] enabled, version ${app.getVersion()}, feed ${updateFeedUrl ?? "github tektrg/mdly (releases)"}`,
+	);
+	autoUpdater.on("checking-for-update", () => {
+		console.info("[updater] checking for update");
+	});
 	autoUpdater.on("update-available", (info) => {
+		console.info(`[updater] update available: ${info.version}`);
 		patchUpdateState({
 			status: "downloading",
 			availableVersion: info.version ?? null,
@@ -1179,6 +1197,7 @@ async function configureAutoUpdates() {
 		});
 	});
 	autoUpdater.on("update-not-available", () => {
+		console.info("[updater] no update available");
 		patchUpdateState({
 			status: "up-to-date",
 			availableVersion: null,
@@ -1195,6 +1214,7 @@ async function configureAutoUpdates() {
 		});
 	});
 	autoUpdater.on("update-downloaded", (info) => {
+		console.info(`[updater] update downloaded: ${info.version}`);
 		patchUpdateState({
 			status: "ready",
 			availableVersion: info.version ?? updateState.availableVersion,

@@ -35,8 +35,10 @@ export default defineConfig({
 				// (e.g. the prosemirror-* tree @tiptap/pm resolves through), so
 				// externalizing is not an option even if node_modules were shipped.
 				// Only truly runtime-provided modules stay external: `electron`
-				// itself, Node built-ins, and electron-updater (loaded lazily and
-				// never reached because auto-updates are disabled — see main.ts).
+				// itself, Node built-ins, and electron-updater (a production dependency
+				// that electron-builder packs into app.asar/node_modules; loaded lazily
+				// and only in the stamped signed-DMG build — see main.ts, updateGate.ts;
+				// scripts/check-updater-bundle.mjs verifies it is resolvable).
 				exclude: [
 					"@hubble.md/runtime",
 					"@tailwindcss/browser",

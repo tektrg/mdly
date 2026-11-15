@@ -108,13 +108,27 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 	fi
 	"$PNPM" --filter "@hubble.md/desktop..." --if-present build
 	fp_before="$(out_fingerprint)"
-	"$PNPM" --filter @hubble.md/desktop exec electron-builder --mac --arm64
+	# MDLY_RELEASE_UPDATES=1 (set ONLY by scripts/release-dmg.sh) stamps the app as the
+	# Developer-ID DMG build, the one build allowed to self-update (see
+	# apps/desktop/electron/updateGate.ts). Default: no stamp = updates off.
+	BUILDER_ARGS=(--mac --arm64)
+	if [[ "${MDLY_RELEASE_UPDATES:-0}" == "1" ]]; then
+		echo "[prod-app] stamping build for in-app updates (signed DMG release)"
+		BUILDER_ARGS+=(--config.extraMetadata.mdlyAutoUpdate=developer-id)
+	fi
+	"$PNPM" --filter @hubble.md/desktop exec electron-builder "${BUILDER_ARGS[@]}"
 	fp_after="$(out_fingerprint)"
 	if [[ "$fp_before" != "$fp_after" ]]; then
 		echo "[prod-app] BUILD FAILED: apps/desktop/out changed while electron-builder packed it (a dev watcher or another build wrote into it). Stop it and rebuild." >&2
 		exit 1
 	fi
 	asar_check "$RELEASE_APP" || { echo "[prod-app] BUILD FAILED: freshly built app.asar is corrupt" >&2; exit 1; }
+	# The stamp must match the intent: present for a release build, absent otherwise.
+	if [[ -n "$NODE_BIN" ]]; then
+		"$NODE_BIN" "$SCRIPT_DIR/check-updater-bundle.mjs" "$RELEASE_APP/Contents/Resources/app.asar" \
+			"$([[ "${MDLY_RELEASE_UPDATES:-0}" == 1 ]] && echo on || echo off)" \
+			|| { echo "[prod-app] BUILD FAILED: update stamp / updater bundle check" >&2; exit 1; }
+	fi
 	shasum -a 256 "$RELEASE_APP/Contents/Resources/app.asar" | cut -d' ' -f1 >"$RELEASE_APP/../app.asar.sha256"
 fi
 

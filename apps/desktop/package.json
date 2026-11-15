@@ -1,7 +1,7 @@
 {
 	"name": "@hubble.md/desktop",
 	"private": true,
-	"version": "0.1.13",
+	"version": "0.1.14",
 	"description": "Desktop app for mdly",
 	"license": "MIT",
 	"author": "tektrg",

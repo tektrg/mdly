@@ -11,8 +11,9 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Runtime-provided modules allowed to stay external. electron-updater is
- * verified present in the packed app.asar node_modules and is only lazily
- * imported (auto-update is disabled). */
+ * a production dependency packed into app.asar node_modules (verified for release
+ * builds by scripts/check-updater-bundle.mjs) and is only lazily imported, behind
+ * the build-time update stamp. */
 export const ALLOWED_PACKAGES = new Set(["electron", "electron-updater"]);
 
 const BUILTINS = new Set(builtinModules);
