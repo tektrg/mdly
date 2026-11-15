@@ -20,6 +20,7 @@ pnpm-debug.log*
 # build outputs
 dist/
 build/
+!apps/desktop/build/
 out/
 /release/
 apps/*/release/
