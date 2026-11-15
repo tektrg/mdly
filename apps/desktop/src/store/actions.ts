@@ -28,6 +28,7 @@ import {
 import type {
 	ContrastPreference,
 	EditorFontPreference,
+	HeadingFontPreference,
 	ThemePreference,
 } from "../lib/theme";
 import { closeDocumentToTable } from "./closeDocument";
@@ -57,6 +58,7 @@ import {
 	editorFontPreferenceStore,
 	emptyDoc,
 	type FileEntry,
+	headingFontPreferenceStore,
 	isInWorkspace,
 	LOADING_DELAY_MS,
 	MAX_RECENT,
@@ -408,6 +410,12 @@ export function setEditorFontPreference(
 	editorFontPreference: EditorFontPreference,
 ) {
 	editorFontPreferenceStore.set(editorFontPreference);
+}
+
+export function setHeadingFontPreference(
+	headingFontPreference: HeadingFontPreference,
+) {
+	headingFontPreferenceStore.set(headingFontPreference);
 }
 
 export function setShowIgnoredWorkspaceFiles(

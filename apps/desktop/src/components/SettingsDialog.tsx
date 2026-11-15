@@ -11,6 +11,8 @@ import {
 	CONTRAST_PREFERENCES,
 	type ContrastPreference,
 	type EditorFontPreference,
+	HEADING_FONT_OPTIONS,
+	isHeadingFontPreference,
 	SYSTEM_EDITOR_FONT_PREFERENCE,
 	THEME_PREFERENCES,
 	type ThemePreference,
@@ -18,6 +20,7 @@ import {
 import {
 	setContrastPreference,
 	setEditorFontPreference,
+	setHeadingFontPreference,
 	setSourceRetentionPreference,
 	setThemePreference,
 } from "../store/actions";
@@ -25,6 +28,7 @@ import type { SourceRetentionPreference } from "../store/persistence";
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
+	headingFontPreferenceStore,
 	sourceRetentionPreferenceStore,
 	themePreferenceStore,
 	workspaceStore,
@@ -167,6 +171,7 @@ export function AppearanceSettings() {
 	const themePreference = useStoreValue(themePreferenceStore);
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
+	const headingFontPreference = useStoreValue(headingFontPreferenceStore);
 	const contrastLabel = contrastPreferenceLabels[contrastPreference];
 	const {
 		fontFamilies,
@@ -255,6 +260,27 @@ export function AppearanceSettings() {
 						{fontFamilies.map((fontFamily) => (
 							<option key={fontFamily} value={fontFamily}>
 								{fontFamily}
+							</option>
+						))}
+					</select>
+				</label>
+				<label className="flex min-w-64 flex-col gap-1.5">
+					<span className="text-[11px] font-medium text-muted-foreground">
+						Heading font
+					</span>
+					<select
+						className="h-8 w-64 rounded-full bg-mdly-control px-2 text-[11px] text-foreground outline-hidden transition-[border-color,box-shadow] duration-[var(--default-transition-duration)] ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20"
+						onChange={(event) => {
+							const value = event.currentTarget.value;
+							if (isHeadingFontPreference(value)) {
+								setHeadingFontPreference(value);
+							}
+						}}
+						value={headingFontPreference}
+					>
+						{HEADING_FONT_OPTIONS.map((option) => (
+							<option key={option.id} value={option.id}>
+								{option.label}
 							</option>
 						))}
 					</select>

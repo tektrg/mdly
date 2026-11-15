@@ -2,6 +2,19 @@ export const THEME_PREFERENCES = ["system", "light", "dark"] as const;
 export const CONTRAST_PREFERENCES = ["soft", "standard", "crisp"] as const;
 export const SYSTEM_EDITOR_FONT_PREFERENCE = "system";
 
+/**
+ * Heading font choices. To add one: add an entry here, a matching
+ * `[data-heading-font="<id>"]` block in workspace-kit's EditorView.css, and
+ * (if it ships a file) its @font-face in src/index.css.
+ */
+export const HEADING_FONT_OPTIONS = [
+	{ id: "default", label: "Default" },
+	{ id: "instrument-serif", label: "Instrument Serif" },
+	{ id: "system-serif", label: "System serif" },
+] as const;
+export const DEFAULT_HEADING_FONT_PREFERENCE = "default";
+
+export type HeadingFontPreference = (typeof HEADING_FONT_OPTIONS)[number]["id"];
 export type ThemePreference = (typeof THEME_PREFERENCES)[number];
 export type ContrastPreference = (typeof CONTRAST_PREFERENCES)[number];
 export type EditorFontPreference = string;
@@ -25,6 +38,12 @@ export function isContrastPreference(
 	value: unknown,
 ): value is ContrastPreference {
 	return value === "soft" || value === "standard" || value === "crisp";
+}
+
+export function isHeadingFontPreference(
+	value: unknown,
+): value is HeadingFontPreference {
+	return HEADING_FONT_OPTIONS.some((option) => option.id === value);
 }
 
 export function isEditorFontPreference(
@@ -104,11 +123,22 @@ export function readStoredEditorFontPreference(
 	);
 }
 
+export function readStoredHeadingFontPreference(
+	storageKey: string,
+	storage: Pick<Storage, "getItem"> | null = safeLocalStorage(),
+): HeadingFontPreference {
+	const ui = readStoredUi(storageKey, storage);
+	return isHeadingFontPreference(ui?.headingFontPreference)
+		? ui.headingFontPreference
+		: DEFAULT_HEADING_FONT_PREFERENCE;
+}
+
 export function applyStoredAppearancePreferences(storageKey: string) {
 	if (typeof document === "undefined") return;
 	applyThemePreference(readStoredThemePreference(storageKey));
 	applyContrastPreference(readStoredContrastPreference(storageKey));
 	applyEditorFontPreference(readStoredEditorFontPreference(storageKey));
+	applyHeadingFontPreference(readStoredHeadingFontPreference(storageKey));
 }
 
 export function applyThemePreference(preference: ThemePreference) {
@@ -143,6 +173,16 @@ export function applyEditorFontPreference(
 		"--editor-font-family",
 		`${quoteCssFontFamily(fontFamily)}, ${SYSTEM_EDITOR_FONT_FAMILY}`,
 	);
+}
+
+/** The editor stylesheet keys heading typography off `data-heading-font`. */
+export function applyHeadingFontPreference(
+	preference: HeadingFontPreference,
+	root: HTMLElement = document.documentElement,
+) {
+	root.dataset.headingFont = isHeadingFontPreference(preference)
+		? preference
+		: DEFAULT_HEADING_FONT_PREFERENCE;
 }
 
 function quoteCssFontFamily(fontFamily: string) {
@@ -204,6 +244,7 @@ function readStoredUi(
 				themePreference?: unknown;
 				contrastPreference?: unknown;
 				editorFontPreference?: unknown;
+				headingFontPreference?: unknown;
 			};
 		};
 		return parsed.ui ?? null;

@@ -8,8 +8,11 @@ import {
 } from "../documentTable/properties/documentViews";
 import {
 	type ContrastPreference,
+	DEFAULT_HEADING_FONT_PREFERENCE,
 	type EditorFontPreference,
+	type HeadingFontPreference,
 	isContrastPreference,
+	isHeadingFontPreference,
 	isThemePreference,
 	normalizeEditorFontPreference,
 	SYSTEM_EDITOR_FONT_PREFERENCE,
@@ -144,6 +147,7 @@ type UiState = {
 	themePreference: ThemePreference;
 	contrastPreference: ContrastPreference;
 	editorFontPreference: EditorFontPreference;
+	headingFontPreference: HeadingFontPreference;
 	showIgnoredWorkspaceFiles: boolean;
 	sourceRetentionPreference: SourceRetentionPreference;
 };
@@ -173,6 +177,7 @@ type Persisted = {
 		themePreference?: unknown;
 		contrastPreference?: unknown;
 		editorFontPreference?: unknown;
+		headingFontPreference?: unknown;
 		showIgnoredWorkspaceFiles?: boolean;
 		sourceRetentionPreference?: unknown;
 	};
@@ -366,6 +371,9 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 			? ui.contrastPreference
 			: "standard",
 		editorFontPreference,
+		headingFontPreference: isHeadingFontPreference(ui?.headingFontPreference)
+			? ui.headingFontPreference
+			: DEFAULT_HEADING_FONT_PREFERENCE,
 		showIgnoredWorkspaceFiles: ui?.showIgnoredWorkspaceFiles === true,
 		sourceRetentionPreference: isSourceRetentionPreference(
 			ui?.sourceRetentionPreference,
@@ -414,6 +422,7 @@ function serializeUi(ui: UiState): NonNullable<Persisted["ui"]> {
 		themePreference: ui.themePreference,
 		contrastPreference: ui.contrastPreference,
 		editorFontPreference: ui.editorFontPreference,
+		headingFontPreference: ui.headingFontPreference,
 		showIgnoredWorkspaceFiles: ui.showIgnoredWorkspaceFiles,
 		sourceRetentionPreference: ui.sourceRetentionPreference,
 	};

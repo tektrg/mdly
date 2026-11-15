@@ -20,6 +20,33 @@ describe("desktop state persistence", () => {
 		expect(getInitialState().ui.editorFontPreference).toBe("Fredoka");
 	});
 
+	it("defaults the heading font for existing users and rejects unknown values", () => {
+		vi.stubGlobal("localStorage", { getItem: () => null });
+		expect(getInitialState().ui.headingFontPreference).toBe("default");
+
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({ ui: { headingFontPreference: "Comic Sans" } })
+					: null,
+		});
+		expect(getInitialState().ui.headingFontPreference).toBe("default");
+	});
+
+	it("persists the heading font preference across a round trip", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({
+							ui: { headingFontPreference: "instrument-serif" },
+						})
+					: null,
+		});
+		const state = getInitialState();
+		expect(state.ui.headingFontPreference).toBe("instrument-serif");
+		expect(serialize(state).ui?.headingFontPreference).toBe("instrument-serif");
+	});
+
 	it("hydrates the ignored-files sidebar preference when explicitly enabled", () => {
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) =>

@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyContrastPreference,
 	applyEditorFontPreference,
+	applyHeadingFontPreference,
 	applyResolvedTheme,
+	HEADING_FONT_OPTIONS,
 	readStoredContrastPreference,
 	readStoredEditorFontPreference,
+	readStoredHeadingFontPreference,
 	readStoredThemePreference,
 	resolveThemePreference,
 	syncThemePreference,
@@ -17,6 +20,7 @@ describe("theme preference", () => {
 		document.documentElement.removeAttribute("style");
 		document.documentElement.removeAttribute("data-contrast");
 		document.documentElement.removeAttribute("data-editor-font");
+		document.documentElement.removeAttribute("data-heading-font");
 		vi.unstubAllGlobals();
 	});
 
@@ -138,6 +142,48 @@ describe("theme preference", () => {
 		expect(
 			document.documentElement.style.getPropertyValue("--editor-font-family"),
 		).toBe("");
+	});
+
+	it("reads only supported persisted heading font preferences", () => {
+		const read = (ui: unknown) =>
+			readStoredHeadingFontPreference("hubble", {
+				getItem: () => JSON.stringify({ ui }),
+			});
+		expect(read({ headingFontPreference: "instrument-serif" })).toBe(
+			"instrument-serif",
+		);
+		expect(read({ headingFontPreference: "system-serif" })).toBe(
+			"system-serif",
+		);
+		// Existing users (no saved value) and bad values keep the current look.
+		expect(read({})).toBe("default");
+		expect(read({ headingFontPreference: "Papyrus" })).toBe("default");
+		expect(
+			readStoredHeadingFontPreference("hubble", { getItem: () => "{not-json" }),
+		).toBe("default");
+	});
+
+	it("offers Default first and unique option ids", () => {
+		expect(HEADING_FONT_OPTIONS[0].id).toBe("default");
+		const ids = HEADING_FONT_OPTIONS.map((option) => option.id);
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(ids).toContain("instrument-serif");
+	});
+
+	it("applies the heading font preference to the root element", () => {
+		applyHeadingFontPreference("instrument-serif");
+		expect(document.documentElement.dataset.headingFont).toBe(
+			"instrument-serif",
+		);
+
+		applyHeadingFontPreference("system-serif");
+		expect(document.documentElement.dataset.headingFont).toBe("system-serif");
+
+		applyHeadingFontPreference("default");
+		expect(document.documentElement.dataset.headingFont).toBe("default");
+
+		applyHeadingFontPreference("bogus" as never);
+		expect(document.documentElement.dataset.headingFont).toBe("default");
 	});
 
 	it("keeps system preference synced to OS color-scheme changes", () => {

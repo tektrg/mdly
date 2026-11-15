@@ -170,6 +170,9 @@ export const switcherOpenStore = uiStore.select("isSwitcherOpen");
 export const themePreferenceStore = uiStore.select("themePreference");
 export const contrastPreferenceStore = uiStore.select("contrastPreference");
 export const editorFontPreferenceStore = uiStore.select("editorFontPreference");
+export const headingFontPreferenceStore = uiStore.select(
+	"headingFontPreference",
+);
 export const showIgnoredWorkspaceFilesStore = uiStore.select(
 	"showIgnoredWorkspaceFiles",
 );

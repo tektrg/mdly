@@ -51,6 +51,7 @@ import { hasHubbleSkillsInstalled } from "./lib/hubbleSkills";
 import {
 	applyContrastPreference,
 	applyEditorFontPreference,
+	applyHeadingFontPreference,
 	syncThemePreference,
 } from "./lib/theme";
 import { notionBrowserUrlForMarkdown } from "./notion/notionBrowserUrl";
@@ -82,6 +83,7 @@ import {
 import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
+	headingFontPreferenceStore,
 	requestedPathStore,
 	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
@@ -188,6 +190,7 @@ function App() {
 	const themePreference = useStoreValue(themePreferenceStore);
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
+	const headingFontPreference = useStoreValue(headingFontPreferenceStore);
 	const hasWorkspace = workspacePath !== null;
 	// Strict single-file mode: a document open with no workspace. The shell
 	// hides the sidebar and the table/list so only that file is visible.
@@ -305,6 +308,10 @@ function App() {
 	useEffect(() => {
 		applyEditorFontPreference(editorFontPreference);
 	}, [editorFontPreference]);
+
+	useEffect(() => {
+		applyHeadingFontPreference(headingFontPreference);
+	}, [headingFontPreference]);
 
 	const openSettings = useCallback(() => {
 		setSettingsOpen(true);
