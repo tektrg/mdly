@@ -292,7 +292,12 @@ export function DocumentRowList({
 	const navDefaults = useMemo(() => defaultExpandedIds(tree), [tree]);
 	const expandedIds = useMemo(() => {
 		const merged = new Set<string>();
-		for (const id of collectGroupIds(tree)) {
+		// The Pinned section is not a tree node, so `collectGroupIds` never
+		// lists it; without this its stored "open" was ignored and a click did
+		// nothing. It defaults closed.
+		const ids = collectGroupIds(tree);
+		ids.add(PINNED_GROUP_ID);
+		for (const id of ids) {
 			if (isNavGroupExpanded(groupOverrides, id, navDefaults.has(id)))
 				merged.add(id);
 		}

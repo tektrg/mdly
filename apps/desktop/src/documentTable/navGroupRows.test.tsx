@@ -160,6 +160,59 @@ describe("nav group rows (R2)", () => {
 		expect(docNames().some((text) => text?.includes("beta"))).toBe(false);
 	});
 
+	describe("Pinned section", () => {
+		const pinnedHeader = () =>
+			container.querySelector<HTMLElement>('[data-group-id="__pinned__"]');
+		const pinnedExpanded = () =>
+			pinnedHeader()?.querySelector("button")?.getAttribute("aria-expanded");
+		const alphaRows = () =>
+			docNames().filter((text) => text?.includes("alpha")).length;
+
+		afterEach(() => {
+			workspaceStore.set((state) => ({ ...state, pinnedNotes: [] }));
+		});
+
+		it("opens when its header is clicked, and closes again", async () => {
+			setWorkspace(WORKSPACE);
+			workspaceStore.set((state) => ({
+				...state,
+				pinnedNotes: ["/ws/alpha.md"],
+			}));
+			renderList(viewWith({ groupBy: "folder" }));
+			expect(pinnedExpanded()).toBe("false");
+			const before = alphaRows();
+
+			await act(async () => {
+				pinnedHeader()?.querySelector("button")?.click();
+			});
+			expect(pinnedExpanded()).toBe("true");
+			// The pinned doc now also renders under the section.
+			expect(alphaRows()).toBe(before + 1);
+
+			await act(async () => {
+				pinnedHeader()?.querySelector("button")?.click();
+			});
+			expect(pinnedExpanded()).toBe("false");
+			expect(alphaRows()).toBe(before);
+		});
+
+		it("stays open after a remount", async () => {
+			setWorkspace(WORKSPACE);
+			workspaceStore.set((state) => ({
+				...state,
+				pinnedNotes: ["/ws/alpha.md"],
+			}));
+			renderList(viewWith({ groupBy: "folder" }));
+			await act(async () => {
+				pinnedHeader()?.querySelector("button")?.click();
+			});
+			act(() => root.unmount());
+			root = createRoot(container);
+			renderList(viewWith({ groupBy: "folder" }));
+			expect(pinnedExpanded()).toBe("true");
+		});
+	});
+
 	it("tag mode renders Untagged last and collapsed by default", () => {
 		setWorkspace(WORKSPACE);
 		beginTagScan(WORKSPACE);
