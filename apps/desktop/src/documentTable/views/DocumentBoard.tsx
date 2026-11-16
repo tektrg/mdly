@@ -232,7 +232,6 @@ const BoardColumnView = memo(function BoardColumnView({
 						cardProperties={cardProperties}
 						fieldById={fieldById}
 						canDrag={cardsDraggable}
-						compact={compact}
 						actions={cardActions}
 					/>
 				))}
@@ -501,7 +500,6 @@ export function DocumentBoard({
 	onOpenDocument,
 	rowMenu,
 	compact = false,
-	cardPropertyLimit,
 }: {
 	rows: DocumentTableRow[];
 	fields: readonly PropertyField[];
@@ -513,10 +511,8 @@ export function DocumentBoard({
 	onOpenDocument: (row: DocumentTableRow) => void;
 	/** File actions shared with the table (copy path, reveal). */
 	rowMenu?: DocumentRowListMenu;
-	/** Collapsed beside an open note: no toolbar, narrow columns, title-only cards. */
+	/** Collapsed beside an open note: no toolbar, narrow columns, full cards. */
 	compact?: boolean;
-	/** Max card properties shown; grows with the pane width like table columns. */
-	cardPropertyLimit?: number;
 }) {
 	const [limits, setLimits] = useState<Record<string, number>>({});
 	const [pending, setPending] = useState<PendingValues>(new Map());
@@ -571,16 +567,10 @@ export function DocumentBoard({
 	);
 	const cardProperties = useMemo(
 		() =>
-			(boardSettings.cardProperties ?? propertyColumns)
-				.filter((id) => id !== field?.id && fieldById.has(id))
-				.slice(0, cardPropertyLimit),
-		[
-			boardSettings.cardProperties,
-			propertyColumns,
-			field,
-			fieldById,
-			cardPropertyLimit,
-		],
+			(boardSettings.cardProperties ?? propertyColumns).filter(
+				(id) => id !== field?.id && fieldById.has(id),
+			),
+		[boardSettings.cardProperties, propertyColumns, field, fieldById],
 	);
 	const titleOf = useCallback(
 		(row: DocumentTableRow) => resolveCardTitle(row, headingByPath[row.path]),

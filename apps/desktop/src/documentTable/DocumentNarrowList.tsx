@@ -20,11 +20,7 @@ import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { FilterEmptyMessage } from "./FilterEmptyMessage";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
-import {
-	boardCardPropertyLimit,
-	columnsForTier,
-	type NavDensityTier,
-} from "./navDensity";
+import { columnsForTier, type NavDensityTier } from "./navDensity";
 import { PEEK_LIST_DEFAULT_WIDTH } from "./peekListWidth";
 import { usePropertyScanStatus } from "./properties/usePropertyModel";
 import { useCurrentDocumentView } from "./useDocumentTableRows";
@@ -233,7 +229,6 @@ export function DocumentNarrowList({
 			{isBoard ? (
 				<DocumentBoard
 					compact
-					cardPropertyLimit={boardCardPropertyLimit(navTier)}
 					rows={rows}
 					fields={propertyFields}
 					boardField={layout.boardField}

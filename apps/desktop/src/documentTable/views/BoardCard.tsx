@@ -135,8 +135,6 @@ export const BoardCard = memo(function BoardCard({
 	cardProperties: readonly PropertyFieldId[];
 	fieldById: ReadonlyMap<PropertyFieldId, PropertyField>;
 	canDrag: boolean;
-	/** Narrow board beside an open note (properties capped by the board). */
-	compact?: boolean;
 	actions: BoardCardActions;
 }) {
 	return (
@@ -167,7 +165,7 @@ export const BoardCard = memo(function BoardCard({
 		>
 			<div className="flex min-w-0 flex-1 flex-col items-start gap-1">
 				<span
-					className={cn("w-full break-words", "line-clamp-2")}
+					className={"w-full break-words line-clamp-2"}
 					title={title}
 				>
 					{title}
