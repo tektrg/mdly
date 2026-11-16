@@ -110,8 +110,8 @@
 	margin-block: 0;
 }
 
-/* Rhythm rules: equal specificity, source order resolves overlaps — the more
-   specific relationship (figure, heading) is declared later. */
+/* Rhythm rules: equal specificity (block lists sit in :where), so source
+   order resolves overlaps — later relationships win: figure, then heading. */
 [data-hubble-editor] .ProseMirror > * + * {
 	margin-block-start: var(--rhythm-block);
 }
@@ -119,7 +119,7 @@
 [data-hubble-editor]
 	.ProseMirror
 	> *
-	+ :is(
+	+ :where(
 		pre,
 		hr,
 		.react-renderer.node-codeBlock,
@@ -131,7 +131,7 @@
 	),
 [data-hubble-editor]
 	.ProseMirror
-	> :is(
+	> :where(
 		pre,
 		hr,
 		.react-renderer.node-codeBlock,
