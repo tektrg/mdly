@@ -10,6 +10,7 @@ export const SYSTEM_EDITOR_FONT_PREFERENCE = "system";
 export const HEADING_FONT_OPTIONS = [
 	{ id: "default", label: "Default" },
 	{ id: "instrument-serif", label: "Instrument Serif" },
+	{ id: "fraunces", label: "Fraunces" },
 	{ id: "system-serif", label: "System serif" },
 ] as const;
 export const DEFAULT_HEADING_FONT_PREFERENCE = "default";

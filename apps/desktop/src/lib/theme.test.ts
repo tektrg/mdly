@@ -152,6 +152,7 @@ describe("theme preference", () => {
 		expect(read({ headingFontPreference: "instrument-serif" })).toBe(
 			"instrument-serif",
 		);
+		expect(read({ headingFontPreference: "fraunces" })).toBe("fraunces");
 		expect(read({ headingFontPreference: "system-serif" })).toBe(
 			"system-serif",
 		);
@@ -168,6 +169,7 @@ describe("theme preference", () => {
 		const ids = HEADING_FONT_OPTIONS.map((option) => option.id);
 		expect(new Set(ids).size).toBe(ids.length);
 		expect(ids).toContain("instrument-serif");
+		expect(ids).toContain("fraunces");
 	});
 
 	it("applies the heading font preference to the root element", () => {

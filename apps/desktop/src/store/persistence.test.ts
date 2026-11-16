@@ -47,6 +47,18 @@ describe("desktop state persistence", () => {
 		expect(serialize(state).ui?.headingFontPreference).toBe("instrument-serif");
 	});
 
+	it("persists the Fraunces heading font across a round trip", () => {
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY
+					? JSON.stringify({ ui: { headingFontPreference: "fraunces" } })
+					: null,
+		});
+		const state = getInitialState();
+		expect(state.ui.headingFontPreference).toBe("fraunces");
+		expect(serialize(state).ui?.headingFontPreference).toBe("fraunces");
+	});
+
 	it("hydrates the ignored-files sidebar preference when explicitly enabled", () => {
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) =>

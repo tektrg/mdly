@@ -137,3 +137,5 @@ mdly is licensed under the [MIT License](./LICENSE). The original Hubble.md copy
 ### Third-party fonts
 
 The optional "Instrument Serif" heading font (Settings > Appearance > Heading font) is bundled locally from [`@fontsource/instrument-serif`](https://fontsource.org/fonts/instrument-serif), copyright 2022 The Instrument Serif Project Authors, under the [SIL Open Font License 1.1](./apps/desktop/public/fonts/instrument-serif/OFL.txt). The licence text ships with the font files.
+
+The optional "Fraunces" heading font is bundled locally (variable, Latin subset), copyright 2018 The Fraunces Project Authors (Undercase Type), under the [SIL Open Font License 1.1](./apps/desktop/public/fonts/fraunces/OFL.txt). The licence text ships with the font file.

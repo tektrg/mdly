@@ -202,6 +202,24 @@
 	font-weight: inherit;
 }
 
+/* Fraunces is bundled at wght 300-400 only: headings use 400 (bold marks
+   inherit) so the browser never fakes a bold. */
+:root[data-heading-font="fraunces"]
+	[data-hubble-editor]
+	.ProseMirror
+	:is(h1, h2, h3, h4, h5, h6) {
+	font-family: "Fraunces", Georgia, serif;
+	font-weight: 400;
+}
+
+:root[data-heading-font="fraunces"]
+	[data-hubble-editor]
+	.ProseMirror
+	:is(h1, h2, h3, h4, h5, h6)
+	:is(strong, b) {
+	font-weight: inherit;
+}
+
 [data-hubble-editor] .ProseMirror ul {
 	list-style-type: disc;
 }
