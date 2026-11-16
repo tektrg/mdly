@@ -147,7 +147,9 @@ const BoardColumnView = memo(function BoardColumnView({
 			{...(acceptsCards ? dropHandlers : {})}
 			className={cn(
 				"flex h-full shrink-0 flex-col",
-				compact ? "w-44" : "w-64",
+				// Beside an open note, columns keep ~80% of their width (w-52 vs w-64)
+				// and the board scrolls sideways instead of squashing cards.
+				compact ? "w-52" : "w-64",
 				" rounded-mdly-control bg-foreground/[0.04]",
 				isDropTarget && "ring-[3px] ring-mdly-ink/20",
 				isColumnDropTarget && "bg-mdly-selected",
@@ -499,6 +501,7 @@ export function DocumentBoard({
 	onOpenDocument,
 	rowMenu,
 	compact = false,
+	cardPropertyLimit,
 }: {
 	rows: DocumentTableRow[];
 	fields: readonly PropertyField[];
@@ -512,6 +515,8 @@ export function DocumentBoard({
 	rowMenu?: DocumentRowListMenu;
 	/** Collapsed beside an open note: no toolbar, narrow columns, title-only cards. */
 	compact?: boolean;
+	/** Max card properties shown; grows with the pane width like table columns. */
+	cardPropertyLimit?: number;
 }) {
 	const [limits, setLimits] = useState<Record<string, number>>({});
 	const [pending, setPending] = useState<PendingValues>(new Map());
@@ -566,10 +571,16 @@ export function DocumentBoard({
 	);
 	const cardProperties = useMemo(
 		() =>
-			(boardSettings.cardProperties ?? propertyColumns).filter(
-				(id) => id !== field?.id && fieldById.has(id),
-			),
-		[boardSettings.cardProperties, propertyColumns, field, fieldById],
+			(boardSettings.cardProperties ?? propertyColumns)
+				.filter((id) => id !== field?.id && fieldById.has(id))
+				.slice(0, cardPropertyLimit),
+		[
+			boardSettings.cardProperties,
+			propertyColumns,
+			field,
+			fieldById,
+			cardPropertyLimit,
+		],
 	);
 	const titleOf = useCallback(
 		(row: DocumentTableRow) => resolveCardTitle(row, headingByPath[row.path]),

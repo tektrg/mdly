@@ -5,6 +5,7 @@ import {
 	WINDOW_MIN_WIDTH,
 } from "../lib/navLayout";
 import {
+	boardCardPropertyLimit,
 	COLUMN_PRIORITY,
 	clampPeekListWidth,
 	columnsForTier,
@@ -145,5 +146,14 @@ describe("clampPeekListWidth (R13, EC-28..EC-31, EC-69)", () => {
 		expect(split.outcome).toBe("clamped");
 		expect(split.listWidth).toBe(NAV_RAIL_MIN_WIDTH);
 		expect(split.documentWidth).toBe(PEEK_DOCUMENT_MIN_WIDTH);
+	});
+});
+
+describe("boardCardPropertyLimit", () => {
+	it("reveals more card properties as the tier widens, like table columns", () => {
+		expect(boardCardPropertyLimit("rail")).toBe(0);
+		expect(boardCardPropertyLimit("list")).toBe(1);
+		expect(boardCardPropertyLimit("card")).toBe(2);
+		expect(boardCardPropertyLimit("table")).toBeUndefined();
 	});
 });

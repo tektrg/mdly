@@ -62,6 +62,26 @@ export function columnsForTier(tier: NavDensityTier): NavColumn[] {
 	return COLUMN_PRIORITY.slice(0, rung?.columnCount ?? 1);
 }
 
+/**
+ * How many board-card properties a tier shows beside an open note: the board's
+ * twin of {@link columnsForTier} — Rail is title-only, and each wider tier
+ * reveals more, until Table shows them all (`undefined` = no cap).
+ */
+export function boardCardPropertyLimit(
+	tier: NavDensityTier,
+): number | undefined {
+	switch (tier) {
+		case "rail":
+			return 0;
+		case "list":
+			return 1;
+		case "card":
+			return 2;
+		case "table":
+			return undefined;
+	}
+}
+
 /** A10: indentation grows per level up to this depth, then stops. */
 export const NAV_INDENT_MAX_LEVELS = 4;
 

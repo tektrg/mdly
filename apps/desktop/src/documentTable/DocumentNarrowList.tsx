@@ -20,7 +20,11 @@ import type { DocumentTableRow, DocumentTableView } from "./documentTableView";
 import { FilterEmptyMessage } from "./FilterEmptyMessage";
 import { NavFooterStrip } from "./NavFooterStrip";
 import { NavListHeader } from "./NavListHeader";
-import { columnsForTier, type NavDensityTier } from "./navDensity";
+import {
+	boardCardPropertyLimit,
+	columnsForTier,
+	type NavDensityTier,
+} from "./navDensity";
 import { PEEK_LIST_DEFAULT_WIDTH } from "./peekListWidth";
 import { usePropertyScanStatus } from "./properties/usePropertyModel";
 import { useCurrentDocumentView } from "./useDocumentTableRows";
@@ -222,8 +226,14 @@ export function DocumentNarrowList({
 				<DocumentFilterInput value={view.filter} onChange={onFilterChange} />
 			</header>
 			{isBoard ? (
+				<div className="shrink-0 px-3">
+					<NavListHeader navTier={navTier} />
+				</div>
+			) : null}
+			{isBoard ? (
 				<DocumentBoard
 					compact
+					cardPropertyLimit={boardCardPropertyLimit(navTier)}
 					rows={rows}
 					fields={propertyFields}
 					boardField={layout.boardField}

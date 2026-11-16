@@ -1,4 +1,16 @@
 import { Select } from "@base-ui/react/select";
+import { type FocusEvent, useEffect, useRef, useState } from "react";
+import MingcuteAddLine from "~icons/mingcute/add-line";
+import MingcuteCalendarLine from "~icons/mingcute/calendar-line";
+import MingcuteCheckLine from "~icons/mingcute/check-line";
+import MingcuteCloseLine from "~icons/mingcute/close-line";
+import MingcuteDeleteLine from "~icons/mingcute/delete-line";
+import MingcuteDownLine from "~icons/mingcute/down-line";
+import MingcuteHashtagLine from "~icons/mingcute/hashtag-line";
+import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
+import MingcuteMore2Line from "~icons/mingcute/more-2-line";
+import MingcuteTextLine from "~icons/mingcute/text-line";
+import MingcuteUpLine from "~icons/mingcute/up-line";
 import {
 	detectFilePropertyType,
 	type FileProperty,
@@ -8,18 +20,8 @@ import {
 	parseMarkdownFrontMatter,
 	serializeFrontMatter,
 } from "../engine/index.js";
-import { type FocusEvent, useEffect, useRef, useState } from "react";
-import MingcuteAddLine from "~icons/mingcute/add-line";
-import MingcuteCalendarLine from "~icons/mingcute/calendar-line";
-import MingcuteCheckLine from "~icons/mingcute/check-line";
-import MingcuteCloseLine from "~icons/mingcute/close-line";
-import MingcuteDeleteLine from "~icons/mingcute/delete-line";
-import MingcuteHashtagLine from "~icons/mingcute/hashtag-line";
-import MingcuteListCheckLine from "~icons/mingcute/list-check-line";
-import MingcuteMore2Line from "~icons/mingcute/more-2-line";
-import MingcuteTextLine from "~icons/mingcute/text-line";
-import { cn } from "../lib/utils";
 import { usePortalContainer } from "../lib/portalContainer";
+import { cn } from "../lib/utils";
 import { Button } from "../primitives/button";
 import { Input } from "../primitives/input";
 
@@ -47,6 +49,24 @@ export function frontMatterStateFromMarkdown(
 	return { type: "none", properties: [] };
 }
 
+/** Properties shown above a document before "Show N more". */
+export const COLLAPSED_PROPERTY_LIMIT = 3;
+
+/**
+ * How many properties the panel renders, and how many hide behind the toggle.
+ * Collapsed shows at most {@link COLLAPSED_PROPERTY_LIMIT}; a list that fits
+ * never offers a toggle.
+ */
+export function collapsedPropertyView(
+	total: number,
+	expanded: boolean,
+	limit = COLLAPSED_PROPERTY_LIMIT,
+): { visible: number; hidden: number; canToggle: boolean } {
+	const canToggle = total > limit;
+	const visible = expanded || !canToggle ? total : limit;
+	return { visible, hidden: total - visible, canToggle };
+}
+
 export function FilePropertiesPanel({
 	path,
 	state,
@@ -61,6 +81,12 @@ export function FilePropertiesPanel({
 	const addButtonRef = useRef<HTMLButtonElement>(null);
 	const [focusDraftId, setFocusDraftId] = useState<string | null>(null);
 	const properties = state.type === "invalid" ? [] : state.properties;
+	const [expanded, setExpanded] = useState(false);
+	// Find must reach every property, so a search expands the list.
+	const { visible, hidden, canToggle } = collapsedPropertyView(
+		properties.length,
+		expanded || searchActive,
+	);
 
 	if (state.type === "invalid") {
 		return (
@@ -75,7 +101,7 @@ export function FilePropertiesPanel({
 	return (
 		<div className="editorPropertiesPanel" data-find-active={searchActive}>
 			<div className="flex flex-col gap-1.5">
-				{properties.map((property, index) => (
+				{properties.slice(0, visible).map((property, index) => (
 					<PropertyRow
 						key={property.draftId ?? property.key}
 						rowId={property.draftId ?? property.key}
@@ -102,12 +128,32 @@ export function FilePropertiesPanel({
 						}}
 					/>
 				))}
+				{canToggle && !searchActive ? (
+					<button
+						type="button"
+						data-properties-toggle
+						aria-expanded={hidden === 0}
+						className="flex h-7 items-center gap-1 text-start text-muted-foreground text-xs transition-colors hover:text-foreground"
+						onClick={() => setExpanded((value) => !value)}
+					>
+						<span className="inline-flex size-7 items-center justify-center">
+							{hidden === 0 ? (
+								<MingcuteUpLine className="size-3.5" />
+							) : (
+								<MingcuteDownLine className="size-3.5" />
+							)}
+						</span>
+						<span>{hidden === 0 ? "Show less" : `Show ${hidden} more`}</span>
+					</button>
+				) : null}
 				<button
 					ref={addButtonRef}
 					type="button"
 					className="grid h-7 grid-cols-[minmax(7rem,0.75fr)_2fr] items-center gap-2 text-muted-foreground text-xs transition-colors hover:text-foreground"
 					onClick={() => {
 						const draftId = crypto.randomUUID();
+						// The new row lands at the end; it must not be hidden.
+						setExpanded(true);
 						setFocusDraftId(draftId);
 						emitProperties(
 							[

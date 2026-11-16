@@ -128,7 +128,6 @@ export const BoardCard = memo(function BoardCard({
 	cardProperties,
 	fieldById,
 	canDrag,
-	compact = false,
 	actions,
 }: {
 	row: DocumentTableRow;
@@ -136,7 +135,7 @@ export const BoardCard = memo(function BoardCard({
 	cardProperties: readonly PropertyFieldId[];
 	fieldById: ReadonlyMap<PropertyFieldId, PropertyField>;
 	canDrag: boolean;
-	/** Narrow board beside an open note: title only, one line. */
+	/** Narrow board beside an open note (properties capped by the board). */
 	compact?: boolean;
 	actions: BoardCardActions;
 }) {
@@ -163,21 +162,17 @@ export const BoardCard = memo(function BoardCard({
 			className={cn(
 				"group flex w-full min-w-0 items-start gap-1 rounded-mdly-control bg-background px-2 py-1.5 text-sm shadow-[var(--shadow-chip)] outline-hidden transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20",
 				canDrag && "cursor-grab",
-				compact && "py-1 text-xs",
 				row.isActive && "bg-mdly-selected",
 			)}
 		>
 			<div className="flex min-w-0 flex-1 flex-col items-start gap-1">
 				<span
-					className={cn(
-						"w-full break-words",
-						compact ? "line-clamp-1" : "line-clamp-2",
-					)}
+					className={cn("w-full break-words", "line-clamp-2")}
 					title={title}
 				>
 					{title}
 				</span>
-				{(compact ? [] : cardProperties).map((fieldId) => (
+				{cardProperties.map((fieldId) => (
 					<Chip
 						key={fieldId}
 						fieldId={fieldId}
