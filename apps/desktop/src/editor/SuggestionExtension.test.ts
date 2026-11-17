@@ -109,6 +109,25 @@ describe("SuggestionExtension", () => {
 		expect(getSuggestions(editor.state)).toEqual([]);
 	});
 
+	it("a group whose words were all edited away settles as rejected (agent is told)", () => {
+		const { editor, settled } = setup("<p>one two three</p>");
+		suggest(editor, "one two three", "uno two tres", "p1");
+		expect(getSuggestions(editor.state)).toHaveLength(2);
+		const [first] = getSuggestions(editor.state);
+		editor.commands.insertContentAt(first.from + 1, "X");
+		expect(getSuggestions(editor.state)).toHaveLength(1);
+		expect(settled).toEqual([]); // one change still pending
+		const [second] = getSuggestions(editor.state);
+		editor.commands.insertContentAt(second.from + 1, "Y");
+		expect(getSuggestions(editor.state)).toEqual([]);
+		expect(settled).toHaveLength(1);
+		expect(settled[0]).toMatchObject({
+			groupId: "p1",
+			accepted: 0,
+			rejected: 2,
+		});
+	});
+
 	it("next/previous moves the caret to changes", () => {
 		const { editor } = setup("<p>a b c d</p>");
 		suggest(editor, "a b c d", "a B c D");

@@ -399,6 +399,16 @@ function MarkdownEditor({
 				toast.error("An agent suggestion no longer matches the text", {
 					description: proposal.find.slice(0, 80),
 				});
+				// Settle it so the agent hears back and it stops being pending.
+				void desktopApi
+					.agentHookDecision(path, {
+						accepted: false,
+						proposalId: proposal.proposalId,
+						source: "agent",
+						before: proposal.find,
+						after: proposal.replace,
+					})
+					.catch(() => undefined);
 				continue;
 			}
 			liveEditor.commands.addSuggestion({
@@ -409,7 +419,7 @@ function MarkdownEditor({
 				label: proposal.note,
 			});
 		}
-	}, [liveEditor, agentHook.proposals]);
+	}, [liveEditor, agentHook.proposals, path]);
 	const getCurrentMarkdown = useCallback(() => {
 		const viewer = viewerStore.get();
 		return viewer.currentPath === path ? viewer.content : initialMarkdown;

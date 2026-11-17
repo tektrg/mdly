@@ -39,6 +39,8 @@ export interface SuggestionChange {
 export interface SuggestionState {
 	changes: SuggestionChange[];
 	activeId: string | null;
+	/** Changes this transaction dropped because their words were edited away. */
+	dropped?: SuggestionChange[];
 }
 
 export interface GroupSettled {
@@ -157,6 +159,7 @@ export function buildChanges(
 
 function mapChanges(state: SuggestionState, tr: Transaction): SuggestionState {
 	const changes: SuggestionChange[] = [];
+	const dropped: SuggestionChange[] = [];
 	for (const change of state.changes) {
 		const from = tr.mapping.mapResult(change.from, 1);
 		const to = tr.mapping.mapResult(change.to, -1);
@@ -165,15 +168,19 @@ function mapChanges(state: SuggestionState, tr: Transaction): SuggestionState {
 			from: from.pos,
 			to: Math.max(from.pos, to.pos),
 		};
-		if (from.deleted && change.from !== change.to) continue;
-		if (tr.doc.textBetween(mapped.from, mapped.to, "\n") !== change.before)
+		if (
+			(from.deleted && change.from !== change.to) ||
+			tr.doc.textBetween(mapped.from, mapped.to, "\n") !== change.before
+		) {
+			dropped.push(change);
 			continue;
+		}
 		changes.push(mapped);
 	}
 	const activeId = changes.some((c) => c.id === state.activeId)
 		? state.activeId
 		: null;
-	return { changes, activeId };
+	return { changes, activeId, dropped };
 }
 
 function sorted(changes: SuggestionChange[]) {
@@ -231,6 +238,12 @@ export interface SuggestionOptions {
 	onGroupSettled?: (settled: GroupSettled) => void;
 }
 
+type Settle = (
+	before: EditorState,
+	removed: SuggestionChange[],
+	accepted: boolean,
+) => void;
+
 interface Tally {
 	accepted: number;
 	rejected: number;
@@ -258,6 +271,51 @@ declare module "@tiptap/core" {
 	}
 }
 
+function makeSettle(
+	tallies: Map<string, Tally>,
+	options: SuggestionOptions,
+): Settle {
+	return (
+		before: EditorState,
+		removed: SuggestionChange[],
+		accepted: boolean,
+	) => {
+		const removedIds = new Set(removed.map((c) => c.id));
+		const remaining = getSuggestions(before).filter(
+			(c) => !removedIds.has(c.id),
+		);
+		for (const change of removed) {
+			const tally = tallies.get(change.groupId) ?? {
+				accepted: 0,
+				rejected: 0,
+				before: [],
+				after: [],
+			};
+			if (accepted) tally.accepted++;
+			else tally.rejected++;
+			tally.before.push(change.before);
+			tally.after.push(change.insert);
+			tallies.set(change.groupId, tally);
+		}
+		for (const groupId of new Set(removed.map((c) => c.groupId))) {
+			if (remaining.some((c) => c.groupId === groupId)) continue;
+			const tally = tallies.get(groupId);
+			tallies.delete(groupId);
+			if (!tally) continue;
+			const source =
+				removed.find((c) => c.groupId === groupId)?.source ?? "tool";
+			options.onGroupSettled?.({
+				groupId,
+				source,
+				accepted: tally.accepted,
+				rejected: tally.rejected,
+				before: tally.before.join(" "),
+				after: tally.after.join(" "),
+			});
+		}
+	};
+}
+
 export const SuggestionExtension = Extension.create<
 	SuggestionOptions,
 	{ tallies: Map<string, Tally> }
@@ -279,7 +337,9 @@ export const SuggestionExtension = Extension.create<
 				state: {
 					init: () => ({ changes: [], activeId: null }),
 					apply(tr, value) {
-						let next = tr.docChanged ? mapChanges(value, tr) : value;
+						let next = tr.docChanged
+							? mapChanges(value, tr)
+							: { ...value, dropped: undefined };
 						const meta = tr.getMeta(suggestionKey) as Meta | undefined;
 						if (meta?.kind === "add") {
 							next = {
@@ -293,13 +353,28 @@ export const SuggestionExtension = Extension.create<
 								next.activeId && ids.has(next.activeId)
 									? (changes[0]?.id ?? null)
 									: next.activeId;
-							next = { changes, activeId };
+							// Accepted changes edit their own words; they settle via the command, not as dropped.
+							const dropped = next.dropped?.filter((c) => !ids.has(c.id));
+							next = { changes, activeId, dropped };
 						} else if (meta?.kind === "active") {
 							next = { ...next, activeId: meta.id };
 						}
 						return next;
 					},
 				},
+				// A change edited away still settles (as rejected), so the agent
+				// hears back and the proposal stops being pending.
+				view: () => ({
+					update: (view) => {
+						const dropped = suggestionKey.getState(view.state)?.dropped;
+						if (dropped?.length)
+							makeSettle(this.storage.tallies, this.options)(
+								view.state,
+								dropped,
+								false,
+							);
+					},
+				}),
 				props: {
 					decorations(state) {
 						return decorations(
@@ -326,46 +401,7 @@ export const SuggestionExtension = Extension.create<
 	},
 
 	addCommands() {
-		const settle = (
-			before: EditorState,
-			removed: SuggestionChange[],
-			accepted: boolean,
-		) => {
-			const tallies = this.storage.tallies;
-			const removedIds = new Set(removed.map((c) => c.id));
-			const remaining = getSuggestions(before).filter(
-				(c) => !removedIds.has(c.id),
-			);
-			for (const change of removed) {
-				const tally = tallies.get(change.groupId) ?? {
-					accepted: 0,
-					rejected: 0,
-					before: [],
-					after: [],
-				};
-				if (accepted) tally.accepted++;
-				else tally.rejected++;
-				tally.before.push(change.before);
-				tally.after.push(change.insert);
-				tallies.set(change.groupId, tally);
-			}
-			for (const groupId of new Set(removed.map((c) => c.groupId))) {
-				if (remaining.some((c) => c.groupId === groupId)) continue;
-				const tally = tallies.get(groupId);
-				tallies.delete(groupId);
-				if (!tally) continue;
-				const source =
-					removed.find((c) => c.groupId === groupId)?.source ?? "tool";
-				this.options.onGroupSettled?.({
-					groupId,
-					source,
-					accepted: tally.accepted,
-					rejected: tally.rejected,
-					before: tally.before.join(" "),
-					after: tally.after.join(" "),
-				});
-			}
-		};
+		const settle = makeSettle(this.storage.tallies, this.options);
 		const pick = (state: EditorState, id?: string) => {
 			const all = getSuggestions(state);
 			const wanted = id ?? suggestionKey.getState(state)?.activeId;
