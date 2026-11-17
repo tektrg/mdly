@@ -1257,3 +1257,25 @@
 	background: var(--foreground);
 	color: var(--background);
 }
+
+[data-hubble-editor] .pm-multi-selection {
+	border-radius: 2px;
+	background: var(--selection-bg, rgb(0 122 255 / 25%));
+}
+
+[data-hubble-editor] .pm-multi-caret {
+	display: inline-block;
+	inline-size: 0;
+	block-size: 1.2em;
+	margin-inline: -1px;
+	border-inline-start: 2px solid currentColor;
+	vertical-align: text-bottom;
+	pointer-events: none;
+	animation: pm-multi-caret-blink 1.06s steps(1) infinite;
+}
+
+@keyframes pm-multi-caret-blink {
+	50% {
+		opacity: 0;
+	}
+}

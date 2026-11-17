@@ -55,6 +55,10 @@ import { LinkClickExtension } from "./LinkClickExtension";
 import { LinkCreationGhostExtension } from "./LinkCreationGhostExtension";
 import { LinkPopover, type WikiTarget } from "./LinkPopover";
 import { MermaidBlockViewExtension } from "./MermaidBlockView";
+import {
+	handleMultiSelectionPaste,
+	MultiSelectionExtension,
+} from "./MultiSelectionExtension";
 import { handleMarkdownTextPaste } from "./markdownPaste";
 import { createNotionHtmlBlockViewExtension } from "./NotionHtmlBlockView";
 import { SlashCommandMenu } from "./SlashCommandMenu";
@@ -440,6 +444,7 @@ export function EditorView({
 			}),
 			HubbleCodeBlock,
 			FindReplaceExtension,
+			MultiSelectionExtension,
 			CommentExtension,
 			LinkExtension,
 			SmartLinkExtension,
@@ -506,6 +511,8 @@ export function EditorView({
 			clipboardTextSerializer: (slice) => sliceToMarkdown(slice),
 			handlePaste: (view, event, slice): boolean => {
 				if (editorProps?.handlePaste?.(view, event, slice)) return true;
+				// Multiple selections paste plain text at every caret.
+				if (handleMultiSelectionPaste(view, event)) return true;
 				const currentEditor = editorRef.current;
 				if (!currentEditor) return false;
 				if (onPaste?.(currentEditor, event)) return true;
