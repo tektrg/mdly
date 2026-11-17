@@ -7,7 +7,7 @@
  * - nothing is opened to the network.
  * Keyed by workspace-relative path: a rename starts a fresh stream (known limit).
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -58,9 +58,56 @@ export function hookDir(workspaceRoot: string): string {
 	return path.join(workspaceRoot, ".mdly", "agent-hook");
 }
 
-/** Filename-safe, collision-free key for a relative path. */
+/**
+ * Filename-safe key for a relative path: a short readable slug (for humans
+ * browsing the folder) plus a hash of the full path (for uniqueness), so even
+ * a very long note name stays far below the 255-byte file-name limit.
+ */
 export function docKey(relativePath: string): string {
+	const normalized = relativePath.split(path.sep).join("/");
+	const hash = createHash("sha256")
+		.update(normalized)
+		.digest("hex")
+		.slice(0, 16);
+	const slug = path.posix
+		.basename(normalized)
+		.replace(/\.md$/i, "")
+		.replace(/[^\w-]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 40);
+	return `${slug || "doc"}-${hash}`;
+}
+
+/** Before hashed keys a doc's files were named by `encodeURIComponent(path)`. */
+function legacyDocKey(relativePath: string): string {
 	return encodeURIComponent(relativePath.split(path.sep).join("/"));
+}
+
+const migrated = new Set<string>();
+
+/** Renames a doc's files from the legacy key once (no-op when absent or too long). */
+export async function migrateLegacyDocFiles(
+	workspaceRoot: string,
+	relativePath: string,
+): Promise<void> {
+	const cacheKey = `${workspaceRoot}\0${relativePath}`;
+	if (migrated.has(cacheKey)) return;
+	migrated.add(cacheKey);
+	const legacy = legacyDocKey(relativePath);
+	if (Buffer.byteLength(legacy) > 230) return;
+	const dir = hookDir(workspaceRoot);
+	const current = docKey(relativePath);
+	for (const suffix of [".events.jsonl", ".seen.md"]) {
+		const from = path.join(dir, `${legacy}${suffix}`);
+		const to = path.join(dir, `${current}${suffix}`);
+		try {
+			await fs.access(to);
+			continue; // already on the new key
+		} catch {
+			// not yet
+		}
+		await fs.rename(from, to).catch(() => undefined);
+	}
 }
 
 export function eventsPath(
@@ -142,6 +189,7 @@ export async function appendHookEvent(
 	if (!HOOK_EVENT_TYPES.includes(event.type)) {
 		throw new TypeError(`Unknown hook event type: ${String(event.type)}`);
 	}
+	await migrateLegacyDocFiles(workspaceRoot, event.doc);
 	const file = eventsPath(workspaceRoot, event.doc);
 	await withFileLock(file, async () => {
 		await fs.mkdir(hookDir(workspaceRoot), { recursive: true });
@@ -195,6 +243,7 @@ export async function readHookEvents(
 	workspaceRoot: string,
 	relativePath: string,
 ): Promise<HookEvent[]> {
+	await migrateLegacyDocFiles(workspaceRoot, relativePath);
 	try {
 		return parseHookLines(
 			await fs.readFile(eventsPath(workspaceRoot, relativePath), "utf8"),
@@ -275,6 +324,7 @@ export function createProposalReader(): ProposalReader {
 		},
 		async read(workspaceRoot, relativePath) {
 			lastReadBytes = 0;
+			await migrateLegacyDocFiles(workspaceRoot, relativePath);
 			const file = eventsPath(workspaceRoot, relativePath);
 			let stat: { ino: number; size: number };
 			try {
@@ -329,6 +379,7 @@ export async function readSeen(
 	workspaceRoot: string,
 	relativePath: string,
 ): Promise<string | null> {
+	await migrateLegacyDocFiles(workspaceRoot, relativePath);
 	try {
 		return await fs.readFile(seenPath(workspaceRoot, relativePath), "utf8");
 	} catch {

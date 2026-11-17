@@ -8,6 +8,7 @@ import path from "node:path";
 import type { HookEvent, HookOrigin } from "./events.js";
 import {
 	eventsPath,
+	migrateLegacyDocFiles,
 	parseHookLines,
 	readCompleteLines,
 	rotatedEventsPath,
@@ -104,6 +105,7 @@ export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export async function watchHookEvents(options: WatchOptions): Promise<void> {
+	await migrateLegacyDocFiles(options.workspaceRoot, options.doc);
 	const tailer = new EventFileTailer(
 		eventsPath(options.workspaceRoot, options.doc),
 		rotatedEventsPath(options.workspaceRoot, options.doc),
