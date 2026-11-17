@@ -10,6 +10,7 @@ import {
 	setPendingCommentAnchor,
 } from "../comments/CommentExtension";
 import { MarkdownRolloverExtension } from "../engine/MarkdownRolloverExtension";
+import { multiSelectionLabel, multiSelectionSummary } from "./FindReplaceBar";
 import {
 	getMultiSelectionRanges,
 	MultiSelectionExtension,
@@ -336,5 +337,31 @@ describe("collapse and mapping", () => {
 		type(editor, "x");
 		expect(getMultiSelectionRanges(editor.state)).toHaveLength(0);
 		expect(editor.getText()).toBe("a x");
+	});
+});
+
+describe("multi-selection banner summary", () => {
+	it("counts up on Cmd+D, shows the shared text, and hides on Esc", () => {
+		const editor = createEditor("foo bar foo", "foo");
+		caret(editor, 2);
+		cmdD(editor);
+		expect(multiSelectionSummary(editor.state)).toBeNull();
+		cmdD(editor);
+		expect(multiSelectionSummary(editor.state)).toEqual({
+			count: 2,
+			text: "foo",
+		});
+		cmdD(editor);
+		const summary = multiSelectionSummary(editor.state);
+		expect(summary?.count).toBe(3);
+		expect(summary && multiSelectionLabel(summary)).toBe(
+			"3 selections of “foo”",
+		);
+		expect(key(editor, "Escape")).toBe(true);
+		expect(multiSelectionSummary(editor.state)).toBeNull();
+	});
+
+	it("drops the text when ranges differ", () => {
+		expect(multiSelectionLabel({ count: 4, text: null })).toBe("4 selections");
 	});
 });

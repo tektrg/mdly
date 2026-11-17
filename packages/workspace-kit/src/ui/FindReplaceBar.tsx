@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import type { Transaction } from "@tiptap/pm/state";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 import {
 	type WheelEvent as ReactWheelEvent,
 	useEffect,
@@ -29,6 +29,7 @@ import {
 	scrollEditorMatchIntoView,
 	type TextMatch,
 } from "./findReplace";
+import { getMultiSelectionRanges } from "./MultiSelectionExtension";
 
 type FrontMatterSearch = {
 	text: string;
@@ -181,6 +182,8 @@ export function FindReplaceBar({
 		return () => onFrontMatterActiveChange?.(false);
 	}, [activeMatch, onFrontMatterActiveChange, open]);
 
+	const multiSelection = useMultiSelectionSummary(editor);
+
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (!open) return;
@@ -194,7 +197,24 @@ export function FindReplaceBar({
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	}, [editor, onOpenChange, open]);
 
-	if (!open) return null;
+	// One bar slot: with find closed, 2+ selections get a compact banner in the
+	// find bar's place; with find open, the count rides inside the find bar.
+	if (!open) {
+		return multiSelection ? (
+			<output
+				className="findReplaceBar"
+				aria-live="polite"
+				data-multi-selection-banner=""
+			>
+				<span className="min-w-0 flex-1 truncate text-[11px]">
+					{multiSelectionLabel(multiSelection)}
+				</span>
+				<span className="shrink-0 text-[11px] text-muted-foreground">
+					Esc to exit
+				</span>
+			</output>
+		) : null;
+	}
 
 	const goTo = (direction: 1 | -1) => {
 		if (totalMatches === 0) return;
@@ -294,6 +314,14 @@ export function FindReplaceBar({
 						? "0/0"
 						: `${totalMatches === 0 ? 0 : clampIndex(activeIndex, totalMatches) + 1}/${totalMatches}`}
 				</span>
+				{multiSelection ? (
+					<span
+						className="rounded-full bg-muted px-1.5 py-1 text-[10px] text-muted-foreground"
+						data-multi-selection-count=""
+					>
+						{multiSelection.count} selections
+					</span>
+				) : null}
 				{activeMatch?.scope === "frontMatter" ? (
 					<span className="rounded-full bg-muted px-1.5 py-1 text-[10px] text-muted-foreground">
 						properties
@@ -462,4 +490,61 @@ function selectedEditorText(editor: Editor | null) {
 	if (from === to) return "";
 	const text = editor.state.doc.textBetween(from, to, "\n");
 	return text.includes("\n") ? "" : text;
+}
+
+export type MultiSelectionSummary = { count: number; text: string | null };
+
+/** 2+ selections → count, plus the shared text when every range matches. */
+export function multiSelectionSummary(
+	state: EditorState,
+): MultiSelectionSummary | null {
+	const ranges = getMultiSelectionRanges(state);
+	if (ranges.length < 2) return null;
+	const pieces = ranges.map((r) =>
+		state.doc.textBetween(
+			Math.min(r.anchor, r.head),
+			Math.max(r.anchor, r.head),
+			"\n",
+		),
+	);
+	const first = pieces[0] ?? "";
+	const simple =
+		first.length > 0 &&
+		first.length <= 40 &&
+		!first.includes("\n") &&
+		pieces.every((piece) => piece === first);
+	return { count: ranges.length, text: simple ? first : null };
+}
+
+export function multiSelectionLabel(summary: MultiSelectionSummary) {
+	return summary.text
+		? `${summary.count} selections of “${summary.text}”`
+		: `${summary.count} selections`;
+}
+
+function sameSummary(
+	a: MultiSelectionSummary | null,
+	b: MultiSelectionSummary | null,
+) {
+	return a === b || (!!a && !!b && a.count === b.count && a.text === b.text);
+}
+
+function useMultiSelectionSummary(editor: Editor | null) {
+	const [summary, setSummary] = useState<MultiSelectionSummary | null>(null);
+	useEffect(() => {
+		if (!editor) {
+			setSummary(null);
+			return;
+		}
+		const update = () => {
+			const next = multiSelectionSummary(editor.state);
+			setSummary((current) => (sameSummary(current, next) ? current : next));
+		};
+		update();
+		editor.on("transaction", update);
+		return () => {
+			editor.off("transaction", update);
+		};
+	}, [editor]);
+	return summary;
 }
