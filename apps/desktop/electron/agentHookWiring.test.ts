@@ -4,6 +4,7 @@ import path from "node:path";
 import { readHookEvents } from "@mdly/agent-hook";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	emitDecision,
 	emitHookEvent,
 	listPendingProposals,
 	proposeEdit,
@@ -98,5 +99,35 @@ describe("agent hook wiring", () => {
 				occurrence: 0,
 			}),
 		).rejects.toThrow(/occurrence/);
+	});
+
+	it("records all / some / none accepted as distinct outcomes with counts", async () => {
+		const target = resolveHookTarget(path.join(root, "o.md"), [root]);
+		await emitDecision(target, {
+			proposalId: "a",
+			source: "agent",
+			accepted: 3,
+			rejected: 0,
+		});
+		await emitDecision(target, {
+			proposalId: "b",
+			source: "agent",
+			accepted: 1,
+			rejected: 2,
+		});
+		await emitDecision(target, {
+			proposalId: "c",
+			source: "agent",
+			accepted: 0,
+			rejected: 2,
+		});
+		const events = await readHookEvents(root, target.doc);
+		expect(
+			events.map((e) => [e.type, e.acceptedChanges, e.rejectedChanges]),
+		).toEqual([
+			["suggestion.accepted", 3, 0],
+			["suggestion.partially_accepted", 1, 2],
+			["suggestion.rejected", 0, 2],
+		]);
 	});
 });

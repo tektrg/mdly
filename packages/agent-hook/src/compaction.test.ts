@@ -106,3 +106,16 @@ describe("incremental proposal reader", () => {
 		expect(await createProposalReader().read(root, "none.md")).toEqual([]);
 	});
 });
+
+describe("partial accept", () => {
+	it("a partially accepted proposal is settled (no longer pending)", async () => {
+		await appendHookEvent(root, propose("p"));
+		await appendHookEvent(
+			root,
+			newHookEvent("suggestion.partially_accepted", "a.md", "user", {
+				proposalId: "p",
+			}),
+		);
+		expect(await createProposalReader().read(root, "a.md")).toEqual([]);
+	});
+});

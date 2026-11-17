@@ -54,6 +54,42 @@ export async function emitHookEvent(
 	);
 }
 
+export interface Decision {
+	proposalId?: string;
+	source: string;
+	/** How many of the suggestion's word changes the human accepted / rejected. */
+	accepted: number;
+	rejected: number;
+	before?: string;
+	after?: string;
+	/** Set when the app rejected it without the human deciding (e.g. "ambiguous"). */
+	reason?: string;
+	message?: string;
+}
+
+/** All accepted, some accepted, or none: three distinct outcomes for the agent. */
+export async function emitDecision(
+	target: HookTarget,
+	decision: Decision,
+): Promise<void> {
+	const type: HookEventType =
+		decision.accepted > 0 && decision.rejected === 0
+			? "suggestion.accepted"
+			: decision.accepted > 0
+				? "suggestion.partially_accepted"
+				: "suggestion.rejected";
+	await emitHookEvent(target, type, "user", {
+		proposalId: decision.proposalId,
+		source: decision.source,
+		acceptedChanges: decision.accepted,
+		rejectedChanges: decision.rejected,
+		before: decision.before,
+		after: decision.after,
+		reason: decision.reason,
+		message: decision.message,
+	});
+}
+
 export type SendEditsResult =
 	| { status: "sent"; changes: number }
 	| { status: "unchanged" };

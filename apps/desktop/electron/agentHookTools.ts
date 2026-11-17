@@ -40,7 +40,7 @@ function num(input: Record<string, unknown>, key: string): number | undefined {
 export const PROPOSE_EDIT_TOOL: AgentTool = {
 	name: "propose_edit",
 	description:
-		"Proposes an edit to a note as a suggestion the human accepts or rejects inline (red strike-through / green insert). Never changes the file directly. `find` must be exact visible text from ONE paragraph (rendered text, no Markdown syntax) and must be unique in the note, or name which match with `occurrence`; an ambiguous or unmatched `find` is rejected (the outcome arrives as suggestion.rejected with a `reason`). `replace` is plain text. `path` defaults to the open note. Watch the outcome with `mdly watch` (suggestion.accepted / suggestion.rejected).",
+		"Proposes an edit to a note as a suggestion the human accepts or rejects inline (red strike-through / green insert). Never changes the file directly. `find` must be exact visible text from ONE paragraph (rendered text, no Markdown syntax) and must be unique in the note, or name which match with `occurrence`; an ambiguous or unmatched `find` is rejected (the outcome arrives as suggestion.rejected with a `reason`). `replace` is plain text. `path` defaults to the open note. Watch the outcome with `mdly watch`: suggestion.accepted (all changes taken), suggestion.partially_accepted (some; see acceptedChanges/rejectedChanges) or suggestion.rejected.",
 	inputSchema: {
 		type: "object",
 		properties: {

@@ -747,7 +747,9 @@ export type DesktopApi = {
 };
 
 export type AgentHookDecision = {
-	accepted: boolean;
+	/** Word changes of the suggestion the human accepted / rejected (some of each = partial). */
+	accepted: number;
+	rejected: number;
 	proposalId?: string;
 	source: "agent" | "tool";
 	before?: string;

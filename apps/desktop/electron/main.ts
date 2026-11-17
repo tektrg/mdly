@@ -42,6 +42,7 @@ import {
 	writeAgentAccessEnabled,
 } from "./agentAccess";
 import {
+	emitDecision,
 	emitHookEvent,
 	listPendingProposals,
 	listWatchers,
@@ -2093,33 +2094,24 @@ function registerIpc() {
 	);
 	ipcMain.handle(
 		"desktop:agent-hook-decision",
-		async (
-			_event,
-			{
-				path: filePath,
-				accepted,
-				proposalId,
-				source,
-				before,
-				after,
-				reason,
-				message,
-			},
-		) => {
+		async (_event, { path: filePath, ...decision }) => {
 			const resolved = assertGranted(filePath);
-			await emitHookEvent(
-				resolveHookTarget(resolved, grantedRoots),
-				accepted ? "suggestion.accepted" : "suggestion.rejected",
-				"user",
-				{
-					proposalId: typeof proposalId === "string" ? proposalId : undefined,
-					source: String(source ?? "tool"),
-					before: typeof before === "string" ? before : undefined,
-					after: typeof after === "string" ? after : undefined,
-					reason: typeof reason === "string" ? reason : undefined,
-					message: typeof message === "string" ? message : undefined,
-				},
-			);
+			const optionalString = (value: unknown) =>
+				typeof value === "string" ? value : undefined;
+			const count = (value: unknown) =>
+				typeof value === "number" && Number.isFinite(value) && value > 0
+					? Math.floor(value)
+					: 0;
+			await emitDecision(resolveHookTarget(resolved, grantedRoots), {
+				proposalId: optionalString(decision.proposalId),
+				source: String(decision.source ?? "tool"),
+				accepted: count(decision.accepted),
+				rejected: count(decision.rejected),
+				before: optionalString(decision.before),
+				after: optionalString(decision.after),
+				reason: optionalString(decision.reason),
+				message: optionalString(decision.message),
+			});
 		},
 	);
 	ipcMain.handle(

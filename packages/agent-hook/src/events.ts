@@ -19,6 +19,7 @@ export type HookEventType =
 	| "doc.edited"
 	| "edit.proposed"
 	| "suggestion.accepted"
+	| "suggestion.partially_accepted"
 	| "suggestion.rejected"
 	| "tool.requested";
 
@@ -28,6 +29,7 @@ export const HOOK_EVENT_TYPES: readonly HookEventType[] = [
 	"doc.edited",
 	"edit.proposed",
 	"suggestion.accepted",
+	"suggestion.partially_accepted",
 	"suggestion.rejected",
 	"tool.requested",
 ];
@@ -263,6 +265,7 @@ export function pendingProposals(events: HookEvent[]): EditProposal[] {
 
 const SETTLING_TYPES: ReadonlySet<HookEventType> = new Set([
 	"suggestion.accepted",
+	"suggestion.partially_accepted",
 	"suggestion.rejected",
 ]);
 

@@ -189,3 +189,16 @@ describe("placeProposal (unambiguous anchoring)", () => {
 		});
 	});
 });
+
+describe("group settle counts", () => {
+	it("reports how many changes of a group were accepted vs rejected", () => {
+		const { editor, settled } = setup("<p>one two three</p>");
+		suggest(editor, "one two three", "uno two tres");
+		const ids = getSuggestions(editor.state).map((c) => c.id);
+		expect(ids.length).toBe(2);
+		editor.commands.acceptSuggestion(ids[0]);
+		editor.commands.rejectSuggestion(ids[1]);
+		expect(settled).toHaveLength(1);
+		expect(settled[0]).toMatchObject({ accepted: 1, rejected: 1 });
+	});
+});

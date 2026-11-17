@@ -183,7 +183,8 @@ function MarkdownEditor({
 			if (isSingleFile) return;
 			void desktopApi
 				.agentHookDecision(path, {
-					accepted: settled.accepted > 0,
+					accepted: settled.accepted,
+					rejected: settled.rejected,
 					proposalId: settled.source === "agent" ? settled.groupId : undefined,
 					source: settled.source,
 					before: settled.before,
@@ -402,7 +403,8 @@ function MarkdownEditor({
 				// Settle it with the reason so the agent hears back and can retry precisely.
 				void desktopApi
 					.agentHookDecision(path, {
-						accepted: false,
+						accepted: 0,
+						rejected: 1,
 						proposalId: proposal.proposalId,
 						source: "agent",
 						before: proposal.find,
