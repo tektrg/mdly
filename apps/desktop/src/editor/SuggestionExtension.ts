@@ -112,6 +112,74 @@ export function findTextRange(
 	return range;
 }
 
+/** Every match of `text` (each within one textblock), in document order. */
+export function findAllTextRanges(
+	doc: ProseMirrorNode,
+	text: string,
+): { from: number; to: number }[] {
+	const ranges: { from: number; to: number }[] = [];
+	if (!text) return ranges;
+	doc.descendants((node, pos) => {
+		if (!node.isTextblock) return true;
+		const content = node.textContent;
+		for (
+			let index = content.indexOf(text);
+			index >= 0;
+			index = content.indexOf(text, index + 1)
+		) {
+			ranges.push({
+				from: textOffsetToPos(node, pos, index),
+				to: textOffsetToPos(node, pos, index + text.length),
+			});
+		}
+		return false;
+	});
+	return ranges;
+}
+
+export type Placement =
+	| { ok: true; from: number; to: number }
+	| {
+			ok: false;
+			reason: "not-found" | "ambiguous" | "occurrence-out-of-range";
+			message: string;
+	  };
+
+/**
+ * Where an agent proposal goes. Never guesses: a `find` matching several
+ * places needs an `occurrence` (1-based); otherwise it is rejected with a
+ * reason the agent can act on.
+ */
+export function placeProposal(
+	doc: ProseMirrorNode,
+	proposal: { find: string; occurrence?: number },
+): Placement {
+	const ranges = findAllTextRanges(doc, proposal.find);
+	if (ranges.length === 0)
+		return {
+			ok: false,
+			reason: "not-found",
+			message: "The text to replace is no longer in the note.",
+		};
+	if (proposal.occurrence !== undefined) {
+		const range = ranges[proposal.occurrence - 1];
+		if (!range)
+			return {
+				ok: false,
+				reason: "occurrence-out-of-range",
+				message: `Asked for match ${proposal.occurrence}, but the text appears ${ranges.length} time${ranges.length === 1 ? "" : "s"}.`,
+			};
+		return { ok: true, ...range };
+	}
+	if (ranges.length > 1)
+		return {
+			ok: false,
+			reason: "ambiguous",
+			message: `The text appears in ${ranges.length} places; say which (occurrence 1-${ranges.length}) or use a longer, unique find.`,
+		};
+	return { ok: true, ...ranges[0] };
+}
+
 /** Splits "replace `[from,to)` with `newText`" into word-level changes. */
 export function buildChanges(
 	doc: ProseMirrorNode,

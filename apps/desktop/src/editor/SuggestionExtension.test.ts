@@ -6,6 +6,7 @@ import {
 	findTextRange,
 	type GroupSettled,
 	getSuggestions,
+	placeProposal,
 	SuggestionExtension,
 } from "./SuggestionExtension";
 
@@ -146,5 +147,45 @@ describe("SuggestionExtension", () => {
 		suggest(editor, "hello", "$(echo INJECTED)");
 		editor.commands.acceptAllSuggestions();
 		expect(editor.getText()).toBe("$(echo INJECTED)");
+	});
+});
+
+describe("placeProposal (unambiguous anchoring)", () => {
+	it("places a unique match", () => {
+		const { editor } = setup("<p>alpha beta</p><p>gamma</p>");
+		const placed = placeProposal(editor.state.doc, { find: "gamma" });
+		expect(placed.ok).toBe(true);
+	});
+	it("rejects an ambiguous match without an occurrence hint", () => {
+		const { editor } = setup("<p>the cat</p><p>the cat sat</p>");
+		const placed = placeProposal(editor.state.doc, { find: "the cat" });
+		expect(placed).toMatchObject({ ok: false, reason: "ambiguous" });
+		if (!placed.ok) expect(placed.message).toMatch(/2 places/);
+	});
+	it("uses the occurrence hint (1-based, document order, same block too)", () => {
+		const { editor } = setup("<p>a x a</p><p>a</p>");
+		const second = placeProposal(editor.state.doc, {
+			find: "a",
+			occurrence: 2,
+		});
+		const third = placeProposal(editor.state.doc, { find: "a", occurrence: 3 });
+		expect(second.ok && third.ok).toBe(true);
+		if (second.ok && third.ok) {
+			expect(editor.state.doc.textBetween(second.from, second.to)).toBe("a");
+			expect(second.from).toBeLessThan(third.from);
+			// second is in the first paragraph, third in the next one
+			expect(editor.state.doc.resolve(second.from).index(0)).toBe(0);
+			expect(editor.state.doc.resolve(third.from).index(0)).toBe(1);
+		}
+	});
+	it("rejects an out-of-range occurrence and a missing text", () => {
+		const { editor } = setup("<p>one</p>");
+		expect(
+			placeProposal(editor.state.doc, { find: "one", occurrence: 2 }),
+		).toMatchObject({ ok: false, reason: "occurrence-out-of-range" });
+		expect(placeProposal(editor.state.doc, { find: "two" })).toMatchObject({
+			ok: false,
+			reason: "not-found",
+		});
 	});
 });

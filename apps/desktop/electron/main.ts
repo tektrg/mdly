@@ -2098,7 +2098,16 @@ function registerIpc() {
 		"desktop:agent-hook-decision",
 		async (
 			_event,
-			{ path: filePath, accepted, proposalId, source, before, after },
+			{
+				path: filePath,
+				accepted,
+				proposalId,
+				source,
+				before,
+				after,
+				reason,
+				message,
+			},
 		) => {
 			const resolved = assertGranted(filePath);
 			await emitHookEvent(
@@ -2110,6 +2119,8 @@ function registerIpc() {
 					source: String(source ?? "tool"),
 					before: typeof before === "string" ? before : undefined,
 					after: typeof after === "string" ? after : undefined,
+					reason: typeof reason === "string" ? reason : undefined,
+					message: typeof message === "string" ? message : undefined,
 				},
 			);
 		},

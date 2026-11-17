@@ -67,4 +67,36 @@ describe("agent hook wiring", () => {
 			/granted/,
 		);
 	});
+
+	it("rejects a find that matches several places unless an occurrence is given", async () => {
+		await fs.writeFile(path.join(root, "d.md"), "the cat\n\nthe cat sat\n");
+		const target = resolveHookTarget(path.join(root, "d.md"), [root]);
+		await expect(
+			proposeEdit(target, { find: "the cat", replace: "a dog", author: "a" }),
+		).rejects.toThrow(/2 places.*occurrence/);
+		await expect(
+			proposeEdit(target, {
+				find: "the cat",
+				replace: "a dog",
+				author: "a",
+				occurrence: 3,
+			}),
+		).rejects.toThrow(/only 2/);
+		const ok = await proposeEdit(target, {
+			find: "the cat",
+			replace: "a dog",
+			author: "a",
+			occurrence: 2,
+		});
+		expect(ok.occurrence).toBe(2);
+		expect((await listPendingProposals(target))[0].occurrence).toBe(2);
+		await expect(
+			proposeEdit(target, {
+				find: "cat sat",
+				replace: "dog sat",
+				author: "a",
+				occurrence: 0,
+			}),
+		).rejects.toThrow(/occurrence/);
+	});
 });

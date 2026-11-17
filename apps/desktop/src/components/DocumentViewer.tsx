@@ -19,8 +19,8 @@ import {
 import { IframeView, toAssetUrl } from "../editor/IframeView";
 import { createImageExtension } from "../editor/ImageExtension";
 import {
-	findTextRange,
 	type GroupSettled,
+	placeProposal,
 	SuggestionExtension,
 } from "../editor/SuggestionExtension";
 import { openOrImportNotionMentionPage } from "../fileActions";
@@ -394,12 +394,12 @@ function MarkdownEditor({
 		for (const proposal of agentHook.proposals) {
 			if (placedProposalsRef.current.has(proposal.proposalId)) continue;
 			placedProposalsRef.current.add(proposal.proposalId);
-			const range = findTextRange(liveEditor.state.doc, proposal.find);
-			if (!range) {
-				toast.error("An agent suggestion no longer matches the text", {
-					description: proposal.find.slice(0, 80),
+			const placed = placeProposal(liveEditor.state.doc, proposal);
+			if (!placed.ok) {
+				toast.error("Could not place an agent suggestion", {
+					description: `${placed.message} (${proposal.find.slice(0, 60)})`,
 				});
-				// Settle it so the agent hears back and it stops being pending.
+				// Settle it with the reason so the agent hears back and can retry precisely.
 				void desktopApi
 					.agentHookDecision(path, {
 						accepted: false,
@@ -407,10 +407,13 @@ function MarkdownEditor({
 						source: "agent",
 						before: proposal.find,
 						after: proposal.replace,
+						reason: placed.reason,
+						message: placed.message,
 					})
 					.catch(() => undefined);
 				continue;
 			}
+			const range = { from: placed.from, to: placed.to };
 			liveEditor.commands.addSuggestion({
 				groupId: proposal.proposalId,
 				source: "agent",

@@ -30,10 +30,17 @@ function str(
 	return value;
 }
 
+function num(input: Record<string, unknown>, key: string): number | undefined {
+	const value = input[key];
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== "number") throw new Error(`"${key}" must be a number.`);
+	return value;
+}
+
 export const PROPOSE_EDIT_TOOL: AgentTool = {
 	name: "propose_edit",
 	description:
-		"Proposes an edit to a note as a suggestion the human accepts or rejects inline (red strike-through / green insert). Never changes the file directly. `find` must be exact visible text from ONE paragraph (rendered text, no Markdown syntax); `replace` is plain text. `path` defaults to the open note. Watch the outcome with `mdly watch` (suggestion.accepted / suggestion.rejected).",
+		"Proposes an edit to a note as a suggestion the human accepts or rejects inline (red strike-through / green insert). Never changes the file directly. `find` must be exact visible text from ONE paragraph (rendered text, no Markdown syntax) and must be unique in the note, or name which match with `occurrence`; an ambiguous or unmatched `find` is rejected (the outcome arrives as suggestion.rejected with a `reason`). `replace` is plain text. `path` defaults to the open note. Watch the outcome with `mdly watch` (suggestion.accepted / suggestion.rejected).",
 	inputSchema: {
 		type: "object",
 		properties: {
@@ -47,6 +54,12 @@ export const PROPOSE_EDIT_TOOL: AgentTool = {
 				description: "Exact visible text to replace, within one paragraph.",
 			},
 			replace: { type: "string", description: "Replacement text (plain)." },
+			occurrence: {
+				type: "integer",
+				minimum: 1,
+				description:
+					"Which match of `find` to replace (1-based, in document order). Required when `find` appears more than once; otherwise the proposal is rejected as ambiguous.",
+			},
 			note: {
 				type: "string",
 				description: "Optional one-line reason shown to the human.",
@@ -67,6 +80,7 @@ export const PROPOSE_EDIT_TOOL: AgentTool = {
 				find: str(input, "find", true) ?? "",
 				replace: str(input, "replace", true) ?? "",
 				note: str(input, "note", false),
+				occurrence: num(input, "occurrence"),
 				author: AGENT_AUTHOR_LABEL,
 			});
 			ctx.notifySuggestionsChanged?.(absolutePath);

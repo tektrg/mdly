@@ -48,6 +48,8 @@ export interface EditProposal {
 	/** Exact visible text to replace (within one paragraph). */
 	find: string;
 	replace: string;
+	/** Which visible match of `find` (1-based, document order) when it occurs more than once. */
+	occurrence?: number;
 	note?: string;
 	author?: string;
 }
@@ -241,6 +243,10 @@ function toProposal(proposalId: string, e: HookEvent): EditProposal {
 		proposalId,
 		find: String(e.find ?? ""),
 		replace: String(e.replace ?? ""),
+		occurrence:
+			typeof e.occurrence === "number" && e.occurrence >= 1
+				? e.occurrence
+				: undefined,
 		note: typeof e.note === "string" ? e.note : undefined,
 		author: typeof e.author === "string" ? e.author : undefined,
 	};

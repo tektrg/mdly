@@ -750,6 +750,9 @@ export type AgentHookDecision = {
 	source: "agent" | "tool";
 	before?: string;
 	after?: string;
+	/** Why it was rejected without the human deciding (e.g. "ambiguous"). */
+	reason?: string;
+	message?: string;
 };
 
 export type AgentHookToolRequest = {
@@ -763,6 +766,7 @@ export type AgentHookProposal = {
 	proposalId: string;
 	find: string;
 	replace: string;
+	occurrence?: number;
 	note?: string;
 	author?: string;
 };
