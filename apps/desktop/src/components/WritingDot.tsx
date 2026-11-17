@@ -106,6 +106,11 @@ export function WritingDot({
 					);
 				return;
 			}
+			if (result.status === "cancelled") {
+				setRun({ status: "idle" });
+				toast.message(`${tool.name} cancelled`);
+				return;
+			}
 			if (result.status === "failed") {
 				const missing = result.engine?.state === "missing";
 				setRun({ status: "failed", error: result.error });
@@ -175,6 +180,18 @@ export function WritingDot({
 				}`}
 				title={run.status === "running" ? `${run.toolName}…` : "Writing tools"}
 			/>
+			{run.status === "running" && (
+				<button
+					type="button"
+					className="absolute whitespace-nowrap rounded-full border border-border bg-popover px-2 py-0.5 text-xs shadow"
+					style={{ insetBlockStart: -4, insetInlineStart: 16 }}
+					onMouseDown={(event) => event.preventDefault()}
+					onClick={() => void desktopApi.cancelWritingTool()}
+					data-testid="writing-dot-cancel"
+				>
+					Cancel {run.toolName}
+				</button>
+			)}
 			{open && anchor && (
 				<div
 					role="menu"

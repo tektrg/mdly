@@ -42,6 +42,7 @@ export interface EngineStatus {
 
 export type EngineRunResult =
 	| { status: "done"; text: string }
+	| { status: "cancelled" }
 	| { status: "failed"; error: string; engine: EngineStatus };
 
 export interface WritingEngine {
@@ -133,20 +134,45 @@ export interface LlamaModule {
 	};
 }
 
+type LoadedModel = Awaited<
+	ReturnType<Awaited<ReturnType<LlamaModule["getLlama"]>>["loadModel"]>
+>;
+
+function cancelled(signal?: AbortSignal): boolean {
+	return signal?.aborted === true;
+}
+
+/** Resolves when `signal` aborts (never rejects). */
+function whenAborted(signal: AbortSignal): Promise<void> {
+	return new Promise((resolve) => {
+		if (signal.aborted) resolve();
+		else signal.addEventListener("abort", () => resolve(), { once: true });
+	});
+}
+
+/**
+ * One engine per model path. Lifecycle rules:
+ * - single-flight load: concurrent runs share one load; a model that finishes
+ *   loading after a timeout or after `dispose` is disposed at once, so at most
+ *   one copy is ever held;
+ * - a run that times out or is cancelled aborts generation and waits for it to
+ *   stop before freeing its context;
+ * - every failure (load, context creation, generation) sets `failed`.
+ */
 export function createLlamaEngine(options: LlamaEngineOptions): WritingEngine {
 	let status: EngineStatus = { state: "idle", modelPath: options.modelPath };
-	type Loaded = {
-		mod: LlamaModule;
-		model: Awaited<
-			ReturnType<Awaited<ReturnType<LlamaModule["getLlama"]>>["loadModel"]>
-		>;
+	let disposed = false;
+	let loaded: { mod: LlamaModule; model: LoadedModel } | null = null;
+	let loading: Promise<{ mod: LlamaModule; model: LoadedModel }> | null = null;
+	const setStatus = (state: EngineState, error?: string) => {
+		status = { state, modelPath: options.modelPath, error };
 	};
-	let loading: Promise<Loaded> | null = null;
 
-	const load = (): Promise<Loaded> => {
+	const load = () => {
+		if (loaded) return Promise.resolve(loaded);
 		if (loading) return loading;
-		status = { state: "loading", modelPath: options.modelPath };
-		loading = (async () => {
+		setStatus("loading");
+		const attempt = (async () => {
 			try {
 				await fs.access(options.modelPath);
 			} catch {
@@ -164,73 +190,195 @@ export function createLlamaEngine(options: LlamaEngineOptions): WritingEngine {
 			const model = await llama.loadModel({ modelPath: options.modelPath });
 			return { mod, model };
 		})();
+		let timedOut = false;
+		// A load that outlives its timeout (or the engine) must not leak a model.
+		void attempt.then(
+			(late) => {
+				if (timedOut || disposed) void late.model.dispose().catch(() => {});
+			},
+			() => undefined,
+		);
 		loading = withTimeout(
-			loading,
+			attempt,
 			options.loadTimeoutMs ?? 60_000,
 			"Loading the model",
 		).then(
-			(loaded) => {
-				status = { state: "ready", modelPath: options.modelPath };
-				return loaded;
+			(result) => {
+				loading = null;
+				if (disposed) throw new Error("The model was unloaded");
+				loaded = result;
+				setStatus("ready");
+				return result;
 			},
 			(error: Error & { missing?: boolean }) => {
-				status = {
-					state: error.missing ? "missing" : "failed",
-					modelPath: options.modelPath,
-					error: error.message,
-				};
+				timedOut = /timed out/.test(error.message);
 				loading = null; // allow a retry (e.g. after the file appears)
+				if (!disposed)
+					setStatus(error.missing ? "missing" : "failed", error.message);
 				throw error;
 			},
 		);
 		return loading;
 	};
 
+	const fail = (message: string): EngineRunResult => {
+		setStatus("failed", message);
+		return { status: "failed", error: message, engine: status };
+	};
+
 	return {
 		getStatus: () => status,
 		async run(prompt, signal) {
-			let loaded: Loaded;
+			if (cancelled(signal)) return { status: "cancelled" };
+			let model: { mod: LlamaModule; model: LoadedModel };
 			try {
-				loaded = await load();
+				const pending = load();
+				model = signal
+					? await Promise.race([
+							pending,
+							whenAborted(signal).then(() => null),
+						]).then((m) => {
+							if (!m)
+								throw Object.assign(new Error("cancelled"), { cancel: true });
+							return m;
+						})
+					: await pending;
 			} catch (error) {
+				if ((error as { cancel?: boolean }).cancel || cancelled(signal))
+					return { status: "cancelled" };
 				return {
 					status: "failed",
 					error: (error as Error).message,
 					engine: status,
 				};
 			}
-			// Fresh context per run: tools are one-shot, and this keeps runs independent.
-			const context = await loaded.model.createContext();
+			if (cancelled(signal)) return { status: "cancelled" };
+			// Our own controller: a timeout or an outside cancel both abort generation.
+			const stop = new AbortController();
+			const onAbort = () => stop.abort();
+			signal?.addEventListener("abort", onAbort, { once: true });
+			let context: Awaited<ReturnType<LoadedModel["createContext"]>> | null =
+				null;
 			try {
-				const session = new loaded.mod.LlamaChatSession({
+				// Fresh context per run: tools are one-shot, and this keeps runs independent.
+				context = await model.model.createContext();
+				const session = new model.mod.LlamaChatSession({
 					contextSequence: context.getSequence(),
 				});
-				const text = await withTimeout(
-					session.prompt(prompt, { signal, maxTokens: 1024, temperature: 0.2 }),
-					options.runTimeoutMs ?? 120_000,
-					"The model",
-				);
-				status = { state: "ready", modelPath: options.modelPath };
-				return { status: "done", text };
+				const generation = session.prompt(prompt, {
+					signal: stop.signal,
+					maxTokens: 1024,
+					temperature: 0.2,
+				});
+				try {
+					const text = await withTimeout(
+						generation,
+						options.runTimeoutMs ?? 120_000,
+						"The model",
+					);
+					setStatus("ready");
+					return { status: "done", text };
+				} catch (error) {
+					stop.abort();
+					// Wait for generation to actually stop before freeing its context.
+					await generation.catch(() => undefined);
+					if (cancelled(signal)) {
+						setStatus("ready");
+						return { status: "cancelled" };
+					}
+					return fail((error as Error).message);
+				}
 			} catch (error) {
-				const message = (error as Error).message;
-				return {
-					status: "failed",
-					error: message,
-					engine: { ...status, error: message },
-				};
+				if (cancelled(signal)) return { status: "cancelled" };
+				return fail((error as Error).message);
 			} finally {
-				await context.dispose().catch(() => undefined);
+				signal?.removeEventListener("abort", onAbort);
+				await context?.dispose().catch(() => undefined);
 			}
 		},
 		async dispose() {
+			disposed = true;
 			const pending = loading;
+			const current = loaded;
 			loading = null;
-			status = { state: "idle", modelPath: options.modelPath };
-			if (pending) {
-				const loaded = await pending.catch(() => null);
-				await loaded?.model.dispose().catch(() => undefined);
-			}
+			loaded = null;
+			setStatus("idle");
+			await current?.model.dispose().catch(() => undefined);
+			if (pending) await pending.catch(() => undefined);
 		},
 	};
+}
+
+export interface WritingEngineHost {
+	getStatus(): EngineStatus;
+	isRunning(): boolean;
+	/** Serialized: a local model has one context budget. */
+	run(prompt: string): Promise<EngineRunResult>;
+	/** Stops the running generation and drops queued runs (they resolve `cancelled`). */
+	cancel(): void;
+	/** Cancels any run, waits for it to stop, unloads the old model, then switches. */
+	setModelPath(modelPath: string): Promise<void>;
+	dispose(): Promise<void>;
+}
+
+/**
+ * The single owner of the local model in the app: which engine is current,
+ * the run queue and the cancel switch. `main.ts` only calls this.
+ */
+export function createWritingEngineHost(deps: {
+	createEngine: (modelPath: string) => WritingEngine;
+}): WritingEngineHost {
+	let engine: WritingEngine | null = null;
+	let modelPath = "";
+	let queue: Promise<unknown> = Promise.resolve();
+	let generation = new AbortController();
+	let running = 0;
+	let switching: Promise<void> = Promise.resolve();
+
+	const current = () => {
+		if (!engine) engine = deps.createEngine(modelPath);
+		return engine;
+	};
+
+	const host: WritingEngineHost = {
+		getStatus: () => engine?.getStatus() ?? { state: "idle", modelPath },
+		isRunning: () => running > 0,
+		run(prompt) {
+			const signal = generation.signal;
+			const result = Promise.all([queue, switching]).then(async () => {
+				if (signal.aborted) return { status: "cancelled" } as EngineRunResult;
+				running++;
+				try {
+					return await current().run(prompt, signal);
+				} finally {
+					running--;
+				}
+			});
+			queue = result.catch(() => undefined);
+			return result;
+		},
+		cancel() {
+			generation.abort();
+			generation = new AbortController();
+		},
+		setModelPath(next) {
+			if (next === modelPath && engine) return switching;
+			switching = switching.then(async () => {
+				host.cancel();
+				await queue;
+				const old = engine;
+				engine = null;
+				modelPath = next;
+				await old?.dispose();
+			});
+			return switching;
+		},
+		async dispose() {
+			host.cancel();
+			await queue;
+			await engine?.dispose();
+			engine = null;
+		},
+	};
+	return host;
 }

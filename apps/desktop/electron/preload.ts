@@ -185,6 +185,7 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:writing-tools-reset", { path, id }),
 	runWritingTool: (path, request) =>
 		ipcRenderer.invoke("desktop:writing-tools-run", { path, ...request }),
+	cancelWritingTool: () => ipcRenderer.invoke("desktop:writing-tools-cancel"),
 	getWritingEngineStatus: () =>
 		ipcRenderer.invoke("desktop:writing-engine-status"),
 	setWritingModelPath: (modelPath) =>

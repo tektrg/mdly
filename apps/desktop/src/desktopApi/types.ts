@@ -626,6 +626,8 @@ export type DesktopApi = {
 		path: string,
 		request: { toolId: string; text: string; requestId: string },
 	): Promise<WritingToolRunResult>;
+	/** Stops the running local-model tool (it resolves as `cancelled`). */
+	cancelWritingTool(): Promise<void>;
 	getWritingEngineStatus(): Promise<WritingEngineStatus>;
 	setWritingModelPath(modelPath: string): Promise<WritingEngineStatus>;
 	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
@@ -794,4 +796,5 @@ export type WritingEngineStatus = {
 export type WritingToolRunResult =
 	| { status: "done"; text: string }
 	| { status: "sent-to-agent" }
+	| { status: "cancelled" }
 	| { status: "failed"; error: string; engine?: WritingEngineStatus };

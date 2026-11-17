@@ -130,8 +130,8 @@ import { readPackageMetadata, resolveUpdateGate } from "./updateGate";
 import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
 	createLlamaEngine,
+	createWritingEngineHost,
 	DEFAULT_MODEL_PATH,
-	type WritingEngine,
 } from "./writingEngine";
 import {
 	buildToolPrompt,
@@ -836,8 +836,10 @@ function agentToolContext(): AgentToolContext {
 // are serialized: a local model has one context budget, and a queue keeps a
 // second click from racing the first.
 const WRITING_SETTINGS_FILE = "writing-tools.json";
-let writingEngine: WritingEngine | null = null;
-let writingRunQueue: Promise<unknown> = Promise.resolve();
+// The one owner of the local model: current engine, run queue, cancel.
+const writingEngineHost = createWritingEngineHost({
+	createEngine: (modelPath) => createLlamaEngine({ modelPath }),
+});
 
 async function readWritingModelPath(): Promise<string> {
 	try {
@@ -855,14 +857,9 @@ async function readWritingModelPath(): Promise<string> {
 	}
 }
 
-async function getWritingEngine(): Promise<WritingEngine> {
-	const modelPath = await readWritingModelPath();
-	if (writingEngine && writingEngine.getStatus().modelPath === modelPath) {
-		return writingEngine;
-	}
-	await writingEngine?.dispose();
-	writingEngine = createLlamaEngine({ modelPath });
-	return writingEngine;
+/** Follows the model path setting; a change cancels any run and unloads first. */
+async function syncWritingModelPath(): Promise<void> {
+	await writingEngineHost.setModelPath(await readWritingModelPath());
 }
 
 async function isAgentAccessEnabled(): Promise<boolean> {
@@ -2184,21 +2181,21 @@ function registerIpc() {
 				});
 				return { status: "sent-to-agent" };
 			}
-			const run = writingRunQueue.then(async () => {
-				const engine = await getWritingEngine();
-				const result = await engine.run(
-					buildToolPrompt(tool.prompt, String(text)),
-				);
-				return result.status === "done"
-					? { status: "done", text: cleanModelOutput(result.text) }
-					: result;
-			});
-			writingRunQueue = run.catch(() => undefined);
-			return run;
+			await syncWritingModelPath();
+			const result = await writingEngineHost.run(
+				buildToolPrompt(tool.prompt, String(text)),
+			);
+			return result.status === "done"
+				? { status: "done", text: cleanModelOutput(result.text) }
+				: result;
 		},
 	);
+	ipcMain.handle("desktop:writing-tools-cancel", () => {
+		writingEngineHost.cancel();
+	});
 	ipcMain.handle("desktop:writing-engine-status", async () => {
-		return (await getWritingEngine()).getStatus();
+		await syncWritingModelPath();
+		return writingEngineHost.getStatus();
 	});
 	ipcMain.handle(
 		"desktop:writing-engine-set-model-path",
@@ -2210,7 +2207,8 @@ function registerIpc() {
 					modelPath: typeof modelPath === "string" ? modelPath : "",
 				}),
 			);
-			return (await getWritingEngine()).getStatus();
+			await syncWritingModelPath();
+			return writingEngineHost.getStatus();
 		},
 	);
 	ipcMain.handle(
