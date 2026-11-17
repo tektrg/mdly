@@ -8,14 +8,13 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
 	appendHookEvent,
+	createProposalReader,
 	type EditProposal,
 	formatWordDiff,
 	type HookEventType,
 	type HookOrigin,
 	listLiveSubscribers,
 	newHookEvent,
-	pendingProposals,
-	readHookEvents,
 	readSeen,
 	type Subscriber,
 	wordChanges,
@@ -97,12 +96,13 @@ export async function proposeEdit(
 	return proposal;
 }
 
+// The app polls every open note; this reads only appended bytes each time.
+const proposalReader = createProposalReader();
+
 export async function listPendingProposals(
 	target: HookTarget,
 ): Promise<EditProposal[]> {
-	return pendingProposals(
-		await readHookEvents(target.workspaceRoot, target.doc),
-	);
+	return proposalReader.read(target.workspaceRoot, target.doc);
 }
 
 export async function listWatchers(target: HookTarget): Promise<Subscriber[]> {
