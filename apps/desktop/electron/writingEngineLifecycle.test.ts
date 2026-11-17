@@ -193,4 +193,27 @@ describe("writing engine host", () => {
 		expect(stats.maxLive).toBe(1);
 		expect(stats.live).toBe(1);
 	});
+
+	it("a run requested while a model switch is still pending never deadlocks", async () => {
+		const { mod } = fakeLlama({ hang: true });
+		const host = createWritingEngineHost({
+			createEngine: (modelPath) =>
+				createLlamaEngine({ modelPath, loadModule: async () => mod }),
+		});
+		await host.setModelPath(modelA);
+		const first = host.run("a");
+		await new Promise((r) => setTimeout(r, 5));
+		// The settings change and a status poll both sync the path before a new run.
+		const switching = host.setModelPath(modelB);
+		void host.setModelPath(modelB);
+		const next = host.run("b");
+		expect((await first).status).toBe("cancelled");
+		await switching;
+		host.cancel();
+		const outcome = await Promise.race([
+			next.then((r) => r.status),
+			new Promise((r) => setTimeout(() => r("deadlock"), 1000)),
+		]);
+		expect(outcome).toBe("cancelled");
+	});
 });

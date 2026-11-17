@@ -334,6 +334,8 @@ export function createWritingEngineHost(deps: {
 	let generation = new AbortController();
 	let running = 0;
 	let switching: Promise<void> = Promise.resolve();
+	let targetPath = "";
+	let switchesPending = 0;
 
 	const current = () => {
 		if (!engine) engine = deps.createEngine(modelPath);
@@ -362,14 +364,25 @@ export function createWritingEngineHost(deps: {
 			generation = new AbortController();
 		},
 		setModelPath(next) {
-			if (next === modelPath && engine) return switching;
+			// Compare with the path the queued switches lead to, not the live one.
+			if (next === targetPath && (engine || switchesPending > 0))
+				return switching;
+			targetPath = next;
+			// Captured now: a run requested later waits on this switch, so awaiting
+			// it from inside the switch would deadlock.
+			host.cancel(); // now, so runs requested after this get a live signal
+			const drain = queue;
+			switchesPending++;
 			switching = switching.then(async () => {
-				host.cancel();
-				await queue;
+				await drain;
 				const old = engine;
 				engine = null;
 				modelPath = next;
-				await old?.dispose();
+				try {
+					await old?.dispose();
+				} finally {
+					switchesPending--;
+				}
 			});
 			return switching;
 		},
