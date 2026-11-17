@@ -41,6 +41,13 @@ import {
 	readOrCreateAgentAccessToken,
 	writeAgentAccessEnabled,
 } from "./agentAccess";
+import {
+	emitHookEvent,
+	listPendingProposals,
+	listWatchers,
+	resolveHookTarget,
+	sendEditsToAgent,
+} from "./agentHookWiring";
 import type { AgentToolContext } from "./agentToolContract";
 import { AGENT_TOOL_DESCRIPTORS, AGENT_TOOLS } from "./agentTools";
 import {
@@ -808,6 +815,8 @@ function agentToolContext(): AgentToolContext {
 		// An agent-made saved view appears in the open app at once.
 		notifyViewsChanged: (workspaceRoot: string) =>
 			broadcastToRenderers("desktop:workspace-views-changed", workspaceRoot),
+		notifySuggestionsChanged: (absoluteFilePath: string) =>
+			broadcastToRenderers("desktop:agent-hook-changed", absoluteFilePath),
 	};
 }
 
@@ -827,6 +836,14 @@ async function startAgentMcpServerIfEnabled(): Promise<void> {
 			appVersion: app.getVersion(),
 		});
 		console.log(`[agent-mcp] listening on ${agentMcpServer.url}`);
+		// `mdly mcp` (the stdio bridge used over ssh) reads the bound url here,
+		// so a fallback port still works without opening anything new.
+		await fs
+			.writeFile(
+				path.join(app.getPath("userData"), "agent-mcp-endpoint.json"),
+				JSON.stringify({ url: agentMcpServer.url }),
+			)
+			.catch((error) => console.error("[agent-mcp] endpoint file", error));
 	} catch (error) {
 		// A busy port or a bad bind must never take the app down with it —
 		// comments still work fully without the agent surface.
@@ -1985,6 +2002,15 @@ function registerIpc() {
 				anchor,
 				text: String(text),
 			});
+			await emitHookEvent(
+				resolveHookTarget(resolved, grantedRoots),
+				"comment.added",
+				"user",
+				{
+					quote: typeof anchor?.quote === "string" ? anchor.quote : undefined,
+					text: String(text),
+				},
+			).catch((error) => console.error("[agent-hook] comment.added", error));
 		},
 	);
 
@@ -1999,6 +2025,86 @@ function registerIpc() {
 				threadId: String(threadId),
 				text: String(text),
 			});
+			await emitHookEvent(
+				resolveHookTarget(resolved, grantedRoots),
+				"comment.replied",
+				"user",
+				{
+					threadId: String(threadId),
+					text: String(text),
+				},
+			).catch((error) => console.error("[agent-hook] comment.replied", error));
+		},
+	);
+
+	// Agent hook (writing tools slice A): the renderer's explicit actions become
+	// events on the doc's stream that `mdly watch` tails.
+	ipcMain.handle(
+		"desktop:agent-hook-send-edits",
+		async (_event, { path: filePath, markdown }) => {
+			const resolved = assertGranted(filePath);
+			return sendEditsToAgent(
+				resolveHookTarget(resolved, grantedRoots),
+				String(markdown),
+			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:agent-hook-decision",
+		async (
+			_event,
+			{ path: filePath, accepted, proposalId, source, before, after },
+		) => {
+			const resolved = assertGranted(filePath);
+			await emitHookEvent(
+				resolveHookTarget(resolved, grantedRoots),
+				accepted ? "suggestion.accepted" : "suggestion.rejected",
+				"user",
+				{
+					proposalId: typeof proposalId === "string" ? proposalId : undefined,
+					source: String(source ?? "tool"),
+					before: typeof before === "string" ? before : undefined,
+					after: typeof after === "string" ? after : undefined,
+				},
+			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:agent-hook-request-tool",
+		async (_event, { path: filePath, requestId, tool, prompt, text }) => {
+			const resolved = assertGranted(filePath);
+			await emitHookEvent(
+				resolveHookTarget(resolved, grantedRoots),
+				"tool.requested",
+				"user",
+				{
+					requestId: String(requestId),
+					tool: String(tool),
+					prompt: String(prompt),
+					text: String(text),
+					reply:
+						"Answer with the propose_edit MCP tool (find = the given text).",
+				},
+			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:agent-hook-state",
+		async (_event, { path: filePath }) => {
+			const resolved = assertGranted(filePath);
+			const target = resolveHookTarget(resolved, grantedRoots);
+			const [proposals, watchers] = await Promise.all([
+				listPendingProposals(target),
+				listWatchers(target),
+			]);
+			return {
+				proposals,
+				watchers: watchers.map(({ id, name, machine }) => ({
+					id,
+					name,
+					machine,
+				})),
+			};
 		},
 	);
 

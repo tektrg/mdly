@@ -109,6 +109,7 @@ describe("Slice 4 Plug A end-to-end", () => {
 				"list_threads",
 				"list_views",
 				"read_thread",
+				"propose_edit",
 				"reopen",
 				"reply",
 				"resolve",

@@ -13,20 +13,22 @@
 	"bugs": "https://github.com/bholmesdev/hubble.md/issues",
 	"type": "module",
 	"bin": {
-		"hubble": "./dist/index.js"
+		"hubble": "./dist/index.js",
+		"mdly": "./dist/mdly.js"
 	},
 	"files": [
 		"dist"
 	],
 	"scripts": {
 		"build": "tsc -p tsconfig.json",
-		"postbuild": "chmod +x dist/index.js",
+		"postbuild": "chmod +x dist/index.js dist/mdly.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
 		"test": "vitest run"
 	},
 	"dependencies": {
 		"@hubble.md/sync": "workspace:*",
+		"@mdly/agent-hook": "workspace:*",
 		"@mdly/cloudflare-client": "workspace:*",
 		"@mdly/workspace-scan": "workspace:*",
 		"@tektrg/table-core": "^1.4.2",

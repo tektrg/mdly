@@ -170,7 +170,7 @@ export interface AgentThreadIdParams {
 	threadId: string;
 }
 
-interface ResolvedAgentPath {
+export interface ResolvedAgentPath {
 	absolutePath: string;
 	workspaceRoot: string;
 }
@@ -278,7 +278,7 @@ async function assertRealPathInsideRoots(
 	);
 }
 
-async function resolveAgentPath(
+export async function resolveAgentPath(
 	path: string | undefined,
 	ctx: AgentToolContext,
 ): Promise<ResolvedAgentPath> {

@@ -32,6 +32,9 @@ importers:
       '@mcp-b/global':
         specifier: 5.0.1
         version: 5.0.1
+      '@mdly/agent-hook':
+        specifier: workspace:*
+        version: link:../../packages/agent-hook
       '@mdly/cloudflare-client':
         specifier: workspace:*
         version: link:../../packages/cloudflare-client
@@ -378,11 +381,30 @@ importers:
         specifier: ^4.107.0
         version: 4.107.0(@cloudflare/workers-types@5.20260903.1)
 
+  packages/agent-hook:
+    dependencies:
+      diff:
+        specifier: ^8.0.3
+        version: 8.0.3
+    devDependencies:
+      '@types/node':
+        specifier: ^25.5.0
+        version: 25.5.0
+      typescript:
+        specifier: ~5.8.3
+        version: 5.8.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.5.0)(happy-dom@20.10.3)(jiti@2.6.1)(lightningcss@1.30.2)(msw@2.12.13(@types/node@25.5.0)(typescript@5.8.3))(yaml@2.9.0)
+
   packages/cli:
     dependencies:
       '@hubble.md/sync':
         specifier: workspace:*
         version: link:../sync
+      '@mdly/agent-hook':
+        specifier: workspace:*
+        version: link:../agent-hook
       '@mdly/cloudflare-client':
         specifier: workspace:*
         version: link:../cloudflare-client
@@ -2812,6 +2834,9 @@ packages:
     resolution: {integrity: sha512-J8mswyI5/+ikTJkBWfVWJPSWaQGCzhemDMdsPA/lanSWza0QNZCdRk2D3tZIipHiNFw+lRTrAm1DW9zd2Vtmpg==, tarball: https://npm.pkg.github.com/download/@tektrg/table-core/1.4.2/f4f8034656f9ff31527cda93d11937975a338b60}
     peerDependencies:
       esbuild: '>=0.21'
+    peerDependenciesMeta:
+      esbuild:
+        optional: true
 
   '@tiptap/core@3.20.0':
     resolution: {integrity: sha512-aC9aROgia/SpJqhsXFiX9TsligL8d+oeoI8W3u00WI45s0VfsqjgeKQLDLF7Tu7hC+7F02teC84SAHuup003VQ==}
@@ -8331,7 +8356,7 @@ snapshots:
       react: 19.2.4
 
   '@tektrg/table-core@1.4.2(esbuild@0.28.1)':
-    dependencies:
+    optionalDependencies:
       esbuild: 0.28.1
 
   '@tiptap/core@3.20.0(@tiptap/pm@3.20.0)':

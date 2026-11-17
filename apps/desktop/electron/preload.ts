@@ -173,6 +173,14 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:comment-resolve", { path, threadId }),
 	reopenCommentThread: (path, threadId) =>
 		ipcRenderer.invoke("desktop:comment-reopen", { path, threadId }),
+	agentHookSendEdits: (path, markdown) =>
+		ipcRenderer.invoke("desktop:agent-hook-send-edits", { path, markdown }),
+	agentHookDecision: (path, decision) =>
+		ipcRenderer.invoke("desktop:agent-hook-decision", { path, ...decision }),
+	agentHookRequestTool: (path, request) =>
+		ipcRenderer.invoke("desktop:agent-hook-request-tool", { path, ...request }),
+	agentHookState: (path) =>
+		ipcRenderer.invoke("desktop:agent-hook-state", { path }),
 	deleteCommentThread: (path, threadId) =>
 		ipcRenderer.invoke("desktop:comment-delete-thread", { path, threadId }),
 	listAgentTools: () => ipcRenderer.invoke("desktop:agent-list-tools"),
@@ -290,6 +298,8 @@ const desktopApi = {
 		),
 	onCommentsChanged: (callback) =>
 		subscribe("desktop:comments-changed", (path: string) => callback(path)),
+	onAgentHookChanged: (callback) =>
+		subscribe("desktop:agent-hook-changed", (path: string) => callback(path)),
 	onWorkspaceViewsChanged: (callback) =>
 		subscribe("desktop:workspace-views-changed", (workspacePath: string) =>
 			callback(workspacePath),

@@ -74,6 +74,8 @@ export interface AgentToolContext {
 	notifyCommentsChanged: (absoluteFilePath: string) => void;
 	/** Called after a tool changed a workspace's saved views, so the open app re-reads them now. */
 	notifyViewsChanged?: (workspaceRoot: string) => void;
+	/** Called after an agent proposed an edit, so the open editor shows the suggestion now. */
+	notifySuggestionsChanged?: (absoluteFilePath: string) => void;
 }
 
 /** A descriptor plus its implementation. */

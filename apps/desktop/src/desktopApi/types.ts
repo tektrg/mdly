@@ -608,6 +608,17 @@ export type DesktopApi = {
 	resolveCommentThread(path: string, threadId: string): Promise<void>;
 	reopenCommentThread(path: string, threadId: string): Promise<void>;
 	deleteCommentThread(path: string, threadId: string): Promise<void>;
+	/** Agent hook: the explicit "send edits to agent" action (word diff vs what the agent last saw). */
+	agentHookSendEdits(
+		path: string,
+		markdown: string,
+	): Promise<{ status: "sent"; changes: number } | { status: "unchanged" }>;
+	agentHookDecision(path: string, decision: AgentHookDecision): Promise<void>;
+	agentHookRequestTool(
+		path: string,
+		request: AgentHookToolRequest,
+	): Promise<void>;
+	agentHookState(path: string): Promise<AgentHookState>;
 	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
 	listAgentTools(): Promise<AgentToolDescriptor[]>;
 	callAgentTool(
@@ -708,6 +719,8 @@ export type DesktopApi = {
 	onFullScreenChange(callback: (isFullScreen: boolean) => void): Unsubscribe;
 	/** Slice 4: fires after an agent writes a comment, so the open editor refetches its threads live instead of on next load. */
 	onCommentsChanged(callback: (path: string) => void): Unsubscribe;
+	/** An agent proposed an edit on `path`. */
+	onAgentHookChanged(callback: (path: string) => void): Unsubscribe;
 	/** An MCP tool changed `<workspace>/.hubble/views.json`; re-read that workspace's saved views. */
 	onWorkspaceViewsChanged?(
 		callback: (workspacePath: string) => void,
@@ -720,4 +733,32 @@ export type DesktopApi = {
 	onMainProcessError(
 		callback: (payload: MainProcessErrorNoticePayload) => void,
 	): Unsubscribe;
+};
+
+export type AgentHookDecision = {
+	accepted: boolean;
+	proposalId?: string;
+	source: "agent" | "tool";
+	before?: string;
+	after?: string;
+};
+
+export type AgentHookToolRequest = {
+	requestId: string;
+	tool: string;
+	prompt: string;
+	text: string;
+};
+
+export type AgentHookProposal = {
+	proposalId: string;
+	find: string;
+	replace: string;
+	note?: string;
+	author?: string;
+};
+
+export type AgentHookState = {
+	proposals: AgentHookProposal[];
+	watchers: { id: string; name: string; machine: string }[];
 };

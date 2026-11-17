@@ -54,6 +54,7 @@ export default defineConfig({
 					"@mdly/doc-history",
 					"@mdly/doc-history/node",
 					"@mdly/doc-comments",
+					"@mdly/agent-hook",
 					// Previously externalized and only resolvable by luck of
 					// electron-builder's node_modules packing (pnpm symlink layout,
 					// exports conditions). Bundled so out/main is self-contained;

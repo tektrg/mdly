@@ -29,7 +29,8 @@ import {
 } from "../store/actions";
 import { registerEditorDraftFlush } from "../store/editorDraft";
 import { observeEditorTransactionStorms } from "../store/editorStormDetector";
-import { workspaceStore } from "../store/state";
+import { viewerStore, workspaceStore } from "../store/state";
+import { AgentHookBar, useAgentHookState } from "./AgentHookBar";
 import { NotionDatabaseViewer } from "./NotionDatabaseViewer";
 
 const HMR_REV = (() => {
@@ -354,28 +355,41 @@ function MarkdownEditor({
 		onCommentsOpenChange,
 	]);
 
+	const agentHook = useAgentHookState(path, !isSingleFile);
+	const getCurrentMarkdown = useCallback(() => {
+		const viewer = viewerStore.get();
+		return viewer.currentPath === path ? viewer.content : initialMarkdown;
+	}, [path, initialMarkdown]);
+
 	return (
-		<EditorView
-			path={path}
-			initialMarkdown={initialMarkdown}
-			wikiTargets={wikiTargets}
-			extensions={editorExtensions}
-			onPaste={handlePaste}
-			onDrop={handleDrop}
-			onInsertImage={handleInsertImage}
-			registerDraftFlush={registerEditorDraftFlush}
-			onLocalChange={updateEditorContent}
-			onSave={savePathContent}
-			onIdleOrForcedCut={handleIdleOrForcedCut}
-			onScrollContainerChange={onScrollContainerChange}
-			onOpenExternalLink={desktopApi.openExternalUrl}
-			onOpenNotionMentionLink={openNotionMentionLink}
-			onOpenWikiLink={openWikiLink}
-			onMessage={showEditorMessage}
-			onEditorReady={handleEditorReady}
-			commentOptions={commentOptions}
-			fileMenu={fileMenu}
-			tableInteractivity
-		/>
+		<>
+			<AgentHookBar
+				path={path}
+				getMarkdown={getCurrentMarkdown}
+				watchers={agentHook.watchers}
+			/>
+			<EditorView
+				path={path}
+				initialMarkdown={initialMarkdown}
+				wikiTargets={wikiTargets}
+				extensions={editorExtensions}
+				onPaste={handlePaste}
+				onDrop={handleDrop}
+				onInsertImage={handleInsertImage}
+				registerDraftFlush={registerEditorDraftFlush}
+				onLocalChange={updateEditorContent}
+				onSave={savePathContent}
+				onIdleOrForcedCut={handleIdleOrForcedCut}
+				onScrollContainerChange={onScrollContainerChange}
+				onOpenExternalLink={desktopApi.openExternalUrl}
+				onOpenNotionMentionLink={openNotionMentionLink}
+				onOpenWikiLink={openWikiLink}
+				onMessage={showEditorMessage}
+				onEditorReady={handleEditorReady}
+				commentOptions={commentOptions}
+				fileMenu={fileMenu}
+				tableInteractivity
+			/>
+		</>
 	);
 }

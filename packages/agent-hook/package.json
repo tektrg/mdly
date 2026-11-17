@@ -1,0 +1,37 @@
+{
+	"name": "@mdly/agent-hook",
+	"version": "0.0.1",
+	"description": "File-backed agent event stream (watch/subscribe) and word diffs for mdly documents",
+	"license": "MIT",
+	"author": "tektrg",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./diff": {
+			"types": "./dist/wordDiff.d.ts",
+			"default": "./dist/wordDiff.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"diff": "^8.0.3"
+	},
+	"devDependencies": {
+		"@types/node": "^25.5.0",
+		"typescript": "~5.8.3",
+		"vitest": "^3.2.4"
+	}
+}
