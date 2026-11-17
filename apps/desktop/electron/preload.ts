@@ -179,6 +179,16 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:agent-hook-decision", { path, ...decision }),
 	agentHookRequestTool: (path, request) =>
 		ipcRenderer.invoke("desktop:agent-hook-request-tool", { path, ...request }),
+	listWritingTools: (path) =>
+		ipcRenderer.invoke("desktop:writing-tools-list", { path }),
+	resetWritingTool: (path, id) =>
+		ipcRenderer.invoke("desktop:writing-tools-reset", { path, id }),
+	runWritingTool: (path, request) =>
+		ipcRenderer.invoke("desktop:writing-tools-run", { path, ...request }),
+	getWritingEngineStatus: () =>
+		ipcRenderer.invoke("desktop:writing-engine-status"),
+	setWritingModelPath: (modelPath) =>
+		ipcRenderer.invoke("desktop:writing-engine-set-model-path", { modelPath }),
 	agentHookState: (path) =>
 		ipcRenderer.invoke("desktop:agent-hook-state", { path }),
 	deleteCommentThread: (path, threadId) =>

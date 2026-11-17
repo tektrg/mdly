@@ -129,6 +129,17 @@ import {
 import { readPackageMetadata, resolveUpdateGate } from "./updateGate";
 import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
+	createLlamaEngine,
+	DEFAULT_MODEL_PATH,
+	type WritingEngine,
+} from "./writingEngine";
+import {
+	buildToolPrompt,
+	cleanModelOutput,
+	listWritingTools,
+	resetWritingTool,
+} from "./writingTools";
+import {
 	loadZoomFactor,
 	resetWindowZoom,
 	setTrafficLightInset,
@@ -818,6 +829,40 @@ function agentToolContext(): AgentToolContext {
 		notifySuggestionsChanged: (absoluteFilePath: string) =>
 			broadcastToRenderers("desktop:agent-hook-changed", absoluteFilePath),
 	};
+}
+
+// --- Writing tools ("the dot") ------------------------------------------
+// One engine instance, recreated when the model path setting changes. Runs
+// are serialized: a local model has one context budget, and a queue keeps a
+// second click from racing the first.
+const WRITING_SETTINGS_FILE = "writing-tools.json";
+let writingEngine: WritingEngine | null = null;
+let writingRunQueue: Promise<unknown> = Promise.resolve();
+
+async function readWritingModelPath(): Promise<string> {
+	try {
+		const raw = JSON.parse(
+			await fs.readFile(
+				path.join(app.getPath("userData"), WRITING_SETTINGS_FILE),
+				"utf8",
+			),
+		) as { modelPath?: unknown };
+		return typeof raw.modelPath === "string" && raw.modelPath.trim()
+			? raw.modelPath
+			: DEFAULT_MODEL_PATH;
+	} catch {
+		return DEFAULT_MODEL_PATH;
+	}
+}
+
+async function getWritingEngine(): Promise<WritingEngine> {
+	const modelPath = await readWritingModelPath();
+	if (writingEngine && writingEngine.getStatus().modelPath === modelPath) {
+		return writingEngine;
+	}
+	await writingEngine?.dispose();
+	writingEngine = createLlamaEngine({ modelPath });
+	return writingEngine;
 }
 
 async function isAgentAccessEnabled(): Promise<boolean> {
@@ -2086,6 +2131,75 @@ function registerIpc() {
 						"Answer with the propose_edit MCP tool (find = the given text).",
 				},
 			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:writing-tools-list",
+		async (_event, { path: filePath }) => {
+			const resolved = assertGranted(filePath);
+			return listWritingTools(
+				resolveHookTarget(resolved, grantedRoots).workspaceRoot,
+			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:writing-tools-reset",
+		async (_event, { path: filePath, id }) => {
+			const resolved = assertGranted(filePath);
+			await resetWritingTool(
+				resolveHookTarget(resolved, grantedRoots).workspaceRoot,
+				String(id),
+			);
+		},
+	);
+	ipcMain.handle(
+		"desktop:writing-tools-run",
+		async (_event, { path: filePath, toolId, text, requestId }) => {
+			const resolved = assertGranted(filePath);
+			const target = resolveHookTarget(resolved, grantedRoots);
+			const tool = (await listWritingTools(target.workspaceRoot)).find(
+				(candidate) => candidate.id === toolId,
+			);
+			if (!tool)
+				return { status: "failed", error: `Unknown tool: ${String(toolId)}` };
+			if (tool.engine === "agent") {
+				await emitHookEvent(target, "tool.requested", "user", {
+					requestId: String(requestId),
+					tool: tool.name,
+					prompt: tool.prompt,
+					text: String(text),
+					reply:
+						"Answer with the propose_edit MCP tool (find = the given text).",
+				});
+				return { status: "sent-to-agent" };
+			}
+			const run = writingRunQueue.then(async () => {
+				const engine = await getWritingEngine();
+				const result = await engine.run(
+					buildToolPrompt(tool.prompt, String(text)),
+				);
+				return result.status === "done"
+					? { status: "done", text: cleanModelOutput(result.text) }
+					: result;
+			});
+			writingRunQueue = run.catch(() => undefined);
+			return run;
+		},
+	);
+	ipcMain.handle("desktop:writing-engine-status", async () => {
+		return (await getWritingEngine()).getStatus();
+	});
+	ipcMain.handle(
+		"desktop:writing-engine-set-model-path",
+		async (_event, { modelPath }) => {
+			const file = path.join(app.getPath("userData"), WRITING_SETTINGS_FILE);
+			await fs.writeFile(
+				file,
+				JSON.stringify({
+					modelPath: typeof modelPath === "string" ? modelPath : "",
+				}),
+			);
+			return (await getWritingEngine()).getStatus();
 		},
 	);
 	ipcMain.handle(

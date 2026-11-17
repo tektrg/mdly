@@ -619,6 +619,15 @@ export type DesktopApi = {
 		request: AgentHookToolRequest,
 	): Promise<void>;
 	agentHookState(path: string): Promise<AgentHookState>;
+	/** Writing tools ("the dot"): `.mdly/tools/*.md`, built-ins seeded when missing. */
+	listWritingTools(path: string): Promise<WritingTool[]>;
+	resetWritingTool(path: string, id: string): Promise<void>;
+	runWritingTool(
+		path: string,
+		request: { toolId: string; text: string; requestId: string },
+	): Promise<WritingToolRunResult>;
+	getWritingEngineStatus(): Promise<WritingEngineStatus>;
+	setWritingModelPath(modelPath: string): Promise<WritingEngineStatus>;
 	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
 	listAgentTools(): Promise<AgentToolDescriptor[]>;
 	callAgentTool(
@@ -762,3 +771,23 @@ export type AgentHookState = {
 	proposals: AgentHookProposal[];
 	watchers: { id: string; name: string; machine: string }[];
 };
+
+export type WritingTool = {
+	id: string;
+	name: string;
+	engine: "local" | "agent";
+	prompt: string;
+	builtIn: boolean;
+	filePath: string;
+};
+
+export type WritingEngineStatus = {
+	state: "idle" | "loading" | "ready" | "missing" | "failed";
+	modelPath: string;
+	error?: string;
+};
+
+export type WritingToolRunResult =
+	| { status: "done"; text: string }
+	| { status: "sent-to-agent" }
+	| { status: "failed"; error: string; engine?: WritingEngineStatus };

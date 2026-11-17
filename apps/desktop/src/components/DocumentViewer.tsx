@@ -39,6 +39,7 @@ import { viewerStore, workspaceStore } from "../store/state";
 import { AgentHookBar, useAgentHookState } from "./AgentHookBar";
 import { NotionDatabaseViewer } from "./NotionDatabaseViewer";
 import { SuggestionReviewBar } from "./SuggestionReviewBar";
+import { WritingDot } from "./WritingDot";
 
 const HMR_REV = (() => {
 	if (!import.meta.hot) return 0;
@@ -417,6 +418,13 @@ function MarkdownEditor({
 	return (
 		<>
 			<SuggestionReviewBar editor={liveEditor} />
+			{!isSingleFile && (
+				<WritingDot
+					editor={liveEditor}
+					path={path}
+					hasWatcher={agentHook.watchers.length > 0}
+				/>
+			)}
 			<AgentHookBar
 				path={path}
 				getMarkdown={getCurrentMarkdown}
