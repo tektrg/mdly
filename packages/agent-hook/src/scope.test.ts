@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { appendHookEvent, type HookEvent, newHookEvent } from "./events.js";
 import {
+	ensureWorkspace,
 	readOpenDocs,
 	resolveDocStore,
 	subscriberCovers,
@@ -111,6 +112,19 @@ describe("watchScope", () => {
 		]);
 		// Each line names its doc.
 		expect(seen[1].event.doc).toBe(path.join("sub", "b.md"));
+	});
+
+	it("workspace scope on a subfolder of a workspace: its docs only, no nested store", async () => {
+		const sub = path.join(ws, "sub");
+		const inSub = path.join(sub, "b.md");
+		const seen = await collect({ kind: "workspace", root: sub }, async () => {
+			await ensureWorkspace(sub);
+			await comment(inSub, "b1");
+			await comment(path.join(ws, "a.md"), "outside the subfolder");
+		});
+		expect(seen.map((s) => [s.text, s.path])).toEqual([["b1", inSub]]);
+		// The doc's stream stays in the enclosing workspace (pending proposals stay visible).
+		expect(resolveDocStore(inSub, appData).workspaceRoot).toBe(ws);
 	});
 
 	it("open scope: follows docs as they open and close", async () => {

@@ -165,7 +165,10 @@ async function scopeTargets(
 		return (await readOpenDocs(appDataDir)).map((p) =>
 			targetFor(resolveDocStore(p, appDataDir)),
 		);
-	const dir = hookDir(scope.root);
+	// A subfolder of a workspace reads the enclosing workspace's streams
+	// (filtered to its docs by `inScope`), never a store of its own.
+	const storeRoot = workspaceStoreRoot(scope.root);
+	const dir = hookDir(storeRoot);
 	let names: string[] = [];
 	try {
 		names = await fs.readdir(dir);
@@ -179,9 +182,21 @@ async function scopeTargets(
 			return {
 				file,
 				rotated: file.replace(/\.events\.jsonl$/, ".events.1.jsonl"),
-				workspaceRoot: scope.root,
+				workspaceRoot: storeRoot,
 			};
 		});
+}
+
+/** The folder whose `.mdly` holds the streams of docs in `root`. */
+export function workspaceStoreRoot(root: string): string {
+	const absolute = path.resolve(root);
+	if (isDir(path.join(absolute, ".mdly"))) return absolute;
+	return findWorkspaceRootSync(absolute) ?? absolute;
+}
+
+/** Workspace scope may be a subfolder of its store: only its own docs count. */
+function inScope(scope: WatchScope, absoluteDocPath: string): boolean {
+	return scope.kind !== "workspace" || isInside(scope.root, absoluteDocPath);
 }
 
 export interface ScopeWatchOptions {
@@ -229,7 +244,9 @@ export async function watchScope(options: ScopeWatchOptions): Promise<void> {
 		for (const { tailer, workspaceRoot } of tailers.values()) {
 			for (const event of await tailer.poll()) {
 				if (skip.has(event.origin)) continue;
-				options.onEvent(event, eventDocPath(workspaceRoot, event.doc));
+				const docPath = eventDocPath(workspaceRoot, event.doc);
+				if (!inScope(options.scope, docPath)) continue;
+				options.onEvent(event, docPath);
 			}
 		}
 		await abortableSleep(interval, options.signal);
@@ -280,10 +297,9 @@ export async function readScopeEvents(
 		if (previous) {
 			for (const event of await tailer.poll()) {
 				if (skip.has(event.origin)) continue;
-				events.push({
-					event,
-					path: eventDocPath(target.workspaceRoot, event.doc),
-				});
+				const docPath = eventDocPath(target.workspaceRoot, event.doc);
+				if (!inScope(scope, docPath)) continue;
+				events.push({ event, path: docPath });
 			}
 		}
 		next[target.file] = tailer.getPosition();
@@ -297,6 +313,8 @@ export async function readScopeEvents(
 
 /** Makes `root` a workspace (creates `.mdly`) so the app files its streams there. */
 export async function ensureWorkspace(root: string): Promise<void> {
+	// Inside a workspace already: a nested `.mdly` would split its docs' streams.
+	if (findWorkspaceRootSync(path.join(path.resolve(root), "x"))) return;
 	if (!existsSync(path.join(root, ".mdly")))
 		await fs.mkdir(path.join(root, ".mdly"), { recursive: true });
 }
