@@ -190,6 +190,8 @@ const desktopApi = {
 		ipcRenderer.invoke("desktop:writing-engine-status"),
 	setWritingModelPath: (modelPath) =>
 		ipcRenderer.invoke("desktop:writing-engine-set-model-path", { modelPath }),
+	agentHookDocOpen: (path, open) =>
+		ipcRenderer.invoke("desktop:agent-hook-doc-open", { path, open }),
 	agentHookState: (path) =>
 		ipcRenderer.invoke("desktop:agent-hook-state", { path }),
 	deleteCommentThread: (path, threadId) =>

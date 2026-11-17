@@ -636,6 +636,7 @@ describe("AGENT_TOOL_DESCRIPTORS annotations", () => {
 				"list_views",
 				"read_thread",
 				"validateDiagram",
+				"watch_events",
 			].sort(),
 		);
 	});

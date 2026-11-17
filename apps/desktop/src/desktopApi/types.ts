@@ -619,6 +619,8 @@ export type DesktopApi = {
 		request: AgentHookToolRequest,
 	): Promise<void>;
 	agentHookState(path: string): Promise<AgentHookState>;
+	/** Reports a note opening/closing in this window (for `mdly watch --open`). */
+	agentHookDocOpen(path: string, open: boolean): Promise<void>;
 	/** Writing tools ("the dot"): `.mdly/tools/*.md`, built-ins seeded when missing. */
 	listWritingTools(path: string): Promise<WritingTool[]>;
 	resetWritingTool(path: string, id: string): Promise<void>;

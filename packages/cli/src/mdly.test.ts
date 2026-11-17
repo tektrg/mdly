@@ -6,9 +6,11 @@ import {
 	appendHookEvent,
 	listLiveSubscribers,
 	newHookEvent,
+	resolveDocStore,
+	writeOpenDocs,
 } from "@mdly/agent-hook";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readMcpEndpoint, relayMcpMessage } from "./mdly.js";
+import { readMcpEndpoint, relayMcpMessage, runMdly } from "./mdly.js";
 
 let root: string;
 beforeEach(async () => {
@@ -64,40 +66,111 @@ describe("relayMcpMessage", () => {
 	});
 });
 
+const entry = path.resolve(__dirname, "../dist/mdly.js");
+
+/** Runs `mdly watch …` with no TTY; returns its stdout once `act` is done. */
+async function runWatch(args: string[], act: () => Promise<void>) {
+	const child = spawn(process.execPath, [entry, "watch", ...args], {
+		stdio: ["pipe", "pipe", "pipe"],
+	});
+	let stdout = "";
+	child.stdout.on("data", (d) => {
+		stdout += d;
+	});
+	await new Promise((r) => child.stderr.once("data", r));
+	await act();
+	await new Promise((r) => setTimeout(r, 900));
+	child.kill("SIGTERM");
+	await new Promise((r) => child.once("exit", r));
+	return stdout
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
+async function comment(appData: string, absPath: string, text: string) {
+	const store = resolveDocStore(absPath, appData);
+	await appendHookEvent(
+		store.workspaceRoot,
+		newHookEvent("comment.added", store.doc, "user", { text }),
+	);
+}
+
 describe("mdly watch (process)", () => {
 	it("streams one JSON line per event on stdout with no TTY, and registers a subscriber", async () => {
+		const appData = path.join(root, "appdata");
 		await fs.mkdir(path.join(root, ".mdly"));
 		const doc = path.join(root, "a.md");
 		await fs.writeFile(doc, "hello");
-		const entry = path.resolve(__dirname, "../dist/mdly.js");
-		const child = spawn(
-			process.execPath,
-			[entry, "watch", doc, "--name", "Claude", "--machine", "Air"],
-			{
-				stdio: ["pipe", "pipe", "pipe"],
+		const lines = await runWatch(
+			[doc, "--name", "Claude", "--machine", "Air", "--app-data", appData],
+			async () => {
+				const subs = await listLiveSubscribers(appData);
+				expect(subs.map((s) => `${s.name}@${s.machine}`)).toEqual([
+					"Claude@Air",
+				]);
+				expect(subs[0].scope).toEqual({ kind: "file", path: doc });
+				// Hostile text is passed through as JSON data, never executed.
+				await comment(appData, doc, "$(echo INJECTED)");
 			},
 		);
-		let stdout = "";
-		child.stdout.on("data", (d) => {
-			stdout += d;
-		});
-		await new Promise((r) => child.stderr.once("data", r));
-		const subs = await listLiveSubscribers(root, "a.md");
-		expect(subs.map((s) => `${s.name}@${s.machine}`)).toEqual(["Claude@Air"]);
-		// Hostile text is passed through as JSON data, never executed.
-		await appendHookEvent(
-			root,
-			newHookEvent("comment.added", "a.md", "user", {
-				text: "$(echo INJECTED)",
-			}),
-		);
-		await new Promise((r) => setTimeout(r, 900));
-		child.kill("SIGTERM");
-		await new Promise((r) => child.once("exit", r));
-		const lines = stdout.trim().split("\n");
 		expect(lines).toHaveLength(1);
-		expect(JSON.parse(lines[0]).text).toBe("$(echo INJECTED)");
-		expect(stdout).not.toMatch(/(^|[^(]echo )INJECTED/);
-		expect(await listLiveSubscribers(root, "a.md")).toEqual([]);
+		expect(lines[0].text).toBe("$(echo INJECTED)");
+		expect(lines[0].path).toBe(doc);
+		expect(JSON.stringify(lines)).not.toMatch(/(^|[^(]echo )INJECTED/);
+		expect(await listLiveSubscribers(appData)).toEqual([]);
 	}, 10_000);
+
+	it("watches a standalone file outside any workspace", async () => {
+		const appData = path.join(root, "appdata");
+		const doc = path.join(root, "loose", "b.md");
+		await fs.mkdir(path.dirname(doc), { recursive: true });
+		await fs.writeFile(doc, "x");
+		const lines = await runWatch([doc, "--app-data", appData], () =>
+			comment(appData, doc, "hi"),
+		);
+		expect(lines.map((l) => [l.text, l.path])).toEqual([["hi", doc]]);
+		// No .mdly folder dropped next to a loose file.
+		await expect(fs.stat(path.join(root, "loose", ".mdly"))).rejects.toThrow();
+	}, 10_000);
+
+	it("--workspace streams every doc in the folder, each line naming its doc", async () => {
+		const appData = path.join(root, "appdata");
+		const ws = path.join(root, "ws");
+		await fs.mkdir(ws);
+		const a = path.join(ws, "a.md");
+		const b = path.join(ws, "n", "b.md");
+		const lines = await runWatch(
+			["--workspace", ws, "--app-data", appData],
+			async () => {
+				await comment(appData, a, "a1");
+				await comment(appData, b, "b1");
+			},
+		);
+		expect(lines.map((l) => [l.text, l.path, l.doc])).toEqual([
+			["a1", a, "a.md"],
+			["b1", b, path.join("n", "b.md")],
+		]);
+	}, 10_000);
+
+	it("--open follows the docs open in mdly", async () => {
+		const appData = path.join(root, "appdata");
+		const a = path.join(root, "a.md");
+		const b = path.join(root, "b.md");
+		await writeOpenDocs(appData, [a]);
+		const lines = await runWatch(
+			["--open", "--app-data", appData],
+			async () => {
+				await comment(appData, a, "a open");
+				await comment(appData, b, "b closed");
+			},
+		);
+		expect(lines.map((l) => l.text)).toEqual(["a open"]);
+	}, 10_000);
+
+	it("rejects no scope or two scopes", async () => {
+		expect(await runMdly(["watch"])).toBe(2);
+		expect(await runMdly(["watch", "x.md", "--open"])).toBe(2);
+	});
 });

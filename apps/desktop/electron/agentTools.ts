@@ -20,7 +20,7 @@ import {
 	replyToAgentThread,
 	resolveAgentThread,
 } from "./agentComments";
-import { PROPOSE_EDIT_TOOL } from "./agentHookTools";
+import { PROPOSE_EDIT_TOOL, WATCH_EVENTS_TOOL } from "./agentHookTools";
 import {
 	type AgentTool,
 	type AgentToolDescriptor,
@@ -332,6 +332,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 	resolveTool,
 	reopenTool,
 	PROPOSE_EDIT_TOOL,
+	WATCH_EVENTS_TOOL,
 	LIST_VIEWS_TOOL,
 	CREATE_VIEW_TOOL,
 	...DIAGRAM_AGENT_TOOLS,

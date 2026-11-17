@@ -180,7 +180,6 @@ function MarkdownEditor({
 	// Accept/reject of a whole suggestion group goes back to the agent hook.
 	const onSuggestionSettled = useCallback(
 		(settled: GroupSettled) => {
-			if (isSingleFile) return;
 			void desktopApi
 				.agentHookDecision(path, {
 					accepted: settled.accepted,
@@ -192,7 +191,7 @@ function MarkdownEditor({
 				})
 				.catch(() => undefined);
 		},
-		[path, isSingleFile],
+		[path],
 	);
 	const settledRef = useRef(onSuggestionSettled);
 	settledRef.current = onSuggestionSettled;
@@ -387,7 +386,8 @@ function MarkdownEditor({
 		onCommentsOpenChange,
 	]);
 
-	const agentHook = useAgentHookState(path, !isSingleFile);
+	// Standalone files too: their stream lives in app data (watch scope "file").
+	const agentHook = useAgentHookState(path, true);
 	// Agent proposals → inline suggestions, each placed once per mount.
 	const placedProposalsRef = useRef(new Set<string>());
 	useEffect(() => {

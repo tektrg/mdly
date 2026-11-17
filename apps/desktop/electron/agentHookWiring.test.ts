@@ -1,12 +1,18 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readHookEvents } from "@mdly/agent-hook";
+import {
+	readHookEvents,
+	readOpenDocs,
+	registerSubscriber,
+} from "@mdly/agent-hook";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	createOpenDocsTracker,
 	emitDecision,
 	emitHookEvent,
 	listPendingProposals,
+	listWatchers,
 	proposeEdit,
 	resolveHookTarget,
 	sendEditsToAgent,
@@ -129,5 +135,71 @@ describe("agent hook wiring", () => {
 			["suggestion.partially_accepted", 1, 2],
 			["suggestion.rejected", 0, 2],
 		]);
+	});
+
+	it("a standalone file (no .mdly above it) streams to app data, not next to the file", async () => {
+		const appData = path.join(root, "appdata");
+		const loose = path.join(root, "loose", "n.md");
+		const target = resolveHookTarget(loose, [path.dirname(loose)], appData);
+		expect(target.workspaceRoot.startsWith(appData)).toBe(true);
+		expect(target.path).toBe(loose);
+		await emitHookEvent(target, "comment.added", "user", { text: "x" });
+		await expect(fs.stat(path.join(root, "loose", ".mdly"))).rejects.toThrow();
+		// A doc inside a workspace keeps its workspace stream.
+		await fs.mkdir(path.join(root, "ws", ".mdly"), { recursive: true });
+		const inWs = resolveHookTarget(
+			path.join(root, "ws", "a.md"),
+			[root],
+			appData,
+		);
+		expect(inWs).toMatchObject({
+			workspaceRoot: path.join(root, "ws"),
+			doc: "a.md",
+		});
+	});
+
+	it("badge: watchers whose scope covers the doc (file, workspace, open)", async () => {
+		const appData = path.join(root, "appdata");
+		await fs.mkdir(path.join(root, "ws", ".mdly"), { recursive: true });
+		const a = path.join(root, "ws", "a.md");
+		const b = path.join(root, "b.md");
+		await registerSubscriber(appData, {
+			scope: { kind: "workspace", root: path.join(root, "ws") },
+			name: "W",
+			machine: "m",
+		});
+		await registerSubscriber(appData, {
+			scope: { kind: "open" },
+			name: "O",
+			machine: "m",
+		});
+		const tracker = createOpenDocsTracker(appData);
+		await tracker.open(1, b);
+		const names = async (doc: string) =>
+			(
+				await listWatchers(
+					resolveHookTarget(doc, [root], appData),
+					appData,
+					tracker.list(),
+				)
+			)
+				.map((w) => w.name)
+				.sort();
+		expect(await names(a)).toEqual(["W"]);
+		expect(await names(b)).toEqual(["O"]);
+		await tracker.closeOwner(1);
+		expect(await names(b)).toEqual([]);
+	});
+
+	it("open docs: published per window, a doc open twice stays open until both close", async () => {
+		const appData = path.join(root, "appdata");
+		const tracker = createOpenDocsTracker(appData);
+		const a = path.join(root, "a.md");
+		await tracker.open(1, a);
+		await tracker.open(2, a);
+		await tracker.close(1, a);
+		expect(await readOpenDocs(appData)).toEqual([a]);
+		await tracker.closeOwner(2);
+		expect(await readOpenDocs(appData)).toEqual([]);
 	});
 });

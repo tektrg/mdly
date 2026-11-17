@@ -1,7 +1,9 @@
 /**
- * Who is watching a document. Each `mdly watch` writes one small JSON file
- * and refreshes `heartbeatAt`; the app shows a "watching" badge for every live
- * one. A subscriber counts as live while its heartbeat is fresh AND (when it
+ * Who is watching what. Each `mdly watch` (or MCP subscriber) writes one small
+ * JSON file naming its scope (one file, a workspace folder, or the docs open
+ * in mdly) into one registry under the app's data folder, and refreshes
+ * `heartbeatAt`; the app shows a "watching" badge on every doc a live
+ * subscriber's scope covers. A subscriber counts as live while its heartbeat is fresh AND (when it
  * runs on this machine, which `mdly watch` always does — over ssh it still
  * executes here) its pid is alive. Files survive a restart; dead ones are
  * filtered out and pruned.
@@ -10,14 +12,14 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { docKey, hookDir } from "./events.js";
+import type { WatchScope } from "./scope.js";
 
 export const HEARTBEAT_MS = 10_000;
 export const STALE_AFTER_MS = 35_000;
 
 export interface Subscriber {
 	id: string;
-	doc: string;
+	scope: WatchScope;
 	/** Who: e.g. "Claude". */
 	name: string;
 	/** Where the agent sits, e.g. "Air" when reached over ssh. */
@@ -28,18 +30,13 @@ export interface Subscriber {
 	heartbeatAt: string;
 }
 
-function subscribersDir(workspaceRoot: string): string {
-	return path.join(hookDir(workspaceRoot), "subscribers");
+/** The registry: `<app data>/agent-hook/subscribers/`. */
+export function subscribersDir(appDataDir: string): string {
+	return path.join(appDataDir, "agent-hook", "subscribers");
 }
 
-function subscriberPath(
-	workspaceRoot: string,
-	sub: Pick<Subscriber, "id" | "doc">,
-) {
-	return path.join(
-		subscribersDir(workspaceRoot),
-		`${docKey(sub.doc)}~${sub.id}.json`,
-	);
+function subscriberPath(appDataDir: string, sub: Pick<Subscriber, "id">) {
+	return path.join(subscribersDir(appDataDir), `${sub.id}.json`);
 }
 
 /** Machine label: explicit, else the ssh client's address, else this host. */
@@ -52,13 +49,13 @@ export function defaultMachineLabel(
 }
 
 export async function registerSubscriber(
-	workspaceRoot: string,
-	init: { doc: string; name: string; machine: string },
+	appDataDir: string,
+	init: { scope: WatchScope; name: string; machine: string },
 	now: Date = new Date(),
 ): Promise<Subscriber> {
 	const sub: Subscriber = {
-		id: randomUUID().slice(0, 8),
-		doc: init.doc,
+		id: randomUUID().slice(0, 12),
+		scope: init.scope,
 		name: init.name,
 		machine: init.machine,
 		host: os.hostname(),
@@ -66,25 +63,34 @@ export async function registerSubscriber(
 		startedAt: now.toISOString(),
 		heartbeatAt: now.toISOString(),
 	};
-	await fs.mkdir(subscribersDir(workspaceRoot), { recursive: true });
-	await fs.writeFile(subscriberPath(workspaceRoot, sub), JSON.stringify(sub));
+	await fs.mkdir(subscribersDir(appDataDir), { recursive: true });
+	await fs.writeFile(subscriberPath(appDataDir, sub), JSON.stringify(sub));
 	return sub;
 }
 
+/** Writes (or refreshes) a subscriber under a caller-chosen id: polling transports re-register each call. */
+export async function upsertSubscriber(
+	appDataDir: string,
+	sub: Subscriber,
+): Promise<void> {
+	await fs.mkdir(subscribersDir(appDataDir), { recursive: true });
+	await fs.writeFile(subscriberPath(appDataDir, sub), JSON.stringify(sub));
+}
+
 export async function heartbeatSubscriber(
-	workspaceRoot: string,
+	appDataDir: string,
 	sub: Subscriber,
 	now: Date = new Date(),
 ): Promise<void> {
 	sub.heartbeatAt = now.toISOString();
-	await fs.writeFile(subscriberPath(workspaceRoot, sub), JSON.stringify(sub));
+	await fs.writeFile(subscriberPath(appDataDir, sub), JSON.stringify(sub));
 }
 
 export async function unregisterSubscriber(
-	workspaceRoot: string,
+	appDataDir: string,
 	sub: Subscriber,
 ): Promise<void> {
-	await fs.rm(subscriberPath(workspaceRoot, sub), { force: true });
+	await fs.rm(subscriberPath(appDataDir, sub), { force: true });
 }
 
 export function defaultIsPidAlive(pid: number): boolean {
@@ -107,34 +113,34 @@ export function isSubscriberLive(
 	return true;
 }
 
-/** Live subscribers for `doc` (or every doc when omitted); dead files are pruned. */
+/** Every live subscriber; dead or unreadable files are pruned. */
 export async function listLiveSubscribers(
-	workspaceRoot: string,
-	doc?: string,
+	appDataDir: string,
 	now: Date = new Date(),
 	isPidAlive?: (pid: number) => boolean,
 ): Promise<Subscriber[]> {
+	const dir = subscribersDir(appDataDir);
 	let names: string[];
 	try {
-		names = await fs.readdir(subscribersDir(workspaceRoot));
+		names = await fs.readdir(dir);
 	} catch {
 		return [];
 	}
 	const live: Subscriber[] = [];
 	for (const name of names) {
 		if (!name.endsWith(".json")) continue;
-		const file = path.join(subscribersDir(workspaceRoot), name);
+		const file = path.join(dir, name);
 		let sub: Subscriber;
 		try {
 			sub = JSON.parse(await fs.readFile(file, "utf8")) as Subscriber;
 		} catch {
 			continue;
 		}
-		if (!isSubscriberLive(sub, now, isPidAlive)) {
+		if (!sub?.scope || !isSubscriberLive(sub, now, isPidAlive)) {
 			await fs.rm(file, { force: true });
 			continue;
 		}
-		if (doc === undefined || sub.doc === doc) live.push(sub);
+		live.push(sub);
 	}
 	return live;
 }

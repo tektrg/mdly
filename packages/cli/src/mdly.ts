@@ -4,10 +4,14 @@
  * so they work unchanged over plain `ssh` from another Mac (no TTY, no new
  * network port):
  *
- *   mdly watch <doc.md> [--name Claude] [--machine Air] [--from-start]
- *     One JSON line per event on the doc (comments, "send edits to agent",
- *     suggestion accepted/rejected, tool requests). Registers a "watching"
- *     subscriber the app shows as a badge. Exits when its ssh session dies.
+ *   mdly watch <doc.md> | --open | --workspace <folder>
+ *              [--name Claude] [--machine Air] [--from-start] [--app-data <dir>]
+ *     One JSON line per event (comments, "send edits to agent", suggestion
+ *     accepted/partially accepted/rejected, tool requests); each line names its
+ *     doc (`doc`, plus the absolute `path`). Scope: one file (in a workspace or
+ *     standalone), every doc in a workspace folder, or whatever is open in
+ *     mdly (following opens and closes). Registers a "watching" subscriber the
+ *     app shows as a badge on every doc in scope. Exits when its ssh session dies.
  *
  *   mdly mcp [--app-data <dir>]
  *     A stdio MCP server that relays to the app's loopback MCP endpoint.
@@ -19,19 +23,22 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import {
 	defaultMachineLabel,
-	findWorkspaceRoot,
+	ensureWorkspace,
 	HEARTBEAT_MS,
 	heartbeatSubscriber,
 	readSeen,
 	registerSubscriber,
+	resolveDocStore,
 	unregisterSubscriber,
-	watchHookEvents,
+	type WatchScope,
+	watchScope,
 	writeSeen,
 } from "@mdly/agent-hook";
 
 export const MDLY_USAGE = [
 	"Usage:",
-	"  mdly watch <doc.md> [--name <who>] [--machine <where>] [--workspace <dir>] [--from-start]",
+	"  mdly watch <doc.md> | --open | --workspace <folder>",
+	"             [--name <who>] [--machine <where>] [--from-start] [--app-data <dir>]",
 	"  mdly mcp [--app-data <dir>]",
 ];
 
@@ -40,38 +47,66 @@ function flag(args: string[], name: string): string | undefined {
 	return i >= 0 ? args[i + 1] : undefined;
 }
 
-async function runWatch(args: string[]): Promise<number> {
-	const docArg = args.find(
-		(a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"),
+const VALUE_FLAGS = new Set([
+	"--name",
+	"--machine",
+	"--workspace",
+	"--app-data",
+]);
+
+function expandHome(p: string): string {
+	return path.resolve(p.replace(/^~(?=\/|$)/, os.homedir()));
+}
+
+/** The one scope a `watch` asks for, or an error message. */
+export function parseWatchScope(args: string[]): WatchScope | string {
+	const positional = args.filter(
+		(a, i) => !a.startsWith("--") && !VALUE_FLAGS.has(args[i - 1] ?? ""),
 	);
-	if (!docArg) {
-		console.error(MDLY_USAGE.join("\n"));
+	const workspace = flag(args, "--workspace");
+	const scopes: WatchScope[] = [];
+	if (positional[0])
+		scopes.push({ kind: "file", path: expandHome(positional[0]) });
+	if (workspace)
+		scopes.push({ kind: "workspace", root: expandHome(workspace) });
+	if (args.includes("--open")) scopes.push({ kind: "open" });
+	if (scopes.length === 1 && positional.length <= 1) return scopes[0];
+	return scopes.length === 0
+		? "Pick a scope: a doc path, --open, or --workspace <folder>."
+		: "Pick ONE scope: a doc path, --open, or --workspace <folder>.";
+}
+
+function describeScope(scope: WatchScope): string {
+	if (scope.kind === "file") return scope.path;
+	if (scope.kind === "workspace") return `every doc in ${scope.root}`;
+	return "the docs open in mdly";
+}
+
+async function runWatch(args: string[]): Promise<number> {
+	const scope = parseWatchScope(args);
+	if (typeof scope === "string") {
+		console.error(`${scope}\n${MDLY_USAGE.join("\n")}`);
 		return 2;
 	}
-	const absoluteDoc = path.resolve(docArg.replace(/^~(?=\/)/, os.homedir()));
-	const workspaceRoot =
-		flag(args, "--workspace") ?? (await findWorkspaceRoot(absoluteDoc));
-	if (!workspaceRoot) {
-		console.error(
-			`No mdly workspace (.mdly folder) above ${absoluteDoc}; pass --workspace.`,
-		);
-		return 2;
-	}
-	const doc = path.relative(workspaceRoot, absoluteDoc);
-	// The agent is assumed to have read the doc as it is now; "send edits" diffs against this.
-	if ((await readSeen(workspaceRoot, doc)) === null) {
-		try {
-			await writeSeen(
-				workspaceRoot,
-				doc,
-				await fs.readFile(absoluteDoc, "utf8"),
-			);
-		} catch {
-			// doc missing: diffs start from empty
+	const appDataDir = flag(args, "--app-data") ?? defaultAppDataDir();
+	if (scope.kind === "workspace") await ensureWorkspace(scope.root);
+	if (scope.kind === "file") {
+		// The agent is assumed to have read the doc as it is now; "send edits" diffs against this.
+		const store = resolveDocStore(scope.path, appDataDir);
+		if ((await readSeen(store.workspaceRoot, store.doc)) === null) {
+			try {
+				await writeSeen(
+					store.workspaceRoot,
+					store.doc,
+					await fs.readFile(scope.path, "utf8"),
+				);
+			} catch {
+				// doc missing: diffs start from empty
+			}
 		}
 	}
-	const sub = await registerSubscriber(workspaceRoot, {
-		doc,
+	const sub = await registerSubscriber(appDataDir, {
+		scope,
 		name: flag(args, "--name") ?? "Agent",
 		machine: flag(args, "--machine") ?? defaultMachineLabel(),
 	});
@@ -84,22 +119,26 @@ async function runWatch(args: string[]): Promise<number> {
 	const heartbeat = setInterval(() => {
 		// Over ssh without a TTY no SIGHUP arrives; the session shell dying re-parents us to launchd.
 		if (initialParent !== 1 && process.ppid === 1) stop();
-		void heartbeatSubscriber(workspaceRoot, sub).catch(() => undefined);
+		void heartbeatSubscriber(appDataDir, sub).catch(() => undefined);
 	}, HEARTBEAT_MS);
-	console.error(
-		`watching ${doc} (subscriber ${sub.id}); events follow as JSON lines`,
-	);
 	try {
-		await watchHookEvents({
-			workspaceRoot,
-			doc,
+		await watchScope({
+			appDataDir,
+			scope,
 			fromStart: args.includes("--from-start"),
 			signal: controller.signal,
-			onEvent: (event) => process.stdout.write(`${JSON.stringify(event)}\n`),
+			onReady: () =>
+				console.error(
+					`watching ${describeScope(scope)} (subscriber ${sub.id}); events follow as JSON lines`,
+				),
+			onEvent: (event, absolutePath) =>
+				process.stdout.write(
+					`${JSON.stringify({ ...event, path: absolutePath })}\n`,
+				),
 		});
 	} finally {
 		clearInterval(heartbeat);
-		await unregisterSubscriber(workspaceRoot, sub);
+		await unregisterSubscriber(appDataDir, sub);
 	}
 	return 0;
 }

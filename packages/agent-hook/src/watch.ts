@@ -50,6 +50,16 @@ export class EventFileTailer {
 		private readonly rotatedFile: string,
 	) {}
 
+	/** Where the tailer is, so a stateless caller (MCP poll) can resume later. */
+	getPosition(): { ino: number | null; offset: number } {
+		return { ino: this.ino, offset: this.offset };
+	}
+
+	setPosition(position: { ino: number | null; offset: number }): void {
+		this.ino = position.ino;
+		this.offset = position.offset;
+	}
+
 	/** Positions at the current end (or 0 when `fromStart`). */
 	async start(fromStart: boolean): Promise<void> {
 		const stat = await statFile(this.file);

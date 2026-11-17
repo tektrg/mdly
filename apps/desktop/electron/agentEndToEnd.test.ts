@@ -114,6 +114,7 @@ describe("Slice 4 Plug A end-to-end", () => {
 				"reply",
 				"resolve",
 				"validateDiagram",
+				"watch_events",
 			].sort(),
 		);
 		// The whole point of the slice's safety posture: comment text is

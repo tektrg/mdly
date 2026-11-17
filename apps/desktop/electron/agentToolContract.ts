@@ -76,6 +76,8 @@ export interface AgentToolContext {
 	notifyViewsChanged?: (workspaceRoot: string) => void;
 	/** Called after an agent proposed an edit, so the open editor shows the suggestion now. */
 	notifySuggestionsChanged?: (absoluteFilePath: string) => void;
+	/** The app's data folder: standalone docs' event streams, the subscriber registry, open docs. */
+	appDataDir?: string;
 }
 
 /** A descriptor plus its implementation. */

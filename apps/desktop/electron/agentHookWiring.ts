@@ -17,20 +17,35 @@ import {
 	listLiveSubscribers,
 	newHookEvent,
 	readSeen,
+	resolveDocStore,
 	type Subscriber,
+	subscriberCovers,
 	wordChanges,
+	writeOpenDocs,
 	writeSeen,
 } from "@mdly/agent-hook";
 import { resolveHistoryWorkspaceRoot } from "./docHistoryWiring";
 
 export interface HookTarget {
+	/** Folder whose `.mdly/agent-hook` holds the doc's stream. */
 	workspaceRoot: string;
+	/** The doc's key in that store (relative, or absolute when standalone). */
 	doc: string;
+	/** Absolute path of the doc. */
+	path: string;
 }
 
+/**
+ * Where a granted doc's event stream lives. With `appDataDir` (the app) the
+ * shared rule applies, the same one `mdly watch` uses: the nearest `.mdly`
+ * workspace, else a standalone store in app data (so a file opened outside
+ * any workspace can be watched too). Without it: the granted root (legacy,
+ * still used for writing-tool files).
+ */
 export function resolveHookTarget(
 	absoluteFilePath: string,
 	grantedRoots: Iterable<string>,
+	appDataDir?: string,
 ): HookTarget {
 	const workspaceRoot = resolveHistoryWorkspaceRoot(
 		absoluteFilePath,
@@ -39,7 +54,12 @@ export function resolveHookTarget(
 	if (!workspaceRoot) {
 		throw new Error(`No granted workspace root for: ${absoluteFilePath}`);
 	}
-	return { workspaceRoot, doc: path.relative(workspaceRoot, absoluteFilePath) };
+	if (appDataDir) return resolveDocStore(absoluteFilePath, appDataDir);
+	return {
+		workspaceRoot,
+		doc: path.relative(workspaceRoot, absoluteFilePath),
+		path: absoluteFilePath,
+	};
 }
 
 export async function emitHookEvent(
@@ -153,9 +173,7 @@ export async function proposeEdit(
 	) {
 		throw new Error('"occurrence" must be a whole number, 1 or more.');
 	}
-	const source = await fs
-		.readFile(path.join(target.workspaceRoot, target.doc), "utf8")
-		.catch(() => null);
+	const source = await fs.readFile(target.path, "utf8").catch(() => null);
 	if (source !== null) {
 		const count = countOccurrences(source, input.find);
 		if (count > 1 && occurrence === undefined) {
@@ -190,6 +208,65 @@ export async function listPendingProposals(
 	return proposalReader.read(target.workspaceRoot, target.doc);
 }
 
-export async function listWatchers(target: HookTarget): Promise<Subscriber[]> {
-	return listLiveSubscribers(target.workspaceRoot, target.doc);
+/** Live subscribers whose scope covers this doc (the badge). */
+export async function listWatchers(
+	target: HookTarget,
+	appDataDir: string,
+	openDocs: readonly string[],
+): Promise<Subscriber[]> {
+	return (await listLiveSubscribers(appDataDir)).filter((sub) =>
+		subscriberCovers(sub, target.path, openDocs),
+	);
+}
+
+export interface OpenDocsTracker {
+	open(ownerId: number, absolutePath: string): Promise<void>;
+	close(ownerId: number, absolutePath: string): Promise<void>;
+	/** A window closed: everything it had open closes. */
+	closeOwner(ownerId: number): Promise<void>;
+	list(): string[];
+}
+
+/**
+ * What mdly has open, per window (a doc open in two windows stays open until
+ * both close it), published to app data for `mdly watch --open`.
+ */
+export function createOpenDocsTracker(appDataDir: string): OpenDocsTracker {
+	const byOwner = new Map<number, Map<string, number>>();
+	let writes: Promise<void> = Promise.resolve();
+	const list = () => {
+		const all = new Set<string>();
+		for (const docs of byOwner.values())
+			for (const doc of docs.keys()) all.add(doc);
+		return [...all].sort();
+	};
+	const publish = () => {
+		const snapshot = list();
+		writes = writes
+			.then(() => writeOpenDocs(appDataDir, snapshot))
+			.catch((error) => console.error("[agent-hook] open docs", error));
+		return writes;
+	};
+	return {
+		list,
+		open(ownerId, absolutePath) {
+			const docs = byOwner.get(ownerId) ?? new Map<string, number>();
+			docs.set(absolutePath, (docs.get(absolutePath) ?? 0) + 1);
+			byOwner.set(ownerId, docs);
+			return publish();
+		},
+		close(ownerId, absolutePath) {
+			const docs = byOwner.get(ownerId);
+			const count = docs?.get(absolutePath) ?? 0;
+			if (!docs || count === 0) return writes;
+			if (count > 1) docs.set(absolutePath, count - 1);
+			else docs.delete(absolutePath);
+			if (docs.size === 0) byOwner.delete(ownerId);
+			return publish();
+		},
+		closeOwner(ownerId) {
+			if (!byOwner.delete(ownerId)) return writes;
+			return publish();
+		},
+	};
 }

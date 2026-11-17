@@ -73,7 +73,10 @@ export function AgentHookBar({
 	);
 }
 
-/** Polls (and listens for) the note's watchers and pending agent proposals. */
+/**
+ * Polls (and listens for) the note's watchers and pending agent proposals,
+ * and reports the note as open while mounted (the "open files" watch scope).
+ */
 export function useAgentHookState(
 	path: string,
 	enabled: boolean,
@@ -85,6 +88,7 @@ export function useAgentHookState(
 	useEffect(() => {
 		if (!enabled) return;
 		let active = true;
+		void desktopApi.agentHookDocOpen(path, true).catch(() => undefined);
 		const refresh = () =>
 			desktopApi
 				.agentHookState(path)
@@ -99,6 +103,7 @@ export function useAgentHookState(
 		});
 		return () => {
 			active = false;
+			void desktopApi.agentHookDocOpen(path, false).catch(() => undefined);
 			clearInterval(timer);
 			unsubscribe();
 		};

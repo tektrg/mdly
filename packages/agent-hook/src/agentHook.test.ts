@@ -93,21 +93,20 @@ describe("event log", () => {
 describe("subscribers", () => {
 	it("lists live, prunes stale and dead-pid ones", async () => {
 		const sub = await registerSubscriber(root, {
-			doc: "a.md",
+			scope: { kind: "file", path: "/x/a.md" },
 			name: "Claude",
 			machine: "Air",
 		});
-		expect(
-			(await listLiveSubscribers(root, "a.md")).map((s) => s.name),
-		).toEqual(["Claude"]);
-		expect(await listLiveSubscribers(root, "other.md")).toEqual([]);
+		expect((await listLiveSubscribers(root)).map((s) => s.name)).toEqual([
+			"Claude",
+		]);
 		const later = new Date(Date.parse(sub.heartbeatAt) + 60_000);
 		expect(isSubscriberLive(sub, later)).toBe(false);
-		expect(
-			await listLiveSubscribers(root, "a.md", new Date(), () => false),
-		).toEqual([]);
+		expect(await listLiveSubscribers(root, new Date(), () => false)).toEqual(
+			[],
+		);
 		// pruned from disk
-		expect(await listLiveSubscribers(root, "a.md")).toEqual([]);
+		expect(await listLiveSubscribers(root)).toEqual([]);
 	});
 });
 

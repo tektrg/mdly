@@ -42,10 +42,12 @@ import {
 	writeAgentAccessEnabled,
 } from "./agentAccess";
 import {
+	createOpenDocsTracker,
 	emitDecision,
 	emitHookEvent,
 	listPendingProposals,
 	listWatchers,
+	type OpenDocsTracker,
 	resolveHookTarget,
 	sendEditsToAgent,
 } from "./agentHookWiring";
@@ -829,7 +831,22 @@ function agentToolContext(): AgentToolContext {
 			broadcastToRenderers("desktop:workspace-views-changed", workspaceRoot),
 		notifySuggestionsChanged: (absoluteFilePath: string) =>
 			broadcastToRenderers("desktop:agent-hook-changed", absoluteFilePath),
+		appDataDir: app.getPath("userData"),
 	};
+}
+
+// --- Agent hook ---------------------------------------------------------
+
+/** A doc's event stream: its `.mdly` workspace, else the standalone store in app data. */
+function hookTarget(resolved: string) {
+	return resolveHookTarget(resolved, grantedRoots, app.getPath("userData"));
+}
+
+let openDocs: OpenDocsTracker | null = null;
+const openDocOwners = new Set<number>();
+function openDocsTracker(): OpenDocsTracker {
+	openDocs ??= createOpenDocsTracker(app.getPath("userData"));
+	return openDocs;
 }
 
 // --- Writing tools ("the dot") ------------------------------------------
@@ -2045,15 +2062,10 @@ function registerIpc() {
 				anchor,
 				text: String(text),
 			});
-			await emitHookEvent(
-				resolveHookTarget(resolved, grantedRoots),
-				"comment.added",
-				"user",
-				{
-					quote: typeof anchor?.quote === "string" ? anchor.quote : undefined,
-					text: String(text),
-				},
-			).catch((error) => console.error("[agent-hook] comment.added", error));
+			await emitHookEvent(hookTarget(resolved), "comment.added", "user", {
+				quote: typeof anchor?.quote === "string" ? anchor.quote : undefined,
+				text: String(text),
+			}).catch((error) => console.error("[agent-hook] comment.added", error));
 		},
 	);
 
@@ -2068,15 +2080,10 @@ function registerIpc() {
 				threadId: String(threadId),
 				text: String(text),
 			});
-			await emitHookEvent(
-				resolveHookTarget(resolved, grantedRoots),
-				"comment.replied",
-				"user",
-				{
-					threadId: String(threadId),
-					text: String(text),
-				},
-			).catch((error) => console.error("[agent-hook] comment.replied", error));
+			await emitHookEvent(hookTarget(resolved), "comment.replied", "user", {
+				threadId: String(threadId),
+				text: String(text),
+			}).catch((error) => console.error("[agent-hook] comment.replied", error));
 		},
 	);
 
@@ -2086,10 +2093,7 @@ function registerIpc() {
 		"desktop:agent-hook-send-edits",
 		async (_event, { path: filePath, markdown }) => {
 			const resolved = assertGranted(filePath);
-			return sendEditsToAgent(
-				resolveHookTarget(resolved, grantedRoots),
-				String(markdown),
-			);
+			return sendEditsToAgent(hookTarget(resolved), String(markdown));
 		},
 	);
 	ipcMain.handle(
@@ -2102,7 +2106,7 @@ function registerIpc() {
 				typeof value === "number" && Number.isFinite(value) && value > 0
 					? Math.floor(value)
 					: 0;
-			await emitDecision(resolveHookTarget(resolved, grantedRoots), {
+			await emitDecision(hookTarget(resolved), {
 				proposalId: optionalString(decision.proposalId),
 				source: String(decision.source ?? "tool"),
 				accepted: count(decision.accepted),
@@ -2118,19 +2122,13 @@ function registerIpc() {
 		"desktop:agent-hook-request-tool",
 		async (_event, { path: filePath, requestId, tool, prompt, text }) => {
 			const resolved = assertGranted(filePath);
-			await emitHookEvent(
-				resolveHookTarget(resolved, grantedRoots),
-				"tool.requested",
-				"user",
-				{
-					requestId: String(requestId),
-					tool: String(tool),
-					prompt: String(prompt),
-					text: String(text),
-					reply:
-						"Answer with the propose_edit MCP tool (find = the given text).",
-				},
-			);
+			await emitHookEvent(hookTarget(resolved), "tool.requested", "user", {
+				requestId: String(requestId),
+				tool: String(tool),
+				prompt: String(prompt),
+				text: String(text),
+				reply: "Answer with the propose_edit MCP tool (find = the given text).",
+			});
 		},
 	);
 	ipcMain.handle(
@@ -2156,14 +2154,14 @@ function registerIpc() {
 		"desktop:writing-tools-run",
 		async (_event, { path: filePath, toolId, text, requestId }) => {
 			const resolved = assertGranted(filePath);
-			const target = resolveHookTarget(resolved, grantedRoots);
-			const tool = (await listWritingTools(target.workspaceRoot)).find(
+			const toolsRoot = resolveHookTarget(resolved, grantedRoots).workspaceRoot;
+			const tool = (await listWritingTools(toolsRoot)).find(
 				(candidate) => candidate.id === toolId,
 			);
 			if (!tool)
 				return { status: "failed", error: `Unknown tool: ${String(toolId)}` };
 			if (tool.engine === "agent") {
-				await emitHookEvent(target, "tool.requested", "user", {
+				await emitHookEvent(hookTarget(resolved), "tool.requested", "user", {
 					requestId: String(requestId),
 					tool: tool.name,
 					prompt: tool.prompt,
@@ -2203,14 +2201,33 @@ function registerIpc() {
 			return writingEngineHost.getStatus();
 		},
 	);
+	// What is open, for `mdly watch --open` and the open-scope badge.
+	ipcMain.handle(
+		"desktop:agent-hook-doc-open",
+		async (event, { path: filePath, open }) => {
+			const resolved = assertGranted(filePath);
+			const { sender } = event;
+			const ownerId = sender.id;
+			if (!openDocOwners.has(ownerId)) {
+				openDocOwners.add(ownerId);
+				sender.once("destroyed", () => {
+					openDocOwners.delete(ownerId);
+					void openDocsTracker().closeOwner(ownerId);
+				});
+			}
+			await (open
+				? openDocsTracker().open(ownerId, resolved)
+				: openDocsTracker().close(ownerId, resolved));
+		},
+	);
 	ipcMain.handle(
 		"desktop:agent-hook-state",
 		async (_event, { path: filePath }) => {
 			const resolved = assertGranted(filePath);
-			const target = resolveHookTarget(resolved, grantedRoots);
+			const target = hookTarget(resolved);
 			const [proposals, watchers] = await Promise.all([
 				listPendingProposals(target),
-				listWatchers(target),
+				listWatchers(target, app.getPath("userData"), openDocsTracker().list()),
 			]);
 			return {
 				proposals,
