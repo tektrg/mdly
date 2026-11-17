@@ -114,7 +114,7 @@ export interface LlamaEngineOptions {
 
 /** The slice of node-llama-cpp this engine uses (kept narrow so a fake can stand in). */
 export interface LlamaModule {
-	getLlama: () => Promise<{
+	getLlama: (o?: { build?: "never" | "auto" }) => Promise<{
 		loadModel: (o: { modelPath: string }) => Promise<{
 			createContext: () => Promise<{
 				getSequence: () => unknown;
@@ -159,7 +159,8 @@ export function createLlamaEngine(options: LlamaEngineOptions): WritingEngine {
 				options.loadModule ??
 				(() => importNative(LLAMA_MODULE) as Promise<LlamaModule>)
 			)();
-			const llama = await mod.getLlama();
+			// Prebuilt binaries only: never compile llama.cpp on a user's Mac.
+			const llama = await mod.getLlama({ build: "never" });
 			const model = await llama.loadModel({ modelPath: options.modelPath });
 			return { mod, model };
 		})();

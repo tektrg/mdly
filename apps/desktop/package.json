@@ -54,6 +54,7 @@
 		"electron-updater": "^6.8.3",
 		"ignore": "^7.0.5",
 		"keymatch": "^1.0.5",
+		"node-llama-cpp": "^3.22.3",
 		"open-props": "^1.7.23",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
@@ -130,6 +131,10 @@
 				"role": "Editor",
 				"rank": "Owner"
 			}
+		],
+		"asarUnpack": [
+			"**/node_modules/node-llama-cpp/**",
+			"**/node_modules/@node-llama-cpp/**"
 		]
 	}
 }
