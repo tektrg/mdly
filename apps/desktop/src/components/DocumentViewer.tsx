@@ -6,6 +6,7 @@ import {
 	wikiDisplayNameForTarget,
 } from "@mdly/workspace-kit";
 import { useStoreValue } from "@simplestack/store/react";
+import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
@@ -17,6 +18,11 @@ import {
 } from "../editor/handleImagePaste";
 import { IframeView, toAssetUrl } from "../editor/IframeView";
 import { createImageExtension } from "../editor/ImageExtension";
+import {
+	findTextRange,
+	type GroupSettled,
+	SuggestionExtension,
+} from "../editor/SuggestionExtension";
 import { openOrImportNotionMentionPage } from "../fileActions";
 import { hasHtmlExtension, relativeWorkspacePath } from "../lib/filePath";
 import { resolveWikiPath } from "../lib/wikiPath";
@@ -32,6 +38,7 @@ import { observeEditorTransactionStorms } from "../store/editorStormDetector";
 import { viewerStore, workspaceStore } from "../store/state";
 import { AgentHookBar, useAgentHookState } from "./AgentHookBar";
 import { NotionDatabaseViewer } from "./NotionDatabaseViewer";
+import { SuggestionReviewBar } from "./SuggestionReviewBar";
 
 const HMR_REV = (() => {
 	if (!import.meta.hot) return 0;
@@ -169,8 +176,29 @@ function MarkdownEditor({
 			}),
 		[workspace.files, workspace.workspacePath],
 	);
+	// Accept/reject of a whole suggestion group goes back to the agent hook.
+	const onSuggestionSettled = useCallback(
+		(settled: GroupSettled) => {
+			if (isSingleFile) return;
+			void desktopApi
+				.agentHookDecision(path, {
+					accepted: settled.accepted > 0,
+					proposalId: settled.source === "agent" ? settled.groupId : undefined,
+					source: settled.source,
+					before: settled.before,
+					after: settled.after,
+				})
+				.catch(() => undefined);
+		},
+		[path, isSingleFile],
+	);
+	const settledRef = useRef(onSuggestionSettled);
+	settledRef.current = onSuggestionSettled;
 	const editorExtensions = useMemo(
 		() => [
+			SuggestionExtension.configure({
+				onGroupSettled: (settled) => settledRef.current(settled),
+			}),
 			createImageExtension(path),
 			createEmbedExtension({
 				workspacePath: workspace.workspacePath,
@@ -238,9 +266,11 @@ function MarkdownEditor({
 	// Diagnostic: attach the transaction-storm detector to the live editor so a
 	// background-OOM loop names its driver on disk. No-ops without the bridge.
 	const stormProbeDisposeRef = useRef<(() => void) | null>(null);
+	const [liveEditor, setLiveEditor] = useState<Editor | null>(null);
 	const handleEditorReady = useCallback<
 		NonNullable<EditorViewProps["onEditorReady"]>
 	>((editor) => {
+		setLiveEditor(editor ?? null);
 		stormProbeDisposeRef.current?.();
 		stormProbeDisposeRef.current = editor
 			? observeEditorTransactionStorms(editor)
@@ -356,6 +386,29 @@ function MarkdownEditor({
 	]);
 
 	const agentHook = useAgentHookState(path, !isSingleFile);
+	// Agent proposals → inline suggestions, each placed once per mount.
+	const placedProposalsRef = useRef(new Set<string>());
+	useEffect(() => {
+		if (!liveEditor) return;
+		for (const proposal of agentHook.proposals) {
+			if (placedProposalsRef.current.has(proposal.proposalId)) continue;
+			placedProposalsRef.current.add(proposal.proposalId);
+			const range = findTextRange(liveEditor.state.doc, proposal.find);
+			if (!range) {
+				toast.error("An agent suggestion no longer matches the text", {
+					description: proposal.find.slice(0, 80),
+				});
+				continue;
+			}
+			liveEditor.commands.addSuggestion({
+				groupId: proposal.proposalId,
+				source: "agent",
+				...range,
+				newText: proposal.replace,
+				label: proposal.note,
+			});
+		}
+	}, [liveEditor, agentHook.proposals]);
 	const getCurrentMarkdown = useCallback(() => {
 		const viewer = viewerStore.get();
 		return viewer.currentPath === path ? viewer.content : initialMarkdown;
@@ -363,6 +416,7 @@ function MarkdownEditor({
 
 	return (
 		<>
+			<SuggestionReviewBar editor={liveEditor} />
 			<AgentHookBar
 				path={path}
 				getMarkdown={getCurrentMarkdown}

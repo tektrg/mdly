@@ -300,3 +300,42 @@
 		animation: none;
 	}
 }
+
+/* Inline diff review (SuggestionExtension): removed words red + struck, new words green. */
+.mdly-sugg-del {
+	color: rgb(185 28 28);
+	background: rgb(239 68 68 / 0.12);
+	text-decoration: line-through;
+	text-decoration-color: rgb(220 38 38);
+}
+.mdly-sugg-ins {
+	color: rgb(21 128 61);
+	background: rgb(34 197 94 / 0.16);
+	border-radius: 2px;
+}
+.mdly-sugg-del.is-active,
+.mdly-sugg-ins.is-active {
+	outline: 1px solid currentColor;
+	outline-offset: 1px;
+}
+@media (prefers-color-scheme: dark) {
+	.mdly-sugg-del {
+		color: rgb(252 165 165);
+	}
+	.mdly-sugg-ins {
+		color: rgb(134 239 172);
+	}
+}
+/* Margin marker so long docs can be scanned for pending changes. */
+.mdly-sugg-block {
+	position: relative;
+}
+.mdly-sugg-block::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -14px;
+	inline-size: 3px;
+	border-radius: 2px;
+	background: rgb(34 197 94);
+}

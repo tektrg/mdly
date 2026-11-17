@@ -1,0 +1,131 @@
+// @vitest-environment happy-dom
+import { Editor } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+	findTextRange,
+	type GroupSettled,
+	getSuggestions,
+	SuggestionExtension,
+} from "./SuggestionExtension";
+
+const editors: Editor[] = [];
+afterEach(() => {
+	for (const e of editors) e.destroy();
+	editors.length = 0;
+});
+
+function setup(html: string) {
+	const settled: GroupSettled[] = [];
+	const element = document.createElement("div");
+	document.body.append(element);
+	const editor = new Editor({
+		element,
+		extensions: [
+			StarterKit,
+			SuggestionExtension.configure({ onGroupSettled: (s) => settled.push(s) }),
+		],
+		content: html,
+	});
+	editors.push(editor);
+	return { editor, settled };
+}
+
+function suggest(
+	editor: Editor,
+	find: string,
+	replace: string,
+	groupId = "g1",
+) {
+	const range = findTextRange(editor.state.doc, find);
+	if (!range) throw new Error("not found");
+	return editor.commands.addSuggestion({
+		groupId,
+		source: "agent",
+		...range,
+		newText: replace,
+	});
+}
+
+describe("SuggestionExtension", () => {
+	it("splits into word changes and renders red/green without touching the doc", () => {
+		const { editor } = setup("<p>The quick brown fox jumps.</p>");
+		expect(
+			suggest(editor, "quick brown fox jumps", "slow brown fox leaps"),
+		).toBe(true);
+		expect(
+			getSuggestions(editor.state).map((c) => `${c.before}->${c.insert}`),
+		).toEqual(["quick->slow", "jumps->leaps"]);
+		expect(editor.getText()).toBe("The quick brown fox jumps.");
+		const html = editor.view.dom.innerHTML;
+		expect(html).toContain("mdly-sugg-del");
+		expect(html).toContain("mdly-sugg-ins");
+		expect(html).toContain("mdly-sugg-block");
+	});
+
+	it("accept one is a single undo step; reject leaves text; group settles once", () => {
+		const { editor, settled } = setup("<p>The quick brown fox jumps.</p>");
+		suggest(editor, "quick brown fox jumps", "slow brown fox leaps");
+		const [first, second] = getSuggestions(editor.state);
+		editor.commands.acceptSuggestion(first.id);
+		expect(editor.getText()).toBe("The slow brown fox jumps.");
+		expect(settled).toEqual([]);
+		editor.commands.rejectSuggestion(second.id);
+		expect(editor.getText()).toBe("The slow brown fox jumps.");
+		expect(settled).toEqual([
+			{
+				groupId: "g1",
+				source: "agent",
+				accepted: 1,
+				rejected: 1,
+				before: "quick jumps",
+				after: "slow leaps",
+			},
+		]);
+		editor.commands.undo();
+		expect(editor.getText()).toBe("The quick brown fox jumps.");
+	});
+
+	it("accept all applies every change in one step", () => {
+		const { editor } = setup("<p>one two three</p><p>four five</p>");
+		suggest(editor, "one two three", "one 2 three", "a");
+		suggest(editor, "four five", "4 five", "b");
+		editor.commands.acceptAllSuggestions();
+		expect(editor.getText({ blockSeparator: "|" })).toBe("one 2 three|4 five");
+		expect(getSuggestions(editor.state)).toEqual([]);
+		editor.commands.undo();
+		expect(editor.getText({ blockSeparator: "|" })).toBe(
+			"one two three|four five",
+		);
+	});
+
+	it("remaps over edits elsewhere, drops a change whose words were edited away", () => {
+		const { editor } = setup("<p>alpha beta</p><p>gamma</p>");
+		suggest(editor, "gamma", "delta");
+		editor.commands.insertContentAt(1, "new ");
+		expect(getSuggestions(editor.state)).toHaveLength(1);
+		const [c] = getSuggestions(editor.state);
+		editor.commands.insertContentAt(c.from + 1, "X");
+		expect(getSuggestions(editor.state)).toEqual([]);
+	});
+
+	it("next/previous moves the caret to changes", () => {
+		const { editor } = setup("<p>a b c d</p>");
+		suggest(editor, "a b c d", "a B c D");
+		const [b, d] = getSuggestions(editor.state);
+		editor.commands.setTextSelection(1);
+		editor.commands.nextSuggestion(1);
+		expect(editor.state.selection.head).toBe(b.from);
+		editor.commands.nextSuggestion(1);
+		expect(editor.state.selection.head).toBe(d.from);
+		editor.commands.nextSuggestion(-1);
+		expect(editor.state.selection.head).toBe(b.from);
+	});
+
+	it("inserts hostile text as inert text", () => {
+		const { editor } = setup("<p>hello</p>");
+		suggest(editor, "hello", "$(echo INJECTED)");
+		editor.commands.acceptAllSuggestions();
+		expect(editor.getText()).toBe("$(echo INJECTED)");
+	});
+});
