@@ -464,7 +464,7 @@ export function chunkByParagraph(text: string, maxChars: number): string[] {
 			continue;
 		}
 		let current = "";
-		for (const sentence of paragraph.match(/[^.!?\n]+[.!?]*\s*|\n/g) ?? [
+		for (const sentence of paragraph.match(/[^.!?\n]+[.!?]*\s*|[.!?]+\s*|\n/g) ?? [
 			paragraph,
 		]) {
 			if (current && current.length + sentence.length > maxChars) {

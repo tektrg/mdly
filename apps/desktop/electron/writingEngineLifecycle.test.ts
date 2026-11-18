@@ -215,6 +215,12 @@ describe("chunking", () => {
 		expect(chunks.length).toBeGreaterThan(1);
 		expect(chunks.every((c) => c.length <= 12)).toBe(true);
 	});
+	it("never drops punctuation that starts a sentence (ellipses, ?!)", () => {
+		const paragraph = "Wait!!! ...and then. ?! Really... .Done.";
+		const chunks = chunkByParagraph(paragraph, 10);
+		const squash = (s: string) => s.replace(/\s+/g, "");
+		expect(squash(chunks.join(""))).toBe(squash(paragraph));
+	});
 	it("runs each chunk and joins, stopping at the first non-done", async () => {
 		const p = "y".repeat(40);
 		const text = [p, p, p].join("\n\n");
