@@ -1,6 +1,6 @@
 /**
  * Writing tools ("the dot"). Each tool is a Markdown file in the workspace at
- * `.mdly/tools/<id>.md` — front matter (`name`, `engine: local | agent`) plus
+ * `.mdly/tools/<id>.md` — front matter (`name`, `engine: apple | agent`) plus
  * the prompt as the body — so the user and agents can edit prompts, and custom
  * tools (slice B) are just more files. Built-ins are seeded only when missing
  * (an edited prompt is never overwritten); "reset to default" rewrites one.
@@ -8,7 +8,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export type ToolEngine = "local" | "agent";
+/** `apple`: Apple's on-device model (was `local`, still read). `agent`: a watching agent. */
+export type ToolEngine = "apple" | "agent";
 
 export interface WritingTool {
 	id: string;
@@ -31,21 +32,21 @@ export const BUILT_IN_TOOLS: readonly BuiltInTool[] = [
 	{
 		id: "proofread",
 		name: "Proofread",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Fix spelling, grammar and punctuation mistakes in the text. Keep the wording, tone and meaning; change nothing else.",
 	},
 	{
 		id: "tighten",
 		name: "Tighten",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Make the text tighter: cut filler words and redundancy, keep every idea and the author's voice.",
 	},
 	{
 		id: "clarify",
 		name: "Clarify",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Rewrite the text so it is clearer and easier to follow. Keep the meaning and roughly the same length.",
 	},
@@ -59,28 +60,28 @@ export const BUILT_IN_TOOLS: readonly BuiltInTool[] = [
 	{
 		id: "shorter",
 		name: "Shorter",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Shorten the text to about half its length. Keep the key point and the author's voice.",
 	},
 	{
 		id: "to-table",
 		name: "To table",
-		engine: "agent",
+		engine: "apple",
 		prompt:
 			"Turn the text into a Markdown table with sensible columns. Output only the table.",
 	},
 	{
 		id: "to-bullets",
 		name: "To bullets",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Turn the text into a concise Markdown bullet list, one idea per bullet. Output only the list.",
 	},
 	{
 		id: "simplify",
 		name: "Simplify",
-		engine: "local",
+		engine: "apple",
 		prompt:
 			"Rewrite the text in plain, simple words a 12-year-old understands. Keep the meaning.",
 	},
@@ -109,7 +110,9 @@ export function parseToolFile(
 			if (kv) fields[kv[1].toLowerCase()] = kv[2].trim();
 		}
 	}
-	const engine: ToolEngine = fields.engine === "local" ? "local" : "agent";
+	// `local` is the pre-2026-11-18 name for the on-device engine.
+	const engine: ToolEngine =
+		fields.engine === "apple" || fields.engine === "local" ? "apple" : "agent";
 	return { id, name: fields.name || id, engine, prompt: body.trim() };
 }
 

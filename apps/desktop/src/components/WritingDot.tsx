@@ -115,7 +115,7 @@ export function WritingDot({
 						`${tool.name} is an agent tool, but no agent is watching this note`,
 						{
 							description:
-								"Run `mdly watch <note>` in an agent session, or edit the tool file to use engine: local.",
+								"Run `mdly watch <note>` in an agent session, or edit the tool file to use engine: apple.",
 						},
 					);
 				return;

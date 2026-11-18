@@ -786,7 +786,7 @@ export type AgentHookState = {
 export type WritingTool = {
 	id: string;
 	name: string;
-	engine: "local" | "agent";
+	engine: "apple" | "agent";
 	prompt: string;
 	builtIn: boolean;
 	filePath: string;

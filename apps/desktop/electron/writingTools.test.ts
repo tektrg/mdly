@@ -39,7 +39,7 @@ describe("writing tool files", () => {
 			path.join(toolsDir(root), "proofread.md"),
 			"utf8",
 		);
-		expect(text).toMatch(/^---\nname: Proofread\nengine: local\n---\n/);
+		expect(text).toMatch(/^---\nname: Proofread\nengine: apple\n---\n/);
 	});
 
 	it("never overwrites an edited prompt; reset restores the default", async () => {
@@ -54,7 +54,7 @@ describe("writing tool files", () => {
 		expect(tight?.engine).toBe("agent");
 		await resetWritingTool(root, "tighten");
 		tight = (await listWritingTools(root)).find((t) => t.id === "tighten");
-		expect(tight?.engine).toBe("local");
+		expect(tight?.engine).toBe("apple");
 		expect(tight?.prompt).toMatch(/tighter/);
 		await expect(resetWritingTool(root, "nope")).rejects.toThrow();
 	});
@@ -88,6 +88,33 @@ describe("writing tool files", () => {
 		);
 		expect(cleanModelOutput("```\nA\n```")).toBe("A");
 		expect(cleanModelOutput('"Quoted."')).toBe("Quoted.");
+	});
+});
+
+describe("tool engines", () => {
+	it("defaults: Longer runs on the agent, the rest on Apple's model", () => {
+		const engines = Object.fromEntries(
+			BUILT_IN_TOOLS.map((tool) => [tool.id, tool.engine]),
+		);
+		expect(engines).toEqual({
+			proofread: "apple",
+			tighten: "apple",
+			clarify: "apple",
+			longer: "agent",
+			shorter: "apple",
+			"to-table": "apple",
+			"to-bullets": "apple",
+			simplify: "apple",
+		});
+	});
+
+	it("reads old tool files that say engine: local as apple", () => {
+		expect(
+			parseToolFile("x", "---\nname: X\nengine: local\n---\nDo it").engine,
+		).toBe("apple");
+		expect(
+			parseToolFile("x", "---\nname: X\nengine: apple\n---\nDo it").engine,
+		).toBe("apple");
 	});
 });
 
