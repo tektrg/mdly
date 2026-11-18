@@ -8,6 +8,7 @@ import {
 	listAgentThreads,
 	reopenAgentThread,
 	replyToAgentThread,
+	resolveAgentPath,
 	resolveAgentThread,
 } from "./agentComments";
 import type { AgentToolContext } from "./agentToolContract";
@@ -711,5 +712,54 @@ describe("Agent Context Markdown Gap", () => {
 		// If context was saved with markdown (**bold**), resolveByQuoteContext will compare it to
 		// "This is bold and a ". They won't match, and the thread will be orphaned!
 		expect(thread.anchorStatus).not.toBe("orphaned");
+	});
+});
+
+describe("resolveAgentPath through a symlinked folder (/tmp -> /private/tmp)", () => {
+	async function setup() {
+		const real = path.join(tmpDir, "real");
+		const alias = path.join(tmpDir, "alias");
+		await fs.mkdir(real);
+		await fs.symlink(real, alias);
+		await fs.writeFile(path.join(real, "note.md"), "# n\n");
+		return { real: await fs.realpath(real), alias };
+	}
+	const ctxFor = (root: string): AgentToolContext => ({
+		grantedRoots: [root],
+		actorId: "a",
+		openDocumentPath: null,
+		notifyCommentsChanged: () => {},
+	});
+
+	it("accepts the symlinked spelling of a path inside a root granted by its real path", async () => {
+		const { real, alias } = await setup();
+		const out = await resolveAgentPath(
+			path.join(alias, "note.md"),
+			ctxFor(real),
+		);
+		expect(out).toEqual({
+			absolutePath: path.join(real, "note.md"),
+			workspaceRoot: real,
+		});
+	});
+
+	it("accepts the real spelling of a path inside a root granted through a symlink", async () => {
+		const { real, alias } = await setup();
+		const out = await resolveAgentPath(
+			path.join(real, "note.md"),
+			ctxFor(alias),
+		);
+		expect(out).toEqual({
+			absolutePath: path.join(alias, "note.md"),
+			workspaceRoot: alias,
+		});
+	});
+
+	it("still refuses a real path outside every root", async () => {
+		const { alias } = await setup();
+		await fs.writeFile(path.join(tmpDir, "outside.md"), "x");
+		await expect(
+			resolveAgentPath(path.join(tmpDir, "outside.md"), ctxFor(alias)),
+		).rejects.toThrow(/outside every granted workspace root/);
 	});
 });

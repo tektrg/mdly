@@ -292,11 +292,28 @@ export async function resolveAgentPath(
 		candidate = ctx.openDocumentPath;
 	}
 
-	const absolutePath = nodePath.isAbsolute(candidate)
+	let absolutePath = nodePath.isAbsolute(candidate)
 		? candidate
 		: resolveRelativeAgentPath(candidate, roots, ctx.openDocumentPath);
 
-	const workspaceRoot = resolveHistoryWorkspaceRoot(absolutePath, roots);
+	let workspaceRoot = resolveHistoryWorkspaceRoot(absolutePath, roots);
+	if (!workspaceRoot) {
+		// Same file, other spelling: `/tmp/x` vs a root granted as
+		// `/private/tmp` (or the reverse). Match by real paths, then re-spell
+		// the path under the granted root so stores key it consistently.
+		const realTarget = await realPath(absolutePath);
+		for (const root of roots) {
+			const relative = nodePath.relative(await realPath(root), realTarget);
+			if (
+				relative === "" ||
+				(!relative.startsWith("..") && !nodePath.isAbsolute(relative))
+			) {
+				workspaceRoot = root;
+				absolutePath = nodePath.join(root, relative);
+				break;
+			}
+		}
+	}
 	if (!workspaceRoot) {
 		throw new Error(
 			`"${absolutePath}" is outside every granted workspace root.`,

@@ -730,6 +730,29 @@ function assertGranted(input: string): string {
 	for (const root of grantedRoots) {
 		if (isWithin(root, resolved)) return resolved;
 	}
+	// Other spelling of a granted path (`/tmp/x` vs `/private/tmp/x`): compare
+	// real paths; a path that doesn't exist yet is checked via its parent.
+	const real = (p: string) => {
+		try {
+			return fsSync.realpathSync(p);
+		} catch {
+			try {
+				return path.join(
+					fsSync.realpathSync(path.dirname(p)),
+					path.basename(p),
+				);
+			} catch {
+				return p;
+			}
+		}
+	};
+	const realResolved = real(resolved);
+	for (const file of grantedFiles) {
+		if (real(file) === realResolved) return resolved;
+	}
+	for (const root of grantedRoots) {
+		if (isWithin(real(root), realResolved)) return resolved;
+	}
 	throw new Error(`Path is outside granted scope: ${input}`);
 }
 
