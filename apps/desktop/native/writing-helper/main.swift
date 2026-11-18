@@ -4,13 +4,17 @@
 //
 //   in : {"id":"1","op":"availability"}
 //        {"id":"2","op":"prewarm"}
-//        {"id":"3","op":"run","prompt":"...","maxTokens":1024}
+//        {"id":"3","op":"run","prompt":"...","maxTokens":1024,"locale":"vi"}
 //        {"id":"4","op":"cancel","target":"3"}
 //   out: {"id":"1","ok":true,"availability":"available"}
 //        {"id":"3","ok":true,"text":"..."}
 //        {"id":"3","ok":false,"code":"unsupported-language","error":"..."}
 //
 // `--availability` prints the availability line and exits 0 (install check).
+// `--languages` prints the model's supported languages and exits 0.
+// A run's optional `locale` (the selection's language) is checked with
+// `supportsLocale`; unsupported answers `unsupported-language`, so the app
+// routes the tool to the agent.
 // Weak-linked against FoundationModels so it still starts (and reports
 // `unsupported-os`) on macOS before 26.
 import Foundation
@@ -54,6 +58,31 @@ func send(_ object: [String: Any]) {
 	out.write(data)
 	out.write(Data([0x0A]))
 	outLock.unlock()
+}
+
+func supportedLanguages() -> [String] {
+	#if canImport(FoundationModels)
+		if #available(macOS 26.0, *) {
+			return SystemLanguageModel.default.supportedLanguages
+				.map { $0.minimalIdentifier }.sorted()
+		}
+	#endif
+	return []
+}
+
+func supportsLocale(_ identifier: String?) -> Bool {
+	guard let identifier, !identifier.isEmpty else { return true }
+	#if canImport(FoundationModels)
+		if #available(macOS 26.0, *) {
+			return SystemLanguageModel.default.supportsLocale(Locale(identifier: identifier))
+		}
+	#endif
+	return false
+}
+
+if CommandLine.arguments.contains("--languages") {
+	send(["ok": true, "languages": supportedLanguages()])
+	exit(0)
 }
 
 if CommandLine.arguments.contains("--availability") {
@@ -129,6 +158,14 @@ func handle(_ request: [String: Any]) {
 	case "run":
 		let prompt = request["prompt"] as? String ?? ""
 		let maxTokens = request["maxTokens"] as? Int ?? 1024
+		let locale = request["locale"] as? String
+		if !supportsLocale(locale) {
+			send([
+				"id": id, "ok": false, "code": "unsupported-language",
+				"error": "The on-device model doesn't support \(locale ?? "")",
+			])
+			return
+		}
 		#if canImport(FoundationModels)
 			if #available(macOS 26.0, *) {
 				let task = Task {

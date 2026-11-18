@@ -8,7 +8,13 @@ import {
 	runChunked,
 } from "./writingEngine";
 
-type Request = { id: string; op: string; prompt?: string; target?: string };
+type Request = {
+	id: string;
+	op: string;
+	prompt?: string;
+	target?: string;
+	locale?: string;
+};
 
 /**
  * A fake Swift helper: answers JSON lines like the real one. `hang` keeps runs
@@ -21,6 +27,7 @@ function fakeHelper(
 		ignoreCancel?: boolean;
 		runCode?: string;
 		silent?: boolean;
+		unsupportedLocales?: string[];
 	} = {},
 ) {
 	const stats = { spawns: 0, kills: 0, cancels: 0, runs: 0, prewarms: 0 };
@@ -52,7 +59,14 @@ function fakeHelper(
 							reply({ id: req.target, ok: false, code: "cancelled" });
 					} else if (req.op === "run") {
 						stats.runs++;
-						if (opts.runCode)
+						if (req.locale && opts.unsupportedLocales?.includes(req.locale))
+							reply({
+								id: req.id,
+								ok: false,
+								code: "unsupported-language",
+								error: "x",
+							});
+						else if (opts.runCode)
 							reply({ id: req.id, ok: false, code: opts.runCode, error: "x" });
 						else if (opts.hang) open.add(req.id);
 						else reply({ id: req.id, ok: true, text: `echo:${req.prompt}` });
@@ -107,6 +121,19 @@ describe("apple engine", () => {
 		expect(await engine.run("hi")).toMatchObject({
 			status: "unavailable",
 			reason: "unsupported-language",
+		});
+	});
+
+	it("passes the selection's locale; an unsupported one is 'unavailable'", async () => {
+		const { spawnHelper } = fakeHelper({ unsupportedLocales: ["vi"] });
+		const engine = createAppleEngine({ helperPath: "h", spawnHelper });
+		expect(await engine.run("hi", undefined, "vi")).toMatchObject({
+			status: "unavailable",
+			reason: "unsupported-language",
+		});
+		expect(await engine.run("hi", undefined, "en")).toEqual({
+			status: "done",
+			text: "echo:hi",
 		});
 	});
 

@@ -49,7 +49,12 @@ export interface WritingEngine {
 	getStatus(): EngineStatus;
 	/** Starts the helper and loads the model early (editor opened). Never throws. */
 	prewarm(): Promise<void>;
-	run(prompt: string, signal?: AbortSignal): Promise<EngineRunResult>;
+	/** `locale`: the selection's language; the helper refuses ones the model doesn't support. */
+	run(
+		prompt: string,
+		signal?: AbortSignal,
+		locale?: string,
+	): Promise<EngineRunResult>;
 	dispose(): Promise<void>;
 }
 
@@ -361,7 +366,7 @@ export function createAppleEngine(options: AppleEngineOptions): WritingEngine {
 				// Visible as `failed` in the status; prewarm itself never throws.
 			}
 		},
-		async run(prompt, signal) {
+		async run(prompt, signal, locale) {
 			if (signal?.aborted) return { status: "cancelled" };
 			let live: Helper;
 			try {
@@ -386,6 +391,7 @@ export function createAppleEngine(options: AppleEngineOptions): WritingEngine {
 				op: "run",
 				prompt,
 				maxTokens: 1024,
+				...(locale ? { locale } : {}),
 			});
 			let stopReason: "cancel" | "timeout" | null = null;
 			let wake: () => void = () => {};
@@ -517,7 +523,11 @@ export interface WritingEngineHost {
 	run(prompt: string): Promise<EngineRunResult>;
 	/** Captures the cancel switch now; pass it to `runWith` for multi-step runs. */
 	signal(): AbortSignal;
-	runWith(prompt: string, signal: AbortSignal): Promise<EngineRunResult>;
+	runWith(
+		prompt: string,
+		signal: AbortSignal,
+		locale?: string,
+	): Promise<EngineRunResult>;
 	/** Stops the running generation and drops queued runs (they resolve `cancelled`). */
 	cancel(): void;
 	dispose(): Promise<void>;
@@ -546,12 +556,12 @@ export function createWritingEngineHost(deps: {
 		prewarm: () => current().prewarm(),
 		signal: () => generation.signal,
 		run: (prompt) => host.runWith(prompt, generation.signal),
-		runWith(prompt, signal) {
+		runWith(prompt, signal, locale) {
 			const result = queue.then(async () => {
 				if (signal.aborted) return { status: "cancelled" } as EngineRunResult;
 				running++;
 				try {
-					return await current().run(prompt, signal);
+					return await current().run(prompt, signal, locale);
 				} finally {
 					running--;
 				}

@@ -2184,8 +2184,14 @@ function registerIpc() {
 				return { status: "sent-to-agent" };
 			}
 			const signal = writingEngineHost.signal();
+			// Unsupported languages come back `unavailable` and go to the agent below.
+			const locale = detectLanguage(String(text))?.code;
 			const result = await runChunked(String(text), (chunk) =>
-				writingEngineHost.runWith(buildToolPrompt(tool.prompt, chunk), signal),
+				writingEngineHost.runWith(
+					buildToolPrompt(tool.prompt, chunk),
+					signal,
+					locale,
+				),
 			);
 			if (result.status === "unavailable") {
 				// The on-device model can't run here: the agent does it instead.
