@@ -32,7 +32,6 @@ import {
 	SidebarUpdateCallout,
 	UpdatesSection,
 } from "./components/UpdatesSection";
-import { WritingModelSettings } from "./components/WritingModelSettings";
 import { desktopApi } from "./desktopApi";
 import type { DesktopUpdateState, HistoryRevision } from "./desktopApi/types";
 import {
@@ -896,7 +895,6 @@ function App() {
 				<ImportSettings />
 				<CloudSyncSettings workspacePath={workspacePath ?? null} />
 				<AgentAccessSettings />
-				<WritingModelSettings />
 				{updateState ? (
 					<UpdatesSection
 						state={updateState}

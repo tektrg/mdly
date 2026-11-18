@@ -49,6 +49,11 @@ export function WritingDot({
 	const [run, setRun] = useState<RunState>({ status: "idle" });
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Load Apple's on-device model while the user reads, so the first tool is fast.
+	useEffect(() => {
+		if (editor) void desktopApi.prewarmWritingEngine().catch(() => undefined);
+	}, [editor]);
+
 	useEffect(() => {
 		if (!editor) return;
 		const update = () => setAnchor(selectionAnchor(editor));
@@ -95,6 +100,15 @@ export function WritingDot({
 			});
 			if (result.status === "sent-to-agent") {
 				setRun({ status: "idle" });
+				if (result.fallback) {
+					// A local tool the on-device model can't run here went to the agent.
+					toast.warning(`${tool.name}: sent to the agent`, {
+						description: hasWatcher
+							? `${result.fallback}.`
+							: `${result.fallback}, and no agent is watching this note — run \`mdly watch <note>\` in an agent session.`,
+					});
+					return;
+				}
 				if (hasWatcher) toast.success(`${tool.name}: sent to the agent`);
 				else
 					toast.warning(
@@ -112,13 +126,8 @@ export function WritingDot({
 				return;
 			}
 			if (result.status === "failed") {
-				const missing = result.engine?.state === "missing";
 				setRun({ status: "failed", error: result.error });
-				toast.error(missing ? "Local model not found" : `${tool.name} failed`, {
-					description: missing
-						? `${result.engine?.modelPath} — set the model path in Settings.`
-						: result.error,
-				});
+				toast.error(`${tool.name} failed`, { description: result.error });
 				return;
 			}
 			setRun({ status: "idle" });

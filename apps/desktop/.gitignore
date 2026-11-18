@@ -24,7 +24,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# staged node-llama-cpp runtime (scripts/stage-llama-runtime.mjs)
-.llama-runtime
+# built Apple on-device model helper (scripts/build-writing-helper.mjs)
+native/build
 # bundled mdly CLI (scripts/bundle-cli.mjs)
 .cli-bundle

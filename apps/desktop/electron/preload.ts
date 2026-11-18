@@ -188,8 +188,8 @@ const desktopApi = {
 	cancelWritingTool: () => ipcRenderer.invoke("desktop:writing-tools-cancel"),
 	getWritingEngineStatus: () =>
 		ipcRenderer.invoke("desktop:writing-engine-status"),
-	setWritingModelPath: (modelPath) =>
-		ipcRenderer.invoke("desktop:writing-engine-set-model-path", { modelPath }),
+	prewarmWritingEngine: () =>
+		ipcRenderer.invoke("desktop:writing-engine-prewarm"),
 	agentHookDocOpen: (path, open) =>
 		ipcRenderer.invoke("desktop:agent-hook-doc-open", { path, open }),
 	agentHookState: (path) =>

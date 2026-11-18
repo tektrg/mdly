@@ -16,10 +16,10 @@
 	"scripts": {
 		"dev": "node scripts/dev.mjs",
 		"dev:debug": "HUBBLE_DESKTOP_ENABLE_CDP=1 node scripts/dev.mjs",
-		"build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && node scripts/check-bundled-deps.mjs",
+		"build": "node scripts/build-writing-helper.mjs && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && node scripts/check-bundled-deps.mjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-		"bundle": "pnpm build && node scripts/stage-llama-runtime.mjs && node scripts/bundle-cli.mjs && electron-builder --mac --arm64",
-		"bundle:publish": "pnpm build && node scripts/stage-llama-runtime.mjs && node scripts/bundle-cli.mjs && electron-builder --mac --arm64 --publish always",
+		"bundle": "pnpm build && node scripts/bundle-cli.mjs && electron-builder --mac --arm64",
+		"bundle:publish": "pnpm build && node scripts/bundle-cli.mjs && electron-builder --mac --arm64 --publish always",
 		"preview": "vite preview",
 		"sync:playground": "node scripts/sync-playground.mjs",
 		"test": "vitest run"
@@ -54,7 +54,6 @@
 		"electron-updater": "^6.8.3",
 		"ignore": "^7.0.5",
 		"keymatch": "^1.0.5",
-		"node-llama-cpp": "^3.22.3",
 		"open-props": "^1.7.23",
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
@@ -91,9 +90,13 @@
 		},
 		"icon": "assets/icon.icns",
 		"files": [
-			"out/**",
-			"!**/node_modules/node-llama-cpp/**",
-			"!**/node_modules/@node-llama-cpp/**"
+			"out/**"
+		],
+		"extraFiles": [
+			{
+				"from": "native/build/mdly-writing-helper",
+				"to": "MacOS/mdly-writing-helper"
+			}
 		],
 		"publish": [
 			{
@@ -135,13 +138,6 @@
 			}
 		],
 		"extraResources": [
-			{
-				"from": ".llama-runtime/node_modules",
-				"to": "llama/node_modules",
-				"filter": [
-					"**/*"
-				]
-			},
 			{
 				"from": ".cli-bundle",
 				"to": "cli",

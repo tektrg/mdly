@@ -631,7 +631,8 @@ export type DesktopApi = {
 	/** Stops the running local-model tool (it resolves as `cancelled`). */
 	cancelWritingTool(): Promise<void>;
 	getWritingEngineStatus(): Promise<WritingEngineStatus>;
-	setWritingModelPath(modelPath: string): Promise<WritingEngineStatus>;
+	/** Starts Apple's on-device model early (the editor opened). */
+	prewarmWritingEngine(): Promise<WritingEngineStatus>;
 	/** Slice 4: the agent tool table, defined once in the main process and republished by the WebMCP bridge. */
 	listAgentTools(): Promise<AgentToolDescriptor[]>;
 	callAgentTool(
@@ -792,13 +793,15 @@ export type WritingTool = {
 };
 
 export type WritingEngineStatus = {
-	state: "idle" | "loading" | "ready" | "missing" | "failed";
-	modelPath: string;
+	state: "idle" | "loading" | "ready" | "unavailable" | "failed";
+	/** Why the on-device model can't run (Apple Intelligence off, …). */
+	reason?: string;
 	error?: string;
 };
 
 export type WritingToolRunResult =
 	| { status: "done"; text: string }
-	| { status: "sent-to-agent" }
+	/** `fallback`: a local tool went to the agent because the on-device model can't run (the reason). */
+	| { status: "sent-to-agent"; fallback?: string }
 	| { status: "cancelled" }
 	| { status: "failed"; error: string; engine?: WritingEngineStatus };

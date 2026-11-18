@@ -132,9 +132,11 @@ import {
 import { readPackageMetadata, resolveUpdateGate } from "./updateGate";
 import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
-	createLlamaEngine,
+	createAppleEngine,
 	createWritingEngineHost,
-	DEFAULT_MODEL_PATH,
+	helperPath,
+	runChunked,
+	unavailableMessage,
 } from "./writingEngine";
 import {
 	buildToolPrompt,
@@ -873,35 +875,18 @@ function openDocsTracker(): OpenDocsTracker {
 }
 
 // --- Writing tools ("the dot") ------------------------------------------
-// One engine instance, recreated when the model path setting changes. Runs
-// are serialized: a local model has one context budget, and a queue keeps a
-// second click from racing the first.
-const WRITING_SETTINGS_FILE = "writing-tools.json";
-// The one owner of the local model: current engine, run queue, cancel.
+// The one owner of the local engine (Apple's on-device model via the Swift
+// helper): engine, run queue, cancel. Runs are serialized so a second click
+// can't race the first.
 const writingEngineHost = createWritingEngineHost({
-	createEngine: (modelPath) => createLlamaEngine({ modelPath }),
-});
-
-async function readWritingModelPath(): Promise<string> {
-	try {
-		const raw = JSON.parse(
-			await fs.readFile(
-				path.join(app.getPath("userData"), WRITING_SETTINGS_FILE),
-				"utf8",
+	createEngine: () =>
+		createAppleEngine({
+			helperPath: helperPath(
+				app.isPackaged ? process.resourcesPath : undefined,
+				app.getAppPath(),
 			),
-		) as { modelPath?: unknown };
-		return typeof raw.modelPath === "string" && raw.modelPath.trim()
-			? raw.modelPath
-			: DEFAULT_MODEL_PATH;
-	} catch {
-		return DEFAULT_MODEL_PATH;
-	}
-}
-
-/** Follows the model path setting; a change cancels any run and unloads first. */
-async function syncWritingModelPath(): Promise<void> {
-	await writingEngineHost.setModelPath(await readWritingModelPath());
-}
+		}),
+});
 
 async function isAgentAccessEnabled(): Promise<boolean> {
 	return readAgentAccessEnabled(app.getPath("userData"));
@@ -2194,10 +2179,25 @@ function registerIpc() {
 				});
 				return { status: "sent-to-agent" };
 			}
-			await syncWritingModelPath();
-			const result = await writingEngineHost.run(
-				buildToolPrompt(tool.prompt, String(text)),
+			const signal = writingEngineHost.signal();
+			const result = await runChunked(String(text), (chunk) =>
+				writingEngineHost.runWith(buildToolPrompt(tool.prompt, chunk), signal),
 			);
+			if (result.status === "unavailable") {
+				// The on-device model can't run here: the agent does it instead.
+				await emitHookEvent(hookTarget(resolved), "tool.requested", "user", {
+					requestId: String(requestId),
+					tool: tool.name,
+					prompt: tool.prompt,
+					text: String(text),
+					reply:
+						"Answer with the propose_edit MCP tool (find = the given text).",
+				});
+				return {
+					status: "sent-to-agent",
+					fallback: unavailableMessage(result.reason),
+				};
+			}
 			return result.status === "done"
 				? { status: "done", text: cleanModelOutput(result.text) }
 				: result;
@@ -2206,24 +2206,13 @@ function registerIpc() {
 	ipcMain.handle("desktop:writing-tools-cancel", () => {
 		writingEngineHost.cancel();
 	});
-	ipcMain.handle("desktop:writing-engine-status", async () => {
-		await syncWritingModelPath();
+	ipcMain.handle("desktop:writing-engine-status", () =>
+		writingEngineHost.getStatus(),
+	);
+	ipcMain.handle("desktop:writing-engine-prewarm", async () => {
+		await writingEngineHost.prewarm();
 		return writingEngineHost.getStatus();
 	});
-	ipcMain.handle(
-		"desktop:writing-engine-set-model-path",
-		async (_event, { modelPath }) => {
-			const file = path.join(app.getPath("userData"), WRITING_SETTINGS_FILE);
-			await fs.writeFile(
-				file,
-				JSON.stringify({
-					modelPath: typeof modelPath === "string" ? modelPath : "",
-				}),
-			);
-			await syncWritingModelPath();
-			return writingEngineHost.getStatus();
-		},
-	);
 	// What is open, for `mdly watch --open` and the open-scope badge.
 	ipcMain.handle(
 		"desktop:agent-hook-doc-open",
