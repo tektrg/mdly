@@ -10,7 +10,12 @@ import {
 	writeOpenDocs,
 } from "@mdly/agent-hook";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readMcpEndpoint, relayMcpMessage, runMdly } from "./mdly.js";
+import {
+	isEntryModule,
+	readMcpEndpoint,
+	relayMcpMessage,
+	runMdly,
+} from "./mdly.js";
 
 let root: string;
 beforeEach(async () => {
@@ -172,5 +177,24 @@ describe("mdly watch (process)", () => {
 	it("rejects no scope or two scopes", async () => {
 		expect(await runMdly(["watch"])).toBe(2);
 		expect(await runMdly(["watch", "x.md", "--open"])).toBe(2);
+	});
+});
+
+describe("isEntryModule", () => {
+	it("is true for the running file whatever it is named (bundled cli.js, symlinked bin)", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mdly-entry-"));
+		try {
+			const file = path.join(dir, "bundle.js");
+			await fs.writeFile(file, "");
+			const link = path.join(dir, "mdly");
+			await fs.symlink(file, link);
+			const url = `file://${file}`;
+			expect(isEntryModule(file, url)).toBe(true);
+			expect(isEntryModule(link, url)).toBe(true);
+			expect(isEntryModule(path.join(dir, "other.js"), url)).toBe(false);
+			expect(isEntryModule(undefined, url)).toBe(false);
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+		}
 	});
 });

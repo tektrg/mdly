@@ -111,6 +111,9 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 	# extraResources; electron-builder's pnpm collection drops parts of it).
 	"$NODE_BIN" apps/desktop/scripts/stage-llama-runtime.mjs \
 		|| { echo "[prod-app] BUILD FAILED: staging node-llama-cpp runtime" >&2; exit 1; }
+	# The `mdly` CLI (watch/mcp) -> apps/desktop/.cli-bundle, shipped as Resources/cli.
+	"$NODE_BIN" apps/desktop/scripts/bundle-cli.mjs \
+		|| { echo "[prod-app] BUILD FAILED: bundling the mdly CLI" >&2; exit 1; }
 	fp_before="$(out_fingerprint)"
 	# MDLY_RELEASE_UPDATES=1 (set ONLY by scripts/release-dmg.sh) stamps the app as the
 	# Developer-ID DMG build, the one build allowed to self-update (see
@@ -144,6 +147,8 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 	fi
 	"$NODE_BIN" "$SCRIPT_DIR/check-llama-bundle.mjs" "$RELEASE_APP" \
 		|| { echo "[prod-app] BUILD FAILED: packaged app cannot load node-llama-cpp" >&2; exit 1; }
+	"$RELEASE_APP/Contents/Resources/cli/mdly" --help 2>&1 | grep -q "mdly watch" \
+		|| { echo "[prod-app] BUILD FAILED: bundled mdly CLI does not run" >&2; exit 1; }
 	shasum -a 256 "$RELEASE_APP/Contents/Resources/app.asar" | cut -d' ' -f1 >"$RELEASE_APP/../app.asar.sha256"
 fi
 

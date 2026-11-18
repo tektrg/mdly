@@ -15,12 +15,15 @@
  *
  *   mdly mcp [--app-data <dir>]
  *     A stdio MCP server that relays to the app's loopback MCP endpoint.
- *     `claude mcp add mdly -- ssh <pro-host> mdly mcp`
+ *     `claude mcp add mdly -- ssh <host> /Applications/mdly.app/Contents/Resources/cli/mdly mcp`
+ *   (the app bundles this CLI; see packages/cli/README.md)
  */
+import { realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 import {
 	defaultMachineLabel,
 	ensureWorkspace,
@@ -262,8 +265,23 @@ export async function runMdly(argv: string[]): Promise<number> {
 	return command === "--help" || command === "-h" ? 0 : 2;
 }
 
-const isEntry = process.argv[1] && /mdly(\.js)?$/.test(process.argv[1]);
-if (isEntry) {
+/** True when `argv1` (the script node was started with) is this module, by real
+ * path, so the CLI runs under any file name: dist/mdly.js, the app-bundled
+ * Resources/cli/mdly.js, or a symlinked bin. (A name regex here made a renamed
+ * entry exit silently.) */
+export function isEntryModule(
+	argv1: string | undefined,
+	moduleUrl: string,
+): boolean {
+	if (!argv1) return false;
+	try {
+		return realpathSync(argv1) === realpathSync(fileURLToPath(moduleUrl));
+	} catch {
+		return false;
+	}
+}
+
+if (isEntryModule(process.argv[1], import.meta.url)) {
 	runMdly(process.argv.slice(2)).then(
 		(code) => process.exit(code),
 		(error) => {
