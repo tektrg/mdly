@@ -144,6 +144,7 @@ import {
 	listWritingTools,
 	resetWritingTool,
 } from "./writingTools";
+import { detectLanguage, languageChanged } from "./textLanguage";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
@@ -2135,7 +2136,9 @@ function registerIpc() {
 				tool: String(tool),
 				prompt: String(prompt),
 				text: String(text),
-				reply: "Answer with the propose_edit MCP tool (find = the given text).",
+				language: detectLanguage(String(text))?.name ?? "same as the text",
+				reply:
+					"Answer with the propose_edit MCP tool (find = the given text), in the same language as the text. Do not translate.",
 			});
 		},
 	);
@@ -2174,8 +2177,9 @@ function registerIpc() {
 					tool: tool.name,
 					prompt: tool.prompt,
 					text: String(text),
+					language: detectLanguage(String(text))?.name ?? "same as the text",
 					reply:
-						"Answer with the propose_edit MCP tool (find = the given text).",
+						"Answer with the propose_edit MCP tool (find = the given text), in the same language as the text. Do not translate.",
 				});
 				return { status: "sent-to-agent" };
 			}
@@ -2190,17 +2194,25 @@ function registerIpc() {
 					tool: tool.name,
 					prompt: tool.prompt,
 					text: String(text),
+					language: detectLanguage(String(text))?.name ?? "same as the text",
 					reply:
-						"Answer with the propose_edit MCP tool (find = the given text).",
+						"Answer with the propose_edit MCP tool (find = the given text), in the same language as the text. Do not translate.",
 				});
 				return {
 					status: "sent-to-agent",
 					fallback: unavailableMessage(result.reason),
 				};
 			}
-			return result.status === "done"
-				? { status: "done", text: cleanModelOutput(result.text) }
-				: result;
+			if (result.status !== "done") return result;
+			const output = cleanModelOutput(result.text);
+			// A small model may translate instead of edit: that's a failed run, not a suggestion.
+			if (languageChanged(String(text), output))
+				return {
+					status: "failed",
+					error:
+						"The model changed the language of the text. Nothing was changed; try again or run it with the agent.",
+				};
+			return { status: "done", text: output };
 		},
 	);
 	ipcMain.handle("desktop:writing-tools-cancel", () => {
