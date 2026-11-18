@@ -129,6 +129,7 @@ import {
 	setNotionAccount,
 	updateNotionPageMarkdown,
 } from "./notion";
+import { detectLanguage } from "./textLanguage";
 import { readPackageMetadata, resolveUpdateGate } from "./updateGate";
 import { createWorkspaceViewStore } from "./workspaceViewsFile";
 import {
@@ -140,11 +141,10 @@ import {
 } from "./writingEngine";
 import {
 	buildToolPrompt,
-	cleanModelOutput,
+	finishToolOutput,
 	listWritingTools,
 	resetWritingTool,
 } from "./writingTools";
-import { detectLanguage, languageChanged } from "./textLanguage";
 import {
 	loadZoomFactor,
 	resetWindowZoom,
@@ -2210,15 +2210,7 @@ function registerIpc() {
 				};
 			}
 			if (result.status !== "done") return result;
-			const output = cleanModelOutput(result.text);
-			// A small model may translate instead of edit: that's a failed run, not a suggestion.
-			if (languageChanged(String(text), output))
-				return {
-					status: "failed",
-					error:
-						"The model changed the language of the text. Nothing was changed; try again or run it with the agent.",
-				};
-			return { status: "done", text: output };
+			return finishToolOutput(String(text), result.text);
 		},
 	);
 	ipcMain.handle("desktop:writing-tools-cancel", () => {

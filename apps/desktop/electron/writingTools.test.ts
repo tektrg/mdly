@@ -7,6 +7,7 @@ import {
 	BUILT_IN_TOOLS,
 	buildToolPrompt,
 	cleanModelOutput,
+	finishToolOutput,
 	listWritingTools,
 	parseToolFile,
 	resetWritingTool,
@@ -122,5 +123,28 @@ describe("writing engine", () => {
 	it("fake engine returns its response", async () => {
 		const engine = createFakeEngine({ respond: () => "out" });
 		expect(await engine.run("p")).toEqual({ status: "done", text: "out" });
+	});
+});
+
+describe("finishToolOutput", () => {
+	it("a reply that changed the language is a failed run, not a suggestion", () => {
+		expect(
+			finishToolOutput(
+				"Tôi đã đi chợ hôm qua và mua rất nhiều rau.",
+				"I went to the market yesterday and bought a lot of vegetables.",
+			),
+		).toMatchObject({
+			status: "failed",
+			error: expect.stringMatching(/changed the language/),
+		});
+	});
+
+	it("a same-language reply is cleaned and done", () => {
+		expect(
+			finishToolOutput(
+				"Tôi đã đi chợ hôm qua.",
+				"Here is the text:\nHôm qua tôi đã đi chợ.",
+			),
+		).toEqual({ status: "done", text: "Hôm qua tôi đã đi chợ." });
 	});
 });

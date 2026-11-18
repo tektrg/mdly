@@ -7,7 +7,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { languageInstruction } from "./textLanguage";
+import { languageChanged, languageInstruction } from "./textLanguage";
 
 /** `apple`: Apple's on-device model (was `local`, still read). `agent`: a watching agent. */
 export type ToolEngine = "apple" | "agent";
@@ -186,4 +186,22 @@ export function cleanModelOutput(output: string): string {
 		text = text.slice(1, -1);
 	}
 	return text;
+}
+
+/**
+ * Turns a model reply into the tool result. A small model may translate
+ * instead of edit: a reply in another language is a failed run, not a suggestion.
+ */
+export function finishToolOutput(
+	input: string,
+	raw: string,
+): { status: "done"; text: string } | { status: "failed"; error: string } {
+	const text = cleanModelOutput(raw);
+	if (languageChanged(input, text))
+		return {
+			status: "failed",
+			error:
+				"The model changed the language of the text. Nothing was changed; try again or run it with the agent.",
+		};
+	return { status: "done", text };
 }
