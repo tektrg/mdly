@@ -6,6 +6,7 @@ import {
 	createLlamaEngine,
 	createWritingEngineHost,
 	type LlamaModule,
+	llamaModuleSpecifier,
 } from "./writingEngine";
 
 let root: string;
@@ -215,5 +216,23 @@ describe("writing engine host", () => {
 			new Promise((r) => setTimeout(() => r("deadlock"), 1000)),
 		]);
 		expect(outcome).toBe("cancelled");
+	});
+});
+
+describe("llamaModuleSpecifier", () => {
+	it("uses the bundled copy under Resources/llama when the packaged app has it", () => {
+		const spec = llamaModuleSpecifier(
+			"/A/mdly.app/Contents/Resources",
+			() => true,
+		);
+		expect(spec).toBe(
+			"file:///A/mdly.app/Contents/Resources/llama/node_modules/node-llama-cpp/dist/index.js",
+		);
+	});
+	it("falls back to the bare package name in dev", () => {
+		expect(llamaModuleSpecifier("/electron/Resources", () => false)).toBe(
+			"node-llama-cpp",
+		);
+		expect(llamaModuleSpecifier(undefined)).toBe("node-llama-cpp");
 	});
 });

@@ -107,6 +107,10 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 		kill -STOP $PAUSED_WATCHERS
 	fi
 	"$PNPM" --filter "@hubble.md/desktop..." --if-present build
+	# node-llama-cpp + deps + metal binary -> apps/desktop/.llama-runtime (shipped as
+	# extraResources; electron-builder's pnpm collection drops parts of it).
+	"$NODE_BIN" apps/desktop/scripts/stage-llama-runtime.mjs \
+		|| { echo "[prod-app] BUILD FAILED: staging node-llama-cpp runtime" >&2; exit 1; }
 	fp_before="$(out_fingerprint)"
 	# MDLY_RELEASE_UPDATES=1 (set ONLY by scripts/release-dmg.sh) stamps the app as the
 	# Developer-ID DMG build, the one build allowed to self-update (see
@@ -138,6 +142,8 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
 			"$([[ "${MDLY_RELEASE_UPDATES:-0}" == 1 ]] && echo on || echo off)" \
 			|| { echo "[prod-app] BUILD FAILED: update stamp / updater bundle check" >&2; exit 1; }
 	fi
+	"$NODE_BIN" "$SCRIPT_DIR/check-llama-bundle.mjs" "$RELEASE_APP" \
+		|| { echo "[prod-app] BUILD FAILED: packaged app cannot load node-llama-cpp" >&2; exit 1; }
 	shasum -a 256 "$RELEASE_APP/Contents/Resources/app.asar" | cut -d' ' -f1 >"$RELEASE_APP/../app.asar.sha256"
 fi
 

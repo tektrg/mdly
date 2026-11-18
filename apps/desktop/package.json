@@ -18,8 +18,8 @@
 		"dev:debug": "HUBBLE_DESKTOP_ENABLE_CDP=1 node scripts/dev.mjs",
 		"build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && electron-vite build && node scripts/check-bundled-deps.mjs",
 		"typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-		"bundle": "pnpm build && electron-builder --mac --arm64",
-		"bundle:publish": "pnpm build && electron-builder --mac --arm64 --publish always",
+		"bundle": "pnpm build && node scripts/stage-llama-runtime.mjs && electron-builder --mac --arm64",
+		"bundle:publish": "pnpm build && node scripts/stage-llama-runtime.mjs && electron-builder --mac --arm64 --publish always",
 		"preview": "vite preview",
 		"sync:playground": "node scripts/sync-playground.mjs",
 		"test": "vitest run"
@@ -91,7 +91,9 @@
 		},
 		"icon": "assets/icon.icns",
 		"files": [
-			"out/**"
+			"out/**",
+			"!**/node_modules/node-llama-cpp/**",
+			"!**/node_modules/@node-llama-cpp/**"
 		],
 		"publish": [
 			{
@@ -132,9 +134,14 @@
 				"rank": "Owner"
 			}
 		],
-		"asarUnpack": [
-			"**/node_modules/node-llama-cpp/**",
-			"**/node_modules/@node-llama-cpp/**"
+		"extraResources": [
+			{
+				"from": ".llama-runtime/node_modules",
+				"to": "llama/node_modules",
+				"filter": [
+					"**/*"
+				]
+			}
 		]
 	}
 }

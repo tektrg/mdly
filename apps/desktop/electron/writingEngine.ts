@@ -8,17 +8,40 @@
  * node-llama-cpp (loaded lazily, so the app starts without it).
  * `createFakeEngine` is for tests.
  */
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 /**
  * node-llama-cpp is native + ESM-only, so it must NOT be bundled into the CJS
- * main bundle: it is loaded at runtime from the packaged app's node_modules
- * (see `build.asarUnpack` in package.json). A variable specifier keeps the
- * bundler from trying to inline it.
+ * main bundle. The packaged app ships it, with its whole dependency tree, at
+ * Contents/Resources/llama/node_modules (scripts/stage-llama-runtime.mjs,
+ * `build.extraResources`); dev resolves it from the workspace node_modules.
+ * A variable specifier keeps the bundler from trying to inline it.
  */
 const LLAMA_MODULE = "node-llama-cpp";
+
+/** Import specifier for node-llama-cpp: the bundled copy under
+ * `resourcesDir` when present (packaged app), else the bare name (dev). */
+export function llamaModuleSpecifier(
+	resourcesDir: string | undefined,
+	exists: (p: string) => boolean = existsSync,
+): string {
+	if (resourcesDir) {
+		const entry = path.join(
+			resourcesDir,
+			"llama",
+			"node_modules",
+			LLAMA_MODULE,
+			"dist",
+			"index.js",
+		);
+		if (exists(entry)) return pathToFileURL(entry).href;
+	}
+	return LLAMA_MODULE;
+}
 const importNative = new Function("specifier", "return import(specifier)") as (
 	specifier: string,
 ) => Promise<unknown>;
@@ -183,7 +206,12 @@ export function createLlamaEngine(options: LlamaEngineOptions): WritingEngine {
 			}
 			const mod = await (
 				options.loadModule ??
-				(() => importNative(LLAMA_MODULE) as Promise<LlamaModule>)
+				(() =>
+					importNative(
+						llamaModuleSpecifier(
+							(process as { resourcesPath?: string }).resourcesPath,
+						),
+					) as Promise<LlamaModule>)
 			)();
 			// Prebuilt binaries only: never compile llama.cpp on a user's Mac.
 			const llama = await mod.getLlama({ build: "never" });
