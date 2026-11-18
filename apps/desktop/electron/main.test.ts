@@ -445,3 +445,16 @@ describe("IPC registration uniqueness", () => {
 	});
 });
 
+
+describe("quit handler", () => {
+	it("stops the writing engine helper on before-quit", async () => {
+		const mainSource = await fs.readFile(
+			path.join(__dirname, "main.ts"),
+			"utf8",
+		);
+		const start = mainSource.indexOf('app.on("before-quit"');
+		expect(start).toBeGreaterThan(-1);
+		const body = mainSource.slice(start, mainSource.indexOf("\n\t});", start));
+		expect(body).toContain("writingEngineHost.dispose()");
+	});
+});

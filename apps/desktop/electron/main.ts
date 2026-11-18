@@ -2952,5 +2952,8 @@ if (!singleInstanceLock) {
 		// Release the loopback port so the next launch gets the fixed default
 		// back instead of silently falling through to a random one.
 		void stopAgentMcpServer();
+		// Cancel any in-flight run and kill the Swift helper so quitting never
+		// leaves it generating a request in the background.
+		void writingEngineHost.dispose();
 	});
 }
