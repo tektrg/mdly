@@ -14,6 +14,7 @@ import {
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildCommentAnchor } from "../comments/buildAnchor.js";
 import {
 	CommentComposer,
 	CommentExtension,
@@ -220,6 +221,17 @@ export type EditorViewProps = {
 	 * do no pointer or measurement work whatsoever (charter R33).
 	 */
 	tableInteractivity?: boolean;
+	/**
+	 * Opt-in host-owned selection UI (the desktop "dot"). When provided it is
+	 * rendered instead of the built-in selection bubble (Comment / copy link),
+	 * and gets `comment` (starts a draft on the current selection; null when
+	 * comments are off or a draft is already open) so the host can offer it.
+	 */
+	renderSelectionActions?: (actions: SelectionActions) => React.ReactNode;
+};
+
+export type SelectionActions = {
+	comment: (() => void) | null;
 };
 
 export function EditorView({
@@ -249,6 +261,7 @@ export function EditorView({
 	fileMenu,
 	commentOptions,
 	tableInteractivity = false,
+	renderSelectionActions,
 }: EditorViewProps) {
 	const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 	// Non-null while a brand-new comment is being drafted: set by
@@ -599,6 +612,19 @@ export function EditorView({
 		},
 		[editor],
 	);
+	// The host's selection UI (`renderSelectionActions`) starts a comment the
+	// same way the built-in bubble's Comment button does.
+	const commentAtSelection = useCallback(() => {
+		if (!editor || !commentOptions) return;
+		const { from, to } = editor.state.selection;
+		if (from === to) return;
+		void buildCommentAnchor(editor.state.doc, from, to, {
+			getHeadRevisionId: commentOptions.getHeadRevisionId,
+			readRevisionContent: commentOptions.readRevisionContent,
+		}).then((anchor) =>
+			handleStartComposing(anchor, anchor.quote, { from, to }),
+		);
+	}, [editor, commentOptions, handleStartComposing]);
 	const clearComposing = useCallback(() => {
 		setComposingAnchor(null);
 		if (editor) setPendingCommentAnchor(editor, null);
@@ -850,6 +876,10 @@ export function EditorView({
 					scrollContainer={editorViewportEl}
 					threads={commentOptions ? resolvedThreads : undefined}
 				/>
+				{renderSelectionActions?.({
+					comment:
+						commentOptions && !composingAnchor ? commentAtSelection : null,
+				})}
 				{commentOptions ? (
 					<>
 						<CommentParagraphMarker
@@ -861,7 +891,7 @@ export function EditorView({
 						{/* Hidden once a draft is in progress -- the panel's own
 						NewThreadComposer is now the one "start a comment" affordance
 						for that selection; without this, both would show at once. */}
-						{composingAnchor ? null : (
+						{composingAnchor || renderSelectionActions ? null : (
 							<CommentComposer
 								editor={editor}
 								viewportRef={editorViewportRef}

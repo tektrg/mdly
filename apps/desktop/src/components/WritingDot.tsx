@@ -1,6 +1,7 @@
 /**
  * "The dot": select text → a small dot at the selection's end; hover it for
- * the writing tools. A local tool's result arrives as an inline suggestion;
+ * every selection action: Comment · Link · divider · the writing tools. (It
+ * replaces the editor's own selection bubble; ⌘K still links.) A local tool's result arrives as an inline suggestion;
  * an `engine: agent` tool becomes a `tool.requested` event for a watching
  * agent, whose answer arrives as a suggestion via `propose_edit`.
  *
@@ -38,10 +39,13 @@ export function WritingDot({
 	editor,
 	path,
 	hasWatcher,
+	onComment,
 }: {
 	editor: Editor | null;
 	path: string;
 	hasWatcher: boolean;
+	/** Starts a comment on the selection; null/absent when comments are off. */
+	onComment?: (() => void) | null;
 }) {
 	const [anchor, setAnchor] = useState<Anchor | null>(null);
 	const [open, setOpen] = useState(false);
@@ -208,6 +212,33 @@ export function WritingDot({
 					style={{ insetBlockStart: 16, insetInlineStart: 0 }}
 					onMouseDown={(event) => event.preventDefault()}
 				>
+					{onComment && (
+						<button
+							type="button"
+							role="menuitem"
+							className="flex w-full rounded px-2 py-1 text-start hover:bg-muted"
+							onClick={() => {
+								setOpen(false);
+								onComment();
+							}}
+						>
+							Comment
+						</button>
+					)}
+					<button
+						type="button"
+						role="menuitem"
+						className="flex w-full items-center justify-between gap-3 rounded px-2 py-1 text-start hover:bg-muted"
+						onClick={() => {
+							setOpen(false);
+							// Same as ⌘K: links the selection and opens the link editor.
+							editor.commands.toggleLinkAtSelection();
+						}}
+					>
+						Link
+						<span className="text-[10px] text-muted-foreground">⌘K</span>
+					</button>
+					<hr className="my-1 h-px border-0 bg-border" />
 					{!tools && (
 						<div className="px-2 py-1 text-muted-foreground">Loading…</div>
 					)}

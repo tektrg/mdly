@@ -233,6 +233,7 @@ export {
 export {
 	EditorView,
 	type EditorViewProps,
+	type SelectionActions,
 	type WikiTarget,
 } from "./ui/EditorView";
 export { FormattingStatusBar } from "./ui/FormattingStatusBar";

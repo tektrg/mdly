@@ -433,13 +433,6 @@ function MarkdownEditor({
 	return (
 		<>
 			<SuggestionReviewBar editor={liveEditor} />
-			{!isSingleFile && (
-				<WritingDot
-					editor={liveEditor}
-					path={path}
-					hasWatcher={agentHook.watchers.length > 0}
-				/>
-			)}
 			<AgentHookBar
 				path={path}
 				getMarkdown={getCurrentMarkdown}
@@ -466,6 +459,20 @@ function MarkdownEditor({
 				commentOptions={commentOptions}
 				fileMenu={fileMenu}
 				tableInteractivity
+				// The dot holds every selection action (Comment · Link · tools),
+				// replacing the editor's own selection bubble.
+				renderSelectionActions={
+					isSingleFile
+						? undefined
+						: (actions) => (
+								<WritingDot
+									editor={liveEditor}
+									path={path}
+									hasWatcher={agentHook.watchers.length > 0}
+									onComment={actions.comment}
+								/>
+							)
+				}
 			/>
 		</>
 	);

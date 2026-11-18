@@ -552,3 +552,66 @@ describe("EditorView selecting an existing thread cancels an in-progress draft (
 		).not.toBeNull();
 	});
 });
+
+/**
+ * The desktop "dot" holds Comment + Link: a host passing
+ * `renderSelectionActions` replaces the built-in selection bubble, and its
+ * `comment` action starts a draft on the current selection exactly like the
+ * bubble's Comment button did.
+ */
+describe("EditorView renderSelectionActions (the dot holds Comment)", () => {
+	let container: HTMLDivElement;
+	let root: ReturnType<typeof createRoot>;
+
+	beforeEach(() => {
+		container = document.createElement("div");
+		document.body.append(container);
+		root = createRoot(container);
+	});
+
+	afterEach(() => {
+		act(() => root.unmount());
+		container.remove();
+	});
+
+	it("replaces the selection bubble and starts a comment draft on the selection", async () => {
+		let liveEditor: Editor | null = null;
+		let comment: (() => void) | null = null;
+		act(() => {
+			root.render(
+				<EditorView
+					path="/workspace/note.md"
+					initialMarkdown={"Hello world\n"}
+					onLocalChange={vi.fn()}
+					onSave={vi.fn()}
+					onOpenExternalLink={vi.fn()}
+					onOpenWikiLink={vi.fn()}
+					commentOptions={baseCommentOptions()}
+					onEditorReady={(e) => (liveEditor = e)}
+					renderSelectionActions={(actions) => {
+						comment = actions.comment;
+						return <span data-host-dot />;
+					}}
+				/>,
+			);
+		});
+		await flushMicrotasks();
+		if (!liveEditor) throw new Error("editor did not become ready");
+		act(() => {
+			(liveEditor as Editor).commands.setTextSelection({ from: 7, to: 12 });
+		});
+		await flushMicrotasks();
+		expect(container.querySelector("[data-host-dot]")).not.toBeNull();
+		expect(
+			container.querySelector("[data-comment-selection-toolbar]"),
+		).toBeNull();
+		expect(comment).toBeTypeOf("function");
+		await act(async () => {
+			(comment as unknown as () => void)();
+		});
+		await flushMicrotasks();
+		expect(
+			(liveEditor as Editor).view.dom.querySelector(".pm-comment-mark-pending"),
+		).not.toBeNull();
+	});
+});
