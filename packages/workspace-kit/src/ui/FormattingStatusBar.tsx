@@ -21,7 +21,7 @@ type PaletteState = {
 };
 
 const floatingChipClass =
-	"bg-background/78 text-muted-foreground shadow-[var(--shadow-chip)] backdrop-blur-md";
+	"bg-background/55 text-muted-foreground shadow-[var(--shadow-chip),0_4px_14px_-6px_rgb(15_23_42/0.18),inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_7%,transparent)] backdrop-blur-xl backdrop-saturate-150";
 const CONTENT_COUNT_DEBOUNCE_MS = 2_000;
 
 export function FormattingStatusBar({
