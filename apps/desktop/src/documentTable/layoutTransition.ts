@@ -75,9 +75,12 @@ function prefersReducedMotion(): boolean {
 	);
 }
 
+let activeTransitions = 0;
+
 type ViewTransitionDocument = Omit<Document, "startViewTransition"> & {
 	startViewTransition?: (update: () => void) => {
 		updateCallbackDone: Promise<void>;
+		finished?: Promise<void>;
 	};
 };
 
@@ -108,8 +111,20 @@ export function runLayoutTransition(
 		update();
 		return Promise.resolve();
 	}
+	// The doc-pane view-transition-name is only set while a transition runs;
+	// a permanent one breaks backdrop-filter on the editor chips. Counter, since
+	// a new transition skips the running one and both `finished` promises settle.
+	activeTransitions += 1;
+	doc.documentElement.setAttribute("data-layout-transition", "");
 	const transition = doc.startViewTransition(() => {
 		flushSync(update);
 	});
+	const release = () => {
+		activeTransitions -= 1;
+		if (activeTransitions === 0) {
+			doc.documentElement.removeAttribute("data-layout-transition");
+		}
+	};
+	(transition.finished ?? transition.updateCallbackDone).then(release, release);
 	return transition.updateCallbackDone.catch(() => {});
 }

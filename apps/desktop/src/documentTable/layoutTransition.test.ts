@@ -74,6 +74,18 @@ describe("anchoredScrollTop", () => {
 });
 
 describe("runLayoutTransition", () => {
+	it("flags the root only while the transition runs (a permanent view-transition-name kills the chips' backdrop blur)", async () => {
+		const fake = installFakeViewTransitions();
+		stubReducedMotion(false);
+		const root = document.documentElement;
+		const done = runLayoutTransition(() => {});
+		expect(root.hasAttribute("data-layout-transition")).toBe(true);
+		fake.flush();
+		await done;
+		await Promise.resolve();
+		expect(root.hasAttribute("data-layout-transition")).toBe(false);
+	});
+
 	it("records the clicked row's offset as a one-shot anchor", () => {
 		document.body.innerHTML =
 			'<div role="rowgroup"><button data-document-path="/ws/a.md"></button></div>';

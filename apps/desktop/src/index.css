@@ -247,7 +247,10 @@
 [data-doc-surface] {
 	view-transition-name: doc-list;
 }
-[data-peek-split] > [data-document-pane] {
+/* Only while a layout transition runs (layoutTransition.ts sets the flag). A
+ * permanent view-transition-name makes the pane a backdrop root, so the
+ * editor's frosted chips (backdrop-filter) stopped blurring the text. */
+:root[data-layout-transition] [data-peek-split] > [data-document-pane] {
 	view-transition-name: doc-pane;
 }
 ::view-transition {
