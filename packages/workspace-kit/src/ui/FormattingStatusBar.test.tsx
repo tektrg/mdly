@@ -141,6 +141,38 @@ describe("FormattingStatusBar scroll/resize hang (R-hang-1)", () => {
 		expect(document.body.textContent).toContain("Copy file path");
 	});
 
+	it("hideInfoChips drops the file-name, history and word-count chips and never scans the document", () => {
+		vi.useFakeTimers();
+		try {
+			const { editor, getText } = createFakeEditor();
+			act(() => {
+				root.render(
+					<FormattingStatusBar
+						editor={editor}
+						path="/workspace/note.md"
+						onOpenRevisionHistory={() => {}}
+						hideInfoChips
+					/>,
+				);
+			});
+			act(() => {
+				(editor as unknown as { emit: (e: string, p?: unknown) => void }).emit(
+					"transaction",
+					{ transaction: { docChanged: true } },
+				);
+				vi.advanceTimersByTime(2_000);
+			});
+			expect(getText).not.toHaveBeenCalled();
+			expect(container.textContent).not.toContain("note.md");
+			expect(container.textContent).not.toContain("words");
+			expect(
+				container.querySelector("[data-revision-history-trigger]"),
+			).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("does not recount the document on cursor-only selection updates", () => {
 		const { editor, getText } = createFakeEditor();
 

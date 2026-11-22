@@ -4,18 +4,25 @@ import { useStoreValue } from "@simplestack/store/react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import MingcuteCopy2Line from "~icons/mingcute/copy-2-line";
+import MingcuteDeleteLine from "~icons/mingcute/delete-line";
 import MingcuteFolderOpenLine from "~icons/mingcute/folder-open-line";
 import MingcuteHistoryLine from "~icons/mingcute/history-line";
 import MingcuteLinkLine from "~icons/mingcute/link-line";
 import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
 import MingcuteMore2Line from "~icons/mingcute/more-2-line";
+import MingcutePinLine from "~icons/mingcute/pin-line";
 import { desktopApi } from "../desktopApi";
 import { revealFileLabel } from "../lib/revealFile";
-import { undoExternalChange } from "../store/actions";
+import {
+	deleteMarkdownFile,
+	togglePinnedNote,
+	undoExternalChange,
+} from "../store/actions";
 import {
 	currentPathStore,
 	viewerStore,
 	workspacePathStore,
+	workspaceStore,
 } from "../store/state";
 import { BacklinksSubmenu } from "./BacklinksSubmenu";
 import { ExternalChangeReviewDialog } from "./ExternalChangeReviewDialog";
@@ -149,6 +156,7 @@ export function Toolbar({
 					)}
 					<NoteActionsMenu
 						path={currentPath ?? null}
+						content={currentContent}
 						canMoveFile={!isSingleFile}
 						hideHistoryItems={isSingleFile}
 						onOpenNotionPage={onOpenNotionPage}
@@ -195,8 +203,11 @@ function NoteActionsMenu({
 	onOpenComments,
 	notionSyncMode,
 	docImported,
+	content,
 }: {
 	path: string | null;
+	/** Open document text; counted only while the menu is open. */
+	content: string;
 	/** False in single-file windows: there is no workspace to move within. */
 	canMoveFile: boolean;
 	/**
@@ -216,6 +227,11 @@ function NoteActionsMenu({
 	notionSyncMode: NotionSyncMode;
 	docImported: boolean;
 }) {
+	const pinned = useStoreValue(workspaceStore, (workspace) =>
+		path ? workspace.pinnedNotes.includes(path) : false,
+	);
+	const [countMode, setCountMode] = useState<"words" | "chars">("words");
+
 	async function revealFile() {
 		if (!path) return;
 		try {
@@ -258,6 +274,17 @@ function NoteActionsMenu({
 					sideOffset={4}
 				>
 					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[18px] bg-popover shadow-overlay p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+{path ? (
+<>
+<div className="truncate [padding-block:0.375rem] [padding-inline:0.5rem] text-[11px] font-medium text-foreground" title={path}>
+{fileNameFromPath(path)}
+</div>
+<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-muted-foreground outline-hidden select-none data-highlighted:bg-accent" closeOnClick={false} title={countMode === "words" ? "Show character count" : "Show word count"} onClick={() => setCountMode((mode) => (mode === "words" ? "chars" : "words"))}>
+<span className="min-w-0 flex-1">{countMode === "words" ? `${countWords(content)} words` : `${content.length} characters`}</span>
+</Menu.Item>
+<Menu.Separator className="my-1 h-px bg-transparent" />
+</>
+) : null}
 						<Menu.Item
 							className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 							onClick={onOpenNotionPage}
@@ -329,7 +356,8 @@ function NoteActionsMenu({
 										<span className="min-w-0 flex-1">Move to...</span>
 									</Menu.Item>
 								) : null}
-								<Menu.Item
+								{canMoveFile ? (<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent" onClick={() => void togglePinnedNote(path)}><MingcutePinLine className="size-3 shrink-0" /><span className="min-w-0 flex-1">{pinned ? "Unpin" : "Pin"}</span></Menu.Item>) : null}
+<Menu.Item
 									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={() => void copyFilePath()}
 								>
@@ -358,6 +386,7 @@ function NoteActionsMenu({
 										<BacklinksSubmenu path={path} />
 									</>
 								)}
+{canMoveFile ? (<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-destructive outline-hidden select-none data-highlighted:bg-accent" onClick={() => void deleteMarkdownFile(path)}><MingcuteDeleteLine className="size-3 shrink-0" /><span className="min-w-0 flex-1">Delete</span></Menu.Item>) : null}
 							</>
 						) : null}
 					</Menu.Popup>
@@ -365,6 +394,15 @@ function NoteActionsMenu({
 			</Menu.Portal>
 		</Menu.Root>
 	);
+}
+
+function fileNameFromPath(path: string) {
+	return path.split(/[\\/]/).pop() || path;
+}
+
+function countWords(text: string) {
+	const trimmed = text.trim();
+	return trimmed.length === 0 ? 0 : trimmed.split(/\s+/).length;
 }
 
 function ShortcutHint({ children }: { children: string }) {

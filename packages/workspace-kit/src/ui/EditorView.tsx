@@ -199,6 +199,11 @@ export type EditorViewProps = {
 	 */
 	fileMenu?: React.ReactNode;
 	/**
+	 * Host shows the file name and word count itself (desktop: title-bar menu):
+	 * the status bar drops those chips and skips the word-count scan.
+	 */
+	hideInfoChips?: boolean;
+	/**
 	 * Called with the live editor instance once it is created (and with null on
 	 * teardown). Lets a host attach editor-level observers (e.g. diagnostics)
 	 * without EditorView needing to depend on host-specific modules.
@@ -259,6 +264,7 @@ export function EditorView({
 	onEditorReady,
 	onOpenRevisionHistory,
 	fileMenu,
+	hideInfoChips,
 	commentOptions,
 	tableInteractivity = false,
 	renderSelectionActions,
@@ -918,6 +924,7 @@ export function EditorView({
 				path={path}
 				onOpenRevisionHistory={onOpenRevisionHistory}
 				fileMenu={fileMenu}
+				hideInfoChips={hideInfoChips}
 			/>
 			{commentOptions ? (
 				<ThreadPanel

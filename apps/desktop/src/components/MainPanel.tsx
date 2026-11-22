@@ -14,7 +14,6 @@ import { desktopApi } from "../desktopApi";
 import type { HistoryRevision } from "../desktopApi/types";
 import { DocumentNarrowList } from "../documentTable/DocumentNarrowList";
 import {
-	DocumentFileMenuItems,
 	type DocumentRowListMenu,
 } from "../documentTable/DocumentRowMenu";
 import { DocumentTable } from "../documentTable/DocumentTable";
@@ -172,29 +171,6 @@ export function MainPanel({
 		[pinnedNotes],
 	);
 
-	// File-name chip dropdown: same items as the table row menu. A single-file
-	// window has no workspace, so only Reveal/Copy path apply there.
-	const revealLabel = revealFileLabel(desktopApi.platform);
-	const workspaceFileMenu = currentPath ? (
-		<DocumentFileMenuItems
-			path={currentPath}
-			pinned={pinnedNotes.includes(currentPath)}
-			revealLabel={revealLabel}
-			handlers={rowMenu}
-		/>
-	) : undefined;
-	const singleFileMenu = currentPath ? (
-		<DocumentFileMenuItems
-			path={currentPath}
-			pinned={false}
-			revealLabel={revealLabel}
-			handlers={{
-				onRevealPath: rowMenu.onRevealPath,
-				onCopyPath: rowMenu.onCopyPath,
-			}}
-		/>
-	) : undefined;
-
 	if (!hasWorkspace && requestedPath === null) {
 		return (
 			<div className="flex h-full items-center justify-center p-6">
@@ -227,7 +203,6 @@ export function MainPanel({
 					onCommentsOpenChange={onCommentsOpenChange}
 					viewingRevision={viewingRevision}
 					onViewingRevisionChange={onViewingRevisionChange}
-					fileMenu={singleFileMenu}
 				/>
 			</div>
 		);
@@ -304,7 +279,6 @@ export function MainPanel({
 					onCommentsOpenChange={onCommentsOpenChange}
 					viewingRevision={viewingRevision}
 					onViewingRevisionChange={onViewingRevisionChange}
-					fileMenu={workspaceFileMenu}
 				/>
 			</div>
 		</div>
@@ -327,7 +301,6 @@ function DocumentPaneBody({
 	onCommentsOpenChange,
 	viewingRevision,
 	onViewingRevisionChange,
-	fileMenu,
 }: {
 	isSingleFile: boolean;
 	currentPath: string | null;
@@ -341,8 +314,6 @@ function DocumentPaneBody({
 	onCommentsOpenChange: (open: boolean) => void;
 	viewingRevision: HistoryRevision | null;
 	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
-	/** File-name chip dropdown items for the open document. */
-	fileMenu?: React.ReactNode;
 }) {
 	return (
 		<>
@@ -376,7 +347,6 @@ function DocumentPaneBody({
 					onCommentsOpenChange={onCommentsOpenChange}
 					viewingRevision={viewingRevision}
 					onViewingRevisionChange={onViewingRevisionChange}
-					fileMenu={fileMenu}
 				/>
 			) : null}
 		</>
@@ -396,7 +366,6 @@ function ReadyDocument({
 	onCommentsOpenChange,
 	viewingRevision,
 	onViewingRevisionChange,
-	fileMenu,
 }: {
 	isSingleFile: boolean;
 	currentPath: string;
@@ -408,8 +377,6 @@ function ReadyDocument({
 	onCommentsOpenChange: (open: boolean) => void;
 	viewingRevision: HistoryRevision | null;
 	onViewingRevisionChange: (revision: HistoryRevision | null) => void;
-	/** File-name chip dropdown items for the open document. */
-	fileMenu?: React.ReactNode;
 }) {
 	const content = useStoreValue(viewerStore, (viewer) => viewer.content);
 
@@ -466,7 +433,6 @@ function ReadyDocument({
 					commentsOpen={commentsOpen}
 					onCommentsOpenChange={onCommentsOpenChange}
 					isSingleFile={isSingleFile}
-					fileMenu={fileMenu}
 				/>
 			)}
 			<RevisionHistoryPanel

@@ -29,6 +29,7 @@ export function FormattingStatusBar({
 	path,
 	onOpenRevisionHistory,
 	fileMenu,
+	hideInfoChips = false,
 }: {
 	editor: Editor | null;
 	path: string;
@@ -36,6 +37,8 @@ export function FormattingStatusBar({
 	fileMenu?: React.ReactNode;
 	/** Opt-in (see `EditorViewProps.onOpenRevisionHistory`); omit to render no history affordance. */
 	onOpenRevisionHistory?: (path: string) => void;
+	/** Host shows file name + word count elsewhere: drop those chips and the count scan. */
+	hideInfoChips?: boolean;
 }) {
 	const [fileMenuOpen, setFileMenuOpen] = useState(false);
 	const [countMode, setCountMode] = useState<CountMode>("words");
@@ -53,6 +56,7 @@ export function FormattingStatusBar({
 		// Content counts scan the whole document -- update them only when the
 		// document actually changed, never on cursor movement alone.
 		const updateCounts = () => {
+			if (hideInfoChips) return;
 			const text = editor.getText();
 			const wordCount = countWords(text);
 			const charCount = text.length;
@@ -82,6 +86,7 @@ export function FormattingStatusBar({
 
 		const scheduleCountUpdate = () => {
 			if (countUpdateTimer !== undefined) clearTimeout(countUpdateTimer);
+			if (hideInfoChips) return;
 			countUpdateTimer = setTimeout(() => {
 				countUpdateTimer = undefined;
 				updateCounts();
@@ -117,7 +122,7 @@ export function FormattingStatusBar({
 			editor.off("focus", updateCaret);
 			editor.off("blur", updateCaret);
 		};
-	}, [editor]);
+	}, [editor, hideInfoChips]);
 	if (!editor) return null;
 	const fileName = fileNameFromPath(path);
 	const countLabel =
@@ -130,6 +135,7 @@ export function FormattingStatusBar({
 	// beneath it the top-left file chip renders but every click lands on the strip.
 	return (
 		<div className="pointer-events-none absolute inset-0 z-[20] text-[12px]">
+			{hideInfoChips ? null : (
 			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
 				{fileMenu ? (
 					<ActionsMenu
@@ -170,7 +176,9 @@ export function FormattingStatusBar({
 					</Button>
 				)}
 			</div>
+			)}
 			<div className="absolute bottom-3 start-3 hidden items-center gap-2 md:flex">
+				{hideInfoChips ? null : (
 				<Button
 					variant="ghost"
 					size="xs"
@@ -184,6 +192,7 @@ export function FormattingStatusBar({
 				>
 					{countLabel}
 				</Button>
+				)}
 				{paletteState.canEscapeBoundary && (
 					<span
 						className={`${floatingChipClass} inline-flex h-6 items-center rounded-full px-2 text-[11px] leading-none`}
