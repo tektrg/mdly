@@ -274,17 +274,37 @@ function NoteActionsMenu({
 					sideOffset={4}
 				>
 					<Menu.Popup className="w-44 origin-(--transform-origin) rounded-[18px] bg-popover shadow-overlay p-1 text-[11px] text-popover-foreground outline-hidden transition-[transform,opacity] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-{path ? (
-<>
-<div className="truncate [padding-block:0.375rem] [padding-inline:0.5rem] text-[11px] font-medium text-foreground" title={path}>
-{fileNameFromPath(path)}
-</div>
-<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-muted-foreground outline-hidden select-none data-highlighted:bg-accent" closeOnClick={false} title={countMode === "words" ? "Show character count" : "Show word count"} onClick={() => setCountMode((mode) => (mode === "words" ? "chars" : "words"))}>
-<span className="min-w-0 flex-1">{countMode === "words" ? `${countWords(content)} words` : `${content.length} characters`}</span>
-</Menu.Item>
-<Menu.Separator className="my-1 h-px bg-transparent" />
-</>
-) : null}
+						{path ? (
+							<>
+								<div
+									className="truncate [padding-block:0.375rem] [padding-inline:0.5rem] text-[11px] font-medium text-foreground"
+									title={path}
+								>
+									{fileNameFromPath(path)}
+								</div>
+								<Menu.Item
+									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-muted-foreground outline-hidden select-none data-highlighted:bg-accent"
+									closeOnClick={false}
+									title={
+										countMode === "words"
+											? "Show character count"
+											: "Show word count"
+									}
+									onClick={() =>
+										setCountMode((mode) =>
+											mode === "words" ? "chars" : "words",
+										)
+									}
+								>
+									<span className="min-w-0 flex-1">
+										{countMode === "words"
+											? `${countWords(content)} words`
+											: `${content.length} characters`}
+									</span>
+								</Menu.Item>
+								<Menu.Separator className="my-1 h-px bg-transparent" />
+							</>
+						) : null}
 						<Menu.Item
 							className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 							onClick={onOpenNotionPage}
@@ -356,8 +376,18 @@ function NoteActionsMenu({
 										<span className="min-w-0 flex-1">Move to...</span>
 									</Menu.Item>
 								) : null}
-								{canMoveFile ? (<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent" onClick={() => void togglePinnedNote(path)}><MingcutePinLine className="size-3 shrink-0" /><span className="min-w-0 flex-1">{pinned ? "Unpin" : "Pin"}</span></Menu.Item>) : null}
-<Menu.Item
+								{canMoveFile ? (
+									<Menu.Item
+										className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
+										onClick={() => void togglePinnedNote(path)}
+									>
+										<MingcutePinLine className="size-3 shrink-0" />
+										<span className="min-w-0 flex-1">
+											{pinned ? "Unpin" : "Pin"}
+										</span>
+									</Menu.Item>
+								) : null}
+								<Menu.Item
 									className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] outline-hidden select-none data-highlighted:bg-accent"
 									onClick={() => void copyFilePath()}
 								>
@@ -386,7 +416,15 @@ function NoteActionsMenu({
 										<BacklinksSubmenu path={path} />
 									</>
 								)}
-{canMoveFile ? (<Menu.Item className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-destructive outline-hidden select-none data-highlighted:bg-accent" onClick={() => void deleteMarkdownFile(path)}><MingcuteDeleteLine className="size-3 shrink-0" /><span className="min-w-0 flex-1">Delete</span></Menu.Item>) : null}
+								{canMoveFile ? (
+									<Menu.Item
+										className="flex w-full cursor-pointer items-center gap-2 rounded-mdly-control [padding-block:0.375rem] [padding-inline:0.5rem] text-start text-[11px] text-destructive outline-hidden select-none data-highlighted:bg-accent"
+										onClick={() => void deleteMarkdownFile(path)}
+									>
+										<MingcuteDeleteLine className="size-3 shrink-0" />
+										<span className="min-w-0 flex-1">Delete</span>
+									</Menu.Item>
+								) : null}
 							</>
 						) : null}
 					</Menu.Popup>

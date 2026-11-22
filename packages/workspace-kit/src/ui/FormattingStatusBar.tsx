@@ -136,62 +136,62 @@ export function FormattingStatusBar({
 	return (
 		<div className="pointer-events-none absolute inset-0 z-[20] text-[12px]">
 			{hideInfoChips ? null : (
-			<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
-				{fileMenu ? (
-					<ActionsMenu
-						label={fileName}
-						open={fileMenuOpen}
-						onOpenChange={setFileMenuOpen}
-						align="start"
-						triggerTitle={path}
-						triggerClassName={`${floatingChipClass} pointer-events-auto inline-flex max-w-[min(34rem,100%)] cursor-pointer items-center gap-1 rounded-full py-1 ps-3 pe-2 outline-hidden hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20`}
-						triggerContent={
-							<>
-								<span className="min-w-0 truncate">{fileName}</span>
-								<MingcuteDownSmallLine className="size-3.5 shrink-0" />
-							</>
-						}
-					>
-						{fileMenu}
-					</ActionsMenu>
-				) : (
-					<span
-						className={`${floatingChipClass} max-w-[min(34rem,100%)] truncate rounded-full px-3 py-1`}
-						title={fileName}
-					>
-						{fileName}
-					</span>
-				)}
-				{onOpenRevisionHistory && (
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						data-revision-history-trigger
-						className={`${floatingChipClass} pointer-events-auto rounded-full hover:bg-accent`}
-						aria-label="View revision history"
-						title="View revision history"
-						onClick={() => onOpenRevisionHistory(path)}
-					>
-						<MingcuteHistoryLine className="size-3.5" />
-					</Button>
-				)}
-			</div>
+				<div className="absolute start-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-1.5">
+					{fileMenu ? (
+						<ActionsMenu
+							label={fileName}
+							open={fileMenuOpen}
+							onOpenChange={setFileMenuOpen}
+							align="start"
+							triggerTitle={path}
+							triggerClassName={`${floatingChipClass} pointer-events-auto inline-flex max-w-[min(34rem,100%)] cursor-pointer items-center gap-1 rounded-full py-1 ps-3 pe-2 outline-hidden hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20`}
+							triggerContent={
+								<>
+									<span className="min-w-0 truncate">{fileName}</span>
+									<MingcuteDownSmallLine className="size-3.5 shrink-0" />
+								</>
+							}
+						>
+							{fileMenu}
+						</ActionsMenu>
+					) : (
+						<span
+							className={`${floatingChipClass} max-w-[min(34rem,100%)] truncate rounded-full px-3 py-1`}
+							title={fileName}
+						>
+							{fileName}
+						</span>
+					)}
+					{onOpenRevisionHistory && (
+						<Button
+							variant="ghost"
+							size="icon-xs"
+							data-revision-history-trigger
+							className={`${floatingChipClass} pointer-events-auto rounded-full hover:bg-accent`}
+							aria-label="View revision history"
+							title="View revision history"
+							onClick={() => onOpenRevisionHistory(path)}
+						>
+							<MingcuteHistoryLine className="size-3.5" />
+						</Button>
+					)}
+				</div>
 			)}
 			<div className="absolute bottom-3 start-3 hidden items-center gap-2 md:flex">
 				{hideInfoChips ? null : (
-				<Button
-					variant="ghost"
-					size="xs"
-					className={`${floatingChipClass} pointer-events-auto h-7 rounded-full px-3 hover:bg-accent`}
-					title={
-						countMode === "words" ? "Show character count" : "Show word count"
-					}
-					onClick={() =>
-						setCountMode((m) => (m === "words" ? "chars" : "words"))
-					}
-				>
-					{countLabel}
-				</Button>
+					<Button
+						variant="ghost"
+						size="xs"
+						className={`${floatingChipClass} pointer-events-auto h-7 rounded-full px-3 hover:bg-accent`}
+						title={
+							countMode === "words" ? "Show character count" : "Show word count"
+						}
+						onClick={() =>
+							setCountMode((m) => (m === "words" ? "chars" : "words"))
+						}
+					>
+						{countLabel}
+					</Button>
 				)}
 				{paletteState.canEscapeBoundary && (
 					<span

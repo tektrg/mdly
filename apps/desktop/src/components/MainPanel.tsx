@@ -13,9 +13,7 @@ import MingcuteLoading3Line from "~icons/mingcute/loading-3-line";
 import { desktopApi } from "../desktopApi";
 import type { HistoryRevision } from "../desktopApi/types";
 import { DocumentNarrowList } from "../documentTable/DocumentNarrowList";
-import {
-	type DocumentRowListMenu,
-} from "../documentTable/DocumentRowMenu";
+import type { DocumentRowListMenu } from "../documentTable/DocumentRowMenu";
 import { DocumentTable } from "../documentTable/DocumentTable";
 import { resolveDocumentListingState } from "../documentTable/documentListingState";
 import {
