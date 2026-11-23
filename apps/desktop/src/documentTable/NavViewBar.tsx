@@ -73,9 +73,7 @@ export function NavViewBar() {
 						data-nav-view-bar-option={entry.key}
 						aria-pressed={isActive}
 						aria-label={`${label} view`}
-						title={
-							isHidden ? `${label} (hidden — click to restore)` : label
-						}
+						title={isHidden ? `${label} (hidden — click to restore)` : label}
 						draggable={saved !== null}
 						className={cn(
 							"relative flex size-8 shrink-0 items-center justify-center rounded-mdly-control outline-hidden transition-[background-color,color] duration-150 ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
