@@ -195,6 +195,9 @@ export function NavListHeader({
 									// Icon-only buttons keep their size and the strip scrolls instead;
 									// only the active (labelled) one may shrink to truncate its label.
 									!isTabs && !isActive && "shrink-0",
+									// Active one may shrink to truncate, but its highlight never
+									// gets narrower than a square icon button.
+									!isTabs && isActive && "min-w-14",
 									!isTabs &&
 										(isActive
 											? "bg-selected font-medium text-selected-foreground"
