@@ -27,7 +27,6 @@ import {
 	WorkspaceSettings,
 } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
-import { NavViewBar } from "./documentTable/NavViewBar";
 import { Toolbar } from "./components/Toolbar";
 import {
 	SidebarUpdateCallout,
@@ -35,6 +34,7 @@ import {
 } from "./components/UpdatesSection";
 import { desktopApi } from "./desktopApi";
 import type { DesktopUpdateState, HistoryRevision } from "./desktopApi/types";
+import { NavViewBar } from "./documentTable/NavViewBar";
 import {
 	applyDocReimport,
 	createMarkdownFile,

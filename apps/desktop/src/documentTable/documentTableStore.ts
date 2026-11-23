@@ -486,7 +486,10 @@ export function setSavedViewIcon(id: string, icon: string | null): boolean {
  * the switcher and in the views file. Built-ins are never reordered. Returns
  * false (nothing written) for an unknown id or a move that changes nothing.
  */
-export function reorderSavedViews(id: string, beforeId: string | null): boolean {
+export function reorderSavedViews(
+	id: string,
+	beforeId: string | null,
+): boolean {
 	const workspacePath = currentWorkspacePath();
 	if (!workspacePath || id === beforeId) return false;
 	const current = getSavedViews(workspacePath);
