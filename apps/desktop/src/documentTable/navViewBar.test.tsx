@@ -113,7 +113,7 @@ describe("left view bar", () => {
 			`[data-nav-view-bar-option="${key}"]`,
 		) as HTMLElement;
 
-	it("lists built-ins then saved views, marks the active one, and selects on click", () => {
+	it("lists built-ins then saved views, marks the active one, and selects on click", async () => {
 		const a = saveCurrentViewAs("Alpha") as string;
 		const b = saveCurrentViewAs("Beta") as string;
 		selectSavedView(null);
@@ -129,26 +129,26 @@ describe("left view bar", () => {
 		expect(option(`saved:${a}`).getAttribute("aria-label")).toBe("Alpha view");
 		expect(option(`saved:${a}`).title).toBe("Alpha");
 
-		act(() => option("folder").click());
+		await act(async () => option("folder").click());
 		expect(documentTableViewStore.get().groupBy).not.toBeNull();
 		expect(option("folder").getAttribute("aria-pressed")).toBe("true");
 
-		act(() => option(`saved:${b}`).click());
+		await act(async () => option(`saved:${b}`).click());
 		expect(documentTableViewStore.get().activeSavedViewId).toBe(b);
 		expect(option(`saved:${b}`).getAttribute("aria-pressed")).toBe("true");
 	});
 
-	it("keeps an open document open when a view is picked", () => {
+	it("keeps an open document open when a view is picked", async () => {
 		currentPathStore.set("/ws-bar/note.md");
 		bar();
-		act(() => option("tag").click());
+		await act(async () => option("tag").click());
 		expect(currentPathStore.get()).toBe("/ws-bar/note.md");
 		currentPathStore.set(undefined);
 	});
 
-	it("hides a built-in on right-click and leaves it out of the bar", () => {
+	it("hides a built-in on right-click and leaves it out of the bar", async () => {
 		bar();
-		act(() => {
+		await act(async () => {
 			option("tag").dispatchEvent(
 				new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
 			);
