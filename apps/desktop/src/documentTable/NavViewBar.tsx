@@ -18,8 +18,16 @@ const DRAG_TYPE = "application/x-mdly-saved-view";
  * Saved views drag to reorder; built-ins keep their fixed order.
  */
 export function NavViewBar() {
-	const { activeKey, entries, selectEntry, toggleHidden } =
-		useNavViewSwitcher();
+	// Every built-in shows (hidden ones dimmed): the bar replaces the strip, so
+	// it must also be where a hidden view is restored (select it).
+	const {
+		activeKey,
+		hidden,
+		inlineEntries: entries,
+		selectEntry,
+		selectInline,
+		toggleHidden,
+	} = useNavViewSwitcher();
 	const { openSavedViewMenu, renaming, menus } = useSavedViewMenus(entries);
 	const [dragId, setDragId] = useState<string | null>(null);
 	const [dropBefore, setDropBefore] = useState<string | null>(null);
@@ -54,6 +62,10 @@ export function NavViewBar() {
 				const isActive = activeKey === entry.key;
 				const label = navEntryLabel(entry);
 				const saved = entry.kind === "saved" ? entry : null;
+				const isHidden =
+					entry.kind === "builtin" &&
+					entry.view !== "recent" &&
+					hidden.includes(entry.view);
 				return (
 					<button
 						key={entry.key}
@@ -61,7 +73,9 @@ export function NavViewBar() {
 						data-nav-view-bar-option={entry.key}
 						aria-pressed={isActive}
 						aria-label={`${label} view`}
-						title={label}
+						title={
+							isHidden ? `${label} (hidden — click to restore)` : label
+						}
 						draggable={saved !== null}
 						className={cn(
 							"relative flex size-8 shrink-0 items-center justify-center rounded-mdly-control outline-hidden transition-[background-color,color] duration-150 ease-snappy focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
@@ -69,12 +83,17 @@ export function NavViewBar() {
 								? "bg-selected text-selected-foreground"
 								: "text-muted-foreground hover:bg-accent hover:text-foreground",
 							saved && dragId === saved.id && "opacity-50",
+							isHidden && !isActive && "opacity-50",
 							saved &&
 								dragId !== null &&
 								dropBefore === saved.id &&
 								"before:absolute before:inset-x-1 before:-top-0.5 before:h-0.5 before:rounded-full before:bg-mdly-ink before:content-['']",
 						)}
-						onClick={() => selectEntry(entry)}
+						onClick={() =>
+							entry.kind === "builtin"
+								? selectInline(entry.view)
+								: selectEntry(entry)
+						}
 						onContextMenu={(event) => {
 							event.preventDefault();
 							if (saved) {

@@ -146,14 +146,18 @@ describe("left view bar", () => {
 		currentPathStore.set(undefined);
 	});
 
-	it("hides a built-in on right-click and leaves it out of the bar", async () => {
+	it("dims a built-in hidden on right-click; clicking it restores it", async () => {
 		bar();
 		await act(async () => {
 			option("tag").dispatchEvent(
 				new MouseEvent("contextmenu", { bubbles: true, cancelable: true }),
 			);
 		});
-		expect(keys()).toEqual(["recent", "folder"]);
+		expect(keys()).toEqual(["recent", "folder", "tag"]);
+		expect(option("tag").className).toContain("opacity-50");
+		await act(async () => option("tag").click());
+		expect(option("tag").className).not.toContain("opacity-50");
+		expect(option("tag").getAttribute("aria-pressed")).toBe("true");
 	});
 
 	it("opens the saved-view menu on right-click", async () => {
