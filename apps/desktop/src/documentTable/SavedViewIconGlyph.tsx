@@ -199,7 +199,7 @@ const ICON_COMPONENTS: Record<string, IconComponent> = {
 /** A saved view's icon; unknown or missing names draw the default. */
 export function SavedViewIconGlyph({
 	icon,
-	className = "size-3.5",
+	className = "size-3.5 shrink-0",
 }: {
 	icon?: string | null;
 	className?: string;

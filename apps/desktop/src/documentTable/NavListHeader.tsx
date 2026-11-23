@@ -192,6 +192,9 @@ export function NavListHeader({
 									!isTabs &&
 										"flex h-8 min-w-0 items-center gap-1.5 rounded-mdly-control text-start text-[length:var(--font-size-sidebar)] outline-hidden transition-[background-color,color] duration-150 ease-snappy [padding-inline:var(--row-pad-inline)] hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-mdly-ink/20 motion-reduce:transition-none",
 									!isTabs && entry.kind === "saved" && "max-w-40",
+									// Icon-only buttons keep their size and the strip scrolls instead;
+									// only the active (labelled) one may shrink to truncate its label.
+									!isTabs && !isActive && "shrink-0",
 									!isTabs &&
 										(isActive
 											? "bg-selected font-medium text-selected-foreground"

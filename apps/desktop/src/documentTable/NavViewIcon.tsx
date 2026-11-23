@@ -18,7 +18,7 @@ export function NavViewIcon({ view }: { view: NavViewId }) {
 			: view === "folder"
 				? MingcuteFolderLine
 				: MingcuteTagLine;
-	return <Icon aria-hidden="true" className="size-3.5" />;
+	return <Icon aria-hidden="true" className="size-3.5 shrink-0" />;
 }
 
 /** A switcher entry's icon: the built-in's own, or the saved view's chosen icon. */
