@@ -64,6 +64,7 @@ import {
 	MAX_RECENT,
 	type SortMode,
 	showIgnoredWorkspaceFilesStore,
+	showViewBarStore,
 	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
 	sourceRetentionPreferenceStore,
@@ -423,6 +424,10 @@ export function setShowIgnoredWorkspaceFiles(
 ) {
 	showIgnoredWorkspaceFilesStore.set(showIgnoredWorkspaceFiles);
 	void refreshFiles();
+}
+
+export function setShowViewBar(showViewBar: boolean) {
+	showViewBarStore.set(showViewBar);
 }
 
 export function setSourceRetentionPreference(

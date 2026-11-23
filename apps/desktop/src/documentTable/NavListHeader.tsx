@@ -1,17 +1,13 @@
 import { Button } from "@hubble.md/ui";
 import { useStoreValue } from "@simplestack/store/react";
-import { type ReactNode, useState } from "react";
-import { toast } from "sonner";
+import type { ReactNode } from "react";
 import MingcuteAzSortAscendingLettersLine from "~icons/mingcute/az-sort-ascending-letters-line";
 import MingcuteSortDescendingLine from "~icons/mingcute/sort-descending-line";
 import { cn } from "../lib/utils";
-import { workspacePathStore } from "../store/state";
+import { showViewBarStore, workspacePathStore } from "../store/state";
 import {
-	deleteSavedView,
 	documentTableViewStore,
-	renameSavedView,
 	setDocumentTableSort,
-	setSavedViewIcon,
 } from "./documentTableStore";
 import { DEFAULT_NAV_VIEW_SORT } from "./documentTableView";
 import { savedViewsStore } from "./documentViewsFileStore";
@@ -23,9 +19,9 @@ import {
 	setNavViewSort,
 	useNavViewSort,
 } from "./navViewSort";
-import { SavedViewContextMenu, SavedViewNameInput } from "./SavedViewControls";
-import { SavedViewIconPicker } from "./SavedViewIconPicker";
+import { SavedViewNameInput } from "./SavedViewControls";
 import { useNavViewSwitcher } from "./useNavViewSwitcher";
+import { useSavedViewMenus } from "./useSavedViewMenus";
 
 /**
  * The strip above the list, at every density tier. Home of the sort control
@@ -65,28 +61,10 @@ export function NavListHeader({
 		toggleHidden,
 		onWheel,
 	} = useNavViewSwitcher();
-	// Saved views R2: the right-clicked saved icon (menu anchor) and the one
-	// being renamed in place of the switcher.
-	const [menu, setMenu] = useState<{ id: string; anchor: HTMLElement } | null>(
-		null,
-	);
-	const [renamingId, setRenamingId] = useState<string | null>(null);
-	const [iconPicker, setIconPicker] = useState<{
-		id: string;
-		anchor: HTMLElement;
-	} | null>(null);
-	const pickerEntry = entries.find(
-		(candidate) =>
-			candidate.kind === "saved" && candidate.id === iconPicker?.id,
-	);
-	const savedName = (id: string | null) => {
-		const entry = entries.find(
-			(candidate) => candidate.kind === "saved" && candidate.id === id,
-		);
-		return entry ? navEntryLabel(entry) : "";
-	};
-	const openSavedViewMenu = (id: string, anchor: HTMLElement) =>
-		setMenu({ id, anchor });
+	const { openSavedViewMenu, renaming, menus } = useSavedViewMenus(entries);
+	// The left view bar (Settings → Appearance) replaces the switcher here;
+	// the save controls, unsaved dot and sort stay.
+	const showViewBar = useStoreValue(showViewBarStore);
 	// A saved view owns its sort: the button shows and edits it, never the
 	// built-in view's persisted sort underneath.
 	const activeSavedViewId = useStoreValue(
@@ -114,7 +92,6 @@ export function NavListHeader({
 
 	const isRail = navTier === "rail";
 	const showDots = isRail && entries.length > 1;
-	const renamingName = renamingId ? savedName(renamingId) : "";
 
 	return (
 		<div
@@ -125,17 +102,15 @@ export function NavListHeader({
 				isTabs ? "pb-1" : "justify-between pb-1.5",
 			)}
 		>
-			{renamingId && renamingName ? (
+			{showViewBar ? (
+				<span aria-hidden="true" />
+			) : renaming ? (
 				<SavedViewNameInput
 					className="flex min-w-0 flex-1 flex-col"
 					fill
-					initialName={renamingName}
-					onCommit={(name) => {
-						const result = renameSavedView(renamingId, name);
-						if (result.ok) setRenamingId(null);
-						return result;
-					}}
-					onCancel={() => setRenamingId(null)}
+					initialName={renaming.name}
+					onCommit={renaming.commit}
+					onCancel={renaming.cancel}
 				/>
 			) : showDots ? (
 				<NavViewDots
@@ -250,51 +225,7 @@ export function NavListHeader({
 					{end}
 				</>
 			) : null}
-			<SavedViewContextMenu
-				anchor={menu?.anchor ?? null}
-				name={savedName(menu?.id ?? null)}
-				onClose={() => setMenu(null)}
-				onRename={() => {
-					const id = menu?.id;
-					setMenu(null);
-					// Open the name box after the menu has closed and settled focus,
-					// or the closing menu's focus move would blur (cancel) it.
-					if (id) setTimeout(() => setRenamingId(id), 0);
-				}}
-				onChangeIcon={() => {
-					const current = menu;
-					setMenu(null);
-					// After the menu closes, or its focus return would steal the search box.
-					if (current) setTimeout(() => setIconPicker(current), 0);
-				}}
-				onDelete={() => {
-					const undo = menu ? deleteSavedView(menu.id) : null;
-					setMenu(null);
-					// One toast id: a second delete replaces it (undo = latest only).
-					if (undo) {
-						toast("View deleted", {
-							id: "saved-view-deleted",
-							duration: 5000,
-							action: {
-								label: "Undo",
-								onClick: () => {
-									undo();
-								},
-							},
-						});
-					}
-				}}
-			/>
-			<SavedViewIconPicker
-				anchor={pickerEntry ? (iconPicker?.anchor ?? null) : null}
-				name={pickerEntry ? navEntryLabel(pickerEntry) : ""}
-				current={pickerEntry?.kind === "saved" ? pickerEntry.icon : undefined}
-				onClose={() => setIconPicker(null)}
-				onSelect={(icon) => {
-					if (iconPicker) setSavedViewIcon(iconPicker.id, icon);
-					setIconPicker(null);
-				}}
-			/>
+			{menus}
 			<Button
 				variant="ghost"
 				size="icon-xs"

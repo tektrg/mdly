@@ -70,6 +70,18 @@ describe("desktop state persistence", () => {
 		expect(getInitialState().ui.showIgnoredWorkspaceFiles).toBe(true);
 	});
 
+	it("defaults the view bar off, and hydrates + serializes it when enabled", () => {
+		vi.stubGlobal("localStorage", { getItem: () => null });
+		expect(getInitialState().ui.showViewBar).toBe(false);
+		vi.stubGlobal("localStorage", {
+			getItem: (key: string) =>
+				key === STORAGE_KEY ? JSON.stringify({ ui: { showViewBar: true } }) : null,
+		});
+		const state = getInitialState();
+		expect(state.ui.showViewBar).toBe(true);
+		expect(serialize(state).ui?.showViewBar).toBe(true);
+	});
+
 	it("never serializes the runtime-only document-table fields", () => {
 		vi.stubGlobal("localStorage", { getItem: () => null });
 		const state = getInitialState();

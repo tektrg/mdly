@@ -176,6 +176,7 @@ export const headingFontPreferenceStore = uiStore.select(
 export const showIgnoredWorkspaceFilesStore = uiStore.select(
 	"showIgnoredWorkspaceFiles",
 );
+export const showViewBarStore = uiStore.select("showViewBar");
 export const sourceRetentionPreferenceStore = uiStore.select(
 	"sourceRetentionPreference",
 );

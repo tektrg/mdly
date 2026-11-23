@@ -337,6 +337,55 @@ describe("documentTableStore", () => {
 		expect(documentTableViewStore.get().activeSavedViewId).toBeNull();
 	});
 
+	it("reorders saved views and saves the new order to the views file", async () => {
+		const {
+			reorderSavedViews,
+			saveCurrentViewAs,
+			getSavedViews,
+			workspacePathStore,
+		} = await loadDocumentTableStore();
+		const {
+			flushSavedViews,
+			loadWorkspaceSavedViews,
+			setViewStoreFactoryForTest,
+		} = await import("./documentViewsFileStore");
+		const { createLocalStorageViewStore } = await import("./viewStores");
+		const disk = new Map<string, string>();
+		const factory = (ws: string) =>
+			createLocalStorageViewStore(
+				{
+					getItem: (k) => disk.get(k) ?? null,
+					setItem: (k, v) => void disk.set(k, v),
+				},
+				ws,
+			);
+		setViewStoreFactoryForTest(factory);
+		workspacePathStore.set("/ws");
+		await loadWorkspaceSavedViews("/ws");
+
+		const a = saveCurrentViewAs("A") as string;
+		const b = saveCurrentViewAs("B") as string;
+		const c = saveCurrentViewAs("C") as string;
+		const names = () => getSavedViews("/ws").map((view) => view.name);
+		expect(names()).toEqual(["A", "B", "C"]);
+
+		expect(reorderSavedViews(c, a)).toBe(true);
+		expect(names()).toEqual(["C", "A", "B"]);
+		expect(reorderSavedViews(c, null)).toBe(true);
+		expect(names()).toEqual(["A", "B", "C"]);
+		expect(reorderSavedViews(a, b)).toBe(false);
+		expect(reorderSavedViews("missing", null)).toBe(false);
+		expect(reorderSavedViews(a, "missing")).toBe(false);
+		expect(reorderSavedViews(b, a)).toBe(true);
+		await flushSavedViews("/ws");
+
+		// A fresh read of the file sees the new order.
+		setViewStoreFactoryForTest(factory);
+		await loadWorkspaceSavedViews("/ws");
+		expect(names()).toEqual(["B", "A", "C"]);
+		setViewStoreFactoryForTest(null);
+	});
+
 	it("leaves the saved view and the property grouping when a folder/tag view is picked", async () => {
 		const {
 			documentTableViewStore,

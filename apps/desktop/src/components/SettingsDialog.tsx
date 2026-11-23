@@ -21,6 +21,7 @@ import {
 	setContrastPreference,
 	setEditorFontPreference,
 	setHeadingFontPreference,
+	setShowViewBar,
 	setSourceRetentionPreference,
 	setThemePreference,
 } from "../store/actions";
@@ -29,6 +30,7 @@ import {
 	contrastPreferenceStore,
 	editorFontPreferenceStore,
 	headingFontPreferenceStore,
+	showViewBarStore,
 	sourceRetentionPreferenceStore,
 	themePreferenceStore,
 	workspaceStore,
@@ -172,6 +174,7 @@ export function AppearanceSettings() {
 	const contrastPreference = useStoreValue(contrastPreferenceStore);
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
 	const headingFontPreference = useStoreValue(headingFontPreferenceStore);
+	const showViewBar = useStoreValue(showViewBarStore);
 	const contrastLabel = contrastPreferenceLabels[contrastPreference];
 	const {
 		fontFamilies,
@@ -286,6 +289,24 @@ export function AppearanceSettings() {
 					</select>
 				</label>
 			</div>
+			<label className="flex items-start justify-between gap-4 rounded-mdly-control bg-foreground/[0.04] [padding-block:0.625rem] [padding-inline:0.75rem] [margin-block-start:1rem]">
+				<span className="flex min-w-0 flex-col gap-1">
+					<span className="text-[11px] font-medium text-foreground">
+						Show views as a left bar
+					</span>
+					<span className="text-[11px] leading-4 text-muted-foreground">
+						Lists every view as an icon at the window's left edge, in place of
+						the sidebar and the switcher above the list.
+					</span>
+				</span>
+				<input
+					type="checkbox"
+					data-setting="show-view-bar"
+					className="mt-0.5 size-4 shrink-0 cursor-pointer [accent-color:var(--ring)]"
+					checked={showViewBar}
+					onChange={(event) => setShowViewBar(event.currentTarget.checked)}
+				/>
+			</label>
 		</SettingsSection>
 	);
 }

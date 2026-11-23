@@ -149,6 +149,8 @@ type UiState = {
 	editorFontPreference: EditorFontPreference;
 	headingFontPreference: HeadingFontPreference;
 	showIgnoredWorkspaceFiles: boolean;
+	/** Settings → Appearance: the saved/built-in views as a bar at the window's left edge. */
+	showViewBar: boolean;
 	sourceRetentionPreference: SourceRetentionPreference;
 };
 
@@ -179,6 +181,7 @@ type Persisted = {
 		editorFontPreference?: unknown;
 		headingFontPreference?: unknown;
 		showIgnoredWorkspaceFiles?: boolean;
+		showViewBar?: boolean;
 		sourceRetentionPreference?: unknown;
 	};
 };
@@ -375,6 +378,7 @@ function hydrateUi(ui: Persisted["ui"]): UiState {
 			? ui.headingFontPreference
 			: DEFAULT_HEADING_FONT_PREFERENCE,
 		showIgnoredWorkspaceFiles: ui?.showIgnoredWorkspaceFiles === true,
+		showViewBar: ui?.showViewBar === true,
 		sourceRetentionPreference: isSourceRetentionPreference(
 			ui?.sourceRetentionPreference,
 		)
@@ -424,6 +428,7 @@ function serializeUi(ui: UiState): NonNullable<Persisted["ui"]> {
 		editorFontPreference: ui.editorFontPreference,
 		headingFontPreference: ui.headingFontPreference,
 		showIgnoredWorkspaceFiles: ui.showIgnoredWorkspaceFiles,
+		showViewBar: ui.showViewBar,
 		sourceRetentionPreference: ui.sourceRetentionPreference,
 	};
 }

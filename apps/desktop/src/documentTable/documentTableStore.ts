@@ -481,6 +481,28 @@ export function setSavedViewIcon(id: string, icon: string | null): boolean {
 	return true;
 }
 
+/**
+ * Moves saved view `id` to sit just before `beforeId` (null = to the end), in
+ * the switcher and in the views file. Built-ins are never reordered. Returns
+ * false (nothing written) for an unknown id or a move that changes nothing.
+ */
+export function reorderSavedViews(id: string, beforeId: string | null): boolean {
+	const workspacePath = currentWorkspacePath();
+	if (!workspacePath || id === beforeId) return false;
+	const current = getSavedViews(workspacePath);
+	const moving = current.find((view) => view.id === id);
+	if (!moving) return false;
+	if (beforeId !== null && !current.some((view) => view.id === beforeId)) {
+		return false;
+	}
+	const rest = current.filter((view) => view.id !== id);
+	const at = beforeId === null ? rest.length : rest.findIndex((view) => view.id === beforeId);
+	const next = [...rest.slice(0, at), moving, ...rest.slice(at)];
+	if (next.every((view, index) => view === current[index])) return false;
+	updateSavedViews(workspacePath, () => next);
+	return true;
+}
+
 /** Bumped on every delete so only the latest delete's undo can apply. */
 let latestDeleteToken = 0;
 

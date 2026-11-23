@@ -27,6 +27,7 @@ import {
 	WorkspaceSettings,
 } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
+import { NavViewBar } from "./documentTable/NavViewBar";
 import { Toolbar } from "./components/Toolbar";
 import {
 	SidebarUpdateCallout,
@@ -85,6 +86,7 @@ import {
 	editorFontPreferenceStore,
 	headingFontPreferenceStore,
 	requestedPathStore,
+	showViewBarStore,
 	sidebarAutoCollapsedStore,
 	sidebarOpenStore,
 	switcherOpenStore,
@@ -192,6 +194,7 @@ function App() {
 	const editorFontPreference = useStoreValue(editorFontPreferenceStore);
 	const headingFontPreference = useStoreValue(headingFontPreferenceStore);
 	const hasWorkspace = workspacePath !== null;
+	const showViewBar = useStoreValue(showViewBarStore);
 	// Strict single-file mode: a document open with no workspace. The shell
 	// hides the sidebar and the table/list so only that file is visible.
 	const isSingleFile = !hasWorkspace && requestedPath !== null;
@@ -865,7 +868,9 @@ function App() {
 				docImported={docImported}
 			/>
 			<div className="flex min-h-0 flex-1 overflow-hidden">
-				{isSingleFile ? null : (
+				{isSingleFile ? null : showViewBar && hasWorkspace ? (
+					<NavViewBar />
+				) : (
 					<Sidebar
 						onFocusedPathChange={setFocusedSidebarPath}
 						onMoveFile={openMoveFileCommandBar}
