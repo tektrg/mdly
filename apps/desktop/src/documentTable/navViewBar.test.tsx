@@ -126,9 +126,7 @@ describe("left view bar", () => {
 			`saved:${b}`,
 		]);
 		expect(option("recent").getAttribute("aria-pressed")).toBe("true");
-		expect(option(`saved:${a}`).getAttribute("aria-label")).toBe(
-			"Alpha view",
-		);
+		expect(option(`saved:${a}`).getAttribute("aria-label")).toBe("Alpha view");
 		expect(option(`saved:${a}`).title).toBe("Alpha");
 
 		act(() => option("folder").click());
@@ -145,7 +143,7 @@ describe("left view bar", () => {
 		bar();
 		act(() => option("tag").click());
 		expect(currentPathStore.get()).toBe("/ws-bar/note.md");
-		currentPathStore.set(null);
+		currentPathStore.set(undefined);
 	});
 
 	it("hides a built-in on right-click and leaves it out of the bar", () => {
@@ -183,11 +181,7 @@ describe("left view bar", () => {
 		fireDrag(option(`saved:${c}`), "dragstart", dt);
 		fireDrag(option(`saved:${a}`), "dragover", dt);
 		fireDrag(option(`saved:${a}`), "drop", dt);
-		expect(getSavedViews(WORKSPACE).map((view) => view.id)).toEqual([
-			c,
-			a,
-			b,
-		]);
+		expect(getSavedViews(WORKSPACE).map((view) => view.id)).toEqual([c, a, b]);
 		expect(keys().slice(3)).toEqual([`saved:${c}`, `saved:${a}`, `saved:${b}`]);
 	});
 

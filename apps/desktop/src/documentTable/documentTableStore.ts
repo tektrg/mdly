@@ -496,7 +496,10 @@ export function reorderSavedViews(id: string, beforeId: string | null): boolean 
 		return false;
 	}
 	const rest = current.filter((view) => view.id !== id);
-	const at = beforeId === null ? rest.length : rest.findIndex((view) => view.id === beforeId);
+	const at =
+		beforeId === null
+			? rest.length
+			: rest.findIndex((view) => view.id === beforeId);
 	const next = [...rest.slice(0, at), moving, ...rest.slice(at)];
 	if (next.every((view, index) => view === current[index])) return false;
 	updateSavedViews(workspacePath, () => next);

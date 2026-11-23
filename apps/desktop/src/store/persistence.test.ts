@@ -75,7 +75,9 @@ describe("desktop state persistence", () => {
 		expect(getInitialState().ui.showViewBar).toBe(false);
 		vi.stubGlobal("localStorage", {
 			getItem: (key: string) =>
-				key === STORAGE_KEY ? JSON.stringify({ ui: { showViewBar: true } }) : null,
+				key === STORAGE_KEY
+					? JSON.stringify({ ui: { showViewBar: true } })
+					: null,
 		});
 		const state = getInitialState();
 		expect(state.ui.showViewBar).toBe(true);
