@@ -32,18 +32,23 @@
 	inset-block: 0;
 	inset-inline-end: 0.5rem;
 	inline-size: 1.75rem;
+	/* Compact evenly spaced stack, centered: not proportional to heading positions. */
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: center;
+	gap: 5px;
+	overflow: hidden;
 }
 
 [data-hubble-editor] .editorTableOfContentsDash {
-	position: absolute;
-	inset-inline-end: 0;
+	flex: none;
 	display: block;
 	inline-size: 0.45rem;
 	block-size: 2px;
 	border-radius: 999px;
 	background: color-mix(in oklab, var(--muted-foreground) 28%, transparent);
 	opacity: 0.75;
-	transform: translateY(-50%);
 	transition:
 		inline-size 160ms var(--ease-snappy),
 		background-color 160ms var(--ease-snappy),
@@ -86,7 +91,6 @@
 [data-hubble-editor]
 	.editorTableOfContents[data-expanded="true"]
 	.editorTableOfContentsPanel,
-[data-hubble-editor] .editorTableOfContents:hover .editorTableOfContentsPanel,
 [data-hubble-editor]
 	.editorTableOfContents:focus-within
 	.editorTableOfContentsPanel {

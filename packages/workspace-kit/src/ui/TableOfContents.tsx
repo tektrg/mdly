@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import MingcuteMessage3Line from "~icons/mingcute/message-3-line";
 import type { ResolvedThread } from "../comments/index.js";
 import "./TableOfContents.css";
@@ -10,6 +10,9 @@ export {
 	stabilizeHeadingIds,
 	type TableOfContentsHeading,
 } from "./useTocHeadings.js";
+
+/** Hovering the rail waits this long before opening the list, so passing the mouse over it doesn't flash the popup. */
+const HOVER_OPEN_DELAY_MS = 300;
 
 type TableOfContentsProps = {
 	editor: Editor | null;
@@ -28,6 +31,8 @@ export function TableOfContents({
 	const { headings, activeHeadingId, headingCommentState, scrollToHeading } =
 		useTocHeadings(editor, scrollContainer, threads);
 	const [isExpanded, setIsExpanded] = useState(false);
+	const hoverTimer = useRef<number | undefined>(undefined);
+	useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
 
 	if (!editor || headings.length === 0) return null;
 
@@ -36,8 +41,17 @@ export function TableOfContents({
 			className="editorTableOfContents"
 			aria-label="Table of contents"
 			data-expanded={isExpanded}
-			onMouseEnter={() => setIsExpanded(true)}
-			onMouseLeave={() => setIsExpanded(false)}
+			onMouseEnter={() => {
+				window.clearTimeout(hoverTimer.current);
+				hoverTimer.current = window.setTimeout(
+					() => setIsExpanded(true),
+					HOVER_OPEN_DELAY_MS,
+				);
+			}}
+			onMouseLeave={() => {
+				window.clearTimeout(hoverTimer.current);
+				setIsExpanded(false);
+			}}
 			onFocus={() => setIsExpanded(true)}
 			onBlur={(event) => {
 				if (
@@ -63,9 +77,6 @@ export function TableOfContents({
 							className="editorTableOfContentsDash"
 							data-active={heading.id === activeHeadingId}
 							data-level={heading.level}
-							style={{
-								insetBlockStart: `${heading.progress * 100}%`,
-							}}
 						/>
 					))}
 				</span>
