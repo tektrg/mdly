@@ -1111,6 +1111,21 @@ export function handleExternalFileChange(
 }
 
 /**
+ * Dismisses the external-change review banner/state without modifying the
+ * document (used once all inline external-change hunks have been kept/undone).
+ */
+export function dismissExternalChange(path?: string) {
+	viewerStore.set((state) => {
+		if (path && state.currentPath !== path) return state;
+		if (state.externalChange.kind !== "applied") return state;
+		return {
+			...state,
+			externalChange: { kind: "none" },
+		};
+	});
+}
+
+/**
  * Undo is a deliberate user action, not a passive edit, so it saves right
  * away through the normal (non-forced) save path rather than waiting on the
  * keystroke autosave debounce or the next note switch — otherwise the

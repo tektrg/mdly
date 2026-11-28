@@ -342,3 +342,79 @@
 	border-radius: 2px;
 	background: rgb(34 197 94);
 }
+/* Block-level external change decorations (added / removed whole blocks). */
+.mdly-sugg-block-ins {
+	position: relative;
+	background: rgb(34 197 94 / 0.1);
+	border-radius: 4px;
+}
+.mdly-sugg-block-ins::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -14px;
+	inline-size: 3px;
+	border-radius: 2px;
+	background: rgb(34 197 94);
+}
+.mdly-sugg-block-ins.is-active {
+	outline: 1px solid rgb(34 197 94 / 0.7);
+	outline-offset: 2px;
+}
+.mdly-sugg-block-del {
+	position: relative;
+	margin-block: 4px;
+	padding-block: 4px;
+	padding-inline: 8px;
+	border-radius: 4px;
+	color: rgb(185 28 28);
+	background: rgb(239 68 68 / 0.1);
+	text-decoration: line-through;
+	text-decoration-color: rgb(220 38 38 / 0.7);
+	cursor: pointer;
+	user-select: none;
+}
+.mdly-sugg-block-del > :first-child {
+	margin-block-start: 0;
+}
+.mdly-sugg-block-del > :last-child {
+	margin-block-end: 0;
+}
+.mdly-sugg-block-del::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -14px;
+	inline-size: 3px;
+	border-radius: 2px;
+	background: rgb(239 68 68);
+}
+.mdly-sugg-block-del.is-active {
+	outline: 1px solid rgb(239 68 68 / 0.7);
+	outline-offset: 2px;
+}
+/* Table-row diff decorations live directly on <tr> inside <tbody>. */
+tr.mdly-sugg-block-ins::before {
+	display: none;
+}
+tr.mdly-sugg-block-ins > td,
+tr.mdly-sugg-block-ins > th {
+	background: rgb(34 197 94 / 0.14);
+}
+tr.mdly-sugg-row-del > td,
+tr.mdly-sugg-row-del > th {
+	color: rgb(185 28 28);
+	background: rgb(239 68 68 / 0.12);
+	text-decoration: line-through;
+	text-decoration-color: rgb(220 38 38 / 0.7);
+}
+tr.mdly-sugg-row-del.is-active {
+	outline: 1px solid rgb(239 68 68 / 0.7);
+}
+@media (prefers-color-scheme: dark) {
+	.mdly-sugg-block-del,
+	tr.mdly-sugg-row-del > td,
+	tr.mdly-sugg-row-del > th {
+		color: rgb(252 165 165);
+	}
+}

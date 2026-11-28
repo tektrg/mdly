@@ -1,4 +1,3 @@
-import { RevisionDiffView } from "@mdly/workspace-kit";
 import { useShallow, useStoreValue } from "@simplestack/store/react";
 import {
 	type CSSProperties,
@@ -46,10 +45,17 @@ import {
 } from "../store/state";
 import { DocumentViewer } from "./DocumentViewer";
 import { RevisionHistoryPanel } from "./RevisionHistoryPanel";
+import { RevisionInlineDiffView } from "./RevisionInlineDiffView";
 import { WelcomeScreen } from "./WelcomeScreen";
 
 type MainPanelProps = {
 	hasWorkspace: boolean;
+	/**
+	 * True when the current document is backed by a granted workspace `.mdly`
+	 * sidecar (either a workspace window, or a standalone file inside an
+	 * already-known workspace). Defaults to `hasWorkspace`.
+	 */
+	hasWorkspaceSidecar?: boolean;
 	onCreateFolder: () => void;
 	onOpenFolder: () => void;
 	/** Opens the "Move to…" destination picker for a table row's file. */
@@ -414,7 +420,8 @@ function ReadyDocument({
 			}
 		>
 			{viewingRevision ? (
-				<RevisionDiffView
+				<RevisionInlineDiffView
+					path={currentPath}
 					revision={viewingRevision}
 					currentContent={content}
 					onReadRevisionContent={(revisionId) =>

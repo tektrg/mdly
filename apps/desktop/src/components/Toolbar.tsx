@@ -18,6 +18,7 @@ import {
 	togglePinnedNote,
 	undoExternalChange,
 } from "../store/actions";
+import { externalChangeRawDialogOpenStore } from "../store/externalChangeUi";
 import {
 	currentPathStore,
 	viewerStore,
@@ -69,7 +70,9 @@ export function Toolbar({
 	);
 	const currentContent = useStoreValue(viewerStore, (viewer) => viewer.content);
 	const hasAppliedChange = externalChange.kind === "applied";
-	const [reviewOpen, setReviewOpen] = useState(false);
+	const reviewOpen = useStoreValue(externalChangeRawDialogOpenStore);
+	const setReviewOpen = (open: boolean) =>
+		externalChangeRawDialogOpenStore.set(open);
 	const [pendingSyncCount, setPendingSyncCount] = useState(0);
 	// The review dialog is scoped to the document it was opened for (R27's
 	// per-document scoping precedent, same as the history/comments panels in
@@ -80,7 +83,7 @@ export function Toolbar({
 	// reviewed.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: currentPath is the reset signal, not read in the body.
 	useEffect(() => {
-		setReviewOpen(false);
+		externalChangeRawDialogOpenStore.set(false);
 	}, [currentPath]);
 
 	// Passive pending-folders badge (D-LW5): Settings is somewhere you have

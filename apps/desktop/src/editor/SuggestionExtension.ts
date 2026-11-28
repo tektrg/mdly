@@ -12,7 +12,11 @@
  */
 import { wordChanges } from "@mdly/agent-hook/diff";
 import { Extension } from "@tiptap/core";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import {
+	DOMSerializer,
+	Fragment,
+	type Node as ProseMirrorNode,
+} from "@tiptap/pm/model";
 import {
 	type EditorState,
 	Plugin,
@@ -22,17 +26,32 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
-export type SuggestionSource = "agent" | "tool";
+export type SuggestionSource = "agent" | "tool" | "external";
+
+export type SuggestionKind =
+	| "inline"
+	| "block-add"
+	| "block-del"
+	| "block-replace";
 
 export interface SuggestionChange {
 	id: string;
-	/** Proposal id or tool run id; settles as a unit for reporting. */
+	/** Proposal id, tool run id, or external change id; settles as a unit. */
 	groupId: string;
 	source: SuggestionSource;
+	/**
+	 * When true, the change is already applied in the document (e.g. an external
+	 * disk edit): Accept keeps it as-is, Reject reverts it back to `before` /
+	 * `deletedNodes`.
+	 */
+	applied?: boolean;
+	kind?: SuggestionKind;
 	from: number;
 	to: number;
 	before: string;
 	insert: string;
+	/** Original ProseMirror block(s) to restore when undoing block-del / block-replace. */
+	deletedNodes?: ProseMirrorNode[];
 	label?: string;
 }
 
@@ -54,6 +73,12 @@ export interface GroupSettled {
 
 type Meta =
 	| { kind: "add"; changes: SuggestionChange[] }
+	| {
+			kind: "replace-source";
+			source: SuggestionSource;
+			changes: SuggestionChange[];
+	  }
+	| { kind: "clear-source"; source: SuggestionSource }
 	| { kind: "remove"; ids: string[] }
 	| { kind: "active"; id: string | null };
 
@@ -64,10 +89,11 @@ export function getSuggestions(state: EditorState): SuggestionChange[] {
 }
 
 let nextId = 0;
-const newId = () => `s${++nextId}`;
+export const newSuggestionId = () => `s${++nextId}`;
+const newId = newSuggestionId;
 
 /** Maps a plain-text offset inside a textblock to a document position. */
-function textOffsetToPos(
+export function textOffsetToPos(
 	block: ProseMirrorNode,
 	blockPos: number,
 	offset: number,
@@ -229,6 +255,16 @@ function mapChanges(state: SuggestionState, tr: Transaction): SuggestionState {
 	const changes: SuggestionChange[] = [];
 	const dropped: SuggestionChange[] = [];
 	for (const change of state.changes) {
+		const kind = change.kind ?? "inline";
+		if (kind === "block-del") {
+			const mappedPos = tr.mapping.mapResult(change.from, -1);
+			if (mappedPos.deleted) {
+				dropped.push(change);
+				continue;
+			}
+			changes.push({ ...change, from: mappedPos.pos, to: mappedPos.pos });
+			continue;
+		}
 		const from = tr.mapping.mapResult(change.from, 1);
 		const to = tr.mapping.mapResult(change.to, -1);
 		const mapped = {
@@ -236,9 +272,18 @@ function mapChanges(state: SuggestionState, tr: Transaction): SuggestionState {
 			from: from.pos,
 			to: Math.max(from.pos, to.pos),
 		};
+		if (kind === "block-add" || kind === "block-replace") {
+			if (from.deleted || mapped.from >= mapped.to) {
+				dropped.push(change);
+				continue;
+			}
+			changes.push(mapped);
+			continue;
+		}
+		const expectedInDoc = change.applied ? change.insert : change.before;
 		if (
 			(from.deleted && change.from !== change.to) ||
-			tr.doc.textBetween(mapped.from, mapped.to, "\n") !== change.before
+			tr.doc.textBetween(mapped.from, mapped.to, "\n") !== expectedInDoc
 		) {
 			dropped.push(change);
 			continue;
@@ -255,6 +300,44 @@ function sorted(changes: SuggestionChange[]) {
 	return [...changes].sort((a, b) => a.from - b.from);
 }
 
+function makeDeletedBlockWidget(
+	state: EditorState,
+	change: SuggestionChange,
+	active: string,
+): Decoration {
+	return Decoration.widget(
+		change.from,
+		() => {
+			const nodes = change.deletedNodes;
+			if (nodes && nodes.length > 0) {
+				const serializer = DOMSerializer.fromSchema(state.doc.type.schema);
+				// A deleted tableRow lives directly inside <tbody>, so return a real
+				// <tr> element instead of wrapping it in a <div>.
+				if (nodes.length === 1 && nodes[0].type.name === "tableRow") {
+					const rowEl = serializer.serializeNode(nodes[0]);
+					if (rowEl instanceof HTMLElement) {
+						rowEl.classList.add("mdly-sugg-row-del");
+						if (active) rowEl.classList.add("is-active");
+						rowEl.dataset.suggestionId = change.id;
+						return rowEl;
+					}
+				}
+				const div = document.createElement("div");
+				div.className = `mdly-sugg-block-del${active}`;
+				div.dataset.suggestionId = change.id;
+				div.appendChild(serializer.serializeFragment(Fragment.from(nodes)));
+				return div;
+			}
+			const div = document.createElement("div");
+			div.className = `mdly-sugg-block-del${active}`;
+			div.dataset.suggestionId = change.id;
+			div.textContent = change.before;
+			return div;
+		},
+		{ side: -1, key: `${change.id}:del-block:${active}` },
+	);
+}
+
 function decorations(
 	state: EditorState,
 	value: SuggestionState,
@@ -264,29 +347,90 @@ function decorations(
 	const markedBlocks = new Set<number>();
 	for (const change of value.changes) {
 		const active = change.id === value.activeId ? " is-active" : "";
-		if (change.to > change.from) {
-			decos.push(
-				Decoration.inline(change.from, change.to, {
-					class: `mdly-sugg-del${active}`,
-					"data-suggestion-id": change.id,
-				}),
-			);
+		const kind = change.kind ?? "inline";
+
+		if (kind === "block-add") {
+			if (change.to > change.from) {
+				decos.push(
+					Decoration.node(change.from, change.to, {
+						class: `mdly-sugg-block-ins${active}`,
+						"data-suggestion-id": change.id,
+					}),
+				);
+			}
+			continue;
 		}
-		if (change.insert) {
-			decos.push(
-				Decoration.widget(
-					change.to,
-					() => {
-						const span = document.createElement("span");
-						span.className = `mdly-sugg-ins${active}`;
-						span.dataset.suggestionId = change.id;
-						span.textContent = change.insert;
-						return span;
-					},
-					{ side: 1, key: `${change.id}:${change.insert}:${active}` },
-				),
-			);
+
+		if (kind === "block-del") {
+			decos.push(makeDeletedBlockWidget(state, change, active));
+			continue;
 		}
+
+		if (kind === "block-replace") {
+			if (change.before || change.deletedNodes?.length) {
+				decos.push(makeDeletedBlockWidget(state, change, active));
+			}
+			if (change.to > change.from) {
+				decos.push(
+					Decoration.node(change.from, change.to, {
+						class: `mdly-sugg-block-ins${active}`,
+						"data-suggestion-id": change.id,
+					}),
+				);
+			}
+			continue;
+		}
+
+		if (change.applied) {
+			if (change.before) {
+				decos.push(
+					Decoration.widget(
+						change.from,
+						() => {
+							const span = document.createElement("span");
+							span.className = `mdly-sugg-del${active}`;
+							span.dataset.suggestionId = change.id;
+							span.textContent = change.before;
+							return span;
+						},
+						{ side: -1, key: `${change.id}:del:${change.before}:${active}` },
+					),
+				);
+			}
+			if (change.to > change.from) {
+				decos.push(
+					Decoration.inline(change.from, change.to, {
+						class: `mdly-sugg-ins${active}`,
+						"data-suggestion-id": change.id,
+					}),
+				);
+			}
+		} else {
+			if (change.to > change.from) {
+				decos.push(
+					Decoration.inline(change.from, change.to, {
+						class: `mdly-sugg-del${active}`,
+						"data-suggestion-id": change.id,
+					}),
+				);
+			}
+			if (change.insert) {
+				decos.push(
+					Decoration.widget(
+						change.to,
+						() => {
+							const span = document.createElement("span");
+							span.className = `mdly-sugg-ins${active}`;
+							span.dataset.suggestionId = change.id;
+							span.textContent = change.insert;
+							return span;
+						},
+						{ side: 1, key: `${change.id}:${change.insert}:${active}` },
+					),
+				);
+			}
+		}
+
 		const $pos = state.doc.resolve(change.from);
 		if ($pos.depth > 0) {
 			const before = $pos.before();
@@ -330,6 +474,11 @@ declare module "@tiptap/core" {
 				newText: string;
 				label?: string;
 			}) => ReturnType;
+			setAppliedSuggestions: (
+				source: SuggestionSource,
+				changes: SuggestionChange[],
+			) => ReturnType;
+			clearSuggestionsBySource: (source: SuggestionSource) => ReturnType;
 			acceptSuggestion: (id?: string) => ReturnType;
 			rejectSuggestion: (id?: string) => ReturnType;
 			acceptAllSuggestions: () => ReturnType;
@@ -414,6 +563,21 @@ export const SuggestionExtension = Extension.create<
 								changes: sorted([...next.changes, ...meta.changes]),
 								activeId: next.activeId ?? meta.changes[0]?.id ?? null,
 							};
+						} else if (meta?.kind === "replace-source") {
+							const kept = next.changes.filter((c) => c.source !== meta.source);
+							const changes = sorted([...kept, ...meta.changes]);
+							const activeId = changes.some((c) => c.id === next.activeId)
+								? next.activeId
+								: (changes[0]?.id ?? null);
+							next = { changes, activeId };
+						} else if (meta?.kind === "clear-source") {
+							const changes = next.changes.filter(
+								(c) => c.source !== meta.source,
+							);
+							const activeId = changes.some((c) => c.id === next.activeId)
+								? next.activeId
+								: (changes[0]?.id ?? null);
+							next = { changes, activeId };
 						} else if (meta?.kind === "remove") {
 							const ids = new Set(meta.ids);
 							const changes = next.changes.filter((c) => !ids.has(c.id));
@@ -450,10 +614,17 @@ export const SuggestionExtension = Extension.create<
 							suggestionKey.getState(state) ?? { changes: [], activeId: null },
 						);
 					},
-					handleClick(view, pos) {
-						const hit = getSuggestions(view.state).find(
-							(c) => pos >= c.from && pos <= c.to,
-						);
+					handleClick(view, pos, event) {
+						const targetEl =
+							event.target instanceof Element
+								? event.target.closest("[data-suggestion-id]")
+								: null;
+						const targetId = targetEl?.getAttribute("data-suggestion-id");
+						const hit = targetId
+							? getSuggestions(view.state).find((c) => c.id === targetId)
+							: getSuggestions(view.state).find(
+									(c) => pos >= c.from && pos <= c.to,
+								);
 						if (!hit) return false;
 						view.dispatch(
 							view.state.tr.setMeta(suggestionKey, {
@@ -475,11 +646,39 @@ export const SuggestionExtension = Extension.create<
 			const wanted = id ?? suggestionKey.getState(state)?.activeId;
 			return all.find((c) => c.id === wanted) ?? all[0];
 		};
-		const apply = (tr: Transaction, changes: SuggestionChange[]) => {
+		const applyProposed = (tr: Transaction, changes: SuggestionChange[]) => {
 			// Descending so earlier positions stay valid.
 			for (const c of [...changes].sort((a, b) => b.from - a.from)) {
 				if (c.insert) tr.insertText(c.insert, c.from, c.to);
 				else tr.delete(c.from, c.to);
+			}
+		};
+		const revertApplied = (tr: Transaction, changes: SuggestionChange[]) => {
+			// Ascending by position, then iterate in reverse so earlier positions
+			// stay valid AND multiple deletions at the same anchor restore in order.
+			const ordered = [...changes].sort((a, b) => a.from - b.from);
+			for (let i = ordered.length - 1; i >= 0; i--) {
+				const c = ordered[i];
+				const kind = c.kind ?? "inline";
+				if (kind === "block-add") {
+					if (c.from === 0 && c.to === tr.doc.content.size) {
+						const para = tr.doc.type.schema.nodes.paragraph?.create();
+						if (para) tr.replaceWith(c.from, c.to, para);
+					} else {
+						tr.delete(c.from, c.to);
+					}
+				} else if (kind === "block-del") {
+					if (c.deletedNodes && c.deletedNodes.length > 0) {
+						tr.insert(c.from, c.deletedNodes);
+					}
+				} else if (kind === "block-replace") {
+					if (c.deletedNodes && c.deletedNodes.length > 0) {
+						tr.replaceWith(c.from, c.to, c.deletedNodes);
+					}
+				} else {
+					if (c.before) tr.insertText(c.before, c.from, c.to);
+					else tr.delete(c.from, c.to);
+				}
 			}
 		};
 		return {
@@ -501,13 +700,38 @@ export const SuggestionExtension = Extension.create<
 						} satisfies Meta).setMeta("addToHistory", false);
 					return true;
 				},
+			setAppliedSuggestions:
+				(source, changes) =>
+				({ tr, dispatch }) => {
+					if (dispatch)
+						tr.setMeta(suggestionKey, {
+							kind: "replace-source",
+							source,
+							changes,
+						} satisfies Meta).setMeta("addToHistory", false);
+					return true;
+				},
+			clearSuggestionsBySource:
+				(source) =>
+				({ tr, dispatch }) => {
+					if (dispatch)
+						tr.setMeta(suggestionKey, {
+							kind: "clear-source",
+							source,
+						} satisfies Meta).setMeta("addToHistory", false);
+					return true;
+				},
 			acceptSuggestion:
 				(id) =>
 				({ state, tr, dispatch }) => {
 					const change = pick(state, id);
 					if (!change) return false;
 					if (dispatch) {
-						apply(tr, [change]);
+						if (!change.applied) {
+							applyProposed(tr, [change]);
+						} else {
+							tr.setMeta("addToHistory", false);
+						}
 						tr.setMeta(suggestionKey, {
 							kind: "remove",
 							ids: [change.id],
@@ -522,10 +746,15 @@ export const SuggestionExtension = Extension.create<
 					const change = pick(state, id);
 					if (!change) return false;
 					if (dispatch) {
+						if (change.applied) {
+							revertApplied(tr, [change]);
+						} else {
+							tr.setMeta("addToHistory", false);
+						}
 						tr.setMeta(suggestionKey, {
 							kind: "remove",
 							ids: [change.id],
-						} satisfies Meta).setMeta("addToHistory", false);
+						} satisfies Meta);
 						settle(state, [change], false);
 					}
 					return true;
@@ -536,7 +765,9 @@ export const SuggestionExtension = Extension.create<
 					const all = getSuggestions(state);
 					if (all.length === 0) return false;
 					if (dispatch) {
-						apply(tr, all);
+						const proposed = all.filter((c) => !c.applied);
+						if (proposed.length > 0) applyProposed(tr, proposed);
+						else tr.setMeta("addToHistory", false);
 						tr.setMeta(suggestionKey, {
 							kind: "remove",
 							ids: all.map((c) => c.id),
@@ -551,32 +782,63 @@ export const SuggestionExtension = Extension.create<
 					const all = getSuggestions(state);
 					if (all.length === 0) return false;
 					if (dispatch) {
+						const applied = all.filter((c) => c.applied);
+						if (applied.length > 0) revertApplied(tr, applied);
+						else tr.setMeta("addToHistory", false);
 						tr.setMeta(suggestionKey, {
 							kind: "remove",
 							ids: all.map((c) => c.id),
-						} satisfies Meta).setMeta("addToHistory", false);
+						} satisfies Meta);
 						settle(state, all, false);
 					}
 					return true;
 				},
 			nextSuggestion:
 				(direction = 1) =>
-				({ state, tr, dispatch }) => {
+				({ editor, state, tr, dispatch, view }) => {
 					const all = getSuggestions(state);
 					if (all.length === 0) return false;
+					const activeId = suggestionKey.getState(state)?.activeId;
+					const currentIndex = activeId
+						? all.findIndex((c) => c.id === activeId)
+						: -1;
 					const head = state.selection.head;
-					const target =
-						direction === 1
-							? (all.find((c) => c.from > head) ?? all[0])
-							: ([...all].reverse().find((c) => c.to < head) ??
-								all[all.length - 1]);
+					const active = currentIndex >= 0 ? all[currentIndex] : null;
+					const caretOnActive =
+						active !== null && head >= active.from && head <= active.to;
+					let target: SuggestionChange;
+					if (currentIndex >= 0 && (!editor.isEditable || caretOnActive)) {
+						target = all[(currentIndex + direction + all.length) % all.length];
+					} else {
+						target =
+							direction === 1
+								? (all.find((c) => c.from > head) ?? all[0])
+								: ([...all].reverse().find((c) => c.to < head) ??
+									all[all.length - 1]);
+					}
 					if (dispatch) {
-						tr.setSelection(TextSelection.create(tr.doc, target.from))
+						const clamped = Math.max(
+							0,
+							Math.min(target.from, tr.doc.content.size),
+						);
+						tr.setSelection(TextSelection.near(tr.doc.resolve(clamped)))
 							.setMeta(suggestionKey, {
 								kind: "active",
 								id: target.id,
 							} satisfies Meta)
 							.scrollIntoView();
+						// ProseMirror's scrollIntoView() is a no-op when the editor is
+						// non-editable (version history) or blurred (toolbar button click).
+						// Explicitly scroll the active suggestion DOM node into view.
+						if (typeof requestAnimationFrame === "function") {
+							requestAnimationFrame(() => {
+								if (view.isDestroyed) return;
+								const el = view.dom.querySelector(
+									`[data-suggestion-id="${target.id}"]`,
+								);
+								el?.scrollIntoView({ behavior: "smooth", block: "center" });
+							});
+						}
 					}
 					return true;
 				},

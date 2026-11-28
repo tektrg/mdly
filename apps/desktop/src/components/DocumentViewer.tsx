@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { desktopApi } from "../desktopApi";
 import { createEmbedExtension } from "../editor/EmbedExtension";
+import { buildExternalChangeSuggestions } from "../editor/externalChangeDiff";
 import {
 	handleImageDrop,
 	handleImagePaste,
@@ -29,13 +30,19 @@ import { resolveWikiPath } from "../lib/wikiPath";
 import { parseNotionDatabaseMetadata } from "../notion/notionDatabase";
 import { parseNotionLinkMetadata } from "../notion/notionMarkdown";
 import {
+	dismissExternalChange,
 	loadPath,
 	savePathContent,
 	updateEditorContent,
 } from "../store/actions";
 import { registerEditorDraftFlush } from "../store/editorDraft";
 import { observeEditorTransactionStorms } from "../store/editorStormDetector";
-import { viewerStore, workspaceStore } from "../store/state";
+import { externalChangeRawDialogOpenStore } from "../store/externalChangeUi";
+import {
+	type ExternalChange,
+	viewerStore,
+	workspaceStore,
+} from "../store/state";
 import { AgentHookBar, useAgentHookState } from "./AgentHookBar";
 import { NotionDatabaseViewer } from "./NotionDatabaseViewer";
 import { SuggestionReviewBar } from "./SuggestionReviewBar";
@@ -171,9 +178,14 @@ function MarkdownEditor({
 			}),
 		[workspace.files, workspace.workspacePath],
 	);
-	// Accept/reject of a whole suggestion group goes back to the agent hook.
+	// Accept/reject of a whole suggestion group goes back to the agent hook,
+	// except external disk changes which simply dismiss the external-change pill.
 	const onSuggestionSettled = useCallback(
 		(settled: GroupSettled) => {
+			if (settled.source === "external") {
+				dismissExternalChange(path);
+				return;
+			}
 			void desktopApi
 				.agentHookDecision(path, {
 					accepted: settled.accepted,
@@ -419,6 +431,43 @@ function MarkdownEditor({
 			});
 		}
 	}, [liveEditor, agentHook.proposals, path]);
+	// External disk edits → inline suggestions in the live WYSIWYG editor.
+	// Keyed on the `externalChange` object reference (new per external reload) so
+	// local edits or per-hunk Undo do not re-trigger diff computation.
+	const externalChange = useStoreValue(
+		viewerStore,
+		(viewer) => viewer.externalChange,
+	);
+	const lastAppliedExternalRef = useRef<ExternalChange | null>(null);
+	const externalGroupSeqRef = useRef(0);
+	const [externalFrontMatterChanged, setExternalFrontMatterChanged] =
+		useState(false);
+	useEffect(() => {
+		if (!liveEditor) return;
+		if (externalChange.kind !== "applied") {
+			if (lastAppliedExternalRef.current !== null) {
+				lastAppliedExternalRef.current = null;
+				setExternalFrontMatterChanged(false);
+				liveEditor.commands.clearSuggestionsBySource("external");
+			}
+			return;
+		}
+		if (lastAppliedExternalRef.current === externalChange) return;
+		lastAppliedExternalRef.current = externalChange;
+		const groupId = `ext-${++externalGroupSeqRef.current}`;
+		const { changes, frontMatterChanged } = buildExternalChangeSuggestions(
+			externalChange.previousContent,
+			initialMarkdown,
+			liveEditor.state.doc,
+			liveEditor.schema,
+			groupId,
+		);
+		setExternalFrontMatterChanged(frontMatterChanged);
+		liveEditor.commands.setAppliedSuggestions("external", changes);
+	}, [liveEditor, externalChange, initialMarkdown]);
+	const openExternalRawDiff = useCallback(() => {
+		externalChangeRawDialogOpenStore.set(true);
+	}, []);
 	const getCurrentMarkdown = useCallback(() => {
 		const viewer = viewerStore.get();
 		return viewer.currentPath === path ? viewer.content : initialMarkdown;
@@ -426,7 +475,11 @@ function MarkdownEditor({
 
 	return (
 		<>
-			<SuggestionReviewBar editor={liveEditor} />
+			<SuggestionReviewBar
+				editor={liveEditor}
+				onOpenRawDiff={openExternalRawDiff}
+				frontMatterChanged={externalFrontMatterChanged}
+			/>
 			<AgentHookBar
 				path={path}
 				getMarkdown={getCurrentMarkdown}

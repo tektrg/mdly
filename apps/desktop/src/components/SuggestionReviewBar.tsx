@@ -35,7 +35,15 @@ function useSuggestions(editor: Editor | null) {
 
 const btn = "rounded px-1.5 py-0.5 hover:bg-muted";
 
-export function SuggestionReviewBar({ editor }: { editor: Editor | null }) {
+export function SuggestionReviewBar({
+	editor,
+	onOpenRawDiff,
+	frontMatterChanged = false,
+}: {
+	editor: Editor | null;
+	onOpenRawDiff?: () => void;
+	frontMatterChanged?: boolean;
+}) {
 	const { changes, activeId } = useSuggestions(editor);
 	if (!editor || changes.length === 0) return null;
 	const index = Math.max(
@@ -43,6 +51,14 @@ export function SuggestionReviewBar({ editor }: { editor: Editor | null }) {
 		changes.findIndex((c) => c.id === activeId),
 	);
 	const active = changes[index];
+	const isExternal = active?.source === "external";
+	const hasExternal = changes.some((c) => c.source === "external");
+	const sourceLabel =
+		active?.source === "external"
+			? "external"
+			: active?.source === "agent"
+				? "agent"
+				: "tool";
 	return (
 		<div
 			className="fixed z-40 flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-xs shadow-md"
@@ -50,8 +66,7 @@ export function SuggestionReviewBar({ editor }: { editor: Editor | null }) {
 			data-testid="suggestion-review-bar"
 		>
 			<span className="px-1 text-muted-foreground">
-				{index + 1}/{changes.length}{" "}
-				{active?.source === "agent" ? "agent" : "tool"} change
+				{index + 1}/{changes.length} {sourceLabel} change
 				{changes.length === 1 ? "" : "s"}
 			</span>
 			<button
@@ -73,18 +88,18 @@ export function SuggestionReviewBar({ editor }: { editor: Editor | null }) {
 			<button
 				type="button"
 				className={`${btn} text-emerald-600`}
-				title="Accept change (⌘⌥↩)"
+				title={isExternal ? "Keep change (⌘⌥↩)" : "Accept change (⌘⌥↩)"}
 				onClick={() => editor.commands.acceptSuggestion(active?.id)}
 			>
-				Accept
+				{isExternal ? "Keep" : "Accept"}
 			</button>
 			<button
 				type="button"
 				className={`${btn} text-red-600`}
-				title="Reject change (⌘⌥⌫)"
+				title={isExternal ? "Undo change (⌘⌥⌫)" : "Reject change (⌘⌥⌫)"}
 				onClick={() => editor.commands.rejectSuggestion(active?.id)}
 			>
-				Reject
+				{isExternal ? "Undo" : "Reject"}
 			</button>
 			<span className="mx-1 h-4 border-s border-border" />
 			<button
@@ -92,15 +107,32 @@ export function SuggestionReviewBar({ editor }: { editor: Editor | null }) {
 				className={btn}
 				onClick={() => editor.commands.acceptAllSuggestions()}
 			>
-				Accept all
+				{isExternal ? "Keep all" : "Accept all"}
 			</button>
 			<button
 				type="button"
 				className={btn}
 				onClick={() => editor.commands.rejectAllSuggestions()}
 			>
-				Reject all
+				{isExternal ? "Undo all" : "Reject all"}
 			</button>
+			{hasExternal && onOpenRawDiff && (
+				<>
+					<span className="mx-1 h-4 border-s border-border" />
+					<button
+						type="button"
+						className={`${btn} text-muted-foreground`}
+						title={
+							frontMatterChanged
+								? "View raw Markdown diff (frontmatter also changed)"
+								: "View raw Markdown diff"
+						}
+						onClick={onOpenRawDiff}
+					>
+						{frontMatterChanged ? "Raw diff (+frontmatter)" : "Raw diff"}
+					</button>
+				</>
+			)}
 		</div>
 	);
 }
